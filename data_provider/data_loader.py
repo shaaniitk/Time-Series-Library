@@ -265,37 +265,33 @@ class Dataset_Custom(Dataset):
             df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
         except Exception as e:
             logger.error(f"Failed to read CSV: {e}")
-            raise
-
-        # Use dynamic borders based on actual data size and validation requirements
+            raise        # Use dynamic borders based on actual data size and validation requirements
         data_len = len(df_raw)
-        
-        # For synthetic data, use custom borders that match our validation requirements
+          # For synthetic data, use configurable borders
         if hasattr(self.args, 'data') and self.args.data == 'custom':
-            # Custom split for synthetic data based on validation requirements
-            val_period = 50  # Points we want to validate on
-            test_period = self.pred_len  # Points for test
+            # Parameters: n=data_len, s=seq_len, p=pred_len, v=validation_length, t=test_length
+            n = data_len
+            s = self.seq_len 
+            p = self.pred_len
             
-            # Training: 0 to (total - val_period - test_period) = 0 to 1900
-            train_end = data_len - val_period - test_period  # 1900
+            # Get configurable parameters from args (with defaults)
+            v = getattr(self.args, 'validation_length', 150)  # validation_length
+            t = getattr(self.args, 'test_length', 50)         # test_length
             
-            # Validation: needs seq_len + val_period points = 150 points
-            # Starts at: train_end - seq_len + 1 = 1801, ends at: train_end + val_period = 1950
-            val_start = train_end - self.seq_len + 1  # 1801
-            val_end = train_end + val_period  # 1950
+            # Your mathematical formulation:
+            # Training: 0 to (n - t - v)
+            # Validation: (n - t - s - v) to (n - t)  
+            # Test: (n - s - t) to n
             
-            # Test: starts where validation ends
-            test_start = val_end  # 1950
+            border1s = [0, n - t - s - v, n - s - t]
+            border2s = [n - t - v, n - t, n]
             
-            if self.set_type == 0:  # train
-                border1 = 0
-                border2 = train_end  # 1900
-            elif self.set_type == 1:  # val  
-                border1 = val_start  # 1801
-                border2 = val_end    # 1950
-            else:  # test
-                border1 = test_start - self.seq_len  # 1950 - 100 = 1850
-                border2 = data_len   # 2000
+            logger.info(f"Border calculation: n={n}, s={s}, p={p}, v={v}, t={t}")
+            logger.info(f"border1s = {border1s}")
+            logger.info(f"border2s = {border2s}")
+            
+            border1 = border1s[self.set_type]
+            border2 = border2s[self.set_type]
         else:
             # Original ETT borders for other datasets
             border1s = [0, 12 * 30 * 24 * 4 - self.seq_len, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4 - self.seq_len]
@@ -319,16 +315,13 @@ class Dataset_Custom(Dataset):
         elif self.features == 'S':
             df_data = df_raw[self.target_list]
 
+        data = df_data.values
         if self.scale:
-            logger.debug("Sequence-level scaling will be applied in __getitem__")
-            # Don't apply global scaling - keep original data
-            data = df_data.values
-            # Store original data for sequence-level scaling
-            self.raw_data = df_data.values
+            train_data = data[border1s[0]:border2s[0]]
+            self.scaler.fit(train_data)
+            data = self.scaler.transform(data)
         else:
-            logger.debug("Skipping scaling step")
-            data = df_data.values
-            self.raw_data = df_data.values
+            data = data
 
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
@@ -360,29 +353,8 @@ class Dataset_Custom(Dataset):
         r_begin = s_end - self.label_len
         r_end = r_begin + self.label_len + self.pred_len
 
-        if self.scale:
-            # Sequence-level scaling: compute scaler based on input sequence only
-            seq_data_raw = self.raw_data[s_begin:s_end]  # Raw input sequence
-            
-            # Create sequence-specific scaler
-            seq_scaler = StandardScaler()
-            seq_scaler.fit(seq_data_raw)
-            
-            # Scale input sequence 
-            seq_x = seq_scaler.transform(seq_data_raw)
-            
-            # Scale target sequence using the same sequence scaler
-            seq_y_raw = self.raw_data[r_begin:r_end]
-            seq_y = seq_scaler.transform(seq_y_raw)
-            
-            # Store the sequence scaler for potential inverse transformation
-            # Note: This will overwrite previous scalers, but that's fine for our use case
-            self.scaler = seq_scaler
-            
-        else:
-            seq_x = self.data_x[s_begin:s_end]
-            seq_y = self.data_y[r_begin:r_end]
-
+        seq_x = self.data_x[s_begin:s_end]
+        seq_y = self.data_y[r_begin:r_end]
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
 
