@@ -1,8 +1,10 @@
 import pandas as pd
 import numpy as np
 import os
+from utils.logger import logger
 
 def create_synthetic_csv(filepath, n_points=1000):
+    logger.info("Creating synthetic CSV file for test")
     # Angles
     X = np.arange(n_points) * 5 * np.pi / 180
     X1 = np.arange(n_points) * 10 * np.pi / 180

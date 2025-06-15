@@ -1,4 +1,7 @@
+from utils.logger import logger
+
 def print_args(args):
+    logger.info("Printing arguments")
     print("\033[1m" + "Basic Config" + "\033[0m")
     print(f'  {"Task Name:":<20}{args.task_name:<20}{"Is Training:":<20}{args.is_training:<20}')
     print(f'  {"Model ID:":<20}{args.model_id:<20}{"Model:":<20}{args.model:<20}')

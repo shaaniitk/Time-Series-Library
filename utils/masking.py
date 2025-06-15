@@ -1,4 +1,5 @@
 import torch
+from utils.logger import logger
 
 
 class TriangularCausalMask():
@@ -24,3 +25,7 @@ class ProbMask():
     @property
     def mask(self):
         return self._mask
+
+
+def create_mask(shape):
+    logger.debug(f"Creating mask with shape {shape}")

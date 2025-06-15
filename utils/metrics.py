@@ -1,4 +1,5 @@
 import numpy as np
+from utils.logger import logger
 
 
 def RSE(pred, true):
@@ -32,6 +33,7 @@ def MSPE(pred, true):
 
 
 def metric(pred, true):
+    logger.debug("Calculating metric")
     mae = MAE(pred, true)
     mse = MSE(pred, true)
     rmse = RMSE(pred, true)

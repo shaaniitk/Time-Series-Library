@@ -3,6 +3,7 @@ __author__ = 'Brian Iwana'
 import numpy as np
 import math
 import sys
+from utils.logger import logger
 
 RETURN_VALUE = 0
 RETURN_PATH = 1
@@ -48,6 +49,7 @@ def _traceback(DTW, slope_constraint):
     return (np.array(p), np.array(q))
 
 def dtw(prototype, sample, return_flag = RETURN_VALUE, slope_constraint="asymmetric", window=None):
+    logger.debug("Running DTW algorithm")
     """ Computes the DTW of two sequences.
     :param prototype: np array [0..b]
     :param sample: np array [0..t]

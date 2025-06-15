@@ -2,6 +2,7 @@ from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
+from utils.logger import logger
 import torch
 import torch.nn as nn
 from torch import optim
@@ -17,6 +18,7 @@ warnings.filterwarnings('ignore')
 
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
+        logger.info(f"Initializing Exp_Long_Term_Forecast with args: {args}")
         super(Exp_Long_Term_Forecast, self).__init__(args)
 
     def _build_model(self):
@@ -40,6 +42,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
  
 
     def vali(self, vali_data, vali_loader, criterion):
+        logger.info("Running validation phase")
         total_loss = []
         self.model.eval()
         with torch.no_grad():
@@ -74,6 +77,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return total_loss
 
     def train(self, setting):
+        logger.info(f"Starting training with setting: {setting}")
         train_data, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
@@ -166,6 +170,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return self.model
 
     def test(self, setting, test=0):
+        logger.info(f"Starting test with setting: {setting}, test={test}")
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')

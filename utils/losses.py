@@ -20,6 +20,7 @@ import torch as t
 import torch.nn as nn
 import numpy as np
 import pdb
+from utils.logger import logger
 
 
 def divide_no_nan(a, b):
@@ -87,3 +88,8 @@ class mase_loss(nn.Module):
         masep = t.mean(t.abs(insample[:, freq:] - insample[:, :-freq]), dim=1)
         masked_masep_inv = divide_no_nan(mask, masep[:, None])
         return t.mean(t.abs(target - forecast) * masked_masep_inv)
+
+
+def compute_loss(pred, target):
+    logger.debug("Computing loss")
+    # ...existing code...

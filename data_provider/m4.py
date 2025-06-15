@@ -30,9 +30,11 @@ import os
 import pathlib
 import sys
 from urllib import request
+from utils.logger import logger
 
 
 def url_file_name(url: str) -> str:
+    logger.debug(f"Getting file name from URL: {url}")
     """
     Extract file name from url.
 
@@ -43,6 +45,7 @@ def url_file_name(url: str) -> str:
 
 
 def download(url: str, file_path: str) -> None:
+    logger.info(f"Downloading from {url} to {file_path}")
     """
     Download a file to the given path.
 
@@ -129,7 +132,7 @@ class M4Meta:
     }  # from interpretable.gin
 
 
-def load_m4_info() -> pd.DataFrame:
+def load_m4_info(INFO_FILE_PATH) -> pd.DataFrame:
     """
     Load M4Info file.
 

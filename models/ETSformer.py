@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from layers.Embed import DataEmbedding
 from layers.ETSformer_EncDec import EncoderLayer, Encoder, DecoderLayer, Decoder, Transform
+from utils.logger import logger
 
 
 class Model(nn.Module):
@@ -10,7 +11,8 @@ class Model(nn.Module):
     """
 
     def __init__(self, configs):
-        super(Model, self).__init__()
+        super().__init__()
+        logger.info(f"Initializing ETSformer model with configs: {configs}")
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.label_len = configs.label_len
@@ -95,6 +97,7 @@ class Model(nn.Module):
         return output
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        logger.debug("ETSformer forward")
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]  # [B, L, D]

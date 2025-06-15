@@ -6,7 +6,7 @@ from layers.Crossformer_EncDec import scale_block, Encoder, Decoder, DecoderLaye
 from layers.Embed import PatchEmbedding
 from layers.SelfAttention_Family import AttentionLayer, FullAttention, TwoStageAttentionLayer
 from models.PatchTST import FlattenHead
-
+from utils.logger import logger
 
 from math import ceil
 
@@ -16,7 +16,8 @@ class Model(nn.Module):
     Paper link: https://openreview.net/pdf?id=vSVLM2j9eie
     """
     def __init__(self, configs):
-        super(Model, self).__init__()
+        super().__init__()
+        logger.info(f"Initializing Crossformer model with configs: {configs}")
         self.enc_in = configs.enc_in
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
@@ -80,6 +81,7 @@ class Model(nn.Module):
 
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        logger.debug("Crossformer forecast")
         # embedding
         x_enc, n_vars = self.enc_value_embedding(x_enc.permute(0, 2, 1))
         x_enc = rearrange(x_enc, '(b d) seg_num d_model -> b d seg_num d_model', d = n_vars)
@@ -92,6 +94,7 @@ class Model(nn.Module):
         return dec_out
 
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
+        logger.debug("Crossformer imputation")
         # embedding
         x_enc, n_vars = self.enc_value_embedding(x_enc.permute(0, 2, 1))
         x_enc = rearrange(x_enc, '(b d) seg_num d_model -> b d seg_num d_model', d=n_vars)
@@ -104,6 +107,7 @@ class Model(nn.Module):
         return dec_out
 
     def anomaly_detection(self, x_enc):
+        logger.debug("Crossformer anomaly_detection")
         # embedding
         x_enc, n_vars = self.enc_value_embedding(x_enc.permute(0, 2, 1))
         x_enc = rearrange(x_enc, '(b d) seg_num d_model -> b d seg_num d_model', d=n_vars)
@@ -115,6 +119,7 @@ class Model(nn.Module):
         return dec_out
 
     def classification(self, x_enc, x_mark_enc):
+        logger.debug("Crossformer classification")
         # embedding
         x_enc, n_vars = self.enc_value_embedding(x_enc.permute(0, 2, 1))
 
@@ -130,6 +135,7 @@ class Model(nn.Module):
         return output
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        logger.debug("Crossformer forward")
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]  # [B, L, D]

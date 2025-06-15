@@ -1,5 +1,6 @@
 import numpy as np
 from tqdm import tqdm
+from utils.logger import logger
 
 def jitter(x, sigma=0.03):
     # https://arxiv.org/pdf/1706.00527.pdf
@@ -130,7 +131,7 @@ def spawner(x, labels, sigma=0.05, verbose=0):
             combined = np.concatenate((np.vstack(path1), np.vstack(path2+random_points[i])), axis=1)
             if verbose:
                 # print(random_points[i])
-                dtw_value, cost, DTW_map, path = dtw.dtw(pat, random_sample, return_flag = dtw.RETURN_ALL, slope_constraint=slope_constraint, window=window)
+                dtw_value, cost, DTW_map, path = dtw.dtw(pat, random_sample, return_flag = dtw.RETURN_ALL, slope_constraint="symmetric", window=window)
                 dtw.draw_graph1d(cost, DTW_map, path, pat, random_sample)
                 dtw.draw_graph1d(cost, DTW_map, combined, pat, random_sample)
             mean = np.mean([pat[combined[0]], random_sample[combined[1]]], axis=0)
@@ -348,7 +349,7 @@ def run_augmentation(x, y, args):
     return x_aug, y_aug, augmentation_tags
 
 def run_augmentation_single(x, y, args):
-    # print("Augmenting %s"%args.data)
+    logger.info(f"Running augmentation with ratio {getattr(args, 'augmentation_ratio', 0)}")
     np.random.seed(args.seed)
 
     x_aug = x

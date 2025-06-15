@@ -3,43 +3,74 @@ import numpy as np
 import os
 from statsmodels.tsa.stattools import adfuller
 from arch.unitroot import ADF
+from utils.logger import logger
 
 def calculate_ADF(root_path,data_path):
-    df_raw = pd.read_csv(os.path.join(root_path,data_path))
+    logger.info(f"Calculating ADF for all columns in {data_path}")
+    try:
+        df_raw = pd.read_csv(os.path.join(root_path,data_path))
+    except Exception as e:
+        logger.error(f"Failed to read CSV: {e}")
+        raise
     cols = list(df_raw.columns)
     cols.remove('date')
     df_raw = df_raw[cols]
     adf_list = []
     for i in cols:
         df_data = df_raw[i]
-        adf = adfuller(df_data, maxlag = 1)
+        try:
+            adf = adfuller(df_data, maxlag = 1)
+        except Exception as e:
+            logger.error(f"ADF test failed for column {i}: {e}")
+            adf = None
         print(adf)
         adf_list.append(adf)
     return np.array(adf_list)
 
 def calculate_target_ADF(root_path,data_path,target='OT'):
-    df_raw = pd.read_csv(os.path.join(root_path,data_path))
+    logger.info(f"Calculating ADF for target(s) {target} in {data_path}")
+    try:
+        df_raw = pd.read_csv(os.path.join(root_path,data_path))
+    except Exception as e:
+        logger.error(f"Failed to read CSV: {e}")
+        raise
     target_cols = target.split(',')
-    # df_data = df_raw[target]
     df_raw = df_raw[target_cols]
     adf_list = []
     for i in target_cols:
         df_data = df_raw[i]
-        adf = adfuller(df_data, maxlag = 1)
-        # print(adf)
+        try:
+            adf = adfuller(df_data, maxlag = 1)
+        except Exception as e:
+            logger.error(f"ADF test failed for column {i}: {e}")
+            adf = None
         adf_list.append(adf)
     return np.array(adf_list)
 
 def archADF(root_path, data_path):
-    df = pd.read_csv(os.path.join(root_path,data_path))
+    logger.info(f"Calculating ARCH ADF for {data_path}")
+    try:
+        df = pd.read_csv(os.path.join(root_path,data_path))
+    except Exception as e:
+        logger.error(f"Failed to read CSV: {e}")
+        raise
     cols = df.columns[1:]
     stats = 0
     for target_col in cols:
         series = df[target_col].values
-        adf = ADF(series)
+        try:
+            adf = ADF(series)
+        except Exception as e:
+            logger.error(f"ARCH ADF failed for column {target_col}: {e}")
+            adf = None
         stat = adf.stat
         stats += stat
     return stats/len(cols)
+
+def adf_test(series):
+    logger.info("Running ADF test")
+    result = adfuller(series)
+    return result
 
 if __name__ == '__main__':
 

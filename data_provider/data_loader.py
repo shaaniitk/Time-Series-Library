@@ -12,6 +12,7 @@ from data_provider.uea import subsample, interpolate_missing, Normalizer
 from sktime.datasets import load_from_tsfile_to_dataframe
 import warnings
 from utils.augmentation import run_augmentation_single
+from utils.logger import logger  # <-- Add logger import
 
 warnings.filterwarnings('ignore')
 
@@ -47,9 +48,13 @@ class Dataset_ETT_hour(Dataset):
         self.__read_data__()
 
     def __read_data__(self):
+        logger.debug(f"Reading data from {os.path.join(self.root_path, self.data_path)}")
         self.scaler = StandardScaler()
-        df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.data_path))
+        try:
+            df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
+        except Exception as e:
+            logger.error(f"Failed to read CSV: {e}")
+            raise
 
         border1s = [0, 12 * 30 * 24 - self.seq_len, 12 * 30 * 24 + 4 * 30 * 24 - self.seq_len]
         border2s = [12 * 30 * 24, 12 * 30 * 24 + 4 * 30 * 24, 12 * 30 * 24 + 8 * 30 * 24]
@@ -63,10 +68,12 @@ class Dataset_ETT_hour(Dataset):
             df_data = df_raw[[self.target]]
 
         if self.scale:
+            logger.debug("Fitting scaler on training data")
             train_data = df_data[border1s[0]:border2s[0]]
             self.scaler.fit(train_data.values)
             data = self.scaler.transform(df_data.values)
         else:
+            logger.debug("Skipping scaling step")
             data = df_data.values
 
         df_stamp = df_raw[['date']][border1:border2]
@@ -88,6 +95,8 @@ class Dataset_ETT_hour(Dataset):
             self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
 
         self.data_stamp = data_stamp
+        logger.info(f"Loaded data shape: {df_raw.shape}")
+        logger.info(f"Data_x shape: {self.data_x.shape}, Data_y shape: {self.data_y.shape}")
 
     def __getitem__(self, index):
         s_begin = index
@@ -140,9 +149,13 @@ class Dataset_ETT_minute(Dataset):
         self.__read_data__()
 
     def __read_data__(self):
+        logger.debug(f"Reading data from {os.path.join(self.root_path, self.data_path)}")
         self.scaler = StandardScaler()
-        df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.data_path))
+        try:
+            df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
+        except Exception as e:
+            logger.error(f"Failed to read CSV: {e}")
+            raise
 
         border1s = [0, 12 * 30 * 24 * 4 - self.seq_len, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4 - self.seq_len]
         border2s = [12 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 8 * 30 * 24 * 4]
@@ -156,10 +169,12 @@ class Dataset_ETT_minute(Dataset):
             df_data = df_raw[[self.target]]
 
         if self.scale:
+            logger.debug("Fitting scaler on training data")
             train_data = df_data[border1s[0]:border2s[0]]
             self.scaler.fit(train_data.values)
             data = self.scaler.transform(df_data.values)
         else:
+            logger.debug("Skipping scaling step")
             data = df_data.values
 
         df_stamp = df_raw[['date']][border1:border2]
@@ -183,6 +198,8 @@ class Dataset_ETT_minute(Dataset):
             self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
 
         self.data_stamp = data_stamp
+        logger.info(f"Loaded data shape: {df_raw.shape}")
+        logger.info(f"Data_x shape: {self.data_x.shape}, Data_y shape: {self.data_y.shape}")
 
     def __getitem__(self, index):
         s_begin = index
@@ -225,46 +242,58 @@ class Dataset_Custom(Dataset):
         self.set_type = type_map[flag]
 
         self.features = features
-        self.target = target
+        # --- Multi-target support ---
+        if isinstance(target, str):
+            target_list = [t.strip() for t in target.split(',')]
+        else:
+            target_list = list(target)
+        self.target = target_list if len(target_list) > 1 else target_list[0]
+        self.target_list = target_list
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
 
         self.root_path = root_path
         self.data_path = data_path
+        logger.info(f"Initializing Dataset_Custom with targets: {target}")
         self.__read_data__()
 
     def __read_data__(self):
+        logger.debug(f"Reading data from {os.path.join(self.root_path, self.data_path)}")
         self.scaler = StandardScaler()
-        df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.data_path))
+        try:
+            df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
+        except Exception as e:
+            logger.error(f"Failed to read CSV: {e}")
+            raise
 
-        '''
-        df_raw.columns: ['date', ...(other features), target feature]
-        '''
-        cols = list(df_raw.columns)
-        cols.remove(self.target)
-        cols.remove('date')
-        df_raw = df_raw[['date'] + cols + [self.target]]
-        num_train = int(len(df_raw) * 0.7)
-        num_test = int(len(df_raw) * 0.2)
-        num_vali = len(df_raw) - num_train - num_test
-        border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
-        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        border1s = [0, 12 * 30 * 24 * 4 - self.seq_len, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4 - self.seq_len]
+        border2s = [12 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 8 * 30 * 24 * 4]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
+        cols = list(df_raw.columns)
+        # Remove all targets and 'date' from feature columns
+        for tgt in self.target_list:
+            if tgt in cols:
+                cols.remove(tgt)
+        if 'date' in cols:
+            cols.remove('date')
+        # Features: all columns except date and targets
+        feature_cols = cols
+        # --- Feature selection ---
         if self.features == 'M' or self.features == 'MS':
-            cols_data = df_raw.columns[1:]
-            df_data = df_raw[cols_data]
+            df_data = df_raw[feature_cols]  # Only covariates as features
         elif self.features == 'S':
-            df_data = df_raw[[self.target]]
+            df_data = df_raw[self.target_list]
 
         if self.scale:
+            logger.debug("Fitting scaler on training data")
             train_data = df_data[border1s[0]:border2s[0]]
             self.scaler.fit(train_data.values)
             data = self.scaler.transform(df_data.values)
         else:
+            logger.debug("Skipping scaling step")
             data = df_data.values
 
         df_stamp = df_raw[['date']][border1:border2]
@@ -274,6 +303,8 @@ class Dataset_Custom(Dataset):
             df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
             df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
             df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
+            df_stamp['minute'] = df_stamp.date.apply(lambda row: row.minute, 1)
+            df_stamp['minute'] = df_stamp.minute.map(lambda x: x // 15)
             data_stamp = df_stamp.drop(['date'], 1).values
         elif self.timeenc == 1:
             data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
@@ -282,10 +313,12 @@ class Dataset_Custom(Dataset):
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
 
-        if self.set_type == 0 and self.args.augmentation_ratio > 0:
+        if self.set_type == 0 and getattr(self.args, 'augmentation_ratio', 0) > 0:
             self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
 
         self.data_stamp = data_stamp
+        logger.info(f"Loaded data shape: {df_raw.shape}")
+        logger.info(f"Data_x shape: {self.data_x.shape}, Data_y shape: {self.data_y.shape}")
 
     def __getitem__(self, index):
         s_begin = index

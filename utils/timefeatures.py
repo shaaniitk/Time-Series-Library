@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 from pandas.tseries import offsets
 from pandas.tseries.frequencies import to_offset
+from utils.logger import logger
 
 
 class TimeFeature:
@@ -145,4 +146,5 @@ def time_features_from_frequency_str(freq_str: str) -> List[TimeFeature]:
 
 
 def time_features(dates, freq='h'):
+    logger.debug(f"Extracting time features for {len(dates)} dates with freq={freq}")
     return np.vstack([feat(dates) for feat in time_features_from_frequency_str(freq)])

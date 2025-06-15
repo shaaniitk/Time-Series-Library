@@ -6,6 +6,7 @@ from layers.AutoCorrelation import AutoCorrelationLayer
 from layers.FourierCorrelation import FourierBlock, FourierCrossAttention
 from layers.MultiWaveletCorrelation import MultiWaveletCross, MultiWaveletTransform
 from layers.Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLayer, my_Layernorm, series_decomp
+from utils.logger import logger
 
 
 class Model(nn.Module):
@@ -21,6 +22,7 @@ class Model(nn.Module):
         modes: int, modes to be selected.
         """
         super(Model, self).__init__()
+        logger.info(f"Initializing FEDformer model with configs: {configs}")
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.label_len = configs.label_len
@@ -117,6 +119,7 @@ class Model(nn.Module):
             self.projection = nn.Linear(configs.d_model * configs.seq_len, configs.num_class)
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        logger.debug("FEDformer forecast")
         # decomp init
         mean = torch.mean(x_enc, dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
         seasonal_init, trend_init = self.decomp(x_enc)  # x - moving_avg, moving_avg
@@ -134,6 +137,7 @@ class Model(nn.Module):
         return dec_out
 
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
+        logger.debug("FEDformer imputation")
         # enc
         enc_out = self.enc_embedding(x_enc, x_mark_enc)
         enc_out, attns = self.encoder(enc_out, attn_mask=None)
@@ -142,6 +146,7 @@ class Model(nn.Module):
         return dec_out
 
     def anomaly_detection(self, x_enc):
+        logger.debug("FEDformer anomaly_detection")
         # enc
         enc_out = self.enc_embedding(x_enc, None)
         enc_out, attns = self.encoder(enc_out, attn_mask=None)
@@ -150,6 +155,7 @@ class Model(nn.Module):
         return dec_out
 
     def classification(self, x_enc, x_mark_enc):
+        logger.debug("FEDformer classification")
         # enc
         enc_out = self.enc_embedding(x_enc, None)
         enc_out, attns = self.encoder(enc_out, attn_mask=None)
@@ -163,6 +169,7 @@ class Model(nn.Module):
         return output
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        logger.debug("FEDformer forward")
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]  # [B, L, D]

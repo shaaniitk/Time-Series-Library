@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.fft
 from layers.Embed import DataEmbedding
 from layers.Conv_Blocks import Inception_Block_V1
+from utils.logger import logger
 
 
 def FFT_for_Period(x, k=2):
+    logger.debug(f"FFT_for_Period called with k={k}")
     # [B, T, C]
     xf = torch.fft.rfft(x, dim=1)
     # find period by amplitudes
@@ -74,7 +75,8 @@ class Model(nn.Module):
     """
 
     def __init__(self, configs):
-        super(Model, self).__init__()
+        super().__init__()
+        logger.info(f"Initializing TimesNet model with configs: {configs}")
         self.configs = configs
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
@@ -100,7 +102,25 @@ class Model(nn.Module):
             self.projection = nn.Linear(
                 configs.d_model * configs.seq_len, configs.num_class)
 
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        logger.debug(f"TimesNet forward: x_enc shape {x_enc.shape}, x_dec shape {x_dec.shape}")
+        if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
+            dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            return dec_out[:, -self.pred_len:, :]  # [B, L, D]
+        if self.task_name == 'imputation':
+            dec_out = self.imputation(
+                x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
+            return dec_out  # [B, L, D]
+        if self.task_name == 'anomaly_detection':
+            dec_out = self.anomaly_detection(x_enc)
+            return dec_out  # [B, L, D]
+        if self.task_name == 'classification':
+            dec_out = self.classification(x_enc, x_mark_enc)
+            return dec_out  # [B, N]
+        return None
+
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        logger.debug(f"TimesNet forecast: x_enc shape {x_enc.shape}, x_dec shape {x_dec.shape}")
         # Normalization from Non-stationary Transformer
         means = x_enc.mean(1, keepdim=True).detach()
         x_enc = x_enc.sub(means)
@@ -128,6 +148,7 @@ class Model(nn.Module):
         return dec_out
 
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
+        logger.debug("TimesNet imputation called")
         # Normalization from Non-stationary Transformer
         means = torch.sum(x_enc, dim=1) / torch.sum(mask == 1, dim=1)
         means = means.unsqueeze(1).detach()
@@ -156,6 +177,7 @@ class Model(nn.Module):
         return dec_out
 
     def anomaly_detection(self, x_enc):
+        logger.debug("TimesNet anomaly_detection called")
         # Normalization from Non-stationary Transformer
         means = x_enc.mean(1, keepdim=True).detach()
         x_enc = x_enc.sub(means)
@@ -181,6 +203,7 @@ class Model(nn.Module):
         return dec_out
 
     def classification(self, x_enc, x_mark_enc):
+        logger.debug("TimesNet classification called")
         # embedding
         enc_out = self.enc_embedding(x_enc, None)  # [B,T,C]
         # TimesNet
@@ -197,19 +220,3 @@ class Model(nn.Module):
         output = output.reshape(output.shape[0], -1)
         output = self.projection(output)  # (batch_size, num_classes)
         return output
-
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
-        if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
-            dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            return dec_out[:, -self.pred_len:, :]  # [B, L, D]
-        if self.task_name == 'imputation':
-            dec_out = self.imputation(
-                x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
-            return dec_out  # [B, L, D]
-        if self.task_name == 'anomaly_detection':
-            dec_out = self.anomaly_detection(x_enc)
-            return dec_out  # [B, L, D]
-        if self.task_name == 'classification':
-            dec_out = self.classification(x_enc, x_mark_enc)
-            return dec_out  # [B, N]
-        return None

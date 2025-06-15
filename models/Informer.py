@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from layers.Transformer_EncDec import Decoder, DecoderLayer, Encoder, EncoderLayer, ConvLayer
 from layers.SelfAttention_Family import ProbAttention, AttentionLayer
 from layers.Embed import DataEmbedding
+from utils.logger import logger
 
 
 class Model(nn.Module):
@@ -13,7 +14,8 @@ class Model(nn.Module):
     """
 
     def __init__(self, configs):
-        super(Model, self).__init__()
+        super().__init__()
+        logger.info(f"Initializing Informer model with configs: {configs}")
         self.task_name = configs.task_name
         self.pred_len = configs.pred_len
         self.label_len = configs.label_len
@@ -129,6 +131,7 @@ class Model(nn.Module):
         return output
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        logger.debug("Informer forward")
         if self.task_name == 'long_term_forecast':
             dec_out = self.long_forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]  # [B, L, D]

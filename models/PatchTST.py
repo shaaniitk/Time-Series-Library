@@ -3,6 +3,7 @@ from torch import nn
 from layers.Transformer_EncDec import Encoder, EncoderLayer
 from layers.SelfAttention_Family import FullAttention, AttentionLayer
 from layers.Embed import PatchEmbedding
+from utils.logger import logger
 
 class Transpose(nn.Module):
     def __init__(self, *dims, contiguous=False): 
@@ -39,6 +40,7 @@ class Model(nn.Module):
         stride: int, stride for patch_embedding
         """
         super().__init__()
+        logger.info(f"Initializing PatchTST model with configs: {configs}")
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
@@ -80,6 +82,7 @@ class Model(nn.Module):
                 self.head_nf * configs.enc_in, configs.num_class)
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        logger.debug("PatchTST forecast")
         # Normalization from Non-stationary Transformer
         means = x_enc.mean(1, keepdim=True).detach()
         x_enc = x_enc - means
@@ -113,6 +116,7 @@ class Model(nn.Module):
         return dec_out
 
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
+        logger.debug("PatchTST imputation")
         # Normalization from Non-stationary Transformer
         means = torch.sum(x_enc, dim=1) / torch.sum(mask == 1, dim=1)
         means = means.unsqueeze(1).detach()
@@ -149,6 +153,7 @@ class Model(nn.Module):
         return dec_out
 
     def anomaly_detection(self, x_enc):
+        logger.debug("PatchTST anomaly_detection")
         # Normalization from Non-stationary Transformer
         means = x_enc.mean(1, keepdim=True).detach()
         x_enc = x_enc - means
@@ -182,6 +187,7 @@ class Model(nn.Module):
         return dec_out
 
     def classification(self, x_enc, x_mark_enc):
+        logger.debug("PatchTST classification")
         # Normalization from Non-stationary Transformer
         means = x_enc.mean(1, keepdim=True).detach()
         x_enc = x_enc - means
@@ -211,6 +217,7 @@ class Model(nn.Module):
         return output
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        logger.debug("PatchTST forward")
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]  # [B, L, D]

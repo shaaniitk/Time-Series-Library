@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from layers.Autoformer_EncDec import series_decomp
+from utils.logger import logger
 
 
 class Model(nn.Module):
@@ -14,6 +15,7 @@ class Model(nn.Module):
         individual: Bool, whether shared model among different variates.
         """
         super(Model, self).__init__()
+        logger.info(f"Initializing DLinear model with configs: {configs}")
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         if self.task_name == 'classification' or self.task_name == 'anomaly_detection' or self.task_name == 'imputation':
@@ -95,6 +97,7 @@ class Model(nn.Module):
         return output
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        logger.debug("DLinear forward")
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc)
             return dec_out[:, -self.pred_len:, :]  # [B, L, D]

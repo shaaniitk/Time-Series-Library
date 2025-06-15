@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
+from utils.logger import logger
 
 
 class Inception_Block_V1(nn.Module):
     def __init__(self, in_channels, out_channels, num_kernels=6, init_weight=True):
         super(Inception_Block_V1, self).__init__()
+        logger.info("Initializing Inception_Block_V1")
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.num_kernels = num_kernels
@@ -23,6 +25,7 @@ class Inception_Block_V1(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+        logger.debug("Inception_Block_V1 forward")
         res_list = []
         for i in range(self.num_kernels):
             res_list.append(self.kernels[i](x))
@@ -33,6 +36,7 @@ class Inception_Block_V1(nn.Module):
 class Inception_Block_V2(nn.Module):
     def __init__(self, in_channels, out_channels, num_kernels=6, init_weight=True):
         super(Inception_Block_V2, self).__init__()
+        logger.info("Initializing Inception_Block_V2")
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.num_kernels = num_kernels
@@ -53,6 +57,7 @@ class Inception_Block_V2(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+        logger.debug("Inception_Block_V2 forward")
         res_list = []
         for i in range(self.num_kernels // 2 * 2 + 1):
             res_list.append(self.kernels[i](x))

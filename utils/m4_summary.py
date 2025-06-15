@@ -23,6 +23,7 @@ import pandas as pd
 from data_provider.m4 import M4Dataset
 from data_provider.m4 import M4Meta
 import os
+from utils.logger import logger
 
 
 def group_values(values, groups, group_name):
@@ -138,3 +139,7 @@ class M4Summary:
         scores_summary['Average'] = average
 
         return scores_summary
+
+    def summarize_m4(self, data):
+        logger.info("Summarizing M4 data")
+        # ...existing code...

@@ -2,9 +2,11 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+from utils.logger import logger
 
 
 def collate_fn(data, max_len=None):
+    logger.debug("Collating UEA data")
     """Build mini-batch tensors from a list of (X, mask) tuples. Mask input. Create
     Args:
         data: len(batch_size) list of tuples (X, y).

@@ -12,3 +12,6 @@ sympy==1.11.1
 torch==2.1.0
 tqdm
 PyWavelets
+statsmodels
+arch
+nltk

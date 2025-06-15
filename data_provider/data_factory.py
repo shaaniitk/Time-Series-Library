@@ -2,6 +2,7 @@ from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Data
     MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader
 from data_provider.uea import collate_fn
 from torch.utils.data import DataLoader
+from utils.logger import logger
 
 data_dict = {
     'ETTh1': Dataset_ETT_hour,
@@ -19,11 +20,12 @@ data_dict = {
 }
 
 
-def data_provider(args, flag):
+def data_provider(args, flag=None):
+    logger.info(f"Creating data provider for flag={flag}")
     Data = data_dict[args.data]
     timeenc = 0 if args.embed != 'timeF' else 1
 
-    shuffle_flag = False if (flag == 'test' or flag == 'TEST') else True
+    shuffle_flag = False  # Always use sequential windows for time series
     drop_last = False
     batch_size = args.batch_size
     freq = args.freq
@@ -72,6 +74,7 @@ def data_provider(args, flag):
             size=[args.seq_len, args.label_len, args.pred_len],
             features=args.features,
             target=args.target,
+            scale=getattr(args, 'scale', True),  # Default to True if not specified
             timeenc=timeenc,
             freq=freq,
             seasonal_patterns=args.seasonal_patterns

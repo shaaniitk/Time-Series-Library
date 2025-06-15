@@ -1,6 +1,7 @@
 from numpy import array, zeros, full, argmin, inf, ndim
 from scipy.spatial.distance import cdist
 from math import isinf
+from utils.logger import logger
 
 
 def dtw(x, y, dist, warp=1, w=inf, s=1.0):
@@ -114,7 +115,8 @@ def _traceback(D):
     return array(p), array(q)
 
 
-if __name__ == '__main__':
+def dtw_metric(x, y):
+    logger.debug("Calculating DTW metric")
     w = inf
     s = 1.0
     if 1:  # 1-D numeric

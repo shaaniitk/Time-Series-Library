@@ -5,11 +5,13 @@ import torch
 import matplotlib.pyplot as plt
 import pandas as pd
 import math
+from utils.logger import logger
 
 plt.switch_backend('agg')
 
 
 def adjust_learning_rate(optimizer, epoch, args):
+    logger.debug(f"Adjusting learning rate at epoch {epoch}")
     # lr = args.learning_rate * (0.2 ** (epoch // 2))
     if args.lradj == 'type1':
         lr_adjust = {epoch: args.learning_rate * (0.5 ** ((epoch - 1) // 1))}
@@ -81,6 +83,7 @@ class StandardScaler():
 
 
 def visual(true, preds=None, name='./pic/test.pdf'):
+    logger.info(f"Saving visual to {name}")
     """
     Results visualization
     """

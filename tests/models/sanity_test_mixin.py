@@ -6,9 +6,11 @@ import os
 from data_provider.data_factory import data_provider
 from models.TimesNet import Model as TimesNet
 import matplotlib.pyplot as plt
+from utils.logger import logger
 
 class SanityTestMixin:
     def run_sanity_test(self, ModelClass, device='cpu', epochs=10):
+        logger.info(f"Running sanity test for {ModelClass.__name__}")
         # Parameters
         seq_len = 100
         pred_len = 50
@@ -68,8 +70,7 @@ class SanityTestMixin:
         args.task_name = 'long_term_forecast'
         args.features = 'M'
         args.data = 'custom'
-        args.target = ','.join(target_cols)  # use all three as targets
-        args.root_path = '.'
+        args.target = ','.join(target_cols)  # use all three as targets        args.root_path = '.'
         args.data_path = csv_path
         args.num_workers = 0
         args.batch_size = batch_size
@@ -79,13 +80,17 @@ class SanityTestMixin:
         args.num_kernels = num_kernels
         args.use_amp = False  # Disable AMP for simplicity
         args.use_multi_gpu = False  # Disable multi-GPU for simplicity
+        args.scale = True  # Enable data scaling (default behavior)
         # Use data provider
         dataset, loader = data_provider(args, flag='train')
         model = ModelClass(args).to(device)
         model.train()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         criterion = torch.nn.MSELoss()
+        
+        # Training loop with early stopping
         for epoch in range(epochs):
+            epoch_losses = []
             for batch in loader:
                 batch_x, batch_y, batch_x_mark, batch_y_mark = batch
                 batch_x = batch_x.float().to(device)
@@ -100,6 +105,16 @@ class SanityTestMixin:
                 loss = criterion(y_pred, y_true)
                 loss.backward()
                 optimizer.step()
+                epoch_losses.append(loss.item())
+            
+            # Calculate average epoch loss
+            avg_epoch_loss = np.mean(epoch_losses)
+            logger.info(f"Epoch {epoch+1}/{epochs}, Average MSE: {avg_epoch_loss:.6f}")
+            
+            # Early stopping if MSE < 0.01
+            if avg_epoch_loss < 0.01:
+                logger.info(f"Early stopping at epoch {epoch+1}, MSE {avg_epoch_loss:.6f} < 0.01")
+                break
         # Evaluate on one batch
         model.eval()
         with torch.no_grad():
@@ -113,15 +128,21 @@ class SanityTestMixin:
                 y_true = batch_y[:, -pred_len:, :]
                 y_pred = y_pred[:, -pred_len:, :]
                 mse = torch.mean((y_pred - y_true) ** 2).item()
-                # Plot first sample, first channel
-                plt.figure(figsize=(8,4))
-                plt.plot(y_true[0,:,0].cpu().numpy(), label='Ground Truth')
-                plt.plot(y_pred[0,:,0].cpu().numpy(), label='Prediction')
-                plt.title('Sanity Forecast: First Channel')
-                plt.xlabel('Prediction Step')
-                plt.ylabel('Value')
-                plt.legend()
+                
+                # Plot all three target channels
+                fig, axes = plt.subplots(3, 1, figsize=(10, 8))
+                target_names = ['t1', 't2', 't3']
+                for i in range(3):
+                    axes[i].plot(y_true[0,:,i].cpu().numpy(), label='Ground Truth', alpha=0.7)
+                    axes[i].plot(y_pred[0,:,i].cpu().numpy(), label='Prediction', alpha=0.7)
+                    axes[i].set_title(f'Sanity Forecast: {target_names[i]}')
+                    axes[i].set_xlabel('Prediction Step')
+                    axes[i].set_ylabel('Value')
+                    axes[i].legend()
+                    axes[i].grid(True, alpha=0.3)
+                
                 plt.tight_layout()
+                plt.savefig('sanity_plot_all_targets.png', dpi=150)  # Save plot to disk
                 plt.show()
                 break
         # Clean up temp file
