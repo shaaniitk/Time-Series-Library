@@ -167,3 +167,5 @@ result_anomaly_detection.txt
 scripts/augmentation/
 run_anylearn.py
 environment.txt
+tests/models/synthetic_timeseries.csv
+synthetic_timeseries.csv

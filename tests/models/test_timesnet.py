@@ -1,8 +1,9 @@
 import unittest
 import torch
 from models.TimesNet import Model as TimesNet
+from tests.models.sanity_test_mixin import SanityTestMixin
 
-class TestTimesNet(unittest.TestCase):
+class TestTimesNet(unittest.TestCase, SanityTestMixin):
     def setUp(self):
         class Args:
             seq_len = 24
@@ -17,6 +18,9 @@ class TestTimesNet(unittest.TestCase):
             dropout = 0.1
             task_name = 'long_term_forecast'
             features = 'M'
+            label_len = 12
+            top_k = 2
+            num_kernels = 6
         self.args = Args()
         self.model = TimesNet(self.args)
 
@@ -28,6 +32,11 @@ class TestTimesNet(unittest.TestCase):
         x_mark_dec = torch.randn(batch_size, self.args.pred_len, 4)
         out = self.model(x_enc, x_mark_enc, x_dec, x_mark_dec)
         self.assertEqual(out.shape, (batch_size, self.args.pred_len, self.args.c_out))
+
+    def test_sanity(self):
+        mse, y_pred, y_true = self.run_sanity_test(TimesNet)
+        print(f"Sanity test MSE: {mse}")
+        self.assertTrue(mse < 2.0)  # loose threshold for sanity
 
 if __name__ == '__main__':
     unittest.main()
