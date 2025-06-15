@@ -169,3 +169,6 @@ run_anylearn.py
 environment.txt
 tests/models/synthetic_timeseries.csv
 synthetic_timeseries.csv
+
+# Ignore all CSV files (temporary data files)
+*.csv
