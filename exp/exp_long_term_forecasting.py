@@ -37,7 +37,53 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return model_optim
 
     def _select_criterion(self):
-        criterion = nn.MSELoss()
+        from utils.losses import get_loss_function
+        
+        # Get loss function name from args, default to MSE
+        loss_name = getattr(self.args, 'loss', 'mse')
+        
+        # Handle special cases for losses that need extra parameters
+        if loss_name.lower() == 'ps_loss':
+            criterion = get_loss_function(loss_name, 
+                                        pred_len=self.args.pred_len,
+                                        mse_weight=getattr(self.args, 'ps_mse_weight', 0.5),
+                                        w_corr=getattr(self.args, 'ps_w_corr', 1.0),
+                                        w_var=getattr(self.args, 'ps_w_var', 1.0),
+                                        w_mean=getattr(self.args, 'ps_w_mean', 1.0))
+        elif loss_name.lower() == 'pinball':
+            quantiles = getattr(self.args, 'quantiles', [0.1, 0.5, 0.9])
+            criterion = get_loss_function(loss_name, quantiles=quantiles)
+        elif loss_name.lower() == 'huber':
+            delta = getattr(self.args, 'huber_delta', 1.0)
+            criterion = get_loss_function(loss_name, delta=delta)
+        elif loss_name.lower() == 'focal':
+            alpha = getattr(self.args, 'focal_alpha', 1.0)
+            gamma = getattr(self.args, 'focal_gamma', 2.0)
+            criterion = get_loss_function(loss_name, alpha=alpha, gamma=gamma)
+        elif loss_name.lower() == 'seasonal':
+            season_length = getattr(self.args, 'season_length', 24)
+            seasonal_weight = getattr(self.args, 'seasonal_weight', 1.0)
+            criterion = get_loss_function(loss_name, season_length=season_length, seasonal_weight=seasonal_weight)
+        elif loss_name.lower() == 'trend_aware':
+            trend_weight = getattr(self.args, 'trend_weight', 1.0)
+            noise_weight = getattr(self.args, 'noise_weight', 0.5)
+            criterion = get_loss_function(loss_name, trend_weight=trend_weight, noise_weight=noise_weight)
+        elif loss_name.lower() == 'quantile':
+            quantile = getattr(self.args, 'quantile', 0.5)
+            criterion = get_loss_function(loss_name, quantile=quantile)
+        elif loss_name.lower() == 'dtw':
+            gamma = getattr(self.args, 'dtw_gamma', 1.0)
+            normalize = getattr(self.args, 'dtw_normalize', True)
+            criterion = get_loss_function(loss_name, gamma=gamma, normalize=normalize)
+        else:
+            # Standard losses (mse, mae, mape, smape, mase, gaussian_nll)
+            try:
+                criterion = get_loss_function(loss_name)
+            except ValueError:
+                logger.warning(f"Unknown loss function: {loss_name}. Falling back to MSE.")
+                criterion = nn.MSELoss()
+                
+        logger.info(f"Using loss function: {loss_name}")
         return criterion
  
 
