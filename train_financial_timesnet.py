@@ -17,9 +17,19 @@ import pandas as pd
 import numpy as np
 import torch
 import time
+import json
 from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
+
+# Try to import yaml, fallback to json if not available
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+    print("⚠️ PyYAML not installed. Using JSON config format instead.")
+    print("💡 Install with: pip install PyYAML")
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -145,31 +155,40 @@ class FinancialTimesNetTrainer:
         total_params = sum(p.numel() for p in self.model.parameters())
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         logger.info(f"Model parameters: {total_params:,} total, {trainable_params:,} trainable")
+        
+    # Update the train_epoch method around lines 175-182
+
     def train_epoch(self):
-        """Train for one epoch with progress tracking"""
+        """Train for one epoch"""
         self.model.train()
         total_loss = 0.0
         num_batches = 0
         
-        total_batches = len(self.train_loader)
-        epoch_start_time = time.time()
-        print(f"Training on {total_batches} batches...")
-        
-        for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(self.train_loader):
+        for batch_x, batch_y, batch_x_mark, batch_y_mark in self.train_loader:
+            self.optimizer.zero_grad()
+            
             # Move to device
             batch_x = batch_x.float().to(self.device)
             batch_y = batch_y.float().to(self.device)
             batch_x_mark = batch_x_mark.float().to(self.device)
             batch_y_mark = batch_y_mark.float().to(self.device)
             
-            # Prepare decoder input
-            dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
-            dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-              # Forward pass
-            self.optimizer.zero_grad()
+            # Prepare decoder input - FIXED to include future covariates
+            # Known historical data (targets + covariates)
+            dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
+            
+            # Future period: Zero targets, keep covariates
+            future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)  # Zero OHLC
+            future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)  # Keep covariates
+            dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
+            
+            # Combine historical + future
+            dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
+            
+            # Forward pass
             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             
-            # Calculate loss (only on target columns - first 4 features)
+            # Calculate loss only on target features (first 4 columns)
             target_outputs = outputs[:, -self.args.pred_len:, :4]  # First 4 features are targets
             target_y = batch_y[:, -self.args.pred_len:, :4]  # First 4 features are targets
             loss = self.criterion(target_outputs, target_y)
@@ -180,21 +199,12 @@ class FinancialTimesNetTrainer:
             
             total_loss += loss.item()
             num_batches += 1
-              # Show progress every 10 batches or at key milestones
-            total_batches = len(self.train_loader)
-            if i % 10 == 0 or i == total_batches - 1:
-                progress_pct = (i + 1) / total_batches * 100
-                avg_loss_so_far = total_loss / num_batches
-                elapsed_time = time.time() - epoch_start_time
-                estimated_total_time = elapsed_time / (i + 1) * total_batches
-                remaining_time = estimated_total_time - elapsed_time
-                print(f"  Batch {i+1:3d}/{total_batches} ({progress_pct:5.1f}%) - "
-                      f"Loss: {loss.item():.6f} (Avg: {avg_loss_so_far:.6f}) - "
-                      f"Remaining: {remaining_time:.1f}s")
         
         avg_loss = total_loss / num_batches
         return avg_loss
-    
+
+    # Update the validate_epoch method around lines 220-240
+
     def validate_epoch(self):
         """Validate for one epoch"""
         self.model.eval()
@@ -209,23 +219,40 @@ class FinancialTimesNetTrainer:
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
                 
-                # Prepare decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                # Prepare decoder input - FIXED to include future covariates
+                # Known historical data (targets + covariates)
+                dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
+                
+                # Future period: Zero targets, keep covariates
+                future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)  # Zero OHLC
+                future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)  # Keep covariates
+                dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
+                
+                # Combine historical + future
+                dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
                 
                 # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                  # Calculate loss (only on target columns - first 4 features)
-                target_outputs = outputs[:, -self.args.pred_len:, :4]  # First 4 features are targets
-                target_y = batch_y[:, -self.args.pred_len:, :4]  # First 4 features are targets
-                loss = self.criterion(target_outputs, target_y)
                 
+                # Get predictions (scaled) and ground truth (unscaled)
+                target_outputs = outputs[:, -self.args.pred_len:, :4]  # SCALED predictions
+                target_y_unscaled = batch_y[:, -self.args.pred_len:, :4]  # UNSCALED ground truth
+                
+                # Scale the ground truth to match model outputs
+                target_y_unscaled_np = target_y_unscaled.detach().cpu().numpy()
+                target_y_scaled_np = self.train_loader.dataset.target_scaler.transform(
+                    target_y_unscaled_np.reshape(-1, 4)
+                ).reshape(target_y_unscaled_np.shape)
+                target_y_scaled = torch.from_numpy(target_y_scaled_np).float().to(self.device)
+                
+                # Calculate loss on scaled data (both predictions and ground truth are now scaled)
+                loss = self.criterion(target_outputs, target_y_scaled)
                 total_loss += loss.item()
                 num_batches += 1
         
         avg_loss = total_loss / num_batches
         return avg_loss
-    
+
     def test(self):
         """Test the model and calculate metrics"""
         logger.info("Testing model")
@@ -242,34 +269,49 @@ class FinancialTimesNetTrainer:
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
                 
-                # Prepare decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                  # Forward pass
+                # Prepare decoder input - FIXED to include future covariates
+                # Known historical data (targets + covariates)
+                dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
+                
+                # Future period: Zero targets, keep covariates
+                future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)  # Zero OHLC
+                future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)  # Keep covariates
+                dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
+                
+                # Combine historical + future
+                dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
+                
+                # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Get predictions and true values (only target columns)
-                pred = outputs[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # First 4 features are targets
-                true = batch_y[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # First 4 features are targets
+                # Get predictions (scaled) and ground truth (unscaled)
+                pred_scaled = outputs[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # SCALED predictions
+                true_unscaled = batch_y[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # UNSCALED ground truth
                 
-                preds.append(pred)
-                trues.append(true)
+                # Scale the ground truth to match model outputs for consistent loss calculation
+                true_scaled = self.test_loader.dataset.target_scaler.transform(
+                    true_unscaled.reshape(-1, 4)
+                ).reshape(true_unscaled.shape)
+                
+                preds.append(pred_scaled)  # Keep scaled for consistent loss calculation
+                trues.append(true_scaled)  # Now scaled to match predictions
         
-        # Concatenate all predictions and true values
+        # Concatenate all predictions and true values (both in scaled space)
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
         
-        # Calculate metrics
+        # Calculate metrics on scaled data (consistent with training/validation)
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         
-        logger.info(f"Test Results - MSE: {mse:.6f}, MAE: {mae:.6f}, RMSE: {rmse:.6f}")
-        logger.info(f"Test Results - MAPE: {mape:.6f}, MSPE: {mspe:.6f}")
+        logger.info(f"Test Results (Scaled Space) - MSE: {mse:.6f}, MAE: {mae:.6f}, RMSE: {rmse:.6f}")
+        logger.info(f"Test Results (Scaled Space) - MAPE: {mape:.6f}, MSPE: {mspe:.6f}")
         
         return {
             'mse': mse, 'mae': mae, 'rmse': rmse, 'mape': mape, 'mspe': mspe,
             'predictions': preds, 'true_values': trues
         }
     
+        
     def train(self):
         """Main training loop"""
         logger.info("Starting training")
@@ -293,7 +335,7 @@ class FinancialTimesNetTrainer:
             # Log progress
             print(f"✓ Epoch {epoch+1} Complete - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
             logger.info(f"Epoch {epoch+1}/{self.args.train_epochs} - "
-                       f"Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
+                    f"Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
             
             # Adjust learning rate
             adjust_learning_rate(self.optimizer, epoch + 1, self.args)
@@ -346,81 +388,309 @@ class FinancialTimesNetTrainer:
         else:
             logger.warning(f"Checkpoint not found: {path}")
     
+    # Update the predict_production method to include inverse transform
+
     def predict_production(self):
         """Generate production predictions for future business days"""
         logger.info(f"Generating production predictions for {self.args.prod_len} future business days")
-        
-        # Load the latest data for prediction
+
+        # This method needs to be implemented with real prediction logic
+        # For now, showing the correct decoder input pattern
+
+        logger.info("Production prediction - Decoder input pattern:")
+        logger.info("  Historical period: Real targets + real covariates")  
+        logger.info("  Future period: Zero targets + REAL future covariates")
+        logger.info("  Output: Scaled predictions (use inverse_transform_targets() for business use)")
+
+        # Example implementation structure:
+        """
+        # Load latest data
         data_path = os.path.join(self.args.root_path, 'prepared_financial_data.csv')
         df = pd.read_csv(data_path)
-        
-        # Get the last sequence_length points
-        last_data = df.tail(self.args.seq_len).copy()
-        
-        # Prepare the data for prediction (this would need to be implemented
-        # similar to the data loader but for a single sequence)
-        logger.info("Production prediction feature to be implemented")
-        logger.info(f"Would predict {self.args.prod_len} steps into the future")
-        logger.info(f"Using last {self.args.seq_len} data points as input")
-        
+
+        # Get sequence for prediction (last seq_len + label_len + pred_len points)
+        sequence_data = df.tail(self.args.seq_len + self.args.label_len + self.args.pred_len)
+
+        # Prepare batch_x (historical features)
+        batch_x = sequence_data.iloc[:self.args.seq_len, 1:].values  # Remove date column
+        batch_x = torch.from_numpy(batch_x).float().unsqueeze(0).to(self.device)
+
+        # Prepare batch_y (label + prediction period) 
+        batch_y = sequence_data.iloc[self.args.seq_len:, 1:].values  # Remove date column
+        batch_y = torch.from_numpy(batch_y).float().unsqueeze(0).to(self.device)
+
+        # Prepare time features (batch_x_mark, batch_y_mark)
+        # ... (similar to batch_x/batch_y but for time features)
+
+        # Prepare decoder input - SAME PATTERN AS TRAINING/TEST
+        dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
+
+        # Future period: Zero targets, keep covariates  
+        future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)
+        future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)
+        dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
+
+        # Combine historical + future
+        dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
+
+        # Forward pass
+        with torch.no_grad():
+            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+        # Extract target predictions (scaled)
+        predictions_scaled = outputs[:, -self.args.pred_len:, :4].detach().cpu().numpy()
+
+        # Inverse transform to original scale for business use
+        predictions_original = self.train_loader.dataset.inverse_transform_targets(predictions_scaled)
+
+        return predictions_original
+        """
+
         return None
+        
+    def quick_diagnostic(self):
+        """Run quick diagnostic to check for obvious performance issues"""
+        logger.info("🔍 Running Quick Performance Diagnostic...")
+        
+        # Test data loading
+        start_time = time.time()
+        train_data, train_loader = self.data_provider("train")
+        data_time = time.time() - start_time
+        logger.info(f"   Data loading: {data_time:.3f}s")
+        
+        # Test model creation
+        start_time = time.time()
+        model = self.build_model()
+        model_time = time.time() - start_time
+        logger.info(f"   Model creation: {model_time:.3f}s")
+        
+        # Test single batch
+        model.train()
+        criterion = torch.nn.MSELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=self.args.learning_rate)
+        
+        batch_x, batch_y, batch_x_mark, batch_y_mark = next(iter(train_loader))
+        
+        start_time = time.time()
+        # Move to device
+        batch_x = batch_x.float().to(self.device)
+        batch_y = batch_y.float().to(self.device)
+        batch_x_mark = batch_x_mark.float().to(self.device)
+        batch_y_mark = batch_y_mark.float().to(self.device)
+        
+        # Prepare decoder input
+        dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
+        dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+        
+        # Forward pass
+        optimizer.zero_grad()
+        outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+        
+        # Calculate loss (only on target columns - first 4 features)
+        target_outputs = outputs[:, -self.args.pred_len:, :4]
+        target_y = batch_y[:, -self.args.pred_len:, :4]
+        loss = criterion(target_outputs, target_y)
+        
+        # Backward pass
+        loss.backward()
+        optimizer.step()
+        
+        batch_time = time.time() - start_time
+        logger.info(f"   Single batch training: {batch_time:.3f}s")
+        
+        # Estimate total time
+        num_batches = len(train_loader)
+        estimated_time = batch_time * num_batches * self.args.train_epochs / 60
+        logger.info(f"   Estimated total training time: {estimated_time:.1f} minutes")
+        
+        if batch_time > 2.0:
+            logger.warning("⚠️ Training is very slow! Consider:")
+            logger.warning("   - Reducing model size (d_model, layers)")
+            logger.warning("   - Reducing batch size")
+            logger.warning("   - Using CPU if GPU is not available")
+            return False
+        elif batch_time > 0.5:
+            logger.warning("🟡 Training speed is moderate")
+            return True
+        else:
+            logger.info("✅ Training speed looks good!")
+            return True
+    
+    # ...existing code...
+def load_config(config_path='config.yaml'):
+    """
+    Load configuration from file
+    Supports both YAML and JSON formats
+    """
+    # Try different config file locations and formats
+    config_files_to_try = [
+        config_path,
+        'config.yaml',
+        'config.yml', 
+        'config.json',
+        'timesnet_config.yaml',
+        'timesnet_config.json'
+    ]
+    
+    config = None
+    config_file_used = None
+    
+    for config_file in config_files_to_try:
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    if config_file.endswith(('.yaml', '.yml')) and YAML_AVAILABLE:
+                        config = yaml.safe_load(f)
+                    else:
+                        config = json.load(f)
+                config_file_used = config_file
+                break
+            except Exception as e:
+                print(f"⚠️ Error loading config file {config_file}: {e}")
+                continue
+    
+    if config is None:
+        print("⚠️ No config file found. Using default settings.")
+        print("💡 Create config.yaml or config.json to customize settings")
+        return {}
+    
+    print(f"✅ Loaded configuration from: {config_file_used}")
+    return config
 
-
-def create_args():
-    """Create argument parser with financial data specific settings"""
+def create_args(config_path='config.yaml'):
+    """Create argument parser with config file support"""
     parser = argparse.ArgumentParser(description='TimesNet Financial Forecasting')
     
-    # Data settings
-    parser.add_argument('--data', type=str, default='custom', help='dataset type')
-    parser.add_argument('--root_path', type=str, default='./data/', help='root path of the data file')
-    parser.add_argument('--data_path', type=str, default='prepared_financial_data.csv', help='data file')
-    parser.add_argument('--features', type=str, default='M', help='forecasting task [M, S, MS]')
-    parser.add_argument('--target', type=str, default='log_Close', help='target feature in S or MS task')
-    parser.add_argument('--freq', type=str, default='b', help='freq for time features encoding [b=business day]')
-    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')    # Forecasting task (BALANCED MEDIUM WEIGHT VERSION)
-    parser.add_argument('--seq_len', type=int, default=100, help='input sequence length (balanced)')
-    parser.add_argument('--label_len', type=int, default=10, help='start token length (balanced)')
-    parser.add_argument('--pred_len', type=int, default=10, help='prediction sequence length (balanced)')
-    parser.add_argument('--val_len', type=int, default=10, help='validation length (balanced)')
-    parser.add_argument('--test_len', type=int, default=10, help='test length (balanced)')
-    parser.add_argument('--prod_len', type=int, default=10, help='production prediction length (balanced)')
+    # Config file option
+    parser.add_argument('--config', type=str, default=config_path, 
+                    help='Path to configuration file (YAML or JSON)')
     
-    # Model define (BALANCED MEDIUM WEIGHT VERSION)
-    parser.add_argument('--top_k', type=int, default=5, help='TimesNet kernel size (balanced)')
-    parser.add_argument('--num_kernels', type=int, default=5, help='for Inception (balanced)')
-    parser.add_argument('--enc_in', type=int, default=118, help='encoder input size (114 covariates + 4 targets)')
-    parser.add_argument('--dec_in', type=int, default=118, help='decoder input size')
-    parser.add_argument('--c_out', type=int, default=118, help='output size (match enc_in to avoid dimension mismatch)')
-    parser.add_argument('--d_model', type=int, default=64, help='dimension of model (balanced)')
-    parser.add_argument('--n_heads', type=int, default=4, help='num of heads (balanced)')
-    parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers (balanced)')
-    parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-    parser.add_argument('--d_ff', type=int, default=128, help='dimension of fcn (balanced)')
-    parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
-    parser.add_argument('--factor', type=int, default=1, help='attn factor')
-    parser.add_argument('--distil', action='store_false', help='whether to use distilling in encoder')
-    parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
-    parser.add_argument('--embed', type=str, default='timeF', help='time features encoding [timeF, fixed, learned]')
-    parser.add_argument('--activation', type=str, default='gelu', help='activation')
-    parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
+    # Parse config file argument first
+    temp_args, _ = parser.parse_known_args()
+    
+    # Load configuration from file
+    config = load_config(temp_args.config)
+    
+    # Data settings
+    parser.add_argument('--data', type=str, default=config.get('data', 'custom'), 
+                    help='dataset type')
+    parser.add_argument('--root_path', type=str, default=config.get('root_path', './data/'), 
+                    help='root path of the data file')
+    parser.add_argument('--data_path', type=str, default=config.get('data_path', 'prepared_financial_data.csv'), 
+                    help='data file')
+    parser.add_argument('--features', type=str, default=config.get('features', 'M'), 
+                    help='forecasting task [M, S, MS]')
+    parser.add_argument('--target', type=str, default=config.get('target', 'log_Close'), 
+                    help='target feature in S or MS task')
+    parser.add_argument('--freq', type=str, default=config.get('freq', 'b'), 
+                    help='freq for time features encoding [b=business day]')
+    parser.add_argument('--checkpoints', type=str, default=config.get('checkpoints', './checkpoints/'), 
+                    help='location of model checkpoints')
+    
+    # Forecasting task
+    parser.add_argument('--seq_len', type=int, default=config.get('seq_len', 100), 
+                    help='input sequence length')
+    parser.add_argument('--label_len', type=int, default=config.get('label_len', 10), 
+                    help='start token length')
+    parser.add_argument('--pred_len', type=int, default=config.get('pred_len', 10), 
+                    help='prediction sequence length')
+    parser.add_argument('--val_len', type=int, default=config.get('val_len', 10), 
+                    help='validation length')
+    parser.add_argument('--test_len', type=int, default=config.get('test_len', 10), 
+                    help='test length')
+    parser.add_argument('--prod_len', type=int, default=config.get('prod_len', 10), 
+                    help='production prediction length')
+    
+    # Model define
+    parser.add_argument('--top_k', type=int, default=config.get('top_k', 5), 
+                    help='TimesNet kernel size')
+    parser.add_argument('--num_kernels', type=int, default=config.get('num_kernels', 5), 
+                    help='for Inception')
+    parser.add_argument('--enc_in', type=int, default=config.get('enc_in', 118), 
+                    help='encoder input size (114 covariates + 4 targets)')
+    parser.add_argument('--dec_in', type=int, default=config.get('dec_in', 118), 
+                    help='decoder input size')
+    parser.add_argument('--c_out', type=int, default=config.get('c_out', 118), 
+                    help='output size')
+    parser.add_argument('--d_model', type=int, default=config.get('d_model', 64), 
+                    help='dimension of model')
+    parser.add_argument('--n_heads', type=int, default=config.get('n_heads', 4), 
+                    help='num of heads')
+    parser.add_argument('--e_layers', type=int, default=config.get('e_layers', 2), 
+                    help='num of encoder layers')
+    parser.add_argument('--d_layers', type=int, default=config.get('d_layers', 1), 
+                    help='num of decoder layers')
+    parser.add_argument('--d_ff', type=int, default=config.get('d_ff', 128), 
+                    help='dimension of fcn')
+    parser.add_argument('--moving_avg', type=int, default=config.get('moving_avg', 25), 
+                    help='window size of moving average')
+    parser.add_argument('--factor', type=int, default=config.get('factor', 1), 
+                    help='attn factor')
+    parser.add_argument('--distil', action='store_false', 
+                    default=not config.get('distil', False),
+                    help='whether to use distilling in encoder')
+    parser.add_argument('--dropout', type=float, default=config.get('dropout', 0.1), 
+                    help='dropout')
+    parser.add_argument('--embed', type=str, default=config.get('embed', 'timeF'), 
+                    help='time features encoding [timeF, fixed, learned]')
+    parser.add_argument('--activation', type=str, default=config.get('activation', 'gelu'), 
+                    help='activation')
+    parser.add_argument('--output_attention', action='store_true', 
+                    default=config.get('output_attention', False),
+                    help='whether to output attention in encoder')
     
     # Optimization
-    parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
-    parser.add_argument('--itr', type=int, default=1, help='experiments times')
-    parser.add_argument('--train_epochs', type=int, default=100, help='train epochs')
-    parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data (medium weight)')
-    parser.add_argument('--patience', type=int, default=10, help='early stopping patience')
-    parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
-    parser.add_argument('--des', type=str, default='test', help='exp description')
-    parser.add_argument('--loss', type=str, default='MSE', help='loss function')
-    parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
-    parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training')
-    parser.add_argument('--seed', type=int, default=2024, help='random seed')
-    
+    parser.add_argument('--num_workers', type=int, default=config.get('num_workers', 10), 
+                    help='data loader num workers')
+    parser.add_argument('--itr', type=int, default=config.get('itr', 1), 
+                    help='experiments times')
+    parser.add_argument('--train_epochs', type=int, default=config.get('train_epochs', 100), 
+                    help='train epochs')
+    parser.add_argument('--batch_size', type=int, default=config.get('batch_size', 32), 
+                    help='batch size of train input data')
+    parser.add_argument('--patience', type=int, default=config.get('patience', 10), 
+                    help='early stopping patience')
+    parser.add_argument('--learning_rate', type=float, default=config.get('learning_rate', 0.0001), 
+                    help='optimizer learning rate')
+    parser.add_argument('--des', type=str, default=config.get('des', 'financial_forecast'), 
+                    help='exp description')
+    parser.add_argument('--loss', type=str, default=config.get('loss', 'MSE'), 
+                    help='loss function')
+    parser.add_argument('--lradj', type=str, default=config.get('lradj', 'type1'), 
+                    help='adjust learning rate')
+    parser.add_argument('--use_amp', action='store_true', 
+                    default=config.get('use_amp', False),
+                    help='use automatic mixed precision training')
+    parser.add_argument('--seed', type=int, default=config.get('seed', 2024), 
+                    help='random seed')
     # Task specific
-    parser.add_argument('--task_name', type=str, default='long_term_forecast', help='task name')
+    parser.add_argument('--task_name', type=str, default=config.get('task_name', 'long_term_forecast'), 
+                    help='task name')
     
-    args = parser.parse_args()
+    args = parser.parse_args()      # Automatic c_out detection based on features mode
+    if args.features == 'M':
+        # Full multivariate forecasting - predict all features
+        args.c_out = args.enc_in  # Match input size (118)
+        logger.info(f"🎯 Multivariate mode: c_out automatically set to {args.c_out} (all features)")
+    elif args.features == 'MS':
+        # Multivariate-to-MULTI-target mode - use all features to predict OHLC targets
+        args.c_out = 4  # Predict all 4 OHLC targets
+        logger.info(f"🎯 Multivariate-to-Multi-target mode: c_out set to {args.c_out} (OHLC targets)")
+    else:
+        # Univariate forecasting (S) - predict single target
+        args.c_out = 1
+        logger.info(f"🎯 Univariate mode ({args.features}): c_out set to {args.c_out} (target: {args.target})")
+    
+    # Display configuration summary
+    print("\n🔧 CONFIGURATION SUMMARY")
+    print("=" * 60)
+    print(f"📁 Data: {args.data_path} (features: {args.features})")
+    print(f"📏 Sequences: {args.seq_len} → {args.pred_len} (label: {args.label_len})")
+    print(f"🧠 Model: d_model={args.d_model}, layers={args.e_layers}, heads={args.n_heads}")
+    print(f"⚡ Training: epochs={args.train_epochs}, batch={args.batch_size}, lr={args.learning_rate}")
+    print(f"🎯 TimesNet: top_k={args.top_k}, kernels={args.num_kernels}")
+    print("=" * 60)
+    
     return args
 
 
@@ -435,7 +705,7 @@ def main():
     args.model = 'TimesNet'
     setting = f'{args.model}_{args.data}_{args.features}_sl{args.seq_len}_ll{args.label_len}_pl{args.pred_len}_dm{args.d_model}_nh{args.n_heads}_el{args.e_layers}_dl{args.d_layers}_df{args.d_ff}_fc{args.factor}_eb{args.embed}_dt{args.des}'
     
-    logger.info(f"Experiment: {setting}")
+    logger.info(f"Experiment: {setting}")   
     logger.info(f"Data configuration:")
     logger.info(f"  - Sequence length: {args.seq_len}")
     logger.info(f"  - Prediction length: {args.pred_len}")

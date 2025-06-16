@@ -16,6 +16,7 @@ statsmodels
 arch
 nltk
 pyarrow
+PyYAML>=6.0
 
 # PyTorch with CUDA support (GPU acceleration)
 # For CPU-only: torch==2.1.0

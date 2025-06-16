@@ -83,7 +83,7 @@ class Dataset_ETT_hour(Dataset):
             df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
             df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
             df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
-            data_stamp = df_stamp.drop(['date'], 1).values
+            data_stamp = df_stamp.drop(['date'], axis=1).values
         elif self.timeenc == 1:
             data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
             data_stamp = data_stamp.transpose(1, 0) 
@@ -186,7 +186,7 @@ class Dataset_ETT_minute(Dataset):
             df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
             df_stamp['minute'] = df_stamp.date.apply(lambda row: row.minute, 1)
             df_stamp['minute'] = df_stamp.minute.map(lambda x: x // 15)
-            data_stamp = df_stamp.drop(['date'], 1).values
+            data_stamp = df_stamp.drop(['date'], axis=1).values
         elif self.timeenc == 1:
             data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
             data_stamp = data_stamp.transpose(1, 0)
@@ -307,20 +307,67 @@ class Dataset_Custom(Dataset):
         if 'date' in cols:
             cols.remove('date')        # Features: all columns except date and targets
         feature_cols = cols
-        
-        # --- Feature selection ---
+          # --- Feature selection ---
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]  # All columns except date (standard TSLib behavior)
             df_data = df_raw[cols_data]
         elif self.features == 'S':
             df_data = df_raw[self.target_list]
-
+        
         data = df_data.values
         if self.scale:
-            train_data = data[border1s[0]:border2s[0]]
-            self.scaler.fit(train_data)
-            data = self.scaler.transform(data)
+            logger.debug("Applying selective scaling for custom financial data")
+            logger.debug(f"df_data columns after removing date: {df_data.columns.tolist()}")
+            logger.debug(f"Total features: {data.shape[1]}, first 4 should be OHLC targets")
+            logger.debug(f"Border1s[0] (training end): {border1s[0]}, Border2s[0] (training end): {border2s[0]}")
+            
+            # Identify target columns (first 4: OHLC) and covariate columns (rest)
+            target_cols = list(range(4))  # log_Open, log_High, log_Low, log_Close
+            covariate_cols = list(range(4, data.shape[1]))  # All other features
+            logger.debug(f"Target columns (indices): {target_cols}")
+            logger.debug(f"Covariate columns (indices): {covariate_cols}")
+              # Initialize scaled data
+            scaled_data = data.copy()
+            
+            if len(target_cols) > 0 and data.shape[1] >= 4:
+                # Scale targets: fit on training data, transform only training portion
+                target_train_data = data[border1s[0]:border2s[0], target_cols]
+                target_scaler = StandardScaler()
+                target_scaler.fit(target_train_data)
+                
+                logger.debug(f"Target train data shape: {target_train_data.shape}")
+                logger.debug(f"Target train data sample (first 3 rows): {target_train_data[:3] if len(target_train_data) > 0 else 'No data'}")
+                
+                # Transform only training portion of targets (avoid data leakage)
+                scaled_data[border1s[0]:border2s[0], target_cols] = target_scaler.transform(
+                    data[border1s[0]:border2s[0], target_cols]
+                )
+                
+                # Store target scaler for inverse transform
+                self.target_scaler = target_scaler
+                logger.debug(f"Target columns {target_cols} scaled using training data only")
+                logger.debug(f"Training targets: rows {border1s[0]}:{border2s[0]}")
+                logger.debug(f"Target data beyond training (unscaled): {data[border2s[0]:border2s[0]+2, target_cols] if border2s[0] < len(data) else 'No validation/test data'}")
+            
+            if len(covariate_cols) > 0:
+                # Scale covariates: fit and transform using entire covariate dataset
+                covariate_scaler = StandardScaler()
+                covariate_scaler.fit(data[:, covariate_cols])
+                
+                # Transform entire covariate dataset in one step
+                scaled_data[:, covariate_cols] = covariate_scaler.transform(
+                    data[:, covariate_cols]
+                )
+                
+                # Store covariate scaler for future use
+                self.covariate_scaler = covariate_scaler
+                logger.debug(f"Covariate columns {covariate_cols} scaled using full dataset statistics")
+            
+            # For compatibility with existing code, keep main scaler as target scaler
+            self.scaler = getattr(self, 'target_scaler', StandardScaler())
+            data = scaled_data
         else:
+            logger.debug("Skipping scaling step")
             data = data
 
         df_stamp = df_raw[['date']][border1:border2]
@@ -332,7 +379,7 @@ class Dataset_Custom(Dataset):
             df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
             df_stamp['minute'] = df_stamp.date.apply(lambda row: row.minute, 1)
             df_stamp['minute'] = df_stamp.minute.map(lambda x: x // 15)
-            data_stamp = df_stamp.drop(['date'], 1).values
+            data_stamp = df_stamp.drop(['date'], axis=1).values
         elif self.timeenc == 1:
             data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
             data_stamp = data_stamp.transpose(1, 0)
@@ -364,7 +411,46 @@ class Dataset_Custom(Dataset):
         return len(self.data_x) - self.seq_len - self.pred_len + 1
 
     def inverse_transform(self, data):
+        """
+        Inverse transform for predictions. 
+        For target predictions (first 4 columns), use target_scaler.
+        For full data with both targets and covariates, handle appropriately.
+        """
+        if hasattr(self, 'target_scaler') and self.target_scaler is not None:
+            # If data has only target columns (4 columns), use target_scaler directly
+            if data.shape[-1] == 4:
+                return self.target_scaler.inverse_transform(data)
+            
+            # If data has both targets and covariates, inverse transform separately
+            elif data.shape[-1] > 4 and hasattr(self, 'covariate_scaler') and self.covariate_scaler is not None:
+                # Separate targets and covariates
+                targets = data[..., :4]
+                covariates = data[..., 4:]
+                
+                # Inverse transform each separately
+                inv_targets = self.target_scaler.inverse_transform(
+                    targets.reshape(-1, 4)
+                ).reshape(targets.shape)
+                
+                inv_covariates = self.covariate_scaler.inverse_transform(
+                    covariates.reshape(-1, covariates.shape[-1])
+                ).reshape(covariates.shape)
+                
+                # Combine back
+                return np.concatenate([inv_targets, inv_covariates], axis=-1)
+            
+            # Fallback: assume it's targets only
+            else:
+                return self.target_scaler.inverse_transform(data)
+        
+        # Fallback to original scaler if selective scaling wasn't used
         return self.scaler.inverse_transform(data)
+    
+    def inverse_transform_targets(self, target_data):
+        """Convenience method to inverse transform only target predictions"""
+        if hasattr(self, 'target_scaler') and self.target_scaler is not None:
+            return self.target_scaler.inverse_transform(target_data)
+        return self.scaler.inverse_transform(target_data)
 
 
 class Dataset_M4(Dataset):

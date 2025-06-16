@@ -1,0 +1,135 @@
+# TimesNet Financial Training Configuration
+# 
+# This file contains all configurable parameters for TimesNet financial forecasting.
+# Modify these values to experiment with different model configurations and training settings.
+#
+# Configuration Format: YAML
+# Usage: The script will automatically load these settings and override command-line arguments
+
+# ================================
+# DATA CONFIGURATION
+# ================================
+
+# Dataset settings
+data: 'custom'                          # Dataset type (keep as 'custom' for prepared financial data)
+root_path: './data/'                    # Root directory containing data files
+data_path: 'prepared_financial_data.csv'  # Main data file (118 features: 4 targets + 114 covariates)
+
+# Forecasting mode - CHOOSE ONE:
+features: 'M'                          # 'MS' = Multivariate-to-Multi-target: Use all features to predict 4 OHLC targets
+                                        # 'M' = Multivariate: Predict ALL features (118 features - not suitable for our use case)
+                                        # 'S' = Univariate: Predict only the target specified below
+
+target: 'log_Close'                     # Primary target column (used when features='S')
+                                        # Note: In 'MS' mode, we predict all 4 OHLC targets regardless of this setting
+
+freq: 'b'                               # Time frequency: 'b'=business day, 'd'=daily, 'h'=hourly
+checkpoints: './checkpoints/'           # Directory to save model checkpoints
+
+# IMPORTANT NOTES:
+# - For MULTI-TARGET forecasting (all 4 OHLC): Use features='MS' with c_out=1, handle targets in loss
+# - For SINGLE-TARGET forecasting: Use features='S' or 'MS' with specific target
+
+# ================================
+# SEQUENCE PARAMETERS
+# ================================
+
+# Time series lengths (affects model complexity and memory usage)
+seq_len: 200                            # Input sequence length (lookback window) - Try: 50, 100, 200, 500
+label_len: 20                     # Start token length for decoder (overlap with seq_len) - Usually seq_len/10
+pred_len: 10                            # Prediction horizon (forecast steps) - Try: 5, 10, 20
+val_len: 10                             # Validation set length (business days)
+test_len: 10                            # Test set length (business days)
+prod_len: 10                            # Production prediction length (future business days)
+
+# ================================
+# MODEL ARCHITECTURE
+# ================================
+
+# Model dimensions (affects model capacity and training time)
+enc_in: 118                             # Encoder input size (FIXED: 4 targets + 114 covariates)
+dec_in: 118                             # Decoder input size (should match enc_in)
+c_out: 118                               # Output size - SET AUTOMATICALLY by script based on features mode:
+                                        # features='M': c_out=4 (all target columns)
+                                        # features='S'/'MS': c_out=1 (single target)
+                                        # This value will be overridden automatically by the script
+d_model: 128                             # Model dimension - Try: 32 (fast), 64 (balanced), 128 (large), 256 (heavy)
+d_ff: 256                               # Feed-forward dimension - Usually 2x d_model
+n_heads: 4                              # Number of attention heads - Must divide d_model evenly - Try: 2, 4, 8
+e_layers: 3                             # Number of encoder layers - Try: 1 (fast), 2 (balanced), 3-4 (deeper)
+d_layers: 1                             # Number of decoder layers - Usually 1 for forecasting
+
+# TimesNet specific parameters
+top_k: 5                                # Number of top frequencies to use - Try: 2 (fast), 5 (balanced), 10 (comprehensive)
+num_kernels: 5                          # Number of inception kernels - Try: 2 (fast), 5 (balanced), 8 (complex)
+moving_avg: 75                          # Moving average window for trend decomposition - Try: 10, 25, 50
+
+# Attention and other model settings
+factor: 1                               # Attention factor (keep as 1)
+distil: False                           # Use distillation in encoder (False for stability)
+dropout: 0.1                            # Dropout rate - Try: 0.0 (none), 0.1 (light), 0.2 (heavy)
+embed: 'timeF'                          # Time encoding: 'timeF' (learned), 'fixed', 'learned'
+activation: 'gelu'                      # Activation function - 'gelu', 'relu', 'elu'
+output_attention: False                 # Output attention weights (False for speed)
+
+# ================================
+# TRAINING CONFIGURATION
+# ================================
+
+# Training hyperparameters
+train_epochs: 100                       # Maximum training epochs - Try: 50 (quick), 100 (standard), 200 (thorough)
+batch_size: 64                          # Batch size - Try: 16 (memory-friendly), 32 (balanced), 64 (fast)
+learning_rate: 0.0001                   # Learning rate - Try: 0.001 (aggressive), 0.0001 (stable), 0.00001 (conservative)
+patience: 10                            # Early stopping patience (epochs) - Try: 5 (quick), 10 (balanced), 20 (patient)
+loss: 'MSE'                             # Loss function - 'MSE', 'MAE', 'Huber'
+lradj: 'type1'                          # Learning rate adjustment - 'type1', 'type2', 'constant'
+
+# Optimization settings
+use_amp: False                          # Automatic mixed precision - True (faster, less memory), False (stable)
+seed: 2024                              # Random seed for reproducibility
+
+# ================================
+# SYSTEM CONFIGURATION
+# ================================
+
+# Data loading
+num_workers: 0                         # DataLoader workers - Try: 0 (single-thread), 4-8 (balanced), 10+ (fast I/O)
+
+# Experiment tracking
+itr: 1                                  # Number of experiment iterations
+des: 'financial_forecast'               # Experiment description
+task_name: 'long_term_forecast'         # Task type (keep as 'long_term_forecast')
+
+# ================================
+# PERFORMANCE TUNING GUIDE
+# ================================
+
+# SPEED OPTIMIZATION (for faster training):
+# - Reduce seq_len to 50-100
+# - Use d_model: 32, d_ff: 64
+# - Set e_layers: 1, n_heads: 2
+# - Use top_k: 2, num_kernels: 2
+# - Increase batch_size to 64
+# - Set num_workers: 0 (if data loading is slow)
+# - Enable use_amp: True
+
+# ACCURACY OPTIMIZATION (for better results):
+# - Increase seq_len to 200-500
+# - Use d_model: 128-256, d_ff: 256-512
+# - Set e_layers: 3-4, n_heads: 8
+# - Use top_k: 8-10, num_kernels: 6-8
+# - Increase train_epochs to 200
+# - Use learning_rate: 0.00001
+# - Set patience: 20
+
+# MEMORY OPTIMIZATION (for large models):
+# - Reduce batch_size to 16 or 8
+# - Use gradient checkpointing
+# - Enable use_amp: True
+# - Reduce seq_len if needed
+
+# QUICK TESTING CONFIGURATIONS:
+# Ultra-Fast: seq_len=50, d_model=32, e_layers=1, batch_size=64, train_epochs=20
+# Light: seq_len=100, d_model=64, e_layers=2, batch_size=32, train_epochs=50
+# Medium: seq_len=200, d_model=128, e_layers=3, batch_size=16, train_epochs=100
+# Heavy: seq_len=500, d_model=256, e_layers=4, batch_size=8, train_epochs=200
