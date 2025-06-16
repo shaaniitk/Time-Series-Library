@@ -106,6 +106,7 @@ celerybeat.pid
 .venv
 env/
 venv/
+venv311/
 ENV/
 env.bak/
 venv.bak/
@@ -173,3 +174,4 @@ synthetic_timeseries.csv
 # Ignore all CSV files (temporary data files)
 *.csv
 *.zip
+.DS_Store
