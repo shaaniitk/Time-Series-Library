@@ -165,11 +165,10 @@ class FinancialTimesNetTrainer:
         self.model.train()
         total_loss = 0.0
         num_batches = 0
-        
-        for batch_x, batch_y, batch_x_mark, batch_y_mark in self.train_loader:
+        epoch_start_time = time.time()
+        for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(self.train_loader):
             self.optimizer.zero_grad()
-            
-            # Move to device
+                        # Move to device
             batch_x = batch_x.float().to(self.device)
             batch_y = batch_y.float().to(self.device)
             batch_x_mark = batch_x_mark.float().to(self.device)
@@ -193,6 +192,17 @@ class FinancialTimesNetTrainer:
             
             total_loss += loss.item()
             num_batches += 1
+
+            total_batches = len(self.train_loader)
+            if i % 10 == 0 or i == total_batches - 1:
+                progress_pct = (i + 1) / total_batches * 100
+                avg_loss_so_far = total_loss / num_batches
+                elapsed_time = time.time() - epoch_start_time
+                estimated_total_time = elapsed_time / (i + 1) * total_batches
+                remaining_time = estimated_total_time - elapsed_time
+                print(f"  Batch {i+1:3d}/{total_batches} ({progress_pct:5.1f}%) - "
+                      f"Loss: {loss.item():.6f} (Avg: {avg_loss_so_far:.6f}) - "
+                      f"Remaining: {remaining_time:.1f}s")
         
         avg_loss = total_loss / num_batches
         return avg_loss
