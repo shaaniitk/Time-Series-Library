@@ -302,12 +302,19 @@ class FinancialTimesNetTrainer:
         }
     
         
+    # Fix the train method around line 340-350
+
     def train(self):
         """Main training loop"""
         logger.info("Starting training")
         best_val_loss = float('inf')
         train_losses = []
         val_losses = []
+        
+        # Create checkpoint directory with proper model_id handling
+        model_id = getattr(self.args, 'model_id', 'timesnet_financial')
+        checkpoint_dir = os.path.join('checkpoints', model_id)
+        os.makedirs(checkpoint_dir, exist_ok=True)
         
         for epoch in range(self.args.train_epochs):
             print(f"\n=== Epoch {epoch+1}/{self.args.train_epochs} ===")
@@ -330,8 +337,8 @@ class FinancialTimesNetTrainer:
             # Adjust learning rate
             adjust_learning_rate(self.optimizer, epoch + 1, self.args)
             
-            # Early stopping check
-            self.early_stopping(val_loss, self.model, self.args.checkpoints)
+            # Early stopping check - use checkpoint_dir instead of self.args.checkpoints
+            self.early_stopping(val_loss, self.model, checkpoint_dir)
             if self.early_stopping.early_stop:
                 logger.info("Early stopping triggered")
                 break
@@ -339,10 +346,12 @@ class FinancialTimesNetTrainer:
             # Save best model
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                self.save_model('best_model.pth')
+                # Create checkpoints directory if it doesn't exist
+                os.makedirs(checkpoint_dir, exist_ok=True)
+                self.save_model(os.path.join(checkpoint_dir, 'best_model.pth'))
         
         # Load best model for testing
-        self.load_model('best_model.pth')
+        self.load_model(os.path.join(checkpoint_dir, 'best_model.pth'))
         
         # Test model
         test_results = self.test()
@@ -354,29 +363,29 @@ class FinancialTimesNetTrainer:
             'test_results': test_results
         }
     
-    def save_model(self, filename):
+    # Fix the save_model and load_model methods
+
+    def save_model(self, full_path):
         """Save model checkpoint"""
-        if not os.path.exists(self.args.checkpoints):
-            os.makedirs(self.args.checkpoints)
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
         
-        path = os.path.join(self.args.checkpoints, filename)
         torch.save({
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'args': self.args
-        }, path)
-        logger.debug(f"Model saved to {path}")
-    
-    def load_model(self, filename):
+        }, full_path)
+        logger.debug(f"Model saved to {full_path}")
+
+    def load_model(self, full_path):
         """Load model checkpoint"""
-        path = os.path.join(self.args.checkpoints, filename)
-        if os.path.exists(path):
-            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        if os.path.exists(full_path):
+            checkpoint = torch.load(full_path, map_location=self.device, weights_only=False)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            logger.info(f"Model loaded from {path}")
+            logger.info(f"Model loaded from {full_path}")
         else:
-            logger.warning(f"Checkpoint not found: {path}")
+            logger.warning(f"Checkpoint not found: {full_path}")
     
     # Update the predict_production method to include inverse transform
 
@@ -547,6 +556,8 @@ def load_config(config_path='config.yaml'):
     print(f"✅ Loaded configuration from: {config_file_used}")
     return config
 
+# Fix the create_args function around line 600-650
+
 def create_args(config_path='config.yaml'):
     """Create argument parser with config file support"""
     parser = argparse.ArgumentParser(description='TimesNet Financial Forecasting')
@@ -561,13 +572,19 @@ def create_args(config_path='config.yaml'):
     # Load configuration from file
     config = load_config(temp_args.config)
     
-    # Data settings
+    # Basic config - ADD MISSING model_id
+    parser.add_argument('--model_id', type=str, default=config.get('model_id', 'timesnet_financial'), 
+                    help='model identifier')
+    
+    # Data settings - FIX ROOT PATH
     parser.add_argument('--data', type=str, default=config.get('data', 'custom'), 
                     help='dataset type')
-    parser.add_argument('--root_path', type=str, default=config.get('root_path', './data/'), 
-                    help='root path of the data file')
+    parser.add_argument('--root_path', type=str, default=config.get('root_path', 'data'), 
+                    help='root path of the data file')  # Changed from './data/' to 'data'
     parser.add_argument('--data_path', type=str, default=config.get('data_path', 'prepared_financial_data.csv'), 
                     help='data file')
+    
+    # ... rest of arguments stay the same ...
     parser.add_argument('--features', type=str, default=config.get('features', 'M'), 
                     help='forecasting task [M, S, MS]')
     parser.add_argument('--target', type=str, default=config.get('target', 'log_Close'), 
@@ -684,6 +701,8 @@ def create_args(config_path='config.yaml'):
     return args
 
 
+# Fix the main function around line 740-760
+
 def main():
     """Main training function"""
     logger.info("Starting Financial TimesNet Training")
@@ -706,8 +725,9 @@ def main():
     logger.info(f"  - Number of layers: {args.e_layers}")
     logger.info(f"  - Batch size: {args.batch_size}")
     
-    # Update checkpoints path with experiment name
-    args.checkpoints = os.path.join('./checkpoints/', setting)
+    # Set model_id if not already set
+    if not hasattr(args, 'model_id'):
+        args.model_id = setting
     
     try:
         # Create trainer and run training

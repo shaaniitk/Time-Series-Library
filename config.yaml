@@ -35,7 +35,7 @@ checkpoints: './checkpoints/'           # Directory to save model checkpoints
 # ================================
 
 # Time series lengths (affects model complexity and memory usage)
-seq_len: 200                            # Input sequence length (lookback window) - Try: 50, 100, 200, 500
+seq_len: 625                            # Input sequence length (lookback window) - Try: 50, 100, 200, 500
 label_len: 20                     # Start token length for decoder (overlap with seq_len) - Usually seq_len/10
 pred_len: 10                            # Prediction horizon (forecast steps) - Try: 5, 10, 20
 val_len: 10                             # Validation set length (business days)
@@ -53,15 +53,15 @@ c_out: 118                               # Output size - SET AUTOMATICALLY by sc
                                         # features='M': c_out=4 (all target columns)
                                         # features='S'/'MS': c_out=1 (single target)
                                         # This value will be overridden automatically by the script
-d_model: 128                             # Model dimension - Try: 32 (fast), 64 (balanced), 128 (large), 256 (heavy)
-d_ff: 256                               # Feed-forward dimension - Usually 2x d_model
+d_model: 64                             # Model dimension - Try: 32 (fast), 64 (balanced), 128 (large), 256 (heavy)
+d_ff: 128                               # Feed-forward dimension - Usually 2x d_model
 n_heads: 4                              # Number of attention heads - Must divide d_model evenly - Try: 2, 4, 8
 e_layers: 3                             # Number of encoder layers - Try: 1 (fast), 2 (balanced), 3-4 (deeper)
 d_layers: 1                             # Number of decoder layers - Usually 1 for forecasting
 
 # TimesNet specific parameters
-top_k: 5                                # Number of top frequencies to use - Try: 2 (fast), 5 (balanced), 10 (comprehensive)
-num_kernels: 5                          # Number of inception kernels - Try: 2 (fast), 5 (balanced), 8 (complex)
+top_k: 25                                # Number of top frequencies to use - Try: 2 (fast), 5 (balanced), 10 (comprehensive)
+num_kernels: 2                          # Number of inception kernels - Try: 2 (fast), 5 (balanced), 8 (complex)
 moving_avg: 75                          # Moving average window for trend decomposition - Try: 10, 25, 50
 
 # Attention and other model settings
@@ -78,9 +78,9 @@ output_attention: False                 # Output attention weights (False for sp
 
 # Training hyperparameters
 train_epochs: 100                       # Maximum training epochs - Try: 50 (quick), 100 (standard), 200 (thorough)
-batch_size: 64                          # Batch size - Try: 16 (memory-friendly), 32 (balanced), 64 (fast)
+batch_size: 32                          # Batch size - Try: 16 (memory-friendly), 32 (balanced), 64 (fast)
 learning_rate: 0.0001                   # Learning rate - Try: 0.001 (aggressive), 0.0001 (stable), 0.00001 (conservative)
-patience: 10                            # Early stopping patience (epochs) - Try: 5 (quick), 10 (balanced), 20 (patient)
+patience: 15                            # Early stopping patience (epochs) - Try: 5 (quick), 10 (balanced), 20 (patient)
 loss: 'MSE'                             # Loss function - 'MSE', 'MAE', 'Huber'
 lradj: 'type1'                          # Learning rate adjustment - 'type1', 'type2', 'constant'
 
