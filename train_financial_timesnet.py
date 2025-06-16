@@ -16,6 +16,7 @@ import argparse
 import pandas as pd
 import numpy as np
 import torch
+import time
 from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
@@ -144,12 +145,15 @@ class FinancialTimesNetTrainer:
         total_params = sum(p.numel() for p in self.model.parameters())
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         logger.info(f"Model parameters: {total_params:,} total, {trainable_params:,} trainable")
-        
     def train_epoch(self):
-        """Train for one epoch"""
+        """Train for one epoch with progress tracking"""
         self.model.train()
         total_loss = 0.0
         num_batches = 0
+        
+        total_batches = len(self.train_loader)
+        epoch_start_time = time.time()
+        print(f"Training on {total_batches} batches...")
         
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(self.train_loader):
             # Move to device
@@ -176,9 +180,17 @@ class FinancialTimesNetTrainer:
             
             total_loss += loss.item()
             num_batches += 1
-            
-            if i % 100 == 0:
-                logger.debug(f"Batch {i}/{len(self.train_loader)}, Loss: {loss.item():.6f}")
+              # Show progress every 10 batches or at key milestones
+            total_batches = len(self.train_loader)
+            if i % 10 == 0 or i == total_batches - 1:
+                progress_pct = (i + 1) / total_batches * 100
+                avg_loss_so_far = total_loss / num_batches
+                elapsed_time = time.time() - epoch_start_time
+                estimated_total_time = elapsed_time / (i + 1) * total_batches
+                remaining_time = estimated_total_time - elapsed_time
+                print(f"  Batch {i+1:3d}/{total_batches} ({progress_pct:5.1f}%) - "
+                      f"Loss: {loss.item():.6f} (Avg: {avg_loss_so_far:.6f}) - "
+                      f"Remaining: {remaining_time:.1f}s")
         
         avg_loss = total_loss / num_batches
         return avg_loss
@@ -261,21 +273,25 @@ class FinancialTimesNetTrainer:
     def train(self):
         """Main training loop"""
         logger.info("Starting training")
-        
         best_val_loss = float('inf')
         train_losses = []
         val_losses = []
         
         for epoch in range(self.args.train_epochs):
+            print(f"\n=== Epoch {epoch+1}/{self.args.train_epochs} ===")
+            logger.info(f"Starting Epoch {epoch+1}/{self.args.train_epochs}")
+            
             # Train
             train_loss = self.train_epoch()
             train_losses.append(train_loss)
             
             # Validate
+            print("Running validation...")
             val_loss = self.validate_epoch()
             val_losses.append(val_loss)
             
             # Log progress
+            print(f"✓ Epoch {epoch+1} Complete - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
             logger.info(f"Epoch {epoch+1}/{self.args.train_epochs} - "
                        f"Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
             
@@ -323,7 +339,7 @@ class FinancialTimesNetTrainer:
         """Load model checkpoint"""
         path = os.path.join(self.args.checkpoints, filename)
         if os.path.exists(path):
-            checkpoint = torch.load(path, map_location=self.device)
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             logger.info(f"Model loaded from {path}")
@@ -361,26 +377,25 @@ def create_args():
     parser.add_argument('--features', type=str, default='M', help='forecasting task [M, S, MS]')
     parser.add_argument('--target', type=str, default='log_Close', help='target feature in S or MS task')
     parser.add_argument('--freq', type=str, default='b', help='freq for time features encoding [b=business day]')
-    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
-      # Forecasting task (LIGHTWEIGHT TEST VERSION)
-    parser.add_argument('--seq_len', type=int, default=50, help='input sequence length (reduced for testing)')
-    parser.add_argument('--label_len', type=int, default=10, help='start token length (reduced for testing)')
-    parser.add_argument('--pred_len', type=int, default=5, help='prediction sequence length (reduced for testing)')
-    parser.add_argument('--val_len', type=int, default=5, help='validation length (reduced for testing)')
-    parser.add_argument('--test_len', type=int, default=5, help='test length (reduced for testing)')
-    parser.add_argument('--prod_len', type=int, default=5, help='production prediction length (reduced for testing)')
+    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')    # Forecasting task (BALANCED MEDIUM WEIGHT VERSION)
+    parser.add_argument('--seq_len', type=int, default=100, help='input sequence length (balanced)')
+    parser.add_argument('--label_len', type=int, default=10, help='start token length (balanced)')
+    parser.add_argument('--pred_len', type=int, default=10, help='prediction sequence length (balanced)')
+    parser.add_argument('--val_len', type=int, default=10, help='validation length (balanced)')
+    parser.add_argument('--test_len', type=int, default=10, help='test length (balanced)')
+    parser.add_argument('--prod_len', type=int, default=10, help='production prediction length (balanced)')
     
-    # Model define (LIGHTWEIGHT TEST VERSION)
-    parser.add_argument('--top_k', type=int, default=3, help='TimesNet kernel size (reduced for testing)')
-    parser.add_argument('--num_kernels', type=int, default=3, help='for Inception (reduced for testing)')
+    # Model define (BALANCED MEDIUM WEIGHT VERSION)
+    parser.add_argument('--top_k', type=int, default=5, help='TimesNet kernel size (balanced)')
+    parser.add_argument('--num_kernels', type=int, default=5, help='for Inception (balanced)')
     parser.add_argument('--enc_in', type=int, default=118, help='encoder input size (114 covariates + 4 targets)')
     parser.add_argument('--dec_in', type=int, default=118, help='decoder input size')
     parser.add_argument('--c_out', type=int, default=118, help='output size (match enc_in to avoid dimension mismatch)')
-    parser.add_argument('--d_model', type=int, default=32, help='dimension of model (reduced for testing)')
-    parser.add_argument('--n_heads', type=int, default=4, help='num of heads (reduced for testing)')
-    parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers (reduced for testing)')
+    parser.add_argument('--d_model', type=int, default=64, help='dimension of model (balanced)')
+    parser.add_argument('--n_heads', type=int, default=4, help='num of heads (balanced)')
+    parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers (balanced)')
     parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-    parser.add_argument('--d_ff', type=int, default=64, help='dimension of fcn (reduced for testing)')
+    parser.add_argument('--d_ff', type=int, default=128, help='dimension of fcn (balanced)')
     parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
     parser.add_argument('--factor', type=int, default=1, help='attn factor')
     parser.add_argument('--distil', action='store_false', help='whether to use distilling in encoder')
@@ -393,7 +408,7 @@ def create_args():
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
     parser.add_argument('--itr', type=int, default=1, help='experiments times')
     parser.add_argument('--train_epochs', type=int, default=100, help='train epochs')
-    parser.add_argument('--batch_size', type=int, default=16, help='batch size of train input data (reduced for testing)')
+    parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data (medium weight)')
     parser.add_argument('--patience', type=int, default=10, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
     parser.add_argument('--des', type=str, default='test', help='exp description')

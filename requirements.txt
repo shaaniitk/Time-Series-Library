@@ -1,3 +1,4 @@
+# Core ML and Data Science
 einops==0.8.0
 local-attention==1.9.14
 matplotlib
@@ -9,10 +10,25 @@ scikit-learn
 scipy==1.10.1
 sktime
 sympy==1.11.1
-torch==2.1.0
 tqdm
 PyWavelets
 statsmodels
 arch
 nltk
 pyarrow
+
+# PyTorch with CUDA support (GPU acceleration)
+# For CPU-only: torch==2.1.0
+# For GPU (CUDA 11.8): install with --index-url https://download.pytorch.org/whl/cu118
+# For GPU (CUDA 12.1): install with --index-url https://download.pytorch.org/whl/cu121
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
+
+# Installation commands:
+# CPU-only:
+#   pip install torch torchvision torchaudio
+# GPU (CUDA 11.8):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# GPU (CUDA 12.1):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
