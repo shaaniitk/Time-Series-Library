@@ -38,9 +38,30 @@ class TestTimesNet(unittest.TestCase, SanityTestMixin):
 
     def test_sanity(self):
         logger.info("Running TimesNet sanity test")
+        logger.info("="*50)
+        logger.info("TIMESNET SANITY TEST")
+        logger.info("="*50)
+        
         mse, y_pred, y_true = self.run_sanity_test(TimesNet)
-        print(f"Sanity test MSE: {mse}")
-        self.assertTrue(mse < 2.0)  # loose threshold for sanity
+        
+        logger.info("="*50)
+        logger.info(f"✓ TimesNet Sanity Test MSE: {mse:.6f}")
+        logger.info("="*50)
+        
+        # Relaxed threshold for sanity test
+        self.assertTrue(mse < 2.0, f"Sanity test failed: MSE {mse:.6f} >= 2.0")
+
+    def test_parameter_count(self):
+        logger.info("Testing TimesNet parameter count")
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        
+        logger.info(f"Total parameters: {total_params:,}")
+        logger.info(f"Trainable parameters: {trainable_params:,}")
+        
+        # Basic sanity check - should have reasonable number of parameters
+        self.assertGreater(total_params, 1000)
+        self.assertLess(total_params, 1000000)  # Should be reasonable for test config
 
 if __name__ == '__main__':
     unittest.main()
