@@ -58,6 +58,10 @@ class FinancialAutoformerTrainer:
 
     def _get_data_loader(self, flag):
         """Get data loader for train/val/test"""
+        # Set validation and test lengths for border calculation (similar to TimesNet)
+        self.args.validation_length = self.args.val_len
+        self.args.test_length = self.args.test_len
+        
         dataset = Dataset_Custom(
             args=self.args,
             root_path=self.args.root_path,
@@ -119,23 +123,16 @@ class FinancialAutoformerTrainer:
             batch_x_mark = batch_x_mark.float().to(self.device)
             batch_y_mark = batch_y_mark.float().to(self.device)
             
-            # Prepare decoder input for Autoformer - PROPER future covariate handling
-            # Historical period: real targets + real covariates
-            dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
+            # Autoformer decoder input - uses standard approach, decomposition is internal
+            dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
+            dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
             
-            # Future period: zero targets + REAL future covariates (Autoformer can handle this!)
-            future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)
-            future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)
-            dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
-            
-            # Combine historical + future for decoder input
-            dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
-            
-            # Forward pass - Autoformer uses future covariates properly
+            # Forward pass - Autoformer handles decomposition internally
             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             
             # Calculate loss only on target features (first 4 columns: OHLC)
-            target_outputs = outputs[:, -self.args.pred_len:, :4]  # OHLC predictions
+            # Since c_out=118, extract first 4 columns for OHLC targets
+            target_outputs = outputs[:, :, :4]  # First 4 features are OHLC targets
             target_y = batch_y[:, -self.args.pred_len:, :4]  # OHLC ground truth
             loss = self.criterion(target_outputs, target_y)
             
@@ -163,18 +160,15 @@ class FinancialAutoformerTrainer:
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
                 
-                # Prepare decoder input - same as training
-                dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
-                future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)
-                future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)
-                dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
-                dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
+                # Autoformer decoder input - standard approach
+                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
                 
                 # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Get predictions (scaled) and ground truth (unscaled)
-                target_outputs = outputs[:, -self.args.pred_len:, :4]  # SCALED predictions
+                # Get predictions and ground truth (extract first 4 columns for OHLC)
+                target_outputs = outputs[:, :, :4]  # SCALED OHLC predictions
                 target_y_unscaled = batch_y[:, -self.args.pred_len:, :4]  # UNSCALED ground truth
                 
                 # Scale the ground truth to match model outputs
@@ -208,19 +202,16 @@ class FinancialAutoformerTrainer:
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
                 
-                # Prepare decoder input - same as training/validation
-                dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
-                future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)
-                future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)
-                dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
-                dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
+                # Autoformer decoder input - standard approach
+                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
                 
                 # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Get predictions (scaled) and ground truth (unscaled)
-                pred_scaled = outputs[:, -self.args.pred_len:, :4].detach().cpu().numpy()
-                true_unscaled = batch_y[:, -self.args.pred_len:, :4].detach().cpu().numpy()
+                # Get predictions and ground truth (extract first 4 columns for OHLC)
+                pred_scaled = outputs[:, :, :4].detach().cpu().numpy()  # OHLC predictions (scaled)
+                true_unscaled = batch_y[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # UNSCALED ground truth
                 
                 # Scale the ground truth for consistent loss calculation
                 true_scaled = self.test_loader.dataset.target_scaler.transform(
@@ -312,8 +303,10 @@ def get_args():
     # Basic config
     parser.add_argument('--model_id', type=str, default='autoformer_financial', help='model id')
     parser.add_argument('--model', type=str, default='Autoformer', help='model name')
+    parser.add_argument('--task_name', type=str, default='long_term_forecast', help='task name')
     
     # Data config
+    parser.add_argument('--data', type=str, default='custom', help='dataset type')
     parser.add_argument('--root_path', type=str, default='data', help='root path of data file')
     parser.add_argument('--data_path', type=str, default='prepared_financial_data.csv', help='data file')
     parser.add_argument('--features', type=str, default='M', help='forecasting task [M, S, MS]')
@@ -324,12 +317,14 @@ def get_args():
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
     parser.add_argument('--label_len', type=int, default=48, help='start token length')
     parser.add_argument('--pred_len', type=int, default=24, help='prediction sequence length')
+    parser.add_argument('--val_len', type=int, default=24, help='validation length')
+    parser.add_argument('--test_len', type=int, default=24, help='test length')
     parser.add_argument('--prod_len', type=int, default=5, help='production prediction length')
     
     # Autoformer specific config
     parser.add_argument('--enc_in', type=int, default=118, help='encoder input size')
     parser.add_argument('--dec_in', type=int, default=118, help='decoder input size')
-    parser.add_argument('--c_out', type=int, default=118, help='output size')
+    parser.add_argument('--c_out', type=int, default=118, help='output size (set to 118 for multivariate mode)')
     parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
     parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
     parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
