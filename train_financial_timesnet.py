@@ -158,6 +158,8 @@ class FinancialTimesNetTrainer:
         
     # Update the train_epoch method around lines 175-182
 
+    # Revert train_epoch method to original decoder input
+
     def train_epoch(self):
         """Train for one epoch"""
         self.model.train()
@@ -173,17 +175,9 @@ class FinancialTimesNetTrainer:
             batch_x_mark = batch_x_mark.float().to(self.device)
             batch_y_mark = batch_y_mark.float().to(self.device)
             
-            # Prepare decoder input - FIXED to include future covariates
-            # Known historical data (targets + covariates)
-            dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
-            
-            # Future period: Zero targets, keep covariates
-            future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)  # Zero OHLC
-            future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)  # Keep covariates
-            dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
-            
-            # Combine historical + future
-            dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
+            # Prepare decoder input - REVERTED to original TimesNet approach
+            dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
+            dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
             
             # Forward pass
             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
@@ -205,6 +199,8 @@ class FinancialTimesNetTrainer:
 
     # Update the validate_epoch method around lines 220-240
 
+    # Revert validate_epoch method to original decoder input
+
     def validate_epoch(self):
         """Validate for one epoch"""
         self.model.eval()
@@ -219,17 +215,9 @@ class FinancialTimesNetTrainer:
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
                 
-                # Prepare decoder input - FIXED to include future covariates
-                # Known historical data (targets + covariates)
-                dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
-                
-                # Future period: Zero targets, keep covariates
-                future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)  # Zero OHLC
-                future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)  # Keep covariates
-                dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
-                
-                # Combine historical + future
-                dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
+                # Prepare decoder input - REVERTED to original TimesNet approach
+                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
                 
                 # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
@@ -269,17 +257,9 @@ class FinancialTimesNetTrainer:
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
                 
-                # Prepare decoder input - FIXED to include future covariates
-                # Known historical data (targets + covariates)
-                dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
-                
-                # Future period: Zero targets, keep covariates
-                future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)  # Zero OHLC
-                future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)  # Keep covariates
-                dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
-                
-                # Combine historical + future
-                dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
+                # Prepare decoder input - REVERTED to original TimesNet approach
+                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
                 
                 # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
@@ -394,7 +374,7 @@ class FinancialTimesNetTrainer:
         """Generate production predictions for future business days"""
         logger.info(f"Generating production predictions for {self.args.prod_len} future business days")
 
-        # This method needs to be implemented with real prediction logic
+        # This method needs to be implemented with real prediction logictime 
         # For now, showing the correct decoder input pattern
 
         logger.info("Production prediction - Decoder input pattern:")
