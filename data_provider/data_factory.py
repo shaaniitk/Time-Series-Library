@@ -25,7 +25,8 @@ def data_provider(args, flag=None):
     Data = data_dict[args.data]
     timeenc = 0 if args.embed != 'timeF' else 1
 
-    shuffle_flag = False  # Always use sequential windows for time series
+    # shuffle_flag = (flag == 'train') # Original: Shuffle only for training set
+    shuffle_flag = False  # Always disable shuffle for all sets
     drop_last = False
     batch_size = args.batch_size
     freq = args.freq
