@@ -182,8 +182,8 @@ class FinancialTimesNetTrainer:
             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             
             # Calculate loss only on target features (first 4 columns)
-            target_outputs = outputs[:, -self.args.pred_len:, :4]  # First 4 features are targets
-            target_y = batch_y[:, -self.args.pred_len:, :4]  # First 4 features are targets
+            target_outputs = outputs[:, -self.args.pred_len:, :self.args.c_out]
+            target_y = batch_y[:, -self.args.pred_len:, :self.args.c_out]
             loss = self.criterion(target_outputs, target_y)
             
             # Backward pass
@@ -233,18 +233,42 @@ class FinancialTimesNetTrainer:
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
                 # Get predictions (scaled) and ground truth (unscaled)
-                target_outputs = outputs[:, -self.args.pred_len:, :4]  # SCALED predictions
-                target_y_unscaled = batch_y[:, -self.args.pred_len:, :4]  # UNSCALED ground truth
+                model_outputs_scaled = outputs[:, -self.args.pred_len:, :self.args.c_out]      # SCALED predictions
                 
-                # Scale the ground truth to match model outputs
-                target_y_unscaled_np = target_y_unscaled.detach().cpu().numpy()
-                target_y_scaled_np = self.train_loader.dataset.target_scaler.transform(
-                    target_y_unscaled_np.reshape(-1, 4)
-                ).reshape(target_y_unscaled_np.shape)
-                target_y_scaled = torch.from_numpy(target_y_scaled_np).float().to(self.device)
+                # batch_y from loader for val/test has UNCALED targets (first N) and SCALED covariates (rest)
+                batch_y_segment_for_loss = batch_y[:, -self.args.pred_len:, :self.args.c_out]
+
+                # Determine how many actual target features the target_scaler was fitted on
+                # This is typically 4 for M/MS modes, and 1 for S mode.
+                num_features_in_target_scaler = self.train_loader.dataset.target_scaler.n_features_in_
+
+                # Number of target features we need to extract and scale from batch_y_segment_for_loss
+                # This is min(features model outputs, features scaler was fit on)
+                num_targets_to_process = min(self.args.c_out, num_features_in_target_scaler)
+
+                scaled_gt_parts = []
+                if num_targets_to_process > 0:
+                    # Extract unscaled targets from batch_y
+                    gt_targets_unscaled_np = batch_y_segment_for_loss[:, :, :num_targets_to_process].detach().cpu().numpy()
+                    
+                    # Scale them using the target_scaler (input must match n_features_in_)
+                    # If num_targets_to_process < num_features_in_target_scaler, this implies we are in 'M' mode
+                    # and c_out is small, or 'S' mode where num_targets_to_process is 1.
+                    # The scaler expects input with `num_features_in_target_scaler` columns.
+                    # We must provide that many, then slice if num_targets_to_process is smaller.
+                    # However, simpler: Dataset_Custom ensures target_scaler is fit on 1 (S) or 4 (M/MS) features.
+                    # So, gt_targets_unscaled_np should have `num_targets_to_process` columns, and this should match
+                    # what the scaler expects for those specific targets.
+                    gt_targets_scaled_np = self.train_loader.dataset.target_scaler.transform(
+                        gt_targets_unscaled_np.reshape(-1, num_targets_to_process) 
+                    ).reshape(gt_targets_unscaled_np.shape)
+                    scaled_gt_parts.append(torch.from_numpy(gt_targets_scaled_np).float().to(self.device))
+
+                if self.args.c_out > num_targets_to_process: # Covariates part (already scaled)
+                    scaled_gt_parts.append(batch_y_segment_for_loss[:, :, num_targets_to_process:])
                 
-                # Calculate loss on scaled data (both predictions and ground truth are now scaled)
-                loss = self.criterion(target_outputs, target_y_scaled)
+                ground_truth_final_scaled = torch.cat(scaled_gt_parts, dim=-1) if len(scaled_gt_parts) > 0 else batch_y_segment_for_loss
+                loss = self.criterion(model_outputs_scaled, ground_truth_final_scaled)
                 total_loss += loss.item()
                 num_batches += 1
         
@@ -275,16 +299,31 @@ class FinancialTimesNetTrainer:
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
                 # Get predictions (scaled) and ground truth (unscaled)
-                pred_scaled = outputs[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # SCALED predictions
-                true_unscaled = batch_y[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # UNSCALED ground truth
+                pred_scaled = outputs[:, -self.args.pred_len:, :self.args.c_out].detach().cpu().numpy()
+                batch_y_segment_for_loss_np = batch_y[:, -self.args.pred_len:, :self.args.c_out].detach().cpu().numpy()
+
+                num_features_in_target_scaler = self.test_loader.dataset.target_scaler.n_features_in_
+                num_targets_to_process = min(self.args.c_out, num_features_in_target_scaler)
+
+                scaled_gt_parts_np = []
+                if num_targets_to_process > 0:
+                    gt_targets_unscaled_np_slice = batch_y_segment_for_loss_np[:, :, :num_targets_to_process]
+                    gt_targets_scaled_np_slice = self.test_loader.dataset.target_scaler.transform(
+                        gt_targets_unscaled_np_slice.reshape(-1, num_targets_to_process)
+                    ).reshape(gt_targets_unscaled_np_slice.shape)
+                    scaled_gt_parts_np.append(gt_targets_scaled_np_slice)
                 
-                # Scale the ground truth to match model outputs for consistent loss calculation
-                true_scaled = self.test_loader.dataset.target_scaler.transform(
-                    true_unscaled.reshape(-1, 4)
-                ).reshape(true_unscaled.shape)
-                
-                preds.append(pred_scaled)  # Keep scaled for consistent loss calculation
-                trues.append(true_scaled)  # Now scaled to match predictions
+                if self.args.c_out > num_targets_to_process: # Covariates part (already scaled)
+                    scaled_gt_parts_np.append(batch_y_segment_for_loss_np[:, :, num_targets_to_process:])
+
+                if len(scaled_gt_parts_np) > 0:
+                    true_values_final_scaled_np = np.concatenate(scaled_gt_parts_np, axis=-1)
+                else:
+                    # This case should ideally not be hit if c_out > 0
+                    true_values_final_scaled_np = batch_y_segment_for_loss_np 
+
+                preds.append(pred_scaled)
+                trues.append(true_values_final_scaled_np) # Use the correctly constructed scaled ground truth
         
         # Concatenate all predictions and true values (both in scaled space)
         preds = np.concatenate(preds, axis=0)
@@ -680,13 +719,19 @@ def create_args(config_path='config.yaml'):
         args.c_out = args.enc_in  # Match input size (118)
         logger.info(f"🎯 Multivariate mode: c_out automatically set to {args.c_out} (all features)")
     elif args.features == 'MS':
-        # Multivariate-to-MULTI-target mode - use all features to predict OHLC targets
-        args.c_out = 4  # Predict all 4 OHLC targets
-        logger.info(f"🎯 Multivariate-to-Multi-target mode: c_out set to {args.c_out} (OHLC targets)")
+        # Multivariate-to-MULTI-target mode
+        # Determine c_out from the number of specified target columns
+        num_targets = len(args.target.split(','))
+        if num_targets == 0:
+            raise ValueError("For 'MS' mode, 'target' must be a comma-separated list of target column names.")
+        args.c_out = num_targets
+        logger.info(f"🎯 Multivariate-to-Multi-target mode: c_out set to {args.c_out} (targets: {args.target})")
     else:
-        # Univariate forecasting (S) - predict single target
-        args.c_out = 1
-        logger.info(f"🎯 Univariate mode ({args.features}): c_out set to {args.c_out} (target: {args.target})")
+        # Univariate (Targets-Only) forecasting ('S' mode):
+        # Uses only the columns specified in args.target as input and predicts all of them.
+        # enc_in is already dynamically set to the number of columns in args.target.
+        args.c_out = args.enc_in  # Predict all input target features
+        logger.info(f"🎯 Univariate (Targets-Only) mode ('S'): Using only target columns as input. c_out set to enc_in ({args.c_out}) for targets: {args.target}")
     
     # Display configuration summary
     print("\n🔧 CONFIGURATION SUMMARY")

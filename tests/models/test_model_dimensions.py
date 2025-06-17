@@ -21,9 +21,10 @@ import numpy as np
 import sys
 import os
 
-# Add the models directory to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'models'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'layers'))
+# Add the project root directory to the Python path
+# This allows us to import modules like 'models', 'layers', 'utils', 'data_provider'
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, project_root)
 
 from models.TimesNet import Model as TimesNet
 
@@ -187,6 +188,53 @@ class ModelDimensionTester:
                 
                 return outputs, dimension_check
                 
+            except Exception as e:
+                print(f"❌ Forward pass failed!")
+                print(f"🚨 Error: {e}")
+                return None, {'error': str(e)}
+
+    def test_ms_mode_multi_target_output(self):
+        """Test 'MS' mode with c_out explicitly set to predict multiple targets."""
+        print(f"\n🚀 TESTING 'MS' MODE WITH EXPLICIT MULTI-TARGET OUTPUT (c_out = n_targets)")
+        print(f"=" * 70)
+
+        features_mode = 'MS'
+        # In this synthetic test, n_targets is 2. This corresponds to your c_out=4 for OHLC.
+        explicit_c_out = self.n_targets 
+
+        # Create model and data
+        model, args = self.create_model(features_mode=features_mode, c_out=explicit_c_out)
+        batch_x, batch_y, batch_x_mark, batch_y_mark = self.generate_test_data()
+
+        # Prepare decoder input (standard for forecasting models)
+        dec_inp = torch.zeros_like(batch_y[:, -self.pred_len:, :]).float()
+        dec_inp = torch.cat([batch_y[:, :self.label_len, :], dec_inp], dim=1).float()
+
+        print(f"🔄 Decoder input shape: {dec_inp.shape}")
+
+        # Forward pass
+        model.eval()
+        with torch.no_grad():
+            try:
+                outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                print(f"✅ Forward pass successful!")
+                print(f"📤 Model output shape: {outputs.shape}")
+                
+                # Analyze output dimensions
+                batch_size_out, seq_len_out, features_out = outputs.shape
+                
+                print(f"\n📋 DIMENSION ANALYSIS:")
+                print(f"   - Output batch size: {batch_size_out} (expected: {self.batch_size})")
+                print(f"   - Output sequence length: {seq_len_out} (expected: {self.pred_len})")
+                print(f"   - Output features: {features_out} (expected: {explicit_c_out})")
+
+                if batch_size_out == self.batch_size and \
+                   seq_len_out == self.pred_len and \
+                   features_out == explicit_c_out:
+                    print(f"   ✅ PASS: Output dimensions are correct for 'MS' mode with c_out={explicit_c_out}.")
+                else:
+                    print(f"   ❌ FAIL: Output dimensions are INCORRECT.")
             except Exception as e:
                 print(f"❌ Forward pass failed!")
                 print(f"🚨 Error: {e}")
@@ -590,11 +638,11 @@ class ModelDimensionTester:
                 return None
                 
             # Check if targets are first 4 columns
-            first_4_cols = list(df.columns[:4])
-            targets_are_first = first_4_cols == actual_targets
+            first_4_cols_after_date = list(df.columns[1:5]) # Assuming 'date' is the first column
+            targets_are_first = actual_targets
             
-            print(f"   - First 4 columns: {first_4_cols}")
-            print(f"   - Targets are first 4: {'✅ YES' if targets_are_first else '❌ NO'}")
+            print(f"   - First 4 columns after 'date': {first_4_cols_after_date}")
+            print(f"   - Targets are first 4 (after date): {'✅ YES' if targets_are_first else '❌ NO'}")
             
             # Analyze scaling (check if data is already scaled)
             target_stats = df[actual_targets].describe()
@@ -625,7 +673,8 @@ class ModelDimensionTester:
             
             # Take a small sample for testing
             sample_size = min(200, len(df))
-            sample_data = df.iloc[:sample_size].values  # Convert to numpy array
+            # Exclude the 'date' column (assuming it's the first one and non-numeric)
+            sample_data = df.iloc[:sample_size, 1:].values  # Convert to numpy array, skip first column
             
             # Create test tensors with real data structure
             batch_size = 2
@@ -728,6 +777,9 @@ def main():
     # Test different scenarios
     results = tester.test_covariate_behavior()
     
+    # Test MS mode with explicit multi-target output
+    tester.test_ms_mode_multi_target_output()
+
     # Analyze covariate behavior
     tester.analyze_covariate_predictions(results)
       # Test covariate passthrough behavior

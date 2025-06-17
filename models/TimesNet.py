@@ -88,6 +88,24 @@ class Model(nn.Module):
                                            configs.dropout)
         self.layer = configs.e_layers
         self.layer_norm = nn.LayerNorm(configs.d_model)
+
+        # Validate c_out consistency with features mode based on typical training script logic
+        if configs.features == 'M':
+            if configs.c_out != configs.enc_in:
+                raise ValueError(
+                    f"TimesNet Init Error: For features_mode='M', c_out ({configs.c_out}) must equal enc_in ({configs.enc_in})."
+                )
+        elif configs.features == 'MS':
+            if not (0 < configs.c_out <= configs.enc_in): # c_out is num_targets, enc_in includes covariates
+                raise ValueError(
+                    f"TimesNet Init Error: For features_mode='MS', c_out ({configs.c_out}) must be positive and less than or equal to enc_in ({configs.enc_in})."
+                )
+        elif configs.features == 'S':
+            if configs.c_out != configs.enc_in: # For 'S', enc_in IS the number of targets
+                raise ValueError(
+                    f"TimesNet Init Error: For features_mode='S', c_out ({configs.c_out}) must equal enc_in ({configs.enc_in})."
+                )
+
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.predict_linear = nn.Linear(
                 self.seq_len, self.pred_len + self.seq_len)
@@ -139,12 +157,16 @@ class Model(nn.Module):
         dec_out = self.projection(enc_out)
 
         # De-Normalization from Non-stationary Transformer
-        dec_out = dec_out.mul(
-                  (stdev[:, 0, :].unsqueeze(1).repeat(
-                      1, self.pred_len + self.seq_len, 1)))
-        dec_out = dec_out.add(
-                  (means[:, 0, :].unsqueeze(1).repeat(
-                      1, self.pred_len + self.seq_len, 1)))
+        # means and stdev are based on x_enc, so they have enc_in channels.
+        # dec_out is the output of self.projection, so it has c_out channels.
+
+        # Select the appropriate part of means and stdev for de-normalization.
+        # This assumes that the c_out channels correspond to the first c_out channels of the input.
+        stdev_for_denorm = stdev[:, 0, :self.configs.c_out].unsqueeze(1).repeat(1, self.pred_len + self.seq_len, 1)
+        means_for_denorm = means[:, 0, :self.configs.c_out].unsqueeze(1).repeat(1, self.pred_len + self.seq_len, 1)
+
+        dec_out = dec_out.mul(stdev_for_denorm)
+        dec_out = dec_out.add(means_for_denorm)
         return dec_out
 
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
