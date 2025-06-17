@@ -250,6 +250,15 @@ class EnhancedAutoformerTrainer:
                 pred = outputs.detach().cpu()
                 true = batch_y.detach().cpu()
                 
+                # Scale the ground truth to match model outputs (model outputs are scaled)
+                if hasattr(self.val_data, 'target_scaler') and self.val_data.target_scaler is not None:
+                    # Ground truth needs to be scaled to match model predictions
+                    true_np = true.numpy()
+                    true_scaled_np = self.val_data.target_scaler.transform(
+                        true_np.reshape(-1, true_np.shape[-1])
+                    ).reshape(true_np.shape)
+                    true = torch.from_numpy(true_scaled_np).float()
+                
                 loss = nn.MSELoss()(pred, true)
                 total_loss.append(loss.item())
         
@@ -287,6 +296,13 @@ class EnhancedAutoformerTrainer:
                 pred = outputs.detach().cpu().numpy()
                 true = batch_y.detach().cpu().numpy()
                 
+                # Scale the ground truth to match model outputs (model outputs are scaled)
+                if hasattr(self.test_data, 'target_scaler') and self.test_data.target_scaler is not None:
+                    # Ground truth needs to be scaled to match model predictions for consistent metrics
+                    true = self.test_data.target_scaler.transform(
+                        true.reshape(-1, true.shape[-1])
+                    ).reshape(true.shape)
+                
                 preds.append(pred)
                 trues.append(true)
         
@@ -307,6 +323,11 @@ class EnhancedAutoformerTrainer:
     def train(self):
         """Main training loop."""
         logger.info("Starting Enhanced Autoformer training")
+        
+        # NOTE: Scaling consistency fix
+        # - Model predictions are in scaled space (trained on scaled data)
+        # - Validation/test ground truth is unscaled (to avoid data leakage)
+        # - We scale ground truth during loss/metric computation to match predictions
         
         best_val_loss = float('inf')
         training_start_time = time.time()

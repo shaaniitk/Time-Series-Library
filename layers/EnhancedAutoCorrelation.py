@@ -94,10 +94,20 @@ class AdaptiveAutoCorrelation(nn.Module):
                 q_fft = torch.fft.rfft(queries, dim=-1)
                 k_fft = torch.fft.rfft(keys, dim=-1)
             else:
-                # Downsampled scale
+                # Downsampled scale - reshape for pooling
                 if length >= scale * 2:  # Ensure enough points for downsampling
-                    q_down = F.avg_pool1d(queries, kernel_size=scale, stride=scale)
-                    k_down = F.avg_pool1d(keys, kernel_size=scale, stride=scale)
+                    # Reshape to [B*H*E, L] for pooling
+                    B, H, E, L = queries.shape
+                    q_reshaped = queries.reshape(B * H * E, L).unsqueeze(1)  # [B*H*E, 1, L]
+                    k_reshaped = keys.reshape(B * H * E, L).unsqueeze(1)     # [B*H*E, 1, L]
+                    
+                    q_down = F.avg_pool1d(q_reshaped, kernel_size=scale, stride=scale)
+                    k_down = F.avg_pool1d(k_reshaped, kernel_size=scale, stride=scale)
+                    
+                    # Reshape back to original dimensions
+                    downsampled_L = q_down.size(-1)
+                    q_down = q_down.squeeze(1).reshape(B, H, E, downsampled_L)
+                    k_down = k_down.squeeze(1).reshape(B, H, E, downsampled_L)
                     
                     q_fft = torch.fft.rfft(q_down, dim=-1)
                     k_fft = torch.fft.rfft(k_down, dim=-1)
@@ -118,10 +128,16 @@ class AdaptiveAutoCorrelation(nn.Module):
             res = q_fft * k_fft_normalized
             corr = torch.fft.irfft(res, dim=-1)
             
-            # Upsample correlation to original length if needed
-            if scale > 1 and corr.size(-1) != length:
-                corr = F.interpolate(corr.unsqueeze(1), size=length, mode='linear', align_corners=False).squeeze(1)
+            # ALWAYS ensure correlation matches target length exactly
+            B, H, E, curr_L = corr.shape
+            if curr_L != length:
+                # Reshape to [B*H*E, curr_L] for interpolation
+                corr_reshaped = corr.reshape(B * H * E, curr_L).unsqueeze(1)  # [B*H*E, 1, curr_L]
+                corr_upsampled = F.interpolate(corr_reshaped, size=length, mode='linear', align_corners=False)
+                corr = corr_upsampled.squeeze(1).reshape(B, H, E, length)  # Back to [B, H, E, length]
             
+            # Double check the length is correct
+            assert corr.size(-1) == length, f"Correlation length {corr.size(-1)} != target length {length}"
             correlations.append(corr)
         
         if len(correlations) > 1:

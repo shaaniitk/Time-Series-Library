@@ -1,0 +1,87 @@
+# Enhanced Autoformer Configuration - S Mode (Medium Complexity)
+# Mode S: Target-only Input → Target-only Output (Target features only)
+# Input: 4 target features → Output: 4 target features (OHLC)
+
+# Model identification
+model_id: "enhanced_autoformer_S_medium"
+model: "EnhancedAutoformer"
+
+# Task configuration
+task_name: "long_term_forecast"
+features: "S"  # Target-only forecasting (univariate/multi-target mode)
+target: "log_Close"  # Primary target for evaluation
+
+# Data configuration
+data: "custom"
+root_path: "data"
+data_path: "prepared_financial_data.csv"
+freq: "b"  # Business day frequency
+
+# Sequence configuration - MEDIUM complexity
+seq_len: 250      # Input sequence length (reduced from 500 for medium complexity)
+label_len: 15     # Start token length  
+pred_len: 10      # Prediction length
+val_len: 10       # Validation set length
+test_len: 10      # Test set length
+prod_len: 10      # Production prediction length
+
+# Model architecture - MEDIUM complexity
+# S MODE: Target features only input/output
+enc_in: 4         # Encoder input: TARGET features only (log_Open, log_High, log_Low, log_Close)
+dec_in: 4         # Decoder input: TARGET features only
+c_out: 4          # Model output: TARGET features only (log_Open, log_High, log_Low, log_Close)
+
+# Model dimensions - MEDIUM complexity
+d_model: 128      # Model dimension (balanced - not too small/large)
+n_heads: 8        # Number of attention heads (standard)
+e_layers: 3       # Encoder layers (moderate depth)
+d_layers: 2       # Decoder layers
+d_ff: 256         # Feed-forward dimension (2x d_model)
+moving_avg: 25    # Moving average window for decomposition
+
+# Enhanced features configuration
+use_adaptive_correlation: true      # Enable adaptive auto-correlation
+use_learnable_decomposition: true   # Enable learnable series decomposition
+multi_scale_correlation: true       # Enable multi-scale correlation analysis
+seasonal_learning_rate: 0.001       # Learning rate for seasonal patterns
+
+# Regularization - MEDIUM settings
+dropout: 0.15     # Moderate dropout
+factor: 3         # Attention factor
+activation: "gelu"
+distil: false
+output_attention: false
+
+# Training configuration - MEDIUM complexity
+train_epochs: 50      # Moderate training epochs
+batch_size: 32        # Medium batch size
+learning_rate: 0.0001 # Standard learning rate
+patience: 10          # Early stopping patience
+lradj: "type1"        # Learning rate adjustment
+use_amp: false        # Mixed precision (disable for stability)
+
+# Enhanced training features
+use_curriculum: false              # Disable curriculum learning for medium setup
+use_uncertainty_quantification: false  # Disable UQ for medium setup
+use_multi_gpu: false
+use_grad_clip: true
+max_grad_norm: 1.0
+
+# Optimization
+num_workers: 4        # Moderate parallel workers
+loss: "MSE"
+seed: 2024
+
+# Logging and checkpointing
+log_interval: 50
+des: "enhanced_autoformer_S_medium"
+checkpoints: "./checkpoints/"
+
+# Mode-specific notes
+# S Mode Features:
+# - Uses ONLY 4 target features (OHLC) for pure price-based modeling
+# - Outputs ONLY 4 target features (OHLC) for focused price forecasting
+# - Most computationally efficient mode
+# - Focuses on intrinsic price dynamics without external noise
+# - Best for pure technical analysis and price pattern learning
+# - Fastest training and inference

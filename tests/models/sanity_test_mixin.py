@@ -111,8 +111,8 @@ class SanityTestMixin:
         args.d_layers = d_layers
         args.d_ff = d_ff
         args.enc_in = enc_in  # All 6 features: 3 covariates + 3 targets in 'M' mode
-        args.dec_in = enc_in  # Same as enc_in for consistency
-        args.c_out = c_out   # Output all 6 features to match input dimension
+        args.dec_in = c_out  # Decoder works with target features only
+        args.c_out = c_out   # Output target features only
         args.embed = 'timeF'
         args.freq = 'h'
         args.dropout = 0.1

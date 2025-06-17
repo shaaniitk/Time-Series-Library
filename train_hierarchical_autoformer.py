@@ -231,9 +231,18 @@ class HierarchicalAutoformerTrainer:
                 
                 total_loss.append(loss.item())
                 
-                # Store predictions for metrics
-                predictions.append(outputs.detach().cpu().numpy())
-                truths.append(batch_y.detach().cpu().numpy())
+                # Store predictions for metrics - scale ground truth to match predictions
+                pred_np = outputs.detach().cpu().numpy()
+                true_np = batch_y.detach().cpu().numpy()
+                
+                # Scale the ground truth to match model outputs (model outputs are scaled)
+                if hasattr(self.vali_data, 'target_scaler') and self.vali_data.target_scaler is not None:
+                    true_np = self.vali_data.target_scaler.transform(
+                        true_np.reshape(-1, true_np.shape[-1])
+                    ).reshape(true_np.shape)
+                
+                predictions.append(pred_np)
+                truths.append(true_np)
         
         # Compute validation metrics
         vali_loss = np.average(total_loss)
@@ -290,6 +299,11 @@ class HierarchicalAutoformerTrainer:
     def train(self):
         """Main training loop"""
         logger.info(f"Starting hierarchical training for {self.args.train_epochs} epochs")
+        
+        # NOTE: Scaling consistency fix
+        # - Model predictions are in scaled space (trained on scaled data)
+        # - Validation/test ground truth is unscaled (to avoid data leakage)
+        # - We scale ground truth during loss/metric computation to match predictions
         
         time_now = time.time()
         
@@ -359,9 +373,18 @@ class HierarchicalAutoformerTrainer:
                 f_dim = -1 if self.args.features == 'MS' else 0
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                 
-                # Store results
-                predictions.append(outputs.detach().cpu().numpy())
-                truths.append(batch_y.detach().cpu().numpy())
+                # Store results - scale ground truth to match predictions
+                pred_np = outputs.detach().cpu().numpy()
+                true_np = batch_y.detach().cpu().numpy()
+                
+                # Scale the ground truth to match model outputs (model outputs are scaled)
+                if hasattr(self.test_data, 'target_scaler') and self.test_data.target_scaler is not None:
+                    true_np = self.test_data.target_scaler.transform(
+                        true_np.reshape(-1, true_np.shape[-1])
+                    ).reshape(true_np.shape)
+                
+                predictions.append(pred_np)
+                truths.append(true_np)
         
         # Concatenate results
         predictions = np.concatenate(predictions, axis=0)

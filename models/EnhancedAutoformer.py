@@ -19,21 +19,22 @@ class LearnableSeriesDecomp(nn.Module):
     3. Feature-specific decomposition parameters
     """
     
-    def __init__(self, d_model, init_kernel_size=25, max_kernel_size=50):
+    def __init__(self, input_dim, init_kernel_size=25, max_kernel_size=50):
         super(LearnableSeriesDecomp, self).__init__()
         logger.info("Initializing LearnableSeriesDecomp")
         
-        self.d_model = d_model
+        self.input_dim = input_dim
         self.max_kernel_size = max_kernel_size
         
         # Learnable trend extraction weights
         self.trend_weights = nn.Parameter(torch.ones(max_kernel_size) / max_kernel_size)
         
         # Adaptive kernel size predictor
+        # Note: This operates on input features (before embedding)
         self.kernel_predictor = nn.Sequential(
-            nn.Linear(d_model, d_model // 4),
+            nn.Linear(input_dim, max(input_dim // 2, 4)),  # Ensure minimum size
             nn.ReLU(),
-            nn.Linear(d_model // 4, 1),
+            nn.Linear(max(input_dim // 2, 4), 1),
             nn.Sigmoid()
         )
         
@@ -73,17 +74,26 @@ class LearnableSeriesDecomp(nn.Module):
             # Apply learnable convolution for trend extraction
             x_b = x[b:b+1].transpose(1, 2)  # [1, D, L]
             
-            # Padding for convolution
+            # Padding for convolution to maintain length
             padding = k // 2
             x_padded = F.pad(x_b, (padding, padding), mode='replicate')
             
             # Apply convolution with learnable weights
             trend_b = F.conv1d(
                 x_padded,
-                weights.view(1, 1, k).repeat(D, 1, 1),
-                groups=D,
+                weights.view(1, 1, k).repeat(self.input_dim, 1, 1),
+                groups=self.input_dim,
                 padding=0
             )
+            
+            # Ensure output length matches input length
+            if trend_b.size(2) != L:
+                # Adjust by cropping or padding
+                if trend_b.size(2) > L:
+                    trend_b = trend_b[:, :, :L]
+                else:
+                    pad_len = L - trend_b.size(2)
+                    trend_b = F.pad(trend_b, (0, pad_len), mode='replicate')
             
             trend_b = trend_b.transpose(1, 2)  # [1, L, D]
             seasonal_b = x[b:b+1] - trend_b
@@ -335,7 +345,7 @@ class EnhancedAutoformer(nn.Module):
         self.pred_len = configs.pred_len
 
         # Enhanced decomposition with learnable parameters
-        self.decomp = LearnableSeriesDecomp(configs.d_model)
+        self.decomp = LearnableSeriesDecomp(configs.c_out)  # Work on target features only
 
         # Embedding (same as original)
         self.enc_embedding = DataEmbedding_wo_pos(configs.enc_in, configs.d_model, 
@@ -440,11 +450,15 @@ class EnhancedAutoformer(nn.Module):
         """Enhanced forecasting with improved decomposition and correlation."""
         
         # Enhanced decomposition initialization
-        mean = torch.mean(x_enc, dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
-        zeros = torch.zeros([x_dec.shape[0], self.pred_len, x_dec.shape[2]], device=x_enc.device)
+        # Extract target features (first c_out columns) for decomposition
+        target_features = x_enc[:, :, :x_dec.shape[2]]
         
-        # Use enhanced decomposition
-        seasonal_init, trend_init = self.decomp(x_enc)
+        # Use enhanced decomposition on target features only
+        seasonal_init, trend_init = self.decomp(target_features)
+        
+        # Mean and zeros for target features
+        mean = torch.mean(target_features, dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
+        zeros = torch.zeros([x_dec.shape[0], self.pred_len, x_dec.shape[2]], device=x_enc.device)
         
         # Decoder input preparation
         trend_init = torch.cat([trend_init[:, -self.label_len:, :], mean], dim=1)
