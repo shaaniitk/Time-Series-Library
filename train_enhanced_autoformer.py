@@ -26,7 +26,7 @@ warnings.filterwarnings('ignore')
 
 # Imports
 from models.EnhancedAutoformer import Model as EnhancedAutoformer
-from utils.enhanced_losses import AdaptiveAutoformerLoss, CurriculumLossScheduler
+from utils.enhanced_losses import AdaptiveAutoformerLoss, CurriculumLossScheduler, create_enhanced_loss
 from data_provider.data_factory import data_provider
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric

@@ -25,6 +25,7 @@ from data_provider.data_loader import Dataset_Custom
 from torch.utils.data import DataLoader
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric
+from utils.enhanced_losses import create_enhanced_loss
 
 
 class ConfigurableAutoformerTrainer:
@@ -175,7 +176,14 @@ class ConfigurableAutoformerTrainer:
         
         # Setup optimizer and criterion
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
-        self.criterion = torch.nn.MSELoss()
+        
+        # Create mode-aware loss function
+        self.criterion = create_enhanced_loss(
+            model_type=self.model_type,
+            mode=self.args.features,
+            target_features=4,
+            loss_type='mse'
+        )
         
         # Early stopping
         checkpoint_dir = os.path.join(self.args.checkpoints, self.args.model_id)
@@ -208,21 +216,9 @@ class ConfigurableAutoformerTrainer:
             # Forward pass
             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             
-            # Handle different output modes
-            if self.args.features == 'M':
-                # M mode: predict all features
-                pred = outputs[:, -self.args.pred_len:, :]
-                true = batch_y[:, -self.args.pred_len:, :]
-            elif self.args.features == 'MS':
-                # MS mode: predict target features only
-                pred = outputs[:, -self.args.pred_len:, :4]  # First 4 features are targets
-                true = batch_y[:, -self.args.pred_len:, :4]
-            else:  # S mode
-                # S mode: predict target features only (input already filtered)
-                pred = outputs[:, -self.args.pred_len:, :]
-                true = batch_y[:, -self.args.pred_len:, :]
-            
-            loss = self.criterion(pred, true)
+            # Use mode-aware loss function - no manual slicing needed
+            loss = self.criterion(outputs[:, -self.args.pred_len:, :], 
+                                batch_y[:, -self.args.pred_len:, :])
             loss.backward()
             
             if hasattr(self.args, 'use_grad_clip') and self.args.use_grad_clip:
@@ -256,16 +252,9 @@ class ConfigurableAutoformerTrainer:
                 # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Handle different output modes  
-                if self.args.features == 'M':
-                    pred = outputs[:, -self.args.pred_len:, :].detach().cpu()
-                    true = batch_y[:, -self.args.pred_len:, :]
-                elif self.args.features == 'MS':
-                    pred = outputs[:, -self.args.pred_len:, :4].detach().cpu()  # First 4 features
-                    true = batch_y[:, -self.args.pred_len:, :4]
-                else:  # S mode
-                    pred = outputs[:, -self.args.pred_len:, :].detach().cpu()
-                    true = batch_y[:, -self.args.pred_len:, :]
+                # Get predictions and ground truth
+                pred = outputs[:, -self.args.pred_len:, :].detach().cpu()
+                true = batch_y[:, -self.args.pred_len:, :].detach().cpu()
                 
                 # Scale ground truth to match model outputs (validation data is unscaled)
                 if hasattr(self.val_data, 'target_scaler') and self.val_data.target_scaler is not None:
@@ -282,6 +271,7 @@ class ConfigurableAutoformerTrainer:
                         ).reshape(true_np.shape)
                     true = torch.from_numpy(true_scaled_np).float()
                 
+                # Use mode-aware loss function
                 loss = self.criterion(pred, true)
                 total_loss += loss.item()
         
@@ -310,16 +300,9 @@ class ConfigurableAutoformerTrainer:
                 # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Handle different output modes
-                if self.args.features == 'M':
-                    pred = outputs[:, -self.args.pred_len:, :].detach().cpu().numpy()
-                    true = batch_y[:, -self.args.pred_len:, :].detach().cpu().numpy()
-                elif self.args.features == 'MS':
-                    pred = outputs[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # First 4 features
-                    true = batch_y[:, -self.args.pred_len:, :4].detach().cpu().numpy()
-                else:  # S mode
-                    pred = outputs[:, -self.args.pred_len:, :].detach().cpu().numpy()
-                    true = batch_y[:, -self.args.pred_len:, :].detach().cpu().numpy()
+                # Get predictions and ground truth
+                pred = outputs[:, -self.args.pred_len:, :].detach().cpu().numpy()
+                true = batch_y[:, -self.args.pred_len:, :].detach().cpu().numpy()
                 
                 # Scale ground truth to match predictions
                 if hasattr(self.test_data, 'target_scaler') and self.test_data.target_scaler is not None:
@@ -331,6 +314,17 @@ class ConfigurableAutoformerTrainer:
                         true = self.test_data.target_scaler.transform(
                             true.reshape(-1, true.shape[-1])
                         ).reshape(true.shape)
+                
+                # Mode-aware loss function will handle feature slicing internally
+                # For metrics, we need to slice manually based on mode
+                if self.args.features == 'MS':
+                    # MS mode: Only evaluate on target features
+                    pred = pred[:, :, :4]
+                    true = true[:, :, :4]
+                elif self.args.features == 'S':
+                    # S mode: All features are targets (no slicing needed)
+                    pass
+                # M mode: Use all features (no slicing needed)
                 
                 preds.append(pred)
                 trues.append(true)

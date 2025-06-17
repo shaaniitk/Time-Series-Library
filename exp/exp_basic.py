@@ -3,7 +3,7 @@ import torch
 from models import Autoformer, Transformer, TimesNet, Nonstationary_Transformer, DLinear, FEDformer, \
     Informer, LightTS, Reformer, ETSformer, Pyraformer, PatchTST, MICN, Crossformer, FiLM, iTransformer, \
     Koopa, TiDE, FreTS, TimeMixer, TSMixer, SegRNN, MambaSimple, TemporalFusionTransformer, SCINet, PAttn, TimeXer, \
-    WPMixer, MultiPatchFormer
+    WPMixer, MultiPatchFormer, EnhancedAutoformer, BayesianEnhancedAutoformer, HierarchicalEnhancedAutoformer
 
 
 class Exp_Basic(object):
@@ -12,6 +12,9 @@ class Exp_Basic(object):
         self.model_dict = {
             'TimesNet': TimesNet,
             'Autoformer': Autoformer,
+            'EnhancedAutoformer': EnhancedAutoformer,
+            'BayesianEnhancedAutoformer': BayesianEnhancedAutoformer,
+            'HierarchicalEnhancedAutoformer': HierarchicalEnhancedAutoformer,
             'Transformer': Transformer,
             'Nonstationary_Transformer': Nonstationary_Transformer,
             'DLinear': DLinear,

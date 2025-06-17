@@ -343,6 +343,12 @@ class EnhancedAutoformer(nn.Module):
         self.seq_len = configs.seq_len
         self.label_len = configs.label_len
         self.pred_len = configs.pred_len
+        
+        # Store model dimensions for dynamic use
+        self.enc_in = configs.enc_in
+        self.dec_in = configs.dec_in
+        self.c_out = configs.c_out
+        self.d_model = configs.d_model
 
         # Enhanced decomposition with learnable parameters
         self.decomp = LearnableSeriesDecomp(configs.c_out)  # Work on target features only
@@ -451,14 +457,15 @@ class EnhancedAutoformer(nn.Module):
         
         # Enhanced decomposition initialization
         # Extract target features (first c_out columns) for decomposition
-        target_features = x_enc[:, :, :x_dec.shape[2]]
+        # For MS mode: x_enc has all features, but we only decompose the first c_out (targets)
+        target_features = x_enc[:, :, :self.c_out]
         
         # Use enhanced decomposition on target features only
         seasonal_init, trend_init = self.decomp(target_features)
         
         # Mean and zeros for target features
         mean = torch.mean(target_features, dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
-        zeros = torch.zeros([x_dec.shape[0], self.pred_len, x_dec.shape[2]], device=x_enc.device)
+        zeros = torch.zeros([x_dec.shape[0], self.pred_len, self.c_out], device=x_enc.device)
         
         # Decoder input preparation
         trend_init = torch.cat([trend_init[:, -self.label_len:, :], mean], dim=1)
