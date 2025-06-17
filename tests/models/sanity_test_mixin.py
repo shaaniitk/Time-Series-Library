@@ -10,16 +10,28 @@ from sklearn.preprocessing import StandardScaler
 from utils.logger import logger
 
 class SanityTestMixin:
-    def run_sanity_test(self, ModelClass, device='cpu', epochs=10):
+    def run_sanity_test(self, ModelClass, device='cpu', epochs=10, model_config=None):
         logger.info(f"Running sanity test for {ModelClass.__name__}")
           # Parameters
         seq_len = 100
         pred_len = 50
         n_points = 2000  # Increased for better train/val split
         
-        d_model = 16
-        e_layers = 2
-        d_ff = 32
+        # Model configuration - adjust based on model type for fair comparison
+        if model_config:
+            d_model = model_config.get('d_model', 16)
+            e_layers = model_config.get('e_layers', 2)
+            d_layers = model_config.get('d_layers', 1)
+            d_ff = model_config.get('d_ff', 32)
+            n_heads = model_config.get('n_heads', 2)
+        else:
+            # Default small configuration
+            d_model = 16
+            e_layers = 2
+            d_layers = 1
+            d_ff = 32
+            n_heads = 2
+            
         enc_in = 6  # All 6 features (3 covariates + 3 targets) for multivariate mode
         c_out = 6   # Output all 6 features to match input dimension
         num_kernels = 6
@@ -96,8 +108,10 @@ class SanityTestMixin:
         args.pred_len = pred_len
         args.d_model = d_model
         args.e_layers = e_layers
+        args.d_layers = d_layers
         args.d_ff = d_ff
         args.enc_in = enc_in  # All 6 features: 3 covariates + 3 targets in 'M' mode
+        args.dec_in = enc_in  # Same as enc_in for consistency
         args.c_out = c_out   # Output all 6 features to match input dimension
         args.embed = 'timeF'
         args.freq = 'h'
@@ -117,6 +131,13 @@ class SanityTestMixin:
         args.use_amp = False  # Disable AMP for simplicity
         args.use_multi_gpu = False  # Disable multi-GPU for simplicity
         args.scale = True  # Enable data scaling (default behavior)
+        
+        # Model-specific parameters (for compatibility with different models)
+        args.n_heads = n_heads  # Dynamic based on model requirements
+        args.factor = 1  # Attention factor
+        args.activation = 'gelu'  # Activation function
+        args.output_attention = False  # Output attention weights
+        args.moving_avg = 25  # For Autoformer decomposition
         
         # Configurable split parameters for data loader
         args.validation_length = 150  # v parameter
