@@ -10,16 +10,28 @@ from sklearn.preprocessing import StandardScaler
 from utils.logger import logger
 
 class SanityTestMixin:
-    def run_sanity_test(self, ModelClass, device='cpu', epochs=10):
+    def run_sanity_test(self, ModelClass, device='cpu', epochs=10, model_config=None):
         logger.info(f"Running sanity test for {ModelClass.__name__}")
           # Parameters
         seq_len = 100
         pred_len = 50
         n_points = 2000  # Increased for better train/val split
         
-        d_model = 16
-        e_layers = 2
-        d_ff = 32
+        # Model configuration - adjust based on model type for fair comparison
+        if model_config:
+            d_model = model_config.get('d_model', 16)
+            e_layers = model_config.get('e_layers', 2)
+            d_layers = model_config.get('d_layers', 1)
+            d_ff = model_config.get('d_ff', 32)
+            n_heads = model_config.get('n_heads', 2)
+        else:
+            # Default small configuration
+            d_model = 16
+            e_layers = 2
+            d_layers = 1
+            d_ff = 32
+            n_heads = 2
+            
         enc_in = 6  # All 6 features (3 covariates + 3 targets) for multivariate mode
         c_out = 6   # Output all 6 features to match input dimension
         num_kernels = 6
@@ -96,8 +108,10 @@ class SanityTestMixin:
         args.pred_len = pred_len
         args.d_model = d_model
         args.e_layers = e_layers
+        args.d_layers = d_layers
         args.d_ff = d_ff
         args.enc_in = enc_in  # All 6 features: 3 covariates + 3 targets in 'M' mode
+        args.dec_in = enc_in  # Same as enc_in for consistency
         args.c_out = c_out   # Output all 6 features to match input dimension
         args.embed = 'timeF'
         args.freq = 'h'
@@ -117,6 +131,13 @@ class SanityTestMixin:
         args.use_amp = False  # Disable AMP for simplicity
         args.use_multi_gpu = False  # Disable multi-GPU for simplicity
         args.scale = True  # Enable data scaling (default behavior)
+        
+        # Model-specific parameters (for compatibility with different models)
+        args.n_heads = n_heads  # Dynamic based on model requirements
+        args.factor = 1  # Attention factor
+        args.activation = 'gelu'  # Activation function
+        args.output_attention = False  # Output attention weights
+        args.moving_avg = 25  # For Autoformer decomposition
         
         # Configurable split parameters for data loader
         args.validation_length = 150  # v parameter
@@ -189,20 +210,50 @@ class SanityTestMixin:
                     
                     # Also compute validation loss on original scale
                     try:
-                        # Inverse transform both prediction and true values
-                        pred_orig = val_dataset.scaler.inverse_transform(y_pred.cpu().numpy().reshape(-1, 3))
-                        true_orig = val_dataset.scaler.inverse_transform(y_true.cpu().numpy().reshape(-1, 3))
-                        val_loss_orig = np.mean((pred_orig - true_orig) ** 2)
+                        # FIX: Proper inverse transform handling
+                        batch_size, pred_len, n_features = y_pred.shape
+                        
+                        # Reshape properly for inverse transform: [batch_size * pred_len, n_features]
+                        pred_reshaped = y_pred.cpu().numpy().reshape(-1, n_features)
+                        true_reshaped = y_true.cpu().numpy().reshape(-1, n_features)
+                        
+                        # Apply inverse transform
+                        pred_orig = val_dataset.inverse_transform(pred_reshaped)
+                        true_orig = val_dataset.inverse_transform(true_reshaped)
+                        
+                        # Reshape back: [batch_size, pred_len, n_features]
+                        pred_orig = pred_orig.reshape(batch_size, pred_len, n_features)
+                        true_orig = true_orig.reshape(batch_size, pred_len, n_features)
+                        
+                        # FIX: Compute MSE only on target features (last 3 if 6 features, all if 3)
+                        if n_features == 6:  # Multivariate case: 3 covariates + 3 targets
+                            target_pred = pred_orig[:, :, -3:]  # Last 3 features are targets
+                            target_true = true_orig[:, :, -3:]
+                        else:  # All features are targets
+                            target_pred = pred_orig
+                            target_true = true_orig
+                            
+                        val_loss_orig = np.mean((target_pred - target_true) ** 2)
                         val_losses_orig.append(val_loss_orig)
-                    except:
-                        val_losses_orig.append(val_loss_scaled)
+                        
+                    except Exception as e:
+                        logger.warning(f"Could not compute original scale validation loss: {e}")
+                        # FIX: Don't silently use scaled loss - use NaN to indicate failure
+                        val_losses_orig.append(np.nan)
             
             # Calculate average losses
             avg_train_loss = np.mean(train_losses)
             avg_val_loss = np.mean(val_losses) if val_losses else float('inf')
-            avg_val_loss_orig = np.mean(val_losses_orig) if val_losses_orig else float('inf')
             
-            logger.info(f"Epoch {epoch+1}/{epochs}, Train MSE: {avg_train_loss:.6f}, Val MSE (scaled): {avg_val_loss:.6f}, Val MSE (original): {avg_val_loss_orig:.6f}")
+            # FIX: Handle NaN values properly for original scale validation loss
+            valid_val_losses_orig = [loss for loss in val_losses_orig if not np.isnan(loss)]
+            avg_val_loss_orig = np.mean(valid_val_losses_orig) if valid_val_losses_orig else np.nan
+            
+            # Display losses with proper NaN handling
+            if np.isnan(avg_val_loss_orig):
+                logger.info(f"Epoch {epoch+1}/{epochs}, Train MSE: {avg_train_loss:.6f}, Val MSE (scaled): {avg_val_loss:.6f}, Val MSE (original): N/A")
+            else:
+                logger.info(f"Epoch {epoch+1}/{epochs}, Train MSE: {avg_train_loss:.6f}, Val MSE (scaled): {avg_val_loss:.6f}, Val MSE (original): {avg_val_loss_orig:.6f}")
             
             # Early stopping if either loss gets very low (converged) - use scaled loss for thresholds
             if avg_train_loss < 0.01:
@@ -213,7 +264,7 @@ class SanityTestMixin:
                 logger.info(f"Early stopping at epoch {epoch+1}, Val MSE (scaled) {avg_val_loss:.6f} < 0.01 (converged)")
                 break
             
-            # Early stopping based on validation loss improvement - use scaled loss            if avg_val_loss < best_val_loss:
+            # FIX: Early stopping based on validation loss improvement - use scaled loss consistently            if avg_val_loss < best_val_loss:
                 best_val_loss = avg_val_loss
                 patience_counter = 0
                 logger.info(f"New best validation loss (scaled): {best_val_loss:.6f}")
@@ -261,20 +312,49 @@ class SanityTestMixin:
                 
                 # Also compute test loss on original scale
                 try:
-                    # Inverse transform both prediction and true values
-                    pred_orig = test_dataset.scaler.inverse_transform(y_pred.cpu().numpy().reshape(-1, 6))
-                    true_orig = test_dataset.scaler.inverse_transform(y_true.cpu().numpy().reshape(-1, 6))
-                    # Only compare the target features (last 3 columns)
-                    test_loss_orig = np.mean((pred_orig[:, -3:] - true_orig[:, -3:]) ** 2)
+                    # FIX: Proper inverse transform handling
+                    batch_size, pred_len, n_features = y_pred.shape
+                    
+                    # Reshape properly for inverse transform: [batch_size * pred_len, n_features]
+                    pred_reshaped = y_pred.cpu().numpy().reshape(-1, n_features)
+                    true_reshaped = y_true.cpu().numpy().reshape(-1, n_features)
+                    
+                    # Apply inverse transform
+                    pred_orig = test_dataset.inverse_transform(pred_reshaped)
+                    true_orig = test_dataset.inverse_transform(true_reshaped)
+                    
+                    # Reshape back: [batch_size, pred_len, n_features]
+                    pred_orig = pred_orig.reshape(batch_size, pred_len, n_features)
+                    true_orig = true_orig.reshape(batch_size, pred_len, n_features)
+                    
+                    # FIX: Compute MSE only on target features (last 3 if 6 features, all if 3)
+                    if n_features == 6:  # Multivariate case: 3 covariates + 3 targets
+                        target_pred = pred_orig[:, :, -3:]  # Last 3 features are targets
+                        target_true = true_orig[:, :, -3:]
+                    else:  # All features are targets
+                        target_pred = pred_orig
+                        target_true = true_orig
+                        
+                    test_loss_orig = np.mean((target_pred - target_true) ** 2)
                     test_losses_orig.append(test_loss_orig)
-                except:
-                    test_losses_orig.append(test_loss_scaled)
+                    
+                except Exception as e:
+                    logger.warning(f"Could not compute original scale test loss: {e}")
+                    # FIX: Don't silently use scaled loss - use NaN to indicate failure
+                    test_losses_orig.append(np.nan)
         
         # Calculate average test losses
         avg_test_loss = np.mean(test_losses) if test_losses else float('inf')
-        avg_test_loss_orig = np.mean(test_losses_orig) if test_losses_orig else float('inf')
         
-        logger.info(f"Test MSE (scaled): {avg_test_loss:.6f}, Test MSE (original): {avg_test_loss_orig:.6f}")
+        # FIX: Handle NaN values properly for original scale test loss
+        valid_test_losses_orig = [loss for loss in test_losses_orig if not np.isnan(loss)]
+        avg_test_loss_orig = np.mean(valid_test_losses_orig) if valid_test_losses_orig else np.nan
+        
+        # Display test losses with proper NaN handling
+        if np.isnan(avg_test_loss_orig):
+            logger.info(f"Test MSE (scaled): {avg_test_loss:.6f}, Test MSE (original): N/A")
+        else:
+            logger.info(f"Test MSE (scaled): {avg_test_loss:.6f}, Test MSE (original): {avg_test_loss_orig:.6f}")
           # For plotting and return values, get the first batch predictions
         with torch.no_grad():
             for batch in test_loader:
@@ -296,17 +376,34 @@ class SanityTestMixin:
         
         # Try to get original scale data for plotting
         try:
-            # Use the test dataset scaler to inverse transform
-            forecast_orig = test_dataset.inverse_transform(forecast_plot.reshape(-1, forecast_plot.shape[-1]))
-            actual_orig = test_dataset.inverse_transform(actual_plot.reshape(-1, actual_plot.shape[-1]))
-            forecast_plot = forecast_orig.reshape(forecast_plot.shape)
-            actual_plot = actual_orig.reshape(actual_plot.shape)
+            # FIX: Proper inverse transform for plotting
+            pred_len, n_features = forecast_plot.shape
+            
+            # Reshape for inverse transform
+            forecast_reshaped = forecast_plot.reshape(-1, n_features)
+            actual_reshaped = actual_plot.reshape(-1, n_features)
+            
+            # Apply inverse transform
+            forecast_orig = test_dataset.inverse_transform(forecast_reshaped)
+            actual_orig = test_dataset.inverse_transform(actual_reshaped)
+            
+            # Reshape back
+            forecast_plot = forecast_orig.reshape(pred_len, n_features)
+            actual_plot = actual_orig.reshape(pred_len, n_features)
+            
             logger.info("Successfully inverse transformed data to original scale for plotting")
         except Exception as e:
             logger.warning(f"Could not inverse transform data: {e}. Using scaled data for plotting")
-          # Calculate final MSE for the test
-        mse_forecast = np.mean((forecast_plot - actual_plot) ** 2)
-        logger.info(f"Final test MSE: {mse_forecast:.6f}")
+          # FIX: Calculate final MSE for the test - use only target features
+        if forecast_plot.shape[-1] == 6:  # Multivariate case: 3 covariates + 3 targets
+            target_forecast = forecast_plot[:, -3:]  # Last 3 features are targets
+            target_actual = actual_plot[:, -3:]
+        else:  # All features are targets
+            target_forecast = forecast_plot
+            target_actual = actual_plot
+            
+        mse_forecast = np.mean((target_forecast - target_actual) ** 2)
+        logger.info(f"Final test MSE (targets only): {mse_forecast:.6f}")
         
         # Plot comparison for targets (simplified approach using the data we already have)
         plot_len = min(10, pred_len)

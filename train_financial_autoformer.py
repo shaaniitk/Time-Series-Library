@@ -113,8 +113,10 @@ class FinancialAutoformerTrainer:
         self.model.train()
         total_loss = 0.0
         num_batches = 0
+        epoch_start_time = time.time()
         
-        for batch_x, batch_y, batch_x_mark, batch_y_mark in self.train_loader:
+        for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(self.train_loader):
+            batch_start_time = time.time()
             self.optimizer.zero_grad()
             
             # Move to device
@@ -123,16 +125,24 @@ class FinancialAutoformerTrainer:
             batch_x_mark = batch_x_mark.float().to(self.device)
             batch_y_mark = batch_y_mark.float().to(self.device)
             
-            # Autoformer decoder input - uses standard approach, decomposition is internal
-            dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
-            dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+            # Autoformer decoder input - PROPER future covariate handling
+            # Historical period: real targets + real covariates
+            dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
+            
+            # Future period: zero targets + REAL future covariates (like TimesNet!)
+            future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)
+            future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)
+            dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
+            
+            # Combine historical + future for decoder input
+            dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
             
             # Forward pass - Autoformer handles decomposition internally
             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             
             # Calculate loss only on target features (first 4 columns: OHLC)
-            # Since c_out=118, extract first 4 columns for OHLC targets
-            target_outputs = outputs[:, :, :4]  # First 4 features are OHLC targets
+            # Since c_out=118, extract first 4 columns for OHLC targets from LAST pred_len steps
+            target_outputs = outputs[:, -self.args.pred_len:, :4]  # OHLC targets (LAST pred_len steps)
             target_y = batch_y[:, -self.args.pred_len:, :4]  # OHLC ground truth
             loss = self.criterion(target_outputs, target_y)
             
@@ -142,6 +152,19 @@ class FinancialAutoformerTrainer:
             
             total_loss += loss.item()
             num_batches += 1
+            
+            # Progress tracking
+            batch_time = time.time() - batch_start_time
+            total_batches = len(self.train_loader)
+            if i % 10 == 0 or i == total_batches - 1:
+                progress_pct = (i + 1) / total_batches * 100
+                avg_loss_so_far = total_loss / num_batches
+                elapsed_time = time.time() - epoch_start_time
+                estimated_total_time = elapsed_time / (i + 1) * total_batches
+                remaining_time = estimated_total_time - elapsed_time
+                print(f"  Batch {i+1:3d}/{total_batches} ({progress_pct:5.1f}%) - "
+                      f"Loss: {loss.item():.6f} (Avg: {avg_loss_so_far:.6f}) - "
+                      f"Batch Time: {batch_time:.2f}s - Remaining: {remaining_time:.1f}s")
         
         avg_loss = total_loss / num_batches
         return avg_loss
@@ -160,15 +183,23 @@ class FinancialAutoformerTrainer:
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
                 
-                # Autoformer decoder input - standard approach
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                # Autoformer decoder input - with future covariates (like training & TimesNet)
+                # Historical period: real targets + real historical covariates  
+                dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
+                
+                # Future period: zero targets + REAL future covariates (like TimesNet!)
+                future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)
+                future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)
+                dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
+                
+                # Combine historical + future for decoder input
+                dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
                 
                 # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
                 # Get predictions and ground truth (extract first 4 columns for OHLC)
-                target_outputs = outputs[:, :, :4]  # SCALED OHLC predictions
+                target_outputs = outputs[:, -self.args.pred_len:, :4]  # SCALED OHLC predictions (LAST pred_len steps)
                 target_y_unscaled = batch_y[:, -self.args.pred_len:, :4]  # UNSCALED ground truth
                 
                 # Scale the ground truth to match model outputs
@@ -202,15 +233,23 @@ class FinancialAutoformerTrainer:
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
                 
-                # Autoformer decoder input - standard approach
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float().to(self.device)
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                # Autoformer decoder input - with future covariates (like training & TimesNet)
+                # Historical period: real targets + real historical covariates  
+                dec_inp_historical = batch_y[:, :self.args.label_len, :].float().to(self.device)
+                
+                # Future period: zero targets + REAL future covariates (like TimesNet!)
+                future_targets_zero = torch.zeros_like(batch_y[:, -self.args.pred_len:, :4]).float().to(self.device)
+                future_covariates = batch_y[:, -self.args.pred_len:, 4:].float().to(self.device)
+                dec_inp_future = torch.cat([future_targets_zero, future_covariates], dim=-1)
+                
+                # Combine historical + future for decoder input
+                dec_inp = torch.cat([dec_inp_historical, dec_inp_future], dim=1).float().to(self.device)
                 
                 # Forward pass
                 outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
                 # Get predictions and ground truth (extract first 4 columns for OHLC)
-                pred_scaled = outputs[:, :, :4].detach().cpu().numpy()  # OHLC predictions (scaled)
+                pred_scaled = outputs[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # OHLC predictions (LAST pred_len steps)
                 true_unscaled = batch_y[:, -self.args.pred_len:, :4].detach().cpu().numpy()  # UNSCALED ground truth
                 
                 # Scale the ground truth for consistent loss calculation
@@ -249,18 +288,27 @@ class FinancialAutoformerTrainer:
         os.makedirs(checkpoint_dir, exist_ok=True)
         
         for epoch in range(self.args.train_epochs):
+            print(f"\n=== Epoch {epoch+1}/{self.args.train_epochs} ===")
+            logger.info(f"Starting Epoch {epoch+1}/{self.args.train_epochs}")
             start_time = time.time()
             
             # Training
+            print("Running training...")
             train_loss = self.train_epoch()
             train_losses.append(train_loss)
             
             # Validation
+            print("Running validation...")
+            val_start_time = time.time()
             val_loss = self.validate_epoch()
             val_losses.append(val_loss)
+            val_time = time.time() - val_start_time
             
             epoch_time = time.time() - start_time
             
+            # Progress summary
+            print(f"✓ Epoch {epoch+1} Complete - Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
+            print(f"  Total Time: {epoch_time:.2f}s (Val: {val_time:.2f}s)")
             logger.info(f"Epoch {epoch+1}/{self.args.train_epochs} - "
                        f"Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}, "
                        f"Time: {epoch_time:.2f}s")
@@ -268,8 +316,14 @@ class FinancialAutoformerTrainer:
             # Early stopping check
             self.early_stopping(val_loss, self.model, checkpoint_dir)
             if self.early_stopping.early_stop:
+                print(f"⚠️ Early stopping triggered at epoch {epoch+1}")
                 logger.info("Early stopping triggered")
                 break
+            
+            # Save best model indicator
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                print(f"🎯 New best validation loss: {val_loss:.6f}")
             
             # Adjust learning rate
             adjust_learning_rate(self.optimizer, epoch + 1, self.args)
@@ -313,23 +367,23 @@ def get_args():
     parser.add_argument('--target', type=str, default='log_Close', help='target feature')
     parser.add_argument('--freq', type=str, default='b', help='freq for time features encoding')
     
-    # Model config
-    parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
-    parser.add_argument('--label_len', type=int, default=48, help='start token length')
-    parser.add_argument('--pred_len', type=int, default=24, help='prediction sequence length')
-    parser.add_argument('--val_len', type=int, default=24, help='validation length')
-    parser.add_argument('--test_len', type=int, default=24, help='test length')
-    parser.add_argument('--prod_len', type=int, default=5, help='production prediction length')
+    # Model config - EXTENDED SEQUENCES
+    parser.add_argument('--seq_len', type=int, default=200, help='input sequence length (HEAVY: 2x longer)')
+    parser.add_argument('--label_len', type=int, default=50, help='start token length (HEAVY: extended)')
+    parser.add_argument('--pred_len', type=int, default=50, help='prediction sequence length (HEAVY: 2x longer)')
+    parser.add_argument('--val_len', type=int, default=50, help='validation length')
+    parser.add_argument('--test_len', type=int, default=50, help='test length')
+    parser.add_argument('--prod_len', type=int, default=10, help='production prediction length')
     
-    # Autoformer specific config
+    # Autoformer specific config - VERY HEAVY CONFIGURATION 🔥
     parser.add_argument('--enc_in', type=int, default=118, help='encoder input size')
     parser.add_argument('--dec_in', type=int, default=118, help='decoder input size')
     parser.add_argument('--c_out', type=int, default=118, help='output size (set to 118 for multivariate mode)')
-    parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
-    parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
-    parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
-    parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-    parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
+    parser.add_argument('--d_model', type=int, default=768, help='dimension of model (HEAVY: 1.5x bigger)')
+    parser.add_argument('--n_heads', type=int, default=12, help='num of heads (HEAVY: 1.5x more)')
+    parser.add_argument('--e_layers', type=int, default=4, help='num of encoder layers (HEAVY: 2x more)')
+    parser.add_argument('--d_layers', type=int, default=2, help='num of decoder layers (HEAVY: 2x more)')
+    parser.add_argument('--d_ff', type=int, default=3072, help='dimension of fcn (HEAVY: 1.5x bigger)')
     parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
     parser.add_argument('--factor', type=int, default=1, help='attn factor')
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
