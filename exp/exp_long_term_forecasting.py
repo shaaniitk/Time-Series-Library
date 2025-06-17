@@ -94,7 +94,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
                 batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float()
+                # batch_y is kept on CPU for now as its target part might be unscaled
+                # and needs processing before moving to device for loss calculation.
+                # batch_y = batch_y.float() 
 
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
@@ -102,22 +104,50 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                
                 # encoder - decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                
+                model_outputs_scaled = outputs[:, -self.args.pred_len:, :self.args.c_out]
+                
+                # Prepare ground_truth_final_scaled
+                # Start with the relevant segment of batch_y. Covariates here are already scaled by Dataset_Custom.
+                # Targets in batch_y (for val/test from Dataset_Custom) are unscaled.
+                ground_truth_segment = batch_y[:, -self.args.pred_len:, :self.args.c_out].clone().detach()
+                ground_truth_final_scaled = ground_truth_segment.to(self.device) # Move to device after potential modification
 
-                pred = outputs.detach().cpu()
-                true = batch_y.detach().cpu()
+                # If using Dataset_Custom, its target_scaler was fit on training targets.
+                # Validation batch_y has unscaled targets. We need to scale them.
+                if hasattr(vali_data, 'target_scaler') and vali_data.scale and vali_data.target_scaler is not None:
+                    num_features_target_scaler_knows = vali_data.target_scaler.n_features_in_
+                    
+                    # Number of target features within c_out that need explicit scaling
+                    num_targets_to_explicitly_scale = min(self.args.c_out, num_features_target_scaler_knows)
 
-                loss = criterion(pred, true)
+                    if num_targets_to_explicitly_scale > 0:
+                        # Extract the raw, unscaled target features from batch_y that the scaler was fit on
+                        # These are assumed to be the first 'num_features_target_scaler_knows' columns
+                        unscaled_targets_for_scaler_np = batch_y[:, -self.args.pred_len:, :num_features_target_scaler_knows].numpy()
+                        
+                        # Scale these features
+                        scaled_targets_full_set_np = vali_data.target_scaler.transform(
+                            unscaled_targets_for_scaler_np.reshape(-1, num_features_target_scaler_knows)
+                        ).reshape(unscaled_targets_for_scaler_np.shape)
+                        
+                        # Update the target portion in ground_truth_final_scaled
+                        # Only update the part that corresponds to the model's output (up to num_targets_to_explicitly_scale)
+                        ground_truth_final_scaled[:, :, :num_targets_to_explicitly_scale] = torch.from_numpy(
+                            scaled_targets_full_set_np[:, :, :num_targets_to_explicitly_scale]
+                        ).float().to(self.device)
+                # Else: assume batch_y is already appropriately scaled (e.g., ETT datasets or scale=False)
 
-                total_loss.append(loss)
+                loss = criterion(model_outputs_scaled, ground_truth_final_scaled)
+
+                total_loss.append(loss.item())
         total_loss = np.average(total_loss)
         self.model.train()
         return total_loss
@@ -153,7 +183,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 iter_count += 1
                 model_optim.zero_grad()
                 batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float().to(self.device)
+                batch_y = batch_y.float().to(self.device) # For training, Dataset_Custom provides scaled targets
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
@@ -165,19 +195,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                        f_dim = -1 if self.args.features == 'MS' else 0
-                        outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                        batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                        loss = criterion(outputs, batch_y)
+                        # For training, batch_y is already scaled by Dataset_Custom
+                        outputs = outputs[:, -self.args.pred_len:, :self.args.c_out]
+                        batch_y_targets = batch_y[:, -self.args.pred_len:, :self.args.c_out].to(self.device)
+                        loss = criterion(outputs, batch_y_targets)
                         train_loss.append(loss.item())
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                    f_dim = -1 if self.args.features == 'MS' else 0
-                    outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                    batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                    loss = criterion(outputs, batch_y)
+                    # For training, batch_y is already scaled by Dataset_Custom
+                    outputs = outputs[:, -self.args.pred_len:, :self.args.c_out]
+                    batch_y_targets = batch_y[:, -self.args.pred_len:, :self.args.c_out].to(self.device)
+                    loss = criterion(outputs, batch_y_targets)
                     train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -199,7 +227,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
-            test_loss = self.vali(test_data, test_loader, criterion)
+            test_loss = self.vali(test_data, test_loader, criterion) # Using vali for test as placeholder
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
@@ -222,8 +250,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
-        preds = []
-        trues = []
+        preds_scaled_np = []
+        trues_scaled_np = []
+        
+        # For visualization, store original unscaled targets if possible
+        trues_original_for_viz_np = [] 
+
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -232,7 +264,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
                 batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float().to(self.device)
+                # batch_y kept on CPU for now
+                # batch_y = batch_y.float() 
 
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
@@ -240,6 +273,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                
                 # encoder - decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
@@ -247,73 +281,107 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
-                f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, :]
-                batch_y = batch_y[:, -self.args.pred_len:, :].to(self.device)
-                outputs = outputs.detach().cpu().numpy()
-                batch_y = batch_y.detach().cpu().numpy()
-                if test_data.scale and self.args.inverse:
-                    shape = batch_y.shape
-                    if outputs.shape[-1] != batch_y.shape[-1]:
-                        outputs = np.tile(outputs, [1, 1, int(batch_y.shape[-1] / outputs.shape[-1])])
-                    outputs = test_data.inverse_transform(outputs.reshape(shape[0] * shape[1], -1)).reshape(shape)
-                    batch_y = test_data.inverse_transform(batch_y.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                model_outputs_scaled = outputs[:, -self.args.pred_len:, :self.args.c_out]
+                
+                # Prepare ground_truth_final_scaled for metrics (similar to vali)
+                ground_truth_segment = batch_y[:, -self.args.pred_len:, :self.args.c_out].clone().detach()
+                ground_truth_final_scaled = ground_truth_segment.to(self.device)
 
-                outputs = outputs[:, :, f_dim:]
-                batch_y = batch_y[:, :, f_dim:]
+                # Store original unscaled targets for visualization (first c_out features)
+                if hasattr(test_data, 'target_scaler') and test_data.scale and test_data.target_scaler is not None:
+                    num_features_target_scaler_knows = test_data.target_scaler.n_features_in_
+                    num_targets_to_explicitly_scale = min(self.args.c_out, num_features_target_scaler_knows)
+                    
+                    if num_targets_to_explicitly_scale > 0:
+                        unscaled_targets_for_scaler_np = batch_y[:, -self.args.pred_len:, :num_features_target_scaler_knows].numpy()
+                        trues_original_for_viz_np.append(unscaled_targets_for_scaler_np[:,:,:num_targets_to_explicitly_scale]) # Store relevant part
 
-                pred = outputs
-                true = batch_y
+                        scaled_targets_full_set_np = test_data.target_scaler.transform(
+                            unscaled_targets_for_scaler_np.reshape(-1, num_features_target_scaler_knows)
+                        ).reshape(unscaled_targets_for_scaler_np.shape)
+                        
+                        ground_truth_final_scaled[:, :, :num_targets_to_explicitly_scale] = torch.from_numpy(
+                            scaled_targets_full_set_np[:, :, :num_targets_to_explicitly_scale]
+                        ).float().to(self.device)
+                else: # If not Dataset_Custom or no scaling, assume batch_y is already what we need
+                    trues_original_for_viz_np.append(ground_truth_segment.numpy())
 
-                preds.append(pred)
-                trues.append(true)
-                if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
-                    if test_data.scale and self.args.inverse:
-                        shape = input.shape
-                        input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
 
-        preds = np.concatenate(preds, axis=0)
-        trues = np.concatenate(trues, axis=0)
-        print('test shape:', preds.shape, trues.shape)
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-        print('test shape:', preds.shape, trues.shape)
+                pred_np_batch = model_outputs_scaled.detach().cpu().numpy()
+                true_np_batch = ground_truth_final_scaled.detach().cpu().numpy()
+                
+                preds_scaled_np.append(pred_np_batch)
+                trues_scaled_np.append(true_np_batch)
+
+                if i % 20 == 0 and self.args.c_out > 0: # Visualization part
+                    input_np = batch_x.detach().cpu().numpy()
+                    
+                    # For visualization, we want to show data in its original scale if possible
+                    # pred_to_plot: model's output, needs inverse_transform_targets
+                    # true_to_plot: original unscaled targets from batch_y
+                    
+                    pred_for_viz = pred_np_batch[0, :, :] # First item in batch, all c_out features
+                    true_for_viz_original = trues_original_for_viz_np[-1][0, :, :] # Corresponding original true values
+
+                    if hasattr(test_data, 'inverse_transform_targets') and test_data.scale:
+                        # Inverse transform only the target portion of predictions
+                        # Assuming target_scaler was fit on num_features_target_scaler_knows features
+                        # and these are the first ones in c_out.
+                        num_pred_targets_to_inv_transform = min(pred_for_viz.shape[-1], num_features_target_scaler_knows)
+                        
+                        pred_target_part_scaled = pred_for_viz[:, :num_pred_targets_to_inv_transform]
+                        pred_target_part_original = test_data.inverse_transform_targets(pred_target_part_scaled)
+                        
+                        # For input, inverse transform its target part
+                        input_target_part_unscaled = test_data.inverse_transform_targets(input_np[0, :, :num_features_target_scaler_knows])
+                        
+                        # Visualize the first target feature
+                        gt_plot = np.concatenate((input_target_part_unscaled[:, 0], true_for_viz_original[:, 0]), axis=0)
+                        pd_plot = np.concatenate((input_target_part_unscaled[:, 0], pred_target_part_original[:, 0]), axis=0)
+                        visual(gt_plot, pd_plot, os.path.join(folder_path, str(i) + '.pdf'))
+                    else: # If no inverse_transform_targets or not scaled, plot as is (likely scaled)
+                        gt_plot = np.concatenate((input_np[0, :, 0], true_np_batch[0, :, 0]), axis=0)
+                        pd_plot = np.concatenate((input_np[0, :, 0], pred_np_batch[0, :, 0]), axis=0)
+                        visual(gt_plot, pd_plot, os.path.join(folder_path, str(i) + '_scaled.pdf'))
+
+
+        preds = np.concatenate(preds_scaled_np, axis=0)
+        trues = np.concatenate(trues_scaled_np, axis=0)
+        print('test shape (scaled for metrics):', preds.shape, trues.shape)
+        # preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1]) # Already in correct shape
+        # trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
 
         # result save
-        folder_path = './results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
+        folder_path_results = './results/' + setting + '/' # Changed from folder_path to avoid conflict
+        if not os.path.exists(folder_path_results):
+            os.makedirs(folder_path_results)
 
-        # dtw calculation
-        if self.args.use_dtw:
+        # dtw calculation (if enabled)
+        dtw_val = 'Not calculated'
+        if getattr(self.args, 'use_dtw', False) and preds.shape[-1] == 1: # DTW typically for univariate
             dtw_list = []
             manhattan_distance = lambda x, y: np.abs(x - y)
             for i in range(preds.shape[0]):
-                x = preds[i].reshape(-1, 1)
-                y = trues[i].reshape(-1, 1)
+                x_dtw = preds[i] # Already [pred_len, 1] or similar
+                y_dtw = trues[i]
                 if i % 100 == 0:
                     print("calculating dtw iter:", i)
-                d, _, _, _ = accelerated_dtw(x, y, dist=manhattan_distance)
+                d, _, _, _ = accelerated_dtw(x_dtw, y_dtw, dist=manhattan_distance)
                 dtw_list.append(d)
-            dtw = np.array(dtw_list).mean()
-        else:
-            dtw = 'Not calculated'
+            dtw_val = np.array(dtw_list).mean()
+        
+        mae, mse, rmse, mape, mspe = metric(preds, trues) # Metrics on scaled data
+        print('Metrics (on scaled data): mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw_val))
+        
+        with open(os.path.join(folder_path_results, "result_long_term_forecast.txt"), 'a') as f:
+            f.write(setting + "  \n")
+            f.write('Metrics (on scaled data): mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw_val))
+            f.write('\n')
+            f.write('\n')
 
-        mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
-        f = open("result_long_term_forecast.txt", 'a')
-        f.write(setting + "  \n")
-        f.write('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
-        f.write('\n')
-        f.write('\n')
-        f.close()
-
-        np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folder_path + 'pred.npy', preds)
-        np.save(folder_path + 'true.npy', trues)
+        np.save(folder_path_results + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
+        np.save(folder_path_results + 'pred_scaled.npy', preds) # Save scaled predictions
+        np.save(folder_path_results + 'true_scaled.npy', trues) # Save scaled trues
 
         return
+
