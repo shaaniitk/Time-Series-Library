@@ -4,12 +4,17 @@ Data Analysis Utilities for Dynamic Configuration
 
 This module provides utilities to automatically analyze datasets and determine
 the appropriate model configuration parameters (number of features, targets, etc.)
+
+Features:
+- Real dataset analysis
+- Synthetic data generation for model convergence testing
+- Dynamic configuration generation
 """
 
 import os
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 import yaml
 import logging
 
@@ -17,8 +22,11 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def analyze_dataset(data_path: str, target_columns: Union[str, List[str]] = None, 
-                   date_column: str = 'date') -> Dict:
+def analyze_dataset(data_path: str, 
+                   target_columns: Union[str, List[str]] = None, 
+                   date_column: str = 'date',
+                   test_model_convergence_simple_fn: bool = False,
+                   synthetic_config: Optional[Dict] = None) -> Dict:
     """
     Analyze a dataset to determine its characteristics for dynamic configuration.
     
@@ -26,10 +34,16 @@ def analyze_dataset(data_path: str, target_columns: Union[str, List[str]] = None
         data_path: Path to the CSV data file
         target_columns: Target column name(s). If None, assumes OHLC (first 4 non-date columns)
         date_column: Name of the date column
+        test_model_convergence_simple_fn: If True, generate synthetic data for convergence testing
+        synthetic_config: Configuration for synthetic data generation
         
     Returns:
-        Dictionary with dataset characteristics
+        Dictionary with dataset characteristics and data arrays
     """
+    if test_model_convergence_simple_fn:
+        logger.info("🔬 Convergence test mode: generating synthetic data")
+        return _generate_synthetic_analysis(synthetic_config or {})
+    
     logger.info(f"Analyzing dataset: {data_path}")
     
     if not os.path.exists(data_path):
@@ -81,6 +95,10 @@ def analyze_dataset(data_path: str, target_columns: Union[str, List[str]] = None
     n_covariates = len(covariate_columns)
     n_samples = len(df)
     
+    # Extract covariate and target data arrays
+    covariate_data = df[covariate_columns].values if covariate_columns else np.array([]).reshape(n_samples, 0)
+    target_data = df[target_columns].values
+    
     # Basic statistics
     analysis = {
         'data_path': data_path,
@@ -92,6 +110,12 @@ def analyze_dataset(data_path: str, target_columns: Union[str, List[str]] = None
         'target_columns': target_columns,
         'covariate_columns': covariate_columns,
         'all_feature_columns': feature_columns,
+        'data_source': 'real',
+        
+        # Data arrays for training
+        'covariate_data': covariate_data,
+        'target_data': target_data,
+        'dataframe': df,
         
         # Mode-specific dimensions
         'mode_M': {
@@ -121,6 +145,144 @@ def analyze_dataset(data_path: str, target_columns: Union[str, List[str]] = None
     logger.info(f"  Samples: {n_samples}")
     
     return analysis
+
+def _generate_synthetic_analysis(synthetic_config: Dict) -> Dict:
+    """
+    Generate synthetic data analysis for convergence testing.
+    
+    Args:
+        synthetic_config: Configuration for synthetic data generation
+        
+    Returns:
+        Analysis dictionary with synthetic data
+    """
+    from utils.synthetic_data_generator import generate_sincos_basic, generate_complex_synthetic
+    
+    # Default synthetic configuration
+    default_config = {
+        'type': 'sincos',  # 'sincos' or 'complex'
+        'n_points': 2000,
+        'seq_len': 100,
+        'pred_len': 50,
+        'noise_level': 0.1,
+        'frequencies': [5, 10, 15]
+    }
+    
+    # Merge with user config
+    config = {**default_config, **synthetic_config}
+    
+    logger.info(f"Generating synthetic data with config: {config}")
+    
+    if config['type'] == 'sincos':
+        synthetic_result = generate_sincos_basic(
+            n_points=config['n_points'],
+            seq_len=config['seq_len'],
+            pred_len=config['pred_len'],
+            noise_level=config['noise_level'],
+            frequencies=config['frequencies']
+        )
+    else:
+        # Complex synthetic data
+        synthetic_result = generate_complex_synthetic(
+            n_points=config['n_points'],
+            n_features=config.get('n_features', 10),
+            n_targets=config.get('n_targets', 3),
+            complexity=config.get('complexity', 'medium'),
+            noise_level=config['noise_level']
+        )
+    
+    data = synthetic_result['data']
+    metadata = synthetic_result['metadata']
+    arrays = synthetic_result['arrays']
+    
+    # Extract analysis information
+    feature_columns = [col for col in data.columns if col != 'date']
+    target_columns = metadata['target_columns']
+    covariate_columns = metadata['feature_columns']
+    
+    n_total_features = len(feature_columns)
+    n_targets = len(target_columns)
+    n_covariates = len(covariate_columns)
+    n_samples = len(data)
+    
+    # Create analysis structure matching real data format
+    analysis = {
+        'data_path': 'synthetic_data',
+        'n_samples': n_samples,
+        'n_total_features': n_total_features,
+        'n_targets': n_targets,
+        'n_covariates': n_covariates,
+        'date_column': 'date',
+        'target_columns': target_columns,
+        'covariate_columns': covariate_columns,
+        'all_feature_columns': feature_columns,
+        'data_source': 'synthetic',
+        
+        # Synthetic-specific metadata
+        'synthetic_config': config,
+        'synthetic_metadata': metadata,
+        'mathematical_relationships': metadata.get('mathematical_relationships', {}),
+        
+        # Data arrays for training
+        'covariate_data': arrays['covariates'],
+        'target_data': arrays['targets'],
+        'dataframe': data,
+        
+        # Mode-specific dimensions
+        'mode_M': {
+            'enc_in': n_total_features,
+            'dec_in': n_total_features,
+            'c_out': n_total_features,
+            'description': f"Multivariate (Synthetic): {n_total_features} → {n_total_features}"
+        },
+        'mode_MS': {
+            'enc_in': n_total_features,
+            'dec_in': n_targets,
+            'c_out': n_targets,
+            'description': f"Multi-target (Synthetic): {n_total_features} → {n_targets}"
+        },
+        'mode_S': {
+            'enc_in': n_targets,
+            'dec_in': n_targets,
+            'c_out': n_targets,
+            'description': f"Target-only (Synthetic): {n_targets} → {n_targets}"
+        }
+    }
+    
+    logger.info(f"Synthetic data generated:")
+    logger.info(f"  Type: {config['type']}")
+    logger.info(f"  Total features: {n_total_features}")
+    logger.info(f"  Target features: {n_targets} {target_columns}")
+    logger.info(f"  Covariate features: {n_covariates}")
+    logger.info(f"  Samples: {n_samples}")
+    logger.info(f"  Mathematical relationships: {len(analysis['mathematical_relationships'])}")
+    
+    return analysis
+
+def save_synthetic_data(analysis: Dict, output_path: str = None) -> str:
+    """
+    Save synthetic data to CSV file for use with training scripts.
+    
+    Args:
+        analysis: Analysis result containing synthetic data
+        output_path: Output path for CSV file
+        
+    Returns:
+        Path to saved CSV file
+    """
+    if analysis['data_source'] != 'synthetic':
+        raise ValueError("Analysis must contain synthetic data")
+    
+    if output_path is None:
+        # Auto-generate path
+        config = analysis['synthetic_config']
+        output_path = f"data/synthetic_{config['type']}_{config['n_points']}pts.csv"
+    
+    # Save dataframe
+    analysis['dataframe'].to_csv(output_path, index=False)
+    
+    logger.info(f"Synthetic data saved to: {output_path}")
+    return output_path
 
 def generate_dynamic_config(base_config_path: str, data_analysis: Dict, 
                           output_path: str = None, mode: str = 'MS') -> str:

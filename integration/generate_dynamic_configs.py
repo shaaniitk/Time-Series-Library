@@ -1,14 +1,171 @@
 #!/usr/bin/env python3
 """
-Template-based Dynamic Configuration Generator
+Template-based Dynamic Configuration Generator with Quantile + KL Support
 
 This script creates template configuration files that can automatically
-adapt to any dataset dimensions using the data analysis utilities.
+adapt to any dataset dimensions and includes support for uncertainty quantification
+through quantile regression and KL divergence loss.
 """
 
 import os
+import sys
 import yaml
+
+# Add root directory to path
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+
 from utils.data_analysis import analyze_dataset, generate_dynamic_config
+from utils.quantile_utils import get_standard_quantile_levels, quantile_levels_to_string, describe_quantiles
+
+def get_quantile_config_options():
+    """Get user preferences for quantile regression configuration"""
+    print("\n📊 QUANTILE REGRESSION CONFIGURATION")
+    print("=" * 50)
+    
+    # Ask if user wants quantile regression
+    while True:
+        enable_quantiles = input("Enable uncertainty quantification with quantile regression? (y/n): ").lower().strip()
+        if enable_quantiles in ['y', 'yes', '1', 'true']:
+            enable_quantiles = True
+            break
+        elif enable_quantiles in ['n', 'no', '0', 'false']:
+            enable_quantiles = False
+            break
+        else:
+            print("Please enter 'y' for yes or 'n' for no")
+    
+    if not enable_quantiles:
+        return None
+    
+    print("\n🎯 Quantile Configuration Options:")
+    print("1. Conservative (3 quantiles: 10%, 50%, 90%)")
+    print("2. Standard (5 quantiles: 10%, 25%, 50%, 75%, 90%)")
+    print("3. Comprehensive (7 quantiles: 5%, 20%, 35%, 50%, 65%, 80%, 95%)")
+    print("4. Extensive (9 quantiles: 5%, 15%, 25%, 35%, 50%, 65%, 75%, 85%, 95%)")
+    print("5. Custom quantile levels")
+    
+    while True:
+        try:
+            choice = int(input("\nSelect quantile configuration (1-5): "))
+            if choice in [1, 2, 3, 4, 5]:
+                break
+            else:
+                print("Please enter a number between 1 and 5")
+        except ValueError:
+            print("Please enter a valid number")
+    
+    if choice == 1:
+        num_quantiles = 3
+        quantile_levels = get_standard_quantile_levels(3)
+        coverage = "conservative"
+    elif choice == 2:
+        num_quantiles = 5
+        quantile_levels = get_standard_quantile_levels(5)
+        coverage = "standard"
+    elif choice == 3:
+        num_quantiles = 7
+        quantile_levels = get_standard_quantile_levels(7)
+        coverage = "comprehensive"
+    elif choice == 4:
+        num_quantiles = 9
+        quantile_levels = get_standard_quantile_levels(9)
+        coverage = "extensive"
+    elif choice == 5:
+        # Custom quantiles
+        while True:
+            try:
+                custom_input = input("Enter comma-separated quantile levels (e.g., 0.1,0.5,0.9): ")
+                quantile_levels = [float(q.strip()) for q in custom_input.split(',')]
+                
+                # Validate quantiles
+                if not all(0 < q < 1 for q in quantile_levels):
+                    print("All quantiles must be between 0 and 1")
+                    continue
+                
+                if len(quantile_levels) % 2 == 0:
+                    print("Number of quantiles should be odd (to include median)")
+                    continue
+                
+                if 0.5 not in quantile_levels:
+                    print("Warning: Median (0.5) should be included for best results")
+                    add_median = input("Add median automatically? (y/n): ").lower().strip()
+                    if add_median in ['y', 'yes']:
+                        quantile_levels.append(0.5)
+                        quantile_levels.sort()
+                
+                num_quantiles = len(quantile_levels)
+                coverage = "custom"
+                break
+                
+            except ValueError:
+                print("Please enter valid decimal numbers separated by commas")
+    
+    print(f"\n📈 Selected Quantile Configuration:")
+    print(describe_quantiles(quantile_levels))
+    
+    # Ask about KL loss for Bayesian models
+    print("\n🧠 KL DIVERGENCE LOSS CONFIGURATION")
+    print("(For Bayesian models only)")
+    
+    kl_config = {}
+    
+    while True:
+        enable_kl = input("Enable KL divergence loss for Bayesian models? (y/n): ").lower().strip()
+        if enable_kl in ['y', 'yes', '1', 'true']:
+            kl_config['enable_kl'] = True
+            break
+        elif enable_kl in ['n', 'no', '0', 'false']:
+            kl_config['enable_kl'] = False
+            break
+        else:
+            print("Please enter 'y' for yes or 'n' for no")
+    
+    if kl_config['enable_kl']:
+        # KL weight
+        while True:
+            kl_weight_input = input("KL loss weight (press Enter for auto-suggestion): ").strip()
+            if kl_weight_input == "":
+                kl_config['kl_weight'] = None  # Will be auto-suggested
+                break
+            else:
+                try:
+                    kl_config['kl_weight'] = float(kl_weight_input)
+                    break
+                except ValueError:
+                    print("Please enter a valid decimal number")
+        
+        # KL annealing
+        while True:
+            kl_anneal = input("Enable KL weight annealing during training? (y/n): ").lower().strip()
+            if kl_anneal in ['y', 'yes', '1', 'true']:
+                kl_config['kl_anneal'] = True
+                break
+            elif kl_anneal in ['n', 'no', '0', 'false']:
+                kl_config['kl_anneal'] = False
+                break
+            else:
+                print("Please enter 'y' for yes or 'n' for no")
+        
+        # Target percentage
+        while True:
+            try:
+                target_pct = input("Target KL loss percentage of total loss (default 10%): ").strip()
+                if target_pct == "":
+                    kl_config['kl_target_percentage'] = 10.0
+                    break
+                else:
+                    kl_config['kl_target_percentage'] = float(target_pct)
+                    break
+            except ValueError:
+                print("Please enter a valid number")
+    
+    return {
+        'quantile_mode': True,
+        'num_quantiles': num_quantiles,
+        'quantile_levels': quantile_levels,
+        'quantile_coverage': coverage,
+        'kl_config': kl_config
+    }
 
 def create_template_configs():
     """Create template configuration files for all complexity levels and modes"""
@@ -305,16 +462,277 @@ def generate_configs_for_dataset(data_path: str, target_columns: str = None):
     print(f"\n🎯 Generated {len(generated_files)} dataset-specific configuration files")
     return generated_files
 
-if __name__ == '__main__':
-    import sys
+def create_config_with_quantiles(base_config, quantile_options, analysis, data_path):
+    """Create a configuration with quantile regression support"""
     
-    print("🎯 Dynamic Configuration Generator")
+    config = base_config.copy()
+    
+    if quantile_options:
+        # Add quantile configuration
+        config['quantile_mode'] = True
+        config['num_quantiles'] = quantile_options['num_quantiles']
+        config['quantile_levels'] = quantile_options['quantile_levels']
+        config['quantile_coverage'] = quantile_options['quantile_coverage']
+        
+        # Set loss to quantile for quantile regression
+        config['loss'] = 'quantile'
+        
+        # Add KL configuration if specified
+        kl_config = quantile_options.get('kl_config', {})
+        if kl_config.get('enable_kl', False):
+            config['kl_weight'] = kl_config.get('kl_weight', 0.01)
+            config['kl_anneal'] = kl_config.get('kl_anneal', False)
+            config['kl_target_percentage'] = kl_config.get('kl_target_percentage', 10.0)
+            config['bayesian_layers'] = True
+        
+        # Update model_id to reflect quantile configuration
+        base_model_id = config.get('model_id', 'enhanced_autoformer')
+        config['model_id'] = f"{base_model_id}_quantile_q{quantile_options['num_quantiles']}"
+    
+    return config
+
+def create_enhanced_template_configs_with_quantiles():
+    """Create template configuration files with optional quantile support"""
+    
+    print("🏗️ ENHANCED DYNAMIC CONFIG GENERATOR")
     print("=" * 50)
+    print("This generator creates configuration files that automatically")
+    print("adapt to your dataset with optional uncertainty quantification.")
+    
+    # Get quantile configuration options
+    quantile_options = get_quantile_config_options()
+    
+    # Get data path for analysis
+    print(f"\n📁 DATA CONFIGURATION")
+    print("=" * 30)
+    
+    while True:
+        data_path = input("Enter path to your dataset (default: data/prepared_financial_data.csv): ").strip()
+        if data_path == "":
+            data_path = "data/prepared_financial_data.csv"
+        
+        full_data_path = os.path.join('..', data_path) if not os.path.isabs(data_path) else data_path
+        
+        if os.path.exists(full_data_path):
+            print(f"✅ Dataset found: {full_data_path}")
+            break
+        else:
+            print(f"❌ Dataset not found: {full_data_path}")
+            continue_anyway = input("Continue without data analysis? (y/n): ").lower().strip()
+            if continue_anyway in ['y', 'yes']:
+                full_data_path = None
+                break
+    
+    # Analyze dataset if available
+    analysis = None
+    if full_data_path:
+        print(f"\n🔍 Analyzing dataset...")
+        try:
+            analysis = analyze_dataset(full_data_path)
+            print(f"✅ Dataset analysis completed")
+            print(f"   Total features: {analysis['total_features']}")
+            print(f"   Target features: {len(analysis['target_features'])}")
+            print(f"   Sample count: {analysis['samples']}")
+        except Exception as e:
+            print(f"⚠️ Dataset analysis failed: {e}")
+            analysis = None
+    
+    # Base configuration template (enhanced version)
+    base_template = {
+        # Model identification
+        'model_id': "enhanced_autoformer_{mode}_{complexity}",
+        'model': "EnhancedAutoformer",
+        
+        # Task configuration
+        'task_name': "long_term_forecast",
+        'features': "{mode}",
+        'target': "log_Close",
+        
+        # Data configuration
+        'data': "custom",
+        'root_path': "data" if not os.path.dirname(data_path) else os.path.dirname(data_path),
+        'data_path': os.path.basename(data_path),
+        'freq': "b",
+        
+        # Model architecture (will be set dynamically)
+        'enc_in': None,
+        'dec_in': None,
+        'c_out': None,
+        
+        # Enhanced features
+        'use_adaptive_correlation': True,
+        'use_learnable_decomposition': True,
+        'multi_scale_correlation': True,
+        'seasonal_learning_rate': 0.001,
+        
+        # Training configuration
+        'itr': 1,
+        'train_epochs': 10,
+        'batch_size': None,
+        'patience': 3,
+        'learning_rate': 0.0001,
+        'des': "exp",
+        'loss': 'MSE',  # Will be changed to 'quantile' if quantile mode is enabled
+        'lradj': 'type1',
+        
+        # Sequence configuration
+        'seq_len': None,
+        'label_len': None,
+        'pred_len': None,
+        
+        # Model parameters
+        'd_model': None,
+        'n_heads': None,
+        'e_layers': None,
+        'd_layers': None,
+        'd_ff': None,
+        'factor': 3,
+        'dropout': 0.15,
+        'moving_avg': 25,
+        
+        # Additional settings
+        'checkpoints': './checkpoints/',
+        'do_predict': False,
+        'inverse': False,
+        'use_dtw': False
+    }
+    
+    # Configuration variations
+    modes = ['M', 'MS', 'S']
+    complexities = ['ultralight', 'light', 'medium', 'heavy', 'veryheavy']
+    
+    # Complexity settings
+    complexity_configs = {
+        'ultralight': {
+            'seq_len': 50, 'label_len': 10, 'pred_len': 5,
+            'd_model': 64, 'n_heads': 4, 'e_layers': 1, 'd_layers': 1, 'd_ff': 128,
+            'batch_size': 64, 'train_epochs': 5
+        },
+        'light': {
+            'seq_len': 100, 'label_len': 15, 'pred_len': 10,
+            'd_model': 128, 'n_heads': 8, 'e_layers': 2, 'd_layers': 1, 'd_ff': 256,
+            'batch_size': 32, 'train_epochs': 10
+        },
+        'medium': {
+            'seq_len': 250, 'label_len': 25, 'pred_len': 15,
+            'd_model': 256, 'n_heads': 8, 'e_layers': 3, 'd_layers': 2, 'd_ff': 512,
+            'batch_size': 16, 'train_epochs': 15
+        },
+        'heavy': {
+            'seq_len': 500, 'label_len': 50, 'pred_len': 25,
+            'd_model': 512, 'n_heads': 16, 'e_layers': 4, 'd_layers': 3, 'd_ff': 1024,
+            'batch_size': 8, 'train_epochs': 25
+        },
+        'veryheavy': {
+            'seq_len': 1000, 'label_len': 100, 'pred_len': 50,
+            'd_model': 512, 'n_heads': 16, 'e_layers': 6, 'd_layers': 4, 'd_ff': 2048,
+            'batch_size': 4, 'train_epochs': 50
+        }
+    }
+    
+    created_files = []
+    
+    print(f"\n🏭 GENERATING CONFIGURATIONS")
+    print("=" * 35)
+    
+    for mode in modes:
+        for complexity in complexities:
+            # Create base config for this combination
+            config = base_template.copy()
+            config.update(complexity_configs[complexity])
+            
+            # Replace placeholders
+            config['model_id'] = config['model_id'].format(mode=mode, complexity=complexity)
+            config['features'] = mode
+            
+            # Add quantile support if requested
+            if quantile_options:
+                config = create_config_with_quantiles(config, quantile_options, analysis, full_data_path)
+            
+            # Generate final config with dynamic dimensions if analysis available
+            if analysis:
+                try:
+                    output_file = f"../config/config_enhanced_autoformer_{mode}_{complexity}_auto.yaml"
+                    if quantile_options:
+                        output_file = output_file.replace('_auto.yaml', f'_quantile_q{quantile_options["num_quantiles"]}_auto.yaml')
+                    
+                    final_config = generate_dynamic_config(config, analysis, output_file, mode)
+                    created_files.append(final_config)
+                    
+                    print(f"✅ Created: {os.path.basename(final_config)}")
+                    
+                except Exception as e:
+                    print(f"❌ Failed to create {mode}_{complexity}: {e}")
+            else:
+                # Save template config without dynamic analysis
+                output_file = f"../config/config_enhanced_autoformer_{mode}_{complexity}_template.yaml"
+                if quantile_options:
+                    output_file = output_file.replace('_template.yaml', f'_quantile_q{quantile_options["num_quantiles"]}_template.yaml')
+                
+                with open(output_file, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False, indent=2)
+                
+                created_files.append(output_file)
+                print(f"✅ Created template: {os.path.basename(output_file)}")
+    
+    print(f"\n🎉 Configuration generation completed!")
+    print(f"   Created {len(created_files)} configuration files")
+    
+    if quantile_options:
+        print(f"\n📊 Quantile Regression Features:")
+        print(f"   Number of quantiles: {quantile_options['num_quantiles']}")
+        print(f"   Quantile levels: {quantile_options['quantile_levels']}")
+        print(f"   Coverage: {quantile_options['quantile_coverage']}")
+        
+        if quantile_options['kl_config'].get('enable_kl', False):
+            print(f"\n🧠 KL Divergence Features:")
+            print(f"   KL weight: {quantile_options['kl_config'].get('kl_weight', 'auto')}")
+            print(f"   KL annealing: {quantile_options['kl_config'].get('kl_anneal', False)}")
+    
+    print(f"\n🚀 Usage Example:")
+    if created_files:
+        example_config = os.path.basename(created_files[0])
+        print(f"   python scripts/train/train_dynamic_autoformer.py \\")
+        print(f"     --config config/{example_config} \\")
+        print(f"     --model_type enhanced")
+        
+        if quantile_options:
+            print(f"\n   # For Bayesian models with quantile + KL:")
+            print(f"   python scripts/train/train_dynamic_autoformer.py \\")
+            print(f"     --config config/{example_config} \\")
+            print(f"     --model_type bayesian \\")
+            print(f"     --quantile_mode \\")
+            print(f"     --num_quantiles {quantile_options['num_quantiles']} \\")
+            print(f"     --enable_kl")
+    
+    return created_files
+
+def main():
+    """Main entry point for configuration generation"""
+    print("🏗️ Enhanced Dynamic Configuration Generator")
+    print("=" * 55)
+    
+    # Check for synthetic data mode
+    if "--synthetic" in sys.argv or "--convergence-test" in sys.argv:
+        print("🔬 Synthetic data mode for convergence testing")
+        generate_synthetic_configs()
+        return
     
     if len(sys.argv) == 1:
-        # No arguments - create templates
-        print("Creating template configuration files...")
-        create_template_configs()
+        # Interactive mode - use enhanced generator with quantile support
+        print("Starting interactive configuration generation...")
+        
+        # Ask if user wants synthetic data for testing
+        synthetic_mode = input("\nGenerate configs for synthetic data convergence testing? (y/n): ").lower().strip()
+        if synthetic_mode in ['y', 'yes']:
+            generate_synthetic_configs()
+            return
+        
+        created_files = create_enhanced_template_configs_with_quantiles()
+        
+        print(f"\n📁 Configuration files saved to: ../config/")
+        for file_path in created_files:
+            print(f"   {os.path.basename(file_path)}")
         
     elif len(sys.argv) >= 2:
         # Dataset path provided - generate specific configs
@@ -322,6 +740,216 @@ if __name__ == '__main__':
         target_columns = sys.argv[2] if len(sys.argv) > 2 else None
         
         print(f"Generating configs for dataset: {data_path}")
-        generate_configs_for_dataset(data_path, target_columns)
+        
+        # Check if dataset exists
+        if not os.path.exists(data_path):
+            print(f"❌ Dataset not found: {data_path}")
+            return
+        
+        # Get quantile configuration options
+        quantile_options = get_quantile_config_options()
+        
+        # Analyze dataset
+        try:
+            analysis = analyze_dataset(data_path)
+            print(f"✅ Dataset analysis completed")
+        except Exception as e:
+            print(f"❌ Dataset analysis failed: {e}")
+            return
+        
+        if quantile_options is not None:
+            # Generate configs with quantiles for all modes and complexities
+            modes = ['M', 'MS', 'S']
+            complexities = ['ultralight', 'light', 'medium', 'heavy', 'veryheavy']
+            
+            for mode in modes:
+                for complexity in complexities:
+                    try:
+                        # Create base config
+                        base_config = {
+                            'model_id': f"enhanced_autoformer_{mode}_{complexity}",
+                            'model': "EnhancedAutoformer",
+                            'features': mode,
+                            'target': target_columns or "log_Close",
+                            'data': "custom",
+                            'data_path': os.path.basename(data_path),
+                            'root_path': os.path.dirname(data_path) or "data"
+                        }
+                        
+                        # Add quantile support
+                        config = create_config_with_quantiles(base_config, quantile_options, analysis, data_path)
+                        
+                        # Generate final config with dynamic dimensions
+                        output_file = f"../config/config_enhanced_autoformer_{mode}_{complexity}_quantile_q{quantile_options['num_quantiles']}_auto.yaml"
+                        final_config = generate_dynamic_config(config, analysis, output_file, mode)
+                        
+                        print(f"✅ Created: {os.path.basename(final_config)}")
+                        
+                    except Exception as e:
+                        print(f"❌ Failed to create {mode}_{complexity}: {e}")
+        
+        else:
+            # Generate regular configs without quantiles
+            generate_configs_for_dataset(data_path, target_columns)
     
     print("\n✅ Configuration generation complete!")
+
+def generate_synthetic_configs():
+    """Generate configurations optimized for synthetic data convergence testing"""
+    print("\n🔬 SYNTHETIC DATA CONFIGURATION GENERATOR")
+    print("=" * 55)
+    
+    # Get synthetic data options
+    print("Synthetic data types:")
+    print("1. Simple Sin/Cos (3 covariates, 3 targets, known relationships)")
+    print("2. Complex Multi-variate (configurable features and targets)")
+    
+    while True:
+        try:
+            choice = int(input("Select synthetic data type (1-2): "))
+            if choice in [1, 2]:
+                break
+            else:
+                print("Please enter 1 or 2")
+        except ValueError:
+            print("Please enter a valid number")
+    
+    if choice == 1:
+        synthetic_type = "sincos"
+        n_features = 6  # 3 covariates + 3 targets
+        n_targets = 3
+        n_covariates = 3
+        print(f"Selected: Simple Sin/Cos with known mathematical relationships")
+    else:
+        synthetic_type = "complex"
+        
+        # Get feature configuration
+        while True:
+            try:
+                n_targets = int(input("Number of target features (1-10): "))
+                if 1 <= n_targets <= 10:
+                    break
+                else:
+                    print("Please enter a number between 1 and 10")
+            except ValueError:
+                print("Please enter a valid number")
+        
+        while True:
+            try:
+                n_covariates = int(input("Number of covariate features (0-20): "))
+                if 0 <= n_covariates <= 20:
+                    break
+                else:
+                    print("Please enter a number between 0 and 20")
+            except ValueError:
+                print("Please enter a valid number")
+        
+        n_features = n_targets + n_covariates
+        print(f"Selected: Complex synthetic with {n_targets} targets, {n_covariates} covariates")
+    
+    # Get quantile options
+    quantile_options = get_quantile_config_options()
+    
+    # Generate configurations for all modes and complexities
+    modes = ['MS']  # Focus on MS mode for synthetic testing
+    complexities = ['light', 'medium', 'heavy']
+    
+    created_files = []
+    
+    for mode in modes:
+        for complexity in complexities:
+            try:
+                # Create synthetic analysis
+                synthetic_analysis = {
+                    'data_path': f'synthetic_{synthetic_type}_data.csv',
+                    'n_samples': 2000,
+                    'n_total_features': n_features,
+                    'n_targets': n_targets,
+                    'n_covariates': n_covariates,
+                    'target_columns': [f't{i}' for i in range(n_targets)],
+                    'covariate_columns': [f'cov{i}' for i in range(n_covariates)],
+                    'all_feature_columns': [f'cov{i}' for i in range(n_covariates)] + [f't{i}' for i in range(n_targets)],
+                    'data_source': 'synthetic',
+                    f'mode_{mode}': {
+                        'enc_in': n_features,
+                        'dec_in': n_targets,
+                        'c_out': n_targets,
+                        'description': f"Synthetic Multi-target: {n_features} → {n_targets}"
+                    }
+                }
+                
+                # Create base config
+                base_config = {
+                    'model_id': f"synthetic_{synthetic_type}_{mode}_{complexity}",
+                    'model': "EnhancedAutoformer",
+                    'features': mode,
+                    'target': synthetic_analysis['target_columns'][0],
+                    'data': "custom",
+                    'data_path': f"temp_synthetic_{synthetic_type}.csv",
+                    'root_path': "data",
+                    
+                    # Synthetic-specific parameters
+                    'synthetic_mode': True,
+                    'synthetic_type': synthetic_type,
+                    'n_synthetic_points': 2000,
+                    'synthetic_noise_level': 0.1
+                }
+                
+                # Add complexity-specific parameters
+                complexity_configs = {
+                    'ultralight': {
+                        'seq_len': 50, 'label_len': 8, 'pred_len': 5,
+                        'd_model': 32, 'n_heads': 4, 'e_layers': 1, 'd_layers': 1,
+                        'd_ff': 64, 'batch_size': 64, 'dropout': 0.05
+                    },
+                    'light': {
+                        'seq_len': 100, 'label_len': 10, 'pred_len': 10,
+                        'd_model': 64, 'n_heads': 8, 'e_layers': 2, 'd_layers': 1,
+                        'd_ff': 128, 'batch_size': 48, 'dropout': 0.1
+                    },
+                    'medium': {
+                        'seq_len': 250, 'label_len': 15, 'pred_len': 10,
+                        'd_model': 128, 'n_heads': 8, 'e_layers': 3, 'd_layers': 2,
+                        'd_ff': 256, 'batch_size': 32, 'dropout': 0.15
+                    },
+                    'heavy': {
+                        'seq_len': 500, 'label_len': 20, 'pred_len': 20,
+                        'd_model': 256, 'n_heads': 8, 'e_layers': 4, 'd_layers': 3,
+                        'd_ff': 512, 'batch_size': 16, 'dropout': 0.2
+                    }
+                }
+                base_config.update(complexity_configs.get(complexity, complexity_configs['medium']))
+                
+                # Add dimensions
+                base_config['enc_in'] = n_features
+                base_config['dec_in'] = n_targets
+                base_config['c_out'] = n_targets
+                
+                if quantile_options:
+                    # Add quantile support
+                    config = create_config_with_quantiles(base_config, quantile_options, synthetic_analysis, "synthetic")
+                    
+                    output_file = f"../config/config_synthetic_{synthetic_type}_{mode}_{complexity}_quantile_q{quantile_options['num_quantiles']}.yaml"
+                else:
+                    config = base_config
+                    output_file = f"../config/config_synthetic_{synthetic_type}_{mode}_{complexity}.yaml"
+                
+                # Save config
+                os.makedirs(os.path.dirname(output_file), exist_ok=True)
+                with open(output_file, 'w') as f:
+                    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+                
+                created_files.append(output_file)
+                print(f"✅ Created: {os.path.basename(output_file)}")
+                
+            except Exception as e:
+                print(f"❌ Failed to create {mode}_{complexity}: {e}")
+    
+    print(f"\n📁 Synthetic configuration files created: {len(created_files)}")
+    for file_path in created_files:
+        print(f"   {os.path.basename(file_path)}")
+    
+    print(f"\n🚀 To test with synthetic data, use:")
+    if created_files:
+        example_config = os.path.basename(created_files[0])
+        print(f"   python scripts/train/train_dynamic_autoformer.py --config config/{example_config} --synthetic_data")
