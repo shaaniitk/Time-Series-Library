@@ -99,7 +99,7 @@ def example_training_integration():
         # Step 2: Use normal training script with aligned data
         import subprocess
         cmd = [
-            'python', 'train_dynamic_autoformer.py',
+            'python', '../scripts/train/train_dynamic_autoformer.py',
             '--data', 'custom',
             '--data_path', 'aligned_multi_targets.csv',
             '--target', 'target_A,target_B,target_C',

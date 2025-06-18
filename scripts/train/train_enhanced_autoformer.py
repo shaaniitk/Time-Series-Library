@@ -19,7 +19,7 @@ import torch.nn as nn
 from datetime import datetime
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 # Suppress warnings
 warnings.filterwarnings('ignore')

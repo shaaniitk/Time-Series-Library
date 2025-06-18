@@ -14,7 +14,7 @@ def run_model_test(model_name, config_file):
     print(f"{'='*60}")
     
     cmd = [
-        sys.executable, 'train_dynamic_autoformer.py',
+        sys.executable, '../scripts/train/train_dynamic_autoformer.py',
         '--model', model_name,
         '--config', config_file,
         '--data', 'custom',
@@ -84,14 +84,14 @@ def main():
             print(f"{'='*60}")
             
             cmd = [
-                sys.executable, 'train_dynamic_autoformer.py',
+                sys.executable, '../scripts/train/train_dynamic_autoformer.py',
                 '--config', '../config/config_dummy.yaml',
                 '--model_type', model_name,
                 '--auto_fix'  # Auto-fix dimensions based on actual data
             ]
         else:
             cmd = [
-                sys.executable, 'train_dynamic_autoformer.py',
+                sys.executable, '../scripts/train/train_dynamic_autoformer.py',
                 '--config', config_file,
                 '--model_type', model_name,
                 '--auto_fix'

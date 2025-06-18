@@ -21,7 +21,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 from models.TimesNet import Model as TimesNet
 from utils.tools import EarlyStopping, adjust_learning_rate

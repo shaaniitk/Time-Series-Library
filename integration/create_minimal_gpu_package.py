@@ -19,7 +19,7 @@ def create_minimal_gpu_package():
     essential_items = [
         # Core files
         'requirements.txt',
-        'train_financial_timesnet.py',
+        'scripts/train/train_financial_timesnet.py',
         
         # Notebooks
         'TimesNet_Light_Config.ipynb',

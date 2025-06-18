@@ -153,6 +153,6 @@ if __name__ == "__main__":
     print("   • Configurable number of hierarchy levels and wavelet types")
     
     print("\n🚀 Next Steps:")
-    print("   • Run train_hierarchical_autoformer.py for training")
+    print("   • Run ../scripts/train/train_hierarchical_autoformer.py for training")
     print("   • Experiment with different wavelet types and fusion strategies")
     print("   • Compare performance against baseline models")

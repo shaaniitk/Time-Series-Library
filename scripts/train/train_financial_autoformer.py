@@ -13,7 +13,7 @@ import argparse
 from datetime import datetime
 
 # Add the project root to the path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 from data_provider.data_loader import Dataset_Custom
 from models import Autoformer

@@ -15,7 +15,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 from models.EnhancedAutoformer import Model as EnhancedAutoformer
 from models.BayesianEnhancedAutoformer import Model as BayesianEnhancedAutoformer  

@@ -18,6 +18,11 @@ import numpy as np
 import time
 import warnings
 import os
+import sys
+
+# Add the root directory to Python path
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
 from data_provider.data_factory import data_provider
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
 from utils.kl_tuning import KLTuner, suggest_kl_weight

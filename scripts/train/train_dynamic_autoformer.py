@@ -8,10 +8,15 @@ by automatically detecting and adapting to the data dimensions.
 
 import argparse
 import os
+import sys
 import torch
 import numpy as np
 import random
 import yaml
+
+# Add the root directory to Python path
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
 from utils.data_analysis import analyze_dataset, validate_config_with_data
 

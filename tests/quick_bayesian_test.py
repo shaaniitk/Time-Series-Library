@@ -20,7 +20,7 @@ def quick_bayesian_sanity_test():
     print("  • Focus: Verify KL loss and training stability")
     
     cmd = [
-        sys.executable, 'train_dynamic_autoformer.py',
+        sys.executable, '../scripts/train/train_dynamic_autoformer.py',
         '--config', '../config/config_bayesian_ultralight_sanity.yaml',
         '--model_type', 'bayesian',
         '--auto_fix'

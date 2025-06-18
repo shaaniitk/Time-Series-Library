@@ -34,7 +34,7 @@ def run_bayesian_sanity_test():
     
     # Command to run
     cmd = [
-        sys.executable, 'train_dynamic_autoformer.py',
+        sys.executable, '../scripts/train/train_dynamic_autoformer.py',
         '--config', '../config/config_bayesian_medium_sanity.yaml',
         '--model_type', 'bayesian',
         '--auto_fix',

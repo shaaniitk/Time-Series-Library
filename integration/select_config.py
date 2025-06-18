@@ -306,7 +306,7 @@ def display_recommendation(mode, complexity, score, comp_info, mode_info):
         print(f"   ❌ File not found - please check file name")
     
     print(f"\n🚀 Training Command:")
-    print(f"   python train_configurable_autoformer.py \\")
+    print(f"   python ../scripts/train/train_configurable_autoformer.py \\")
     print(f"       --config {config_file} \\")
     print(f"       --model_type enhanced")
     
@@ -391,7 +391,7 @@ def main():
     print(f"Configuration: {config_file}")
     print(f"Model Type: {model_type}")
     print(f"Complete Command:")
-    print(f"  python train_configurable_autoformer.py \\")
+    print(f"  python ../scripts/train/train_configurable_autoformer.py \\")
     print(f"      --config {config_file} \\")
     print(f"      --model_type {model_type}")
     
@@ -413,7 +413,7 @@ echo "Configuration: {config_file}"
 echo "Model Type: {model_type}"
 echo "Estimated training time: {comp_info['time_gpu']} (GPU) / {comp_info['time_cpu']} (CPU)"
 
-python train_configurable_autoformer.py \\
+python ../scripts/train/train_configurable_autoformer.py \\
     --config {config_file} \\
     --model_type {model_type}
 

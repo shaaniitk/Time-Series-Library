@@ -230,7 +230,7 @@ if __name__ == "__main__":
         print("✅ Visualization and monitoring ready")
         
         print(f"\n📚 Next steps:")
-        print("1. Use train_bayesian_with_kl_tuning.py for full training")
+        print("1. Use ../scripts/train/train_bayesian_with_kl_tuning.py for full training")
         print("2. Refer to KL_TUNING_GUIDE.md for detailed documentation")
         print("3. Experiment with different target KL percentages")
         print("4. Monitor KL tuning plots during training")

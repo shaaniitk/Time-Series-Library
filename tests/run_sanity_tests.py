@@ -104,7 +104,7 @@ def run_model_sanity_test(model_type, config_file, expected_behaviors):
     
     # Run training command
     cmd = [
-        sys.executable, 'train_dynamic_autoformer.py',
+        sys.executable, '../scripts/train/train_dynamic_autoformer.py',
         '--config', config_file,
         '--model_type', model_type,
         '--auto_fix'

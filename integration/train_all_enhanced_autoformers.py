@@ -71,7 +71,7 @@ def main():
         for mode, config_file in configs.items():
             
             description = f"Training {model_type.title()} Autoformer in {mode} mode"
-            cmd = f"python train_configurable_autoformer.py --config {config_file} --model_type {model_type}"
+            cmd = f"python ../scripts/train/train_configurable_autoformer.py --config {config_file} --model_type {model_type}"
             
             success = run_command(cmd, description)
             results[model_type][mode] = 'Success' if success else 'Failed'

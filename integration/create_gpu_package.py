@@ -153,7 +153,7 @@ def create_gpu_package():
         # Core Python files
         'files': [
             'run.py',
-            'train_financial_timesnet.py',
+            'scripts/train/train_financial_timesnet.py',
             'example_data_preparation.py',
             'requirements.txt',
             'README.md',
@@ -428,7 +428,7 @@ if __name__ == "__main__":
         f.write("   # Then open files in notebooks_original/ folder\n\n")
         
         f.write("   # Option 4: Run training script directly\n")
-        f.write("   python train_financial_timesnet.py\n\n")
+        f.write("   python scripts/train/train_financial_timesnet.py\n\n")
         
         f.write("📁 PACKAGE CONTENTS:\n")
         f.write("   ✅ Core models and layers\n")
