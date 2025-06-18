@@ -837,3 +837,7 @@ if __name__ == "__main__":
     print(f"Model hierarchy info: {model.get_hierarchy_info()}")
     
     logger.info("HierarchicalEnhancedAutoformer test completed!")
+
+
+# Alias for consistency with other model files and test scripts
+Model = HierarchicalEnhancedAutoformer

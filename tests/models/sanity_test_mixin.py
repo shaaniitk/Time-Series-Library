@@ -4,14 +4,15 @@ import numpy as np
 import pandas as pd
 import os
 from data_provider.data_factory import data_provider
-from models.TimesNet import Model as TimesNet
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from utils.logger import logger
+from utils.losses import get_loss_function # Import the loss getter
 
 class SanityTestMixin:
-    def run_sanity_test(self, ModelClass, device='cpu', epochs=10, model_config=None):
-        logger.info(f"Running sanity test for {ModelClass.__name__}")
+    # Added loss_config parameter
+    def run_sanity_test(self, ModelClass, device='cpu', epochs=10, model_config=None, loss_config=None):
+        logger.info(f"--- Running Sanity Test (Sine Wave Convergence) for: {ModelClass.__name__} ---")
           # Parameters
         seq_len = 100
         pred_len = 50
@@ -148,8 +149,14 @@ class SanityTestMixin:
         
         model = ModelClass(args).to(device)
         model.train()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        criterion = torch.nn.MSELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01) # Fixed learning rate for sanity test
+
+        # Select criterion based on loss_config or default to MSELoss
+        if loss_config and 'loss_name' in loss_config:
+            criterion = get_loss_function(loss_config['loss_name'], **{k: v for k, v in loss_config.items() if k != 'loss_name'})
+        else:
+            # Default to MSELoss if no specific loss config is provided
+         criterion = torch.nn.MSELoss()
         
         # Training loop with proper time series validation
         best_val_loss = float('inf')
