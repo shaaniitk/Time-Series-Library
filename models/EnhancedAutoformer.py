@@ -5,8 +5,9 @@ from layers.Embed import DataEmbedding_wo_pos
 from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelation, AdaptiveAutoCorrelationLayer
 from layers.Autoformer_EncDec import my_Layernorm
 import math
-import numpy as np
+import numpy as np # type: ignore
 from utils.logger import logger
+from type import Optional, List
 
 
 class LearnableSeriesDecomp(nn.Module):
@@ -348,10 +349,13 @@ class EnhancedAutoformer(nn.Module):
     4. Improved numerical stability and memory efficiency
     """
 
-    def __init__(self, configs):
+    def __init__(self, configs, quantile_levels: Optional[List[float]] = None):
+        """
+        quantile_levels: List of quantiles to predict (e.g., [0.1, 0.5, 0.9]). If None, standard point prediction.
+        """
         super().__init__()
         logger.info(f"Initializing EnhancedAutoformer with configs: {configs}")
-        
+
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.label_len = configs.label_len
@@ -362,6 +366,15 @@ class EnhancedAutoformer(nn.Module):
         self.dec_in = configs.dec_in
         self.c_out = configs.c_out
         self.d_model = configs.d_model
+
+        self.is_quantile_mode = False
+        self.num_quantiles = 1
+        self.num_target_variables = configs.c_out # Original c_out is num target variables
+
+        if quantile_levels and isinstance(quantile_levels, list) and len(quantile_levels) > 0:
+            self.is_quantile_mode = True
+            self.quantiles = sorted(quantile_levels) # type: ignore
+            self.num_quantiles = len(self.quantiles)
 
         # Enhanced decomposition with learnable parameters
         self.decomp = LearnableSeriesDecomp(configs.c_out)  # Work on target features only
@@ -452,7 +465,8 @@ class EnhancedAutoformer(nn.Module):
             self.decoder = EnhancedDecoder(
                 enhanced_decoder_layers,
                 norm_layer=my_Layernorm(configs.d_model),
-                projection=nn.Linear(configs.d_model, configs.c_out, bias=True)
+                # Output layer dimension adjusted for quantiles if needed
+                projection=nn.Linear(configs.d_model, self.num_target_variables * self.num_quantiles, bias=True)
             )
 
         # Other task projections (same as original)
@@ -529,7 +543,12 @@ class EnhancedAutoformer(nn.Module):
         
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            return dec_out[:, -self.pred_len:, :]
+            # dec_out shape is [B, L, num_target_variables * num_quantiles]
+            output = dec_out[:, -self.pred_len:, :]
+            if self.is_quantile_mode:
+                # Reshape to [B, pred_len, num_target_variables, num_quantiles]
+                output = output.view(output.size(0), self.pred_len, self.num_target_variables, self.num_quantiles)
+            return output
         if self.task_name == 'imputation':
             dec_out = self.imputation(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
             return dec_out

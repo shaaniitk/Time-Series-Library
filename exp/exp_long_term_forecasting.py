@@ -10,6 +10,7 @@ import os
 import time
 import warnings
 import numpy as np
+import inspect # For checking model constructor arguments
 from utils.dtw_metric import dtw, accelerated_dtw
 from utils.augmentation import run_augmentation, run_augmentation_single
 
@@ -22,7 +23,29 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         super(Exp_Long_Term_Forecast, self).__init__(args)
 
     def _build_model(self):
-        model = self.model_dict[self.args.model].Model(self.args).float()
+        ModelClass = self.model_dict[self.args.model].Model
+        
+        # Check if the model class accepts quantile_levels in its __init__
+        sig = inspect.signature(ModelClass.__init__)
+        model_accepts_quantiles = 'quantile_levels' in sig.parameters
+
+        q_levels = getattr(self.args, 'quantile_levels', None)
+
+        if model_accepts_quantiles:
+            logger.info(f"Model {self.args.model} accepts quantile_levels. Passing: {q_levels}")
+            # This covers EnhancedAutoformer, HierarchicalEnhancedAutoformer (with previous diffs)
+            # and BayesianEnhancedAutoformer (which has quantile_levels in its signature)
+            # For BayesianEnhancedAutoformer, other specific args like uncertainty_method, kl_weight
+            # are assumed to be part of self.args or handled by its defaults.
+            model = ModelClass(self.args, quantile_levels=q_levels).float()
+        elif self.args.model == 'BayesianEnhancedAutoformer' and not model_accepts_quantiles:
+            # Fallback for BayesianEnhancedAutoformer if signature check fails but we know it handles quantiles
+            logger.info(f"Passing quantile_levels to BayesianEnhancedAutoformer (fallback): {q_levels}")
+            model = ModelClass(self.args, use_quantiles=bool(q_levels), quantile_levels=q_levels).float()
+        else:
+            # Standard models that don't take quantile_levels directly in constructor
+            logger.info(f"Model {self.args.model} does not explicitly accept quantile_levels in constructor.")
+            model = ModelClass(self.args).float()
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
@@ -51,8 +74,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                                         w_var=getattr(self.args, 'ps_w_var', 1.0),
                                         w_mean=getattr(self.args, 'ps_w_mean', 1.0))
         elif loss_name.lower() == 'pinball':
-            quantiles = getattr(self.args, 'quantiles', [0.1, 0.5, 0.9])
-            criterion = get_loss_function(loss_name, quantiles=quantiles)
+            # Prioritize 'quantile_levels' if available, then 'quantiles'
+            quantiles_to_use = getattr(self.args, 'quantile_levels', None)
+            if quantiles_to_use is None:
+                quantiles_to_use = getattr(self.args, 'quantiles', [0.1, 0.5, 0.9]) # Default
+            if not isinstance(quantiles_to_use, list) or not all(isinstance(q, float) for q in quantiles_to_use if q is not None): # Allow None in list for default
+                logger.warning(f"Invalid quantile_levels/quantiles: {quantiles_to_use}. Defaulting to [0.1, 0.5, 0.9]")
+                quantiles_to_use = [0.1, 0.5, 0.9]
+            criterion = get_loss_function(loss_name, quantiles=quantiles_to_use)
         elif loss_name.lower() == 'huber':
             delta = getattr(self.args, 'huber_delta', 1.0)
             criterion = get_loss_function(loss_name, delta=delta)
@@ -318,6 +347,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         # For visualization, store original unscaled targets if possible
         trues_original_for_viz_np = [] 
 
+        # Determine if in quantile mode and find median index
+        is_quantile_mode = hasattr(self.args, 'quantile_levels') and \
+                           isinstance(self.args.quantile_levels, list) and \
+                           len(self.args.quantile_levels) > 0
+        median_quantile_index = -1
+        if is_quantile_mode:
+            try:
+                median_quantile_index = self.args.quantile_levels.index(0.5)
+            except ValueError: # 0.5 not in list
+                logger.warning("0.5 quantile not found in quantile_levels. Using first quantile for metrics/visualization.")
+                median_quantile_index = 0 # Fallback to the first quantile if 0.5 is not present
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -343,7 +383,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
-                model_outputs_scaled = outputs[:, -self.args.pred_len:, :self.args.c_out]
+                # Model output is [B, pred_len, C] or [B, pred_len, C, Q]
+                model_outputs_raw = outputs[:, -self.args.pred_len:, :]
                 
                 # Log dimensions for debugging
                 if i == 0:  # Log only for first batch to avoid spam
@@ -353,8 +394,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     logger.info(f"  batch_x_mark: {batch_x_mark.shape}")
                     logger.info(f"  batch_y_mark: {batch_y_mark.shape}")
                     logger.info(f"  dec_inp: {dec_inp.shape}")
-                    logger.info(f"  model outputs: {outputs.shape}")
-                    logger.info(f"  model_outputs_scaled: {model_outputs_scaled.shape}")
+                    logger.info(f"  model outputs (raw): {outputs.shape}") # Full model output
+                    logger.info(f"  model_outputs_raw (pred_len segment): {model_outputs_raw.shape}")
                 
                 # Prepare ground_truth_final_scaled for metrics (similar to vali)
                 ground_truth_segment = batch_y[:, -self.args.pred_len:, :self.args.c_out].clone().detach()
@@ -379,8 +420,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 else: # If not Dataset_Custom or no scaling, assume batch_y is already what we need
                     trues_original_for_viz_np.append(ground_truth_segment.numpy())
 
+                # pred_np_batch will be [B, pred_len, C] or [B, pred_len, C, Q]
+                pred_np_batch_raw = model_outputs_raw.detach().cpu().numpy()
 
-                pred_np_batch = model_outputs_scaled.detach().cpu().numpy()
+                if is_quantile_mode and pred_np_batch_raw.ndim == 4 and median_quantile_index != -1:
+                    # Extract median predictions for metrics: [B, pred_len, C, Q] -> [B, pred_len, C]
+                    pred_np_batch = pred_np_batch_raw[:, :, :, median_quantile_index]
+                else:
+                    pred_np_batch = pred_np_batch_raw # Assumes [B, pred_len, C]
+                
                 true_np_batch = ground_truth_final_scaled.detach().cpu().numpy()
                 
                 preds_scaled_np.append(pred_np_batch)
@@ -392,8 +440,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     # For visualization, we want to show data in its original scale if possible
                     # pred_to_plot: model's output, needs inverse_transform_targets
                     # true_to_plot: original unscaled targets from batch_y
-                    
-                    pred_for_viz = pred_np_batch[0, :, :] # First item in batch, all c_out features
+
+                    if is_quantile_mode and pred_np_batch_raw.ndim == 4 and median_quantile_index != -1:
+                        pred_for_viz = pred_np_batch_raw[0, :, :, median_quantile_index] # Median prediction for viz
+                    else:
+                        pred_for_viz = pred_np_batch_raw[0, :, :] # Standard prediction for viz
+
                     true_for_viz_original = trues_original_for_viz_np[-1][0, :, :] # Corresponding original true values
 
                     if hasattr(test_data, 'inverse_transform_targets') and test_data.scale:
@@ -457,4 +509,3 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         np.save(folder_path_results + 'true_scaled.npy', trues) # Save scaled trues
 
         return
-

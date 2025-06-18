@@ -487,13 +487,23 @@ class HierarchicalEnhancedAutoformer(nn.Module):
     Complete Hierarchical Enhanced Autoformer integrating all components.
     """
     
-    def __init__(self, configs, n_levels=3, wavelet_type='db4', 
+    def __init__(self, configs, quantile_levels: Optional[List[float]] = None,
+                 n_levels=3, wavelet_type='db4', 
                  fusion_strategy='weighted_concat', use_cross_attention=True):
         super(HierarchicalEnhancedAutoformer, self).__init__()
         logger.info("Initializing HierarchicalEnhancedAutoformer")
         
         self.configs = configs
         self.n_levels = n_levels
+
+        self.is_quantile_mode = False
+        self.num_quantiles = 1
+        self.num_target_variables = configs.c_out # Original c_out is num target variables
+
+        if quantile_levels and isinstance(quantile_levels, list) and len(quantile_levels) > 0:
+            self.is_quantile_mode = True
+            self.quantiles = sorted(quantile_levels) # type: ignore
+            self.num_quantiles = len(self.quantiles)
         
         # Input embedding
         self.enc_embedding = DataEmbedding_wo_pos(
@@ -538,7 +548,7 @@ class HierarchicalEnhancedAutoformer(nn.Module):
         )
         
         # Output projection
-        self.projection = nn.Linear(configs.d_model, configs.c_out, bias=True)
+        self.projection = nn.Linear(configs.d_model, self.num_target_variables * self.num_quantiles, bias=True)
         
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
                 enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
@@ -619,9 +629,14 @@ class HierarchicalEnhancedAutoformer(nn.Module):
         
         # Final combination (like original Autoformer)
         dec_out = fused_trend + fused_seasonal
-        
-        return dec_out[:, -self.configs.pred_len:, :]  # Return prediction length
-    
+
+        output = dec_out[:, -self.configs.pred_len:, :]
+        if self.is_quantile_mode:
+            # Reshape to [B, pred_len, num_target_variables, num_quantiles]
+            output = output.view(output.size(0), self.configs.pred_len, self.num_target_variables, self.num_quantiles)
+        return output
+
+
     def get_hierarchy_info(self):
         """Get information about the hierarchical structure"""
         return {
