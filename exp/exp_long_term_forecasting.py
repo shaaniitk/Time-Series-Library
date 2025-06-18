@@ -104,6 +104,18 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             gamma = getattr(self.args, 'dtw_gamma', 1.0)
             normalize = getattr(self.args, 'dtw_normalize', True)
             criterion = get_loss_function(loss_name, gamma=gamma, normalize=normalize)
+        elif loss_name.lower() == 'multiscale_trend_aware':
+            trend_window_sizes = getattr(self.args, 'trend_window_sizes', [60, 20, 5])
+            trend_component_weights = getattr(self.args, 'trend_component_weights', [1.0, 0.8, 0.5])
+            noise_component_weight = getattr(self.args, 'noise_component_weight', 0.2)
+            base_loss_fn_str = getattr(self.args, 'base_loss_fn_str', 'mse')
+            criterion = get_loss_function(
+                loss_name,
+                trend_window_sizes=trend_window_sizes,
+                trend_component_weights=trend_component_weights,
+                noise_component_weight=noise_component_weight,
+                base_loss_fn_str=base_loss_fn_str
+            )
         else:
             # Standard losses (mse, mae, mape, smape, mase, gaussian_nll)
             try:

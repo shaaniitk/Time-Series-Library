@@ -7,7 +7,7 @@ from layers.Autoformer_EncDec import my_Layernorm
 import math
 import numpy as np # type: ignore
 from utils.logger import logger
-from type import Optional, List
+from typing import Optional, List
 
 
 class LearnableSeriesDecomp(nn.Module):
@@ -27,10 +27,13 @@ class LearnableSeriesDecomp(nn.Module):
         self.input_dim = input_dim
         self.max_kernel_size = max_kernel_size
         
-        # Learnable trend extraction weights
-        self.trend_weights = nn.Parameter(torch.ones(max_kernel_size) / max_kernel_size)
+        # Learnable trend extraction weights: one set of weights per input feature/channel
+        # Shape: [input_dim, 1 (as out_channel for conv1d group), max_kernel_size]
+        self.feature_specific_trend_weights = nn.Parameter(torch.randn(input_dim, 1, max_kernel_size))
         
         # Adaptive kernel size predictor
+        # This still predicts a single kernel size for the entire sample based on global features.
+        # This kernel size will then be used to select the appropriate portion of feature_specific_trend_weights.
         # Note: This operates on input features (before embedding)
         self.kernel_predictor = nn.Sequential(
             nn.Linear(input_dim, max(input_dim // 2, 4)),  # Ensure minimum size
@@ -41,6 +44,9 @@ class LearnableSeriesDecomp(nn.Module):
         
         # Initialize with reasonable kernel size
         self.init_kernel_size = init_kernel_size
+        # Initialize weights to be like a simple moving average initially for each feature
+        if self.init_kernel_size > 0 and self.init_kernel_size <= self.max_kernel_size:
+            nn.init.constant_(self.feature_specific_trend_weights[:, :, :self.init_kernel_size], 1.0 / self.init_kernel_size)
         
     def forward(self, x):
         """
@@ -52,55 +58,56 @@ class LearnableSeriesDecomp(nn.Module):
             trend: [B, L, D] trend component
         """
         B, L, D = x.shape
+        assert D == self.input_dim, f"Input feature dimension mismatch. Expected {self.input_dim}, got {D}"
         
         # Predict optimal kernel size for each sample
         # Use global average to determine kernel size
-        x_global = x.mean(dim=1)  # [B, D]
+        x_global = x.mean(dim=1)  # [B, D] - average over time for each feature
         kernel_logits = self.kernel_predictor(x_global)  # [B, 1]
         
         # Convert to kernel size (between 5 and max_kernel_size)
-        kernel_sizes = (kernel_logits * (self.max_kernel_size - 5) + 5).round().int()
+        # Ensure kernel_sizes are odd and within reasonable bounds for each sample
+        # The kernel_predictor outputs values between 0 and 1. Scale and round.
+        predicted_k_float = (kernel_logits * (self.max_kernel_size - 5) + 5) # [B, 1]
         
         # Batch-wise processing with different kernel sizes
         seasonal_outputs = []
         trend_outputs = []
         
+        # Process each sample in the batch
         for b in range(B):
-            k = kernel_sizes[b].item()
-            k = max(5, min(k, self.max_kernel_size, L//3))  # Ensure reasonable bounds
+            # For each sample, determine a single kernel size k
+            k_float = predicted_k_float[b].item() 
+            k = max(3, min(int(round(k_float)), self.max_kernel_size, L // 2)) # Ensure k is at most L/2
+            if k % 2 == 0: k -=1 # make it odd for symmetric padding, helps maintain sequence length
+            k = max(3, k) # ensure min kernel size 3 for meaningful convolution
             
-            # Get learnable weights for this kernel size
-            weights = F.softmax(self.trend_weights[:k], dim=0)
+            # Get the feature-specific weights, truncated to current kernel size k
+            # self.feature_specific_trend_weights is [D, 1, K_max]
+            # We need weights of shape [D, 1, k] for conv1d with groups=D
+            current_weights_unnormalized = self.feature_specific_trend_weights[:, :, :k] # [D, 1, k]
             
-            # Apply learnable convolution for trend extraction
-            x_b = x[b:b+1].transpose(1, 2)  # [1, D, L]
+            # Normalize them per feature (e.g., softmax or simple division to act like moving avg weights)
+            normalized_weights = F.softmax(current_weights_unnormalized, dim=2) # Softmax over the kernel dimension for each feature
             
             # Padding for convolution to maintain length
             padding = k // 2
-            x_padded = F.pad(x_b, (padding, padding), mode='replicate')
+            sample_x_b_permuted = x[b:b+1].transpose(1, 2)  # [1, D, L]
+            x_padded = F.pad(sample_x_b_permuted, (padding, padding), mode='replicate') # [1, D, L_padded]
             
             # Apply convolution with learnable weights
-            trend_b = F.conv1d(
+            trend_b_conv = F.conv1d(
                 x_padded,
-                weights.view(1, 1, k).repeat(self.input_dim, 1, 1),
+                normalized_weights, # [D, 1, k] - PyTorch handles broadcasting the batch dim for weights
                 groups=self.input_dim,
                 padding=0
-            )
+            ) # Output: [1, D, L]
             
-            # Ensure output length matches input length
-            if trend_b.size(2) != L:
-                # Adjust by cropping or padding
-                if trend_b.size(2) > L:
-                    trend_b = trend_b[:, :, :L]
-                else:
-                    pad_len = L - trend_b.size(2)
-                    trend_b = F.pad(trend_b, (0, pad_len), mode='replicate')
+            trend_b_final = trend_b_conv.transpose(1, 2)  # [1, L, D]
+            seasonal_b_final = x[b:b+1] - trend_b_final
             
-            trend_b = trend_b.transpose(1, 2)  # [1, L, D]
-            seasonal_b = x[b:b+1] - trend_b
-            
-            seasonal_outputs.append(seasonal_b)
-            trend_outputs.append(trend_b)
+            seasonal_outputs.append(seasonal_b_final)
+            trend_outputs.append(trend_b_final)
         
         seasonal = torch.cat(seasonal_outputs, dim=0)
         trend = torch.cat(trend_outputs, dim=0)

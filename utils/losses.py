@@ -21,7 +21,7 @@ import torch.nn as nn
 import numpy as np
 import pdb
 from utils.logger import logger
-import torch.nn.functional as F
+import torch.nn.functional as F # type: ignore
 from typing import List, Tuple, Optional
 
 
@@ -451,6 +451,63 @@ class TrendAwareLoss(nn.Module):
         
         return self.trend_weight * trend_loss + self.noise_weight * noise_loss
 
+class MultiScaleTrendAwareLoss(nn.Module):
+    """
+    Loss function that penalizes errors on trend components extracted at multiple scales,
+    and optionally on the final residual/noise component.
+    Processes from coarser to finer trends.
+    """
+    def __init__(self, 
+                 trend_window_sizes: List[int], 
+                 trend_component_weights: List[float], 
+                 noise_component_weight: float = 0.5, 
+                 base_loss_fn_str: str = 'mse',
+                 reduction: str = 'mean'):
+        super().__init__()
+        if not trend_window_sizes:
+            raise ValueError("trend_window_sizes list cannot be empty.")
+        if len(trend_window_sizes) != len(trend_component_weights):
+            raise ValueError("trend_window_sizes and trend_component_weights must have the same length.")
+        
+        # Store original window sizes and weights to maintain correspondence after sorting
+        orig_windows_weights = sorted(zip(trend_window_sizes, trend_component_weights), key=lambda x: x[0], reverse=True)
+        
+        self.trend_window_sizes = [item[0] for item in orig_windows_weights] # Process coarser trends first
+        self.trend_component_weights = [item[1] for item in orig_windows_weights]
+        
+        self.noise_component_weight = noise_component_weight
+        self.reduction = reduction
+        
+        self.decomps = nn.ModuleList()
+        # series_decomp from layers.Autoformer_EncDec is expected to be imported
+        from layers.Autoformer_EncDec import series_decomp
+        for k_size in self.trend_window_sizes:
+            actual_kernel_size = k_size if k_size % 2 != 0 else k_size + 1
+            self.decomps.append(series_decomp(kernel_size=actual_kernel_size))
+            
+        logger.info(f"Initialized MultiScaleTrendAwareLoss with sorted windows: {self.trend_window_sizes}, corresponding weights: {self.trend_component_weights}, noise_weight: {self.noise_component_weight}")
+
+        if base_loss_fn_str.lower() == 'mse':
+            self.base_loss_fn = F.mse_loss
+        elif base_loss_fn_str.lower() == 'mae':
+            self.base_loss_fn = F.l1_loss
+        else:
+            logger.warning(f"Unsupported base_loss_fn: {base_loss_fn_str}. Defaulting to MSE.")
+            self.base_loss_fn = F.mse_loss
+
+    def forward(self, pred: t.Tensor, true: t.Tensor) -> t.Tensor:
+        total_loss = t.tensor(0.0, device=pred.device, dtype=pred.dtype)
+        current_pred_residual, current_true_residual = pred, true
+
+        for i, decomp_layer in enumerate(self.decomps):
+            pred_s, pred_t = decomp_layer(current_pred_residual)
+            true_s, true_t = decomp_layer(current_true_residual)
+            total_loss += self.trend_component_weights[i] * self.base_loss_fn(pred_t, true_t, reduction=self.reduction)
+            current_pred_residual, current_true_residual = pred_s, true_s
+            
+        if self.noise_component_weight > 0:
+            total_loss += self.noise_component_weight * self.base_loss_fn(current_pred_residual, current_true_residual, reduction=self.reduction)
+        return total_loss
 
 class QuantileLoss(nn.Module):
     """Simple quantile loss for a single quantile."""
@@ -481,7 +538,8 @@ def get_loss_function(loss_name: str, **kwargs):
         'dtw': DTWLoss,
         'seasonal': SeasonalLoss,
         'trend_aware': TrendAwareLoss,
-        'quantile': QuantileLoss
+        'quantile': QuantileLoss,
+        'multiscale_trend_aware': MultiScaleTrendAwareLoss,
     }
     
     if loss_name.lower() not in loss_functions:
