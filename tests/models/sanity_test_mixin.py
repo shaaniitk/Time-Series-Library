@@ -255,13 +255,52 @@ class SanityTestMixin:
             else:
                 logger.info(f"Epoch {epoch+1}/{epochs}, Train MSE: {avg_train_loss:.6f}, Val MSE (scaled): {avg_val_loss:.6f}, Val MSE (original): {avg_val_loss_orig:.6f}")
             
-            # Early stopping if either loss gets very low (converged) - use scaled loss for thresholds
-            if avg_train_loss < 0.01:
-                logger.info(f"Early stopping at epoch {epoch+1}, Train MSE {avg_train_loss:.6f} < 0.01 (converged)")
-                break
-                
-            if avg_val_loss < 0.01:
-                logger.info(f"Early stopping at epoch {epoch+1}, Val MSE (scaled) {avg_val_loss:.6f} < 0.01 (converged)")
+            # Early stopping if test loss gets very low (converged) - use scaled test loss for convergence check
+            # Run test evaluation to check convergence
+            model.eval()
+            test_args = Args()
+            for attr in dir(args):
+                if not attr.startswith('_'):
+                    setattr(test_args, attr, getattr(args, attr))
+            test_args.data_path = csv_path
+            
+            test_dataset, test_loader = data_provider(test_args, flag='test')
+            test_losses_check = []
+            
+            with torch.no_grad():
+                for batch in test_loader:
+                    batch_x, batch_y, batch_x_mark, batch_y_mark = batch
+                    batch_x = batch_x.float().to(device)
+                    # batch_y kept on CPU for scaling processing
+                    batch_x_mark = batch_x_mark.float().to(device)
+                    batch_y_mark = batch_y_mark.float().to(device)
+                    
+                    y_pred = model(batch_x, batch_x_mark, batch_y[:, :label_len, :].to(device), batch_y_mark)
+                    y_true_unscaled = batch_y[:, -pred_len:, :]
+                    y_pred = y_pred[:, -pred_len:, :]
+                    
+                    # Scale the ground truth targets to match model outputs
+                    y_true_scaled = y_true_unscaled.clone()
+                    if hasattr(test_dataset, 'target_scaler') and test_dataset.target_scaler is not None:
+                        # Only scale target features (assume first c_out features are targets)
+                        n_targets = min(c_out, test_dataset.target_scaler.n_features_in_)
+                        if n_targets > 0:
+                            # Scale target portion
+                            targets_np = y_true_unscaled[:, :, :n_targets].numpy()
+                            targets_scaled = test_dataset.target_scaler.transform(
+                                targets_np.reshape(-1, n_targets)
+                            ).reshape(targets_np.shape)
+                            y_true_scaled[:, :, :n_targets] = torch.from_numpy(targets_scaled).float()
+                    
+                    y_true_scaled = y_true_scaled.to(device)
+                    test_loss_scaled = criterion(y_pred, y_true_scaled).item()
+                    test_losses_check.append(test_loss_scaled)
+            
+            avg_test_loss_check = np.mean(test_losses_check) if test_losses_check else float('inf')
+            logger.info(f"Current test MSE (scaled): {avg_test_loss_check:.6f}")
+            
+            if avg_test_loss_check < 0.01:
+                logger.info(f"Early stopping at epoch {epoch+1}, Test MSE (scaled) {avg_test_loss_check:.6f} < 0.01 (converged)")
                 break
             
             # FIX: Early stopping based on validation loss improvement - use scaled loss consistently            if avg_val_loss < best_val_loss:

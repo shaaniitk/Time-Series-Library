@@ -290,7 +290,7 @@ def generate_configs_for_dataset(data_path: str, target_columns: str = None):
                         del config['_dynamic_placeholders']
                     
                     # Generate output filename
-                    output_file = f"config_enhanced_autoformer_{mode}_{complexity}_auto.yaml"
+                    output_file = f"../config/config_enhanced_autoformer_{mode}_{complexity}_auto.yaml"
                     
                     # Save generated config
                     with open(output_file, 'w') as f:

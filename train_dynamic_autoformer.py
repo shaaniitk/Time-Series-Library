@@ -145,7 +145,8 @@ def create_args_from_config(config, model_type='enhanced'):
         is_training=1,
         model_type=model_type,
         task_name=config.get('task_name', 'long_term_forecast'),
-        seasonal_patterns=None
+        seasonal_patterns=None,
+        use_dtw=config.get('use_dtw', False)  # DTW metric calculation flag
     )
     
     return args

@@ -555,7 +555,7 @@ class FinancialTimesNetTrainer:
             return True
     
     # ...existing code...
-def load_config(config_path='config.yaml'):
+def load_config(config_path='config/config.yaml'):
     """
     Load configuration from file
     Supports both YAML and JSON formats
@@ -563,11 +563,12 @@ def load_config(config_path='config.yaml'):
     # Try different config file locations and formats
     config_files_to_try = [
         config_path,
-        'config.yaml',
-        'config.yml', 
-        'config.json',
-        'timesnet_config.yaml',
-        'timesnet_config.json'
+        'config/config.yaml',
+        'config.yaml',  # fallback for backward compatibility
+        'config/config.yml', 
+        'config/config.json',
+        'config/timesnet_config.yaml',
+        'timesnet_config.yaml'  # fallback
     ]
     
     config = None
@@ -589,7 +590,7 @@ def load_config(config_path='config.yaml'):
     
     if config is None:
         print("⚠️ No config file found. Using default settings.")
-        print("💡 Create config.yaml or config.json to customize settings")
+        print("💡 Create config/config.yaml or config.yaml to customize settings")
         return {}
     
     print(f"✅ Loaded configuration from: {config_file_used}")
@@ -597,7 +598,7 @@ def load_config(config_path='config.yaml'):
 
 # Fix the create_args function around line 600-650
 
-def create_args(config_path='config.yaml'):
+def create_args(config_path='config/config.yaml'):
     """Create argument parser with config file support"""
     parser = argparse.ArgumentParser(description='TimesNet Financial Forecasting')
     

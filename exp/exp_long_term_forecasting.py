@@ -114,6 +114,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 model_outputs_scaled = outputs[:, -self.args.pred_len:, :self.args.c_out]
                 
+                # Log dimensions for debugging
+                if i == 0:  # Log only for first batch to avoid spam
+                    logger.info(f"Validation batch dimensions:")
+                    logger.info(f"  batch_x: {batch_x.shape}")
+                    logger.info(f"  batch_y: {batch_y.shape}")
+                    logger.info(f"  batch_x_mark: {batch_x_mark.shape}")
+                    logger.info(f"  batch_y_mark: {batch_y_mark.shape}")
+                    logger.info(f"  dec_inp: {dec_inp.shape}")
+                    logger.info(f"  model outputs: {outputs.shape}")
+                    logger.info(f"  model_outputs_scaled: {model_outputs_scaled.shape}")
+                
                 # Prepare ground_truth_final_scaled
                 # Start with the relevant segment of batch_y. Covariates here are already scaled by Dataset_Custom.
                 # Targets in batch_y (for val/test from Dataset_Custom) are unscaled.
@@ -145,6 +156,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         ).float().to(self.device)
                 # Else: assume batch_y is already appropriately scaled (e.g., ETT datasets or scale=False)
 
+                # For validation, we typically only use data loss (no KL regularization)
                 loss = criterion(model_outputs_scaled, ground_truth_final_scaled)
 
                 total_loss.append(loss.item())
@@ -198,18 +210,68 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         # For training, batch_y is already scaled by Dataset_Custom
                         outputs = outputs[:, -self.args.pred_len:, :self.args.c_out]
                         batch_y_targets = batch_y[:, -self.args.pred_len:, :self.args.c_out].to(self.device)
-                        loss = criterion(outputs, batch_y_targets)
-                        train_loss.append(loss.item())
+                        
+                        # Log dimensions for debugging (first batch of first epoch)
+                        if epoch == 0 and i == 0:
+                            logger.info(f"Training batch dimensions:")
+                            logger.info(f"  batch_x: {batch_x.shape}")
+                            logger.info(f"  batch_y: {batch_y.shape}")
+                            logger.info(f"  batch_x_mark: {batch_x_mark.shape}")
+                            logger.info(f"  batch_y_mark: {batch_y_mark.shape}")
+                            logger.info(f"  dec_inp: {dec_inp.shape}")
+                            logger.info(f"  model outputs: {outputs.shape}")
+                            logger.info(f"  batch_y_targets: {batch_y_targets.shape}")
+                        
+                        # Compute loss (automatically includes KL for Bayesian models)
+                        if hasattr(self.model, 'compute_loss'):
+                            # Bayesian model handles its own loss computation
+                            total_loss = self.model.compute_loss(outputs, batch_y_targets, criterion)
+                            # Log loss components for first batch of first epoch for debugging
+                            if epoch == 0 and i == 0:
+                                loss_components = self.model.compute_loss(outputs, batch_y_targets, criterion, return_components=True)
+                                logger.info(f"  data_loss: {loss_components['data_loss'].item():.6f}")
+                                logger.info(f"  kl_loss: {loss_components['kl_contribution']:.6f}")
+                                logger.info(f"  total_loss: {loss_components['total_loss'].item():.6f}")
+                        else:
+                            # Standard models use only data loss
+                            total_loss = criterion(outputs, batch_y_targets)
+                        
+                        train_loss.append(total_loss.item())
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                     # For training, batch_y is already scaled by Dataset_Custom
                     outputs = outputs[:, -self.args.pred_len:, :self.args.c_out]
                     batch_y_targets = batch_y[:, -self.args.pred_len:, :self.args.c_out].to(self.device)
-                    loss = criterion(outputs, batch_y_targets)
-                    train_loss.append(loss.item())
+                    
+                    # Log dimensions for debugging (first batch of first epoch)
+                    if epoch == 0 and i == 0:
+                        logger.info(f"Training batch dimensions:")
+                        logger.info(f"  batch_x: {batch_x.shape}")
+                        logger.info(f"  batch_y: {batch_y.shape}")
+                        logger.info(f"  batch_x_mark: {batch_x_mark.shape}")
+                        logger.info(f"  batch_y_mark: {batch_y_mark.shape}")
+                        logger.info(f"  dec_inp: {dec_inp.shape}")
+                        logger.info(f"  model outputs: {outputs.shape}")
+                        logger.info(f"  batch_y_targets: {batch_y_targets.shape}")
+                    
+                    # Compute loss (automatically includes KL for Bayesian models)
+                    if hasattr(self.model, 'compute_loss'):
+                        # Bayesian model handles its own loss computation
+                        total_loss = self.model.compute_loss(outputs, batch_y_targets, criterion)
+                        # Log loss components for first batch of first epoch for debugging
+                        if epoch == 0 and i == 0:
+                            loss_components = self.model.compute_loss(outputs, batch_y_targets, criterion, return_components=True)
+                            logger.info(f"  data_loss: {loss_components['data_loss'].item():.6f}")
+                            logger.info(f"  kl_loss: {loss_components['kl_contribution']:.6f}")
+                            logger.info(f"  total_loss: {loss_components['total_loss'].item():.6f}")
+                    else:
+                        # Standard models use only data loss
+                        total_loss = criterion(outputs, batch_y_targets)
+                    
+                    train_loss.append(total_loss.item())
 
                 if (i + 1) % 100 == 0:
-                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, total_loss.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
                     print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
@@ -217,11 +279,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     time_now = time.time()
 
                 if self.args.use_amp:
-                    scaler.scale(loss).backward()
+                    scaler.scale(total_loss).backward()
                     scaler.step(model_optim)
                     scaler.update()
                 else:
-                    loss.backward()
+                    total_loss.backward()
                     model_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
@@ -282,6 +344,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                 model_outputs_scaled = outputs[:, -self.args.pred_len:, :self.args.c_out]
+                
+                # Log dimensions for debugging
+                if i == 0:  # Log only for first batch to avoid spam
+                    logger.info(f"Test batch dimensions:")
+                    logger.info(f"  batch_x: {batch_x.shape}")
+                    logger.info(f"  batch_y: {batch_y.shape}")
+                    logger.info(f"  batch_x_mark: {batch_x_mark.shape}")
+                    logger.info(f"  batch_y_mark: {batch_y_mark.shape}")
+                    logger.info(f"  dec_inp: {dec_inp.shape}")
+                    logger.info(f"  model outputs: {outputs.shape}")
+                    logger.info(f"  model_outputs_scaled: {model_outputs_scaled.shape}")
                 
                 # Prepare ground_truth_final_scaled for metrics (similar to vali)
                 ground_truth_segment = batch_y[:, -self.args.pred_len:, :self.args.c_out].clone().detach()

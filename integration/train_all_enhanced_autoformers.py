@@ -44,9 +44,9 @@ def main():
     
     # Configuration files
     configs = {
-        'M': 'config_enhanced_autoformer_M_medium.yaml',
-        'MS': 'config_enhanced_autoformer_MS_medium.yaml', 
-        'S': 'config_enhanced_autoformer_S_medium.yaml'
+        'M': '../config/config_enhanced_autoformer_M_medium.yaml',
+        'MS': '../config/config_enhanced_autoformer_MS_medium.yaml', 
+        'S': '../config/config_enhanced_autoformer_S_medium.yaml'
     }
     
     # Model types

@@ -30,7 +30,8 @@ class BayesianEnhancedAutoformer(nn.Module):
     """
     
     def __init__(self, configs, uncertainty_method='bayesian', n_samples=50, 
-                 bayesian_layers=['projection'], kl_weight=1e-5):
+                 bayesian_layers=['projection'], kl_weight=1e-5, 
+                 use_quantiles=None, quantile_levels=None):
         super(BayesianEnhancedAutoformer, self).__init__()
         logger.info(f"Initializing BayesianEnhancedAutoformer with method={uncertainty_method}")
         
@@ -39,8 +40,23 @@ class BayesianEnhancedAutoformer(nn.Module):
         self.n_samples = n_samples
         self.kl_weight = kl_weight
         
-        # Base enhanced autoformer
+        # Quantile configuration - check config first, then parameters
+        self.quantile_mode = getattr(configs, 'quantile_mode', False) or use_quantiles or False
+        self.quantiles = getattr(configs, 'quantiles', None) or quantile_levels or [0.1, 0.25, 0.5, 0.75, 0.9]
+        
+        # Store original c_out for reference
+        self.original_c_out = configs.c_out
+        
+        # Don't modify configs.c_out - let base model initialize with original dimensions
+        # We'll add quantile expansion later
+        
+        # Base enhanced autoformer (now with original dimensions)
         self.base_model = EnhancedAutoformer(configs)
+        
+        # Add quantile expansion layer if needed
+        if self.quantile_mode:
+            self.quantile_expansion = nn.Linear(self.original_c_out, self.original_c_out * len(self.quantiles))
+            logger.info(f"Quantile mode enabled: {len(self.quantiles)} quantiles, added expansion layer {self.original_c_out} -> {self.original_c_out * len(self.quantiles)}")
         
         # Convert specified layers to Bayesian
         if uncertainty_method == 'bayesian':
@@ -48,16 +64,16 @@ class BayesianEnhancedAutoformer(nn.Module):
         elif uncertainty_method == 'dropout':
             self._setup_dropout_layers()
         
-        # For quantile predictions
-        self.is_quantile_mode = False
-        self.quantile_levels = None
-        
     def _setup_bayesian_layers(self, bayesian_layers):
         """Convert specified layers to Bayesian versions"""
         logger.info(f"Converting layers to Bayesian: {bayesian_layers}")
         
         if 'projection' in bayesian_layers:
             # Replace final projection layer with Bayesian version
+            # Check multiple possible locations for projection layer
+            projection_found = False
+            
+            # Try top-level projection first
             if hasattr(self.base_model, 'projection'):
                 original_proj = self.base_model.projection
                 self.base_model.projection = BayesianLinear(
@@ -65,6 +81,22 @@ class BayesianEnhancedAutoformer(nn.Module):
                     original_proj.out_features,
                     bias=original_proj.bias is not None
                 )
+                projection_found = True
+                logger.info(f"Converted top-level projection: {original_proj.in_features}->{original_proj.out_features}")
+            
+            # Try decoder projection (EnhancedAutoformer uses this)
+            elif hasattr(self.base_model, 'decoder') and hasattr(self.base_model.decoder, 'projection'):
+                original_proj = self.base_model.decoder.projection
+                self.base_model.decoder.projection = BayesianLinear(
+                    original_proj.in_features,
+                    original_proj.out_features,
+                    bias=original_proj.bias is not None
+                )
+                projection_found = True
+                logger.info(f"Converted decoder projection: {original_proj.in_features}->{original_proj.out_features}")
+            
+            if not projection_found:
+                logger.warning("No projection layer found to convert to Bayesian!")
         
         if 'encoder' in bayesian_layers:
             # Convert encoder layers
@@ -87,29 +119,12 @@ class BayesianEnhancedAutoformer(nn.Module):
         self.mc_dropout2 = DropoutSampling(p=0.15)
         self.mc_dropout3 = DropoutSampling(p=0.1)
     
-    def enable_quantile_mode(self, quantile_levels: List[float]):
-        """
-        Enable quantile prediction mode.
-        
-        Args:
-            quantile_levels: List of quantile levels (e.g., [0.1, 0.5, 0.9])
-        """
-        logger.info(f"Enabling quantile mode with levels: {quantile_levels}")
-        self.is_quantile_mode = True
-        self.quantile_levels = quantile_levels
-        
-        # Adjust output dimension for multiple quantiles
-        if hasattr(self.base_model, 'projection'):
-            original_out_features = self.base_model.projection.out_features // len(quantile_levels)
-            if isinstance(self.base_model.projection, BayesianLinear):
-                # Update Bayesian layer
-                self.base_model.projection.out_features = original_out_features * len(quantile_levels)
-            else:
-                # Replace with new layer
-                self.base_model.projection = nn.Linear(
-                    self.base_model.projection.in_features,
-                    original_out_features * len(quantile_levels)
-                )
+    def disable_quantile_mode(self):
+        """Disable quantile prediction mode and revert to single predictions."""
+        logger.info("Disabling quantile mode")
+        self.quantile_mode = False
+        self.quantiles = None
+        # Note: This doesn't revert layer dimensions - create new model instance if needed
     
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
                 return_uncertainty=False, detailed_uncertainty=False):
@@ -147,6 +162,10 @@ class BayesianEnhancedAutoformer(nn.Module):
         
         if self.uncertainty_method == 'dropout':
             output = self.mc_dropout3(output)
+        
+        # Apply quantile expansion if enabled
+        if self.quantile_mode:
+            output = self.quantile_expansion(output)
             
         return output
     
@@ -215,7 +234,7 @@ class BayesianEnhancedAutoformer(nn.Module):
         }
         
         # Quantile-specific uncertainty if in quantile mode
-        if self.is_quantile_mode and self.quantile_levels:
+        if self.quantile_mode and self.quantiles:
             result.update(self._compute_quantile_uncertainty(pred_stack))
         
         # Detailed uncertainty decomposition
@@ -250,16 +269,16 @@ class BayesianEnhancedAutoformer(nn.Module):
         
         For quantile predictions, this provides certainty measures for each quantile level.
         """
-        if not self.quantile_levels:
+        if not self.quantiles:
             return {}
         
-        n_quantiles = len(self.quantile_levels)
+        n_quantiles = len(self.quantiles)
         batch_size, seq_len, total_features = pred_stack.shape[1], pred_stack.shape[2], pred_stack.shape[3]
         features_per_quantile = total_features // n_quantiles
         
         quantile_results = {}
         
-        for i, q_level in enumerate(self.quantile_levels):
+        for i, q_level in enumerate(self.quantiles):
             # Extract predictions for this quantile
             start_idx = i * features_per_quantile
             end_idx = (i + 1) * features_per_quantile
@@ -367,7 +386,146 @@ class BayesianEnhancedAutoformer(nn.Module):
                 summary[f'{q_name}_mean_certainty'] = torch.mean(q_data['certainty_score']).item()
         
         return summary
+    
+    def compute_loss(self, predictions, targets, criterion, return_components=False):
+        """
+        Compute total Bayesian loss with support for quantile loss and normalized contributions.
+        
+        Args:
+            predictions: Model predictions
+            targets: Ground truth targets  
+            criterion: Loss function (MSE, MAE, Quantile, etc.)
+            return_components: Whether to return loss components separately
+            
+        Returns:
+            If return_components=False: total_loss (scalar)
+            If return_components=True: dict with loss breakdown
+        """
+        # Compute primary data loss (quantile, MSE, etc.)
+        if hasattr(criterion, 'quantiles') and self.quantile_mode:
+            # Quantile loss mode - predictions contain multiple quantiles
+            data_loss = self._compute_quantile_loss(predictions, targets, criterion)
+        else:
+            # Standard loss mode
+            data_loss = criterion(predictions, targets)
+        
+        # Compute KL divergence loss with external weight (not auto-normalized)
+        kl_loss_raw = self.get_kl_loss()
+        
+        # Use the configured KL weight (from KL tuning)
+        total_loss = data_loss + self.kl_weight * kl_loss_raw
+        
+        # Track components for debugging
+        data_loss_value = data_loss.item() if hasattr(data_loss, 'item') else float(data_loss)
+        kl_loss_value = kl_loss_raw.item() if hasattr(kl_loss_raw, 'item') else float(kl_loss_raw)
+        kl_contribution = (self.kl_weight * kl_loss_value)
+        
+        if return_components:
+            return {
+                'total_loss': total_loss,
+                'data_loss': data_loss,
+                'kl_loss': kl_loss_raw,
+                'kl_weight_used': self.kl_weight,
+                'raw_data_loss': data_loss_value,
+                'raw_kl_loss': kl_loss_value,
+                'kl_contribution': kl_contribution
+            }
+        else:
+            return total_loss
+    
+    def _compute_quantile_loss(self, predictions, targets, criterion):
+        """
+        Compute quantile loss for multi-quantile predictions.
+        
+        Args:
+            predictions: [batch, seq, features * n_quantiles]
+            targets: [batch, seq, features]
+            criterion: Quantile loss function with .quantiles attribute
+            
+        Returns:
+            Quantile loss tensor
+        """
+        if not hasattr(criterion, 'quantiles'):
+            raise ValueError("Criterion must have 'quantiles' attribute for quantile loss")
+        
+        quantiles = criterion.quantiles
+        n_quantiles = len(quantiles)
+        batch_size, seq_len, total_features = predictions.shape
+        features_per_quantile = total_features // n_quantiles
+        
+        # Reshape predictions to [batch, seq, n_quantiles, features]
+        pred_reshaped = predictions.view(batch_size, seq_len, n_quantiles, features_per_quantile)
+        
+        # Expand targets to match quantile structure
+        targets_expanded = targets.unsqueeze(2).expand(-1, -1, n_quantiles, -1)
+        
+        # Compute quantile loss
+        total_loss = 0.0
+        for i, q in enumerate(quantiles):
+            pred_q = pred_reshaped[:, :, i, :]  # [batch, seq, features]
+            target_q = targets_expanded[:, :, i, :]  # [batch, seq, features]
+            
+            # Pinball loss for this quantile
+            errors = target_q - pred_q
+            loss_q = torch.where(errors >= 0, q * errors, (q - 1) * errors)
+            total_loss += loss_q.mean()
+        
+        return total_loss / n_quantiles
+    
+    def get_loss_function(self, base_criterion):
+        """
+        Return a loss function that automatically includes KL divergence.
+        
+        Args:
+            base_criterion: Base loss function (MSE, MAE, etc.)
+            
+        Returns:
+            Wrapped loss function that includes KL divergence
+        """
+        def bayesian_loss_fn(predictions, targets):
+            return self.compute_loss(predictions, targets, base_criterion)
+        
+        return bayesian_loss_fn
+    
+    def configure_optimizer_loss(self, base_criterion, verbose=False):
+        """
+        Configure the model for training with proper Bayesian loss.
+        
+        Args:
+            base_criterion: Base loss function
+            verbose: Whether to log loss components during training
+            
+        Returns:
+            Configured loss function
+        """
+        self._verbose_loss = verbose
+        self._loss_history = []
+        
+        def enhanced_bayesian_loss(predictions, targets):
+            loss_components = self.compute_loss(
+                predictions, targets, base_criterion, return_components=True
+            )
+            
+            if self._verbose_loss:
+                self._loss_history.append({
+                    'data_loss': loss_components['data_loss'].item(),
+                    'kl_loss': loss_components['kl_contribution'],
+                    'total_loss': loss_components['total_loss'].item()
+                })
+                
+                # Log every 10 calls to avoid spam
+                if len(self._loss_history) % 10 == 0:
+                    recent = self._loss_history[-1]
+                    logger.info(f"Bayesian Loss - Data: {recent['data_loss']:.6f}, "
+                              f"KL: {recent['kl_loss']:.6f}, "
+                              f"Total: {recent['total_loss']:.6f}")
+            
+            return loss_components['total_loss']
+        
+        return enhanced_bayesian_loss
 
+# Alias for compatibility with experiment framework
+Model = BayesianEnhancedAutoformer
 
 # Example usage and testing
 if __name__ == "__main__":
@@ -422,7 +580,12 @@ if __name__ == "__main__":
     print(f"Available confidence intervals: {list(result['confidence_intervals'].keys())}")
     
     # Test quantile mode
-    model.enable_quantile_mode([0.1, 0.5, 0.9])
+    # Create model with quantile mode enabled from start
+    model = BayesianEnhancedAutoformer(
+        configs, 
+        use_quantiles=True, 
+        quantile_levels=[0.1, 0.25, 0.5, 0.75, 0.9]
+    )
     result_quantile = model(x_enc, x_mark_enc, x_dec, x_mark_dec, return_uncertainty=True)
     
     if 'quantile_specific' in result_quantile:

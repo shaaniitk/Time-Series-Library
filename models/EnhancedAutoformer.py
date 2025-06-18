@@ -292,11 +292,24 @@ class EnhancedDecoder(nn.Module):
         
         # Trend integration module
         if len(layers) > 0:
-            d_model = layers[0].conv1.in_channels
+            # Get the output dimension from the decoder layer projection
+            c_out = None
+            for layer in layers:
+                if hasattr(layer, 'projection') and hasattr(layer.projection, '2'):
+                    # Sequential with Conv1d as final layer
+                    if hasattr(layer.projection[2], 'out_channels'):
+                        c_out = layer.projection[2].out_channels
+                        break
+            
+            if c_out is None:
+                # Fallback to d_model if we can't determine c_out
+                d_model = layers[0].conv1.in_channels
+                c_out = d_model
+                
             self.trend_integration = nn.Sequential(
-                nn.Linear(d_model, d_model),
+                nn.Linear(c_out, c_out),
                 nn.ReLU(),
-                nn.Linear(d_model, d_model)
+                nn.Linear(c_out, c_out)
             )
 
     def forward(self, x, cross, x_mask=None, cross_mask=None, trend=None):

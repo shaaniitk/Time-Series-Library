@@ -165,7 +165,7 @@ def generate_dynamic_config(base_config_path: str, data_analysis: Dict,
     if output_path is None:
         base_name = os.path.splitext(os.path.basename(base_config_path))[0]
         complexity = base_name.split('_')[-1]  # Extract complexity level
-        output_path = f"config_enhanced_autoformer_{mode}_{complexity}_dynamic.yaml"
+        output_path = f"config/config_enhanced_autoformer_{mode}_{complexity}_dynamic.yaml"
     
     # Save dynamic config
     with open(output_path, 'w') as f:
@@ -189,7 +189,7 @@ def update_all_configs_for_dataset(data_path: str, target_columns: Union[str, Li
     
     # Find all existing config files
     config_files = []
-    for file in os.listdir('.'):
+    for file in os.listdir('config'):
         if file.startswith('config_enhanced_autoformer_') and file.endswith('.yaml'):
             config_files.append(file)
     
@@ -206,10 +206,10 @@ def update_all_configs_for_dataset(data_path: str, target_columns: Union[str, Li
                 
                 if mode in ['M', 'MS', 'S']:
                     # Generate updated config
-                    output_path = f"config_enhanced_autoformer_{mode}_{complexity}_updated.yaml"
-                    new_config = generate_dynamic_config(config_file, analysis, output_path, mode)
+                    output_path = f"config/config_enhanced_autoformer_{mode}_{complexity}_updated.yaml"
+                    new_config = generate_dynamic_config(f"config/{config_file}", analysis, output_path, mode)
                     updated_files.append(new_config)
-                    logger.info(f"Updated: {config_file} → {new_config}")
+                    logger.info(f"Updated: config/{config_file} → {new_config}")
         
         except Exception as e:
             logger.warning(f"Failed to update {config_file}: {e}")
