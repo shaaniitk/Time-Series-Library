@@ -299,12 +299,12 @@ class GaussianNLLLoss(nn.Module):
 
 class PinballLoss(nn.Module):
     """Pinball loss function for quantile regression."""
-    def __init__(self, quantiles: List[float], reduction: str = 'mean'):
+    def __init__(self, quantile_levels: List[float], reduction: str = 'mean'):
         super().__init__()
-        if not all(0 < q_val < 1 for q_val in quantiles):
+        if not all(0 < q_val < 1 for q_val in quantile_levels):
             raise ValueError("Quantiles must be between 0 and 1.")
-        self.quantiles = sorted(quantiles)
-        self.num_quantiles = len(quantiles)
+        self.quantiles = sorted(quantile_levels)
+        self.num_quantiles = len(quantile_levels)
         self.reduction = reduction
 
     def forward(self, y_pred_quantiles: t.Tensor, y_true: t.Tensor) -> t.Tensor:

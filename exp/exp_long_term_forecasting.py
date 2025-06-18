@@ -77,7 +77,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             # Prioritize 'quantile_levels' if available, then 'quantiles'
             quantiles_to_use = getattr(self.args, 'quantile_levels', None)
             if quantiles_to_use is None:
-                quantiles_to_use = getattr(self.args, 'quantiles', [0.1, 0.5, 0.9]) # Default
+                quantiles_to_use = getattr(self.args, 'quantile_levels', [0.1, 0.5, 0.9]) # Default
             if not isinstance(quantiles_to_use, list) or not all(isinstance(q, float) for q in quantiles_to_use if q is not None): # Allow None in list for default
                 logger.warning(f"Invalid quantile_levels/quantiles: {quantiles_to_use}. Defaulting to [0.1, 0.5, 0.9]")
                 quantiles_to_use = [0.1, 0.5, 0.9]

@@ -366,7 +366,7 @@ class EnhancedAutoformer(nn.Module):
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.label_len = configs.label_len
-        self.pred_len = configs.pred_len
+        self.pred_len = configs.pred_len 
         
         # Store model dimensions for dynamic use
         self.enc_in = configs.enc_in
