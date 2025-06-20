@@ -3,6 +3,8 @@ from exp.exp_basic import Exp_Basic
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
 from utils.logger import logger
+from utils.dimension_manager import DimensionManager # Import DimensionManager
+from utils.losses import PinballLoss # Import PinballLoss for type checking
 import torch
 import torch.nn as nn
 from torch import optim
@@ -22,37 +24,58 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         logger.info(f"Initializing Exp_Long_Term_Forecast with args: {args}")
         super(Exp_Long_Term_Forecast, self).__init__(args)
 
+        # Initialize DimensionManager
+        self.dm = DimensionManager()
+        # Analyze data and configure dimensions based on args
+        data_path_for_dm = os.path.join(self.args.root_path, self.args.data_path)
+        if not os.path.exists(data_path_for_dm):
+             logger.warning(f"Data path for DimensionManager analysis not found: {data_path_for_dm}. Using args as is.")
+             # If data path is not found, DM might not be able to analyze.
+             # Proceed with caution, or ensure data_path is always correct.
+             self.model_init_args = args # Fallback to original args
+             self.eval_info = { # Provide default eval_info
+                 'c_out_evaluation': args.c_out,
+                 'num_quantiles': len(getattr(args, 'quantile_levels', [])) if getattr(args, 'quantile_levels', []) else 1,
+                 'quantile_levels': getattr(args, 'quantile_levels', None),
+                 'loss_name': args.loss,
+                 'target_columns': args.target.split(',') if isinstance(args.target, str) else args.target
+             }
+        else:
+            self.dm.analyze_and_configure(
+                data_path=data_path_for_dm, # Use full path for analysis
+                args=self.args,
+                task_name=self.args.task_name,
+                features_mode=self.args.features,
+                target_columns=self.args.target,
+                loss_name=self.args.loss,
+                quantile_levels=getattr(self.args, 'quantile_levels', None)
+            )
+            self.model_init_args = self.dm.get_model_init_params()
+            self.eval_info = self.dm.get_evaluation_info()
+
+
     def _build_model(self):
         ModelClass = self.model_dict[self.args.model].Model
-        
-        # Check if the model class accepts quantile_levels in its __init__
-        sig = inspect.signature(ModelClass.__init__)
-        model_accepts_quantiles = 'quantile_levels' in sig.parameters
-
-        q_levels = getattr(self.args, 'quantile_levels', None)
-
-        if model_accepts_quantiles:
-            logger.info(f"Model {self.args.model} accepts quantile_levels. Passing: {q_levels}")
-            # This covers EnhancedAutoformer, HierarchicalEnhancedAutoformer (with previous diffs)
-            # and BayesianEnhancedAutoformer (which has quantile_levels in its signature)
-            # For BayesianEnhancedAutoformer, other specific args like uncertainty_method, kl_weight
-            # are assumed to be part of self.args or handled by its defaults.
-            model = ModelClass(self.args, quantile_levels=q_levels).float()
-        elif self.args.model == 'BayesianEnhancedAutoformer' and not model_accepts_quantiles:
-            # Fallback for BayesianEnhancedAutoformer if signature check fails but we know it handles quantiles
-            logger.info(f"Passing quantile_levels to BayesianEnhancedAutoformer (fallback): {q_levels}")
-            model = ModelClass(self.args, use_quantiles=bool(q_levels), quantile_levels=q_levels).float()
-        else:
-            # Standard models that don't take quantile_levels directly in constructor
-            logger.info(f"Model {self.args.model} does not explicitly accept quantile_levels in constructor.")
-            model = ModelClass(self.args).float()
+        # Get model initialization parameters from the DimensionManager
+        # self.model_init_args was set in __init__
+        model = ModelClass(self.model_init_args).float()
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
         return model
 
     def _get_data(self, flag):
-        data_set, data_loader = data_provider(self.args, flag)
+        # Pass the scaler from train_data to val_data and test_data args
+        # The self.args object is shared and modified here.
+        if flag == 'train':
+            data_set, data_loader = data_provider(self.args, flag='train')
+            # Store the fitted scaler from the training dataset in self.args
+            # so it can be passed to val/test data_provider calls.
+            self.args.scaler = data_set.scaler if hasattr(data_set, 'scaler') else None
+            logger.debug(f"Stored train_scaler in self.args: {self.args.scaler}")
+        else: # 'val' or 'test'
+            # Ensure self.args.scaler (from training) is used
+            data_set, data_loader = data_provider(self.args, flag=flag)
         return data_set, data_loader
 
     def _select_optimizer(self):
@@ -68,20 +91,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         criterion = None
         
-        # Determine if we are in multi-quantile mode based on presence of a list of quantile_levels
         is_multi_quantile_scenario = isinstance(q_levels, list) and len(q_levels) > 0
 
         if loss_name == 'pinball' or (loss_name == 'quantile' and is_multi_quantile_scenario):
-            # Use PinballLoss if explicitly 'pinball' or if 'quantile' with a list of levels
             levels_for_pinball = q_levels
-            if not is_multi_quantile_scenario: # If loss_name was 'pinball' but no q_levels from args
-                levels_for_pinball = [0.1, 0.5, 0.9] # Default for PinballLoss
+            if not is_multi_quantile_scenario:
+                levels_for_pinball = [0.1, 0.5, 0.9]
                 logger.warning(f"Loss is 'pinball' but no quantile_levels provided in args. Defaulting to {levels_for_pinball}")
             
-            # Validate levels_for_pinball are valid for PinballLoss
             if not all(isinstance(q, float) and 0 < q < 1 for q in levels_for_pinball):
                 logger.error(f"Invalid quantile_levels for PinballLoss: {levels_for_pinball}. Must be list of floats between 0 and 1.")
-                # Fallback to MSE if invalid to prevent crash, or raise error
                 logger.warning("Falling back to MSELoss due to invalid quantile_levels for PinballLoss.")
                 criterion = nn.MSELoss()
             else:
@@ -89,14 +108,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 logger.info(f"Using PinballLoss with quantiles: {levels_for_pinball}")
 
         elif loss_name == 'quantile' and not is_multi_quantile_scenario:
-            # Use QuantileLoss (single quantile) if 'quantile' and no multi-levels defined
             if not (isinstance(single_q_val, float) and 0 < single_q_val < 1):
                 logger.warning(f"Invalid single quantile value: {single_q_val}. Defaulting to 0.5.")
                 single_q_val = 0.5
             criterion = get_loss_function('quantile', quantile=single_q_val)
             logger.info(f"Using QuantileLoss (single) with quantile: {single_q_val}")
         
-        # Handle other specific losses that need parameters from self.args
         elif loss_name == 'ps_loss':
             criterion = get_loss_function(loss_name, 
                                         pred_len=self.args.pred_len,
@@ -118,109 +135,74 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 base_loss_fn_str=getattr(self.args, 'base_loss_fn_str', 'mse')
             )
             logger.info(f"Using MultiScaleTrendAwareLoss with base: {getattr(self.args, 'base_loss_fn_str', 'mse')}")
-        # Add other specific loss handlers here if needed, similar to train_enhanced_autoformer.py
 
-        if criterion is None: # If no specific criterion was set above, fallback to general getter or MSE
+        if criterion is None:
             try:
-                criterion = get_loss_function(loss_name) # For simple losses like 'mse', 'mae'
+                criterion = get_loss_function(loss_name)
                 logger.info(f"Using standard loss: {loss_name}")
             except ValueError:
                 logger.warning(f"Unknown or misconfigured loss function: {loss_name}. Falling back to MSE.")
                 criterion = nn.MSELoss()
         
-        # If model has its own compute_loss (e.g., Bayesian models),
-        # the criterion selected here is the 'data_loss' part.
         if hasattr(self.model, 'configure_optimizer_loss') and callable(getattr(self.model, 'configure_optimizer_loss')):
             logger.info(f"Model {self.args.model} has configure_optimizer_loss. Wrapping base criterion.")
             return self.model.configure_optimizer_loss(criterion, verbose=getattr(self.args, 'verbose_loss', False))
         
         return criterion
- 
-        return criterion
- 
 
     def vali(self, vali_data, vali_loader, criterion):
         logger.info("Running validation phase")
         total_loss = []
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
+            for i, (batch_x, batch_y_val_unscaled_targets, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
                 batch_x = batch_x.float().to(self.device)
-                # batch_y is kept on CPU for now as its target part might be unscaled
-                # and needs processing before moving to device for loss calculation.
-                # batch_y = batch_y.float() 
-
+                # batch_y_val_unscaled_targets has unscaled targets, scaled covariates (if M/MS)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                # Decoder input construction
+                c_out_evaluation = self.eval_info['c_out_evaluation']
+                hist_targets_unscaled_val = batch_y_val_unscaled_targets[:, :self.args.label_len, :c_out_evaluation].cpu().numpy()
+                # Use the scaler from the validation dataset (which should be the train_scaler)
+                hist_targets_scaled_val_np = vali_data.scaler.transform(hist_targets_unscaled_val.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled_val.shape)
+                dec_inp_hist_scaled_val = torch.from_numpy(hist_targets_scaled_val_np).float().to(self.device)
                 
-                # encoder - decoder
+                dec_inp_future_zeros_val = torch.zeros_like(batch_y_val_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation]).float().to(self.device)
+                dec_inp_val = torch.cat([dec_inp_hist_scaled_val, dec_inp_future_zeros_val], dim=1)
+                
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 else:
-                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 
-                model_outputs_scaled = outputs[:, -self.args.pred_len:, :self.args.c_out]
+                # Prepare y_true for loss: scale the target part of batch_y_val_unscaled_targets
+                y_true_targets_unscaled_val_loss = batch_y_val_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation].cpu().numpy()
+                y_true_targets_scaled_val_loss_np = vali_data.scaler.transform(y_true_targets_unscaled_val_loss.reshape(-1, c_out_evaluation)).reshape(y_true_targets_unscaled_val_loss.shape)
+                y_true_for_loss_val = torch.from_numpy(y_true_targets_scaled_val_loss_np).float().to(self.device)
+
+                # Prepare y_pred for loss
+                is_criterion_pinball = isinstance(criterion, PinballLoss) or \
+                                       (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
+
+                if is_criterion_pinball:
+                    y_pred_for_loss_val = outputs_raw[:, -self.args.pred_len:, :] # Use full model output (c_out_model)
+                else:
+                    y_pred_for_loss_val = outputs_raw[:, -self.args.pred_len:, :c_out_evaluation]
                 
-                # Log dimensions for debugging
-                if i == 0:  # Log only for first batch to avoid spam
-                    logger.info(f"Validation batch dimensions:")
-                    logger.info(f"  batch_x: {batch_x.shape}")
-                    logger.info(f"  batch_y: {batch_y.shape}")
-                    logger.info(f"  batch_x_mark: {batch_x_mark.shape}")
-                    logger.info(f"  batch_y_mark: {batch_y_mark.shape}")
-                    logger.info(f"  dec_inp: {dec_inp.shape}")
-                    logger.info(f"  model outputs: {outputs.shape}")
-                    logger.info(f"  model_outputs_scaled: {model_outputs_scaled.shape}")
-                
-                # Prepare ground_truth_final_scaled
-                # Start with the relevant segment of batch_y. Covariates here are already scaled by Dataset_Custom.
-                # Targets in batch_y (for val/test from Dataset_Custom) are unscaled.
-                ground_truth_segment = batch_y[:, -self.args.pred_len:, :self.args.c_out].clone().detach()
-                ground_truth_final_scaled = ground_truth_segment.to(self.device) # Move to device after potential modification
-
-                # If using Dataset_Custom, its target_scaler was fit on training targets.
-                # Validation batch_y has unscaled targets. We need to scale them.
-                if hasattr(vali_data, 'target_scaler') and vali_data.scale and vali_data.target_scaler is not None:
-                    num_features_target_scaler_knows = vali_data.target_scaler.n_features_in_
-                    
-                    # Number of target features within c_out that need explicit scaling
-                    num_targets_to_explicitly_scale = min(self.args.c_out, num_features_target_scaler_knows)
-
-                    if num_targets_to_explicitly_scale > 0:
-                        # Extract the raw, unscaled target features from batch_y that the scaler was fit on
-                        # These are assumed to be the first 'num_features_target_scaler_knows' columns
-                        unscaled_targets_for_scaler_np = batch_y[:, -self.args.pred_len:, :num_features_target_scaler_knows].numpy()
-                        
-                        # Scale these features
-                        scaled_targets_full_set_np = vali_data.target_scaler.transform(
-                            unscaled_targets_for_scaler_np.reshape(-1, num_features_target_scaler_knows)
-                        ).reshape(unscaled_targets_for_scaler_np.shape)
-                        
-                        # Update the target portion in ground_truth_final_scaled
-                        # Only update the part that corresponds to the model's output (up to num_targets_to_explicitly_scale)
-                        ground_truth_final_scaled[:, :, :num_targets_to_explicitly_scale] = torch.from_numpy(
-                            scaled_targets_full_set_np[:, :, :num_targets_to_explicitly_scale]
-                        ).float().to(self.device)
-                # Else: assume batch_y is already appropriately scaled (e.g., ETT datasets or scale=False)
-
-                # For validation, we typically only use data loss (no KL regularization)
-                loss = criterion(model_outputs_scaled, ground_truth_final_scaled)
-
+                loss = criterion(y_pred_for_loss_val, y_true_for_loss_val)
                 total_loss.append(loss.item())
-        total_loss = np.average(total_loss)
+        
+        total_loss_avg = np.average(total_loss)
         self.model.train()
-        return total_loss
+        return total_loss_avg
 
     def train(self, setting):
         logger.info(f"Starting training with setting: {setting}")
         train_data, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
-        test_data, test_loader = self._get_data(flag='test')
+        test_data, test_loader = self._get_data(flag='test') # Test loader uses train_scaler via self.args
 
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
@@ -235,11 +217,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         criterion = self._select_criterion()
 
         if self.args.use_amp:
-            scaler = torch.cuda.amp.GradScaler()
+            scaler_amp = torch.cuda.amp.GradScaler()
 
         for epoch in range(self.args.train_epochs):
             iter_count = 0
-            train_loss = []
+            train_loss_epoch_list = []
 
             self.model.train()
             epoch_time = time.time()
@@ -251,79 +233,33 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                # encoder - decoder
+                outputs_raw_train = None # Initialize
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                        # For training, batch_y is already scaled by Dataset_Custom
-                        outputs = outputs[:, -self.args.pred_len:, :self.args.c_out]
-                        batch_y_targets = batch_y[:, -self.args.pred_len:, :self.args.c_out].to(self.device)
-                        
-                        # Log dimensions for debugging (first batch of first epoch)
-                        if epoch == 0 and i == 0:
-                            logger.info(f"Training batch dimensions:")
-                            logger.info(f"  batch_x: {batch_x.shape}")
-                            logger.info(f"  batch_y: {batch_y.shape}")
-                            logger.info(f"  batch_x_mark: {batch_x_mark.shape}")
-                            logger.info(f"  batch_y_mark: {batch_y_mark.shape}")
-                            logger.info(f"  dec_inp: {dec_inp.shape}")
-                            logger.info(f"  model outputs: {outputs.shape}")
-                            logger.info(f"  batch_y_targets: {batch_y_targets.shape}")
-                        
-                        # Compute loss (automatically includes KL for Bayesian models)
-                        if hasattr(self.model, 'compute_loss'):
-                            # Bayesian model handles its own loss computation
-                            total_loss = self.model.compute_loss(outputs, batch_y_targets, criterion)
-                            # Log loss components for first batch of first epoch for debugging
-                            if epoch == 0 and i == 0:
-                                loss_components = self.model.compute_loss(outputs, batch_y_targets, criterion, return_components=True)
-                                logger.info(f"  data_loss: {loss_components['data_loss'].item():.6f}")
-                                logger.info(f"  kl_loss: {loss_components['kl_contribution']:.6f}")
-                                logger.info(f"  total_loss: {loss_components['total_loss'].item():.6f}")
-                        else:
-                            # Standard models use only data loss
-                            total_loss = criterion(outputs, batch_y_targets)
-                        
-                        train_loss.append(total_loss.item())
+                        outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
-                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                    # For training, batch_y is already scaled by Dataset_Custom
-                    outputs = outputs[:, -self.args.pred_len:, :self.args.c_out]
-                    batch_y_targets = batch_y[:, -self.args.pred_len:, :self.args.c_out].to(self.device)
-                    
-                    # Log dimensions for debugging (first batch of first epoch)
-                    if epoch == 0 and i == 0:
-                        logger.info(f"Training batch dimensions:")
-                        logger.info(f"  batch_x: {batch_x.shape}")
-                        logger.info(f"  batch_y: {batch_y.shape}")
-                        logger.info(f"  batch_x_mark: {batch_x_mark.shape}")
-                        logger.info(f"  batch_y_mark: {batch_y_mark.shape}")
-                        logger.info(f"  dec_inp: {dec_inp.shape}")
-                        logger.info(f"  model outputs: {outputs.shape}")
-                        logger.info(f"  batch_y_targets: {batch_y_targets.shape}")
-                    
-                    # Compute loss (automatically includes KL for Bayesian models)
-                    if hasattr(self.model, 'compute_loss'):
-                        # Bayesian model handles its own loss computation
-                        total_loss = self.model.compute_loss(outputs, batch_y_targets, criterion)
-                        # Log loss components for first batch of first epoch for debugging
-                        if epoch == 0 and i == 0:
-                            loss_components = self.model.compute_loss(outputs, batch_y_targets, criterion, return_components=True)
-                            logger.info(f"  data_loss: {loss_components['data_loss'].item():.6f}")
-                            logger.info(f"  kl_loss: {loss_components['kl_contribution']:.6f}")
-                            logger.info(f"  total_loss: {loss_components['total_loss'].item():.6f}")
-                    else:
-                        # Standard models use only data loss
-                        total_loss = criterion(outputs, batch_y_targets)
-                    
-                    train_loss.append(total_loss.item())
+                    outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                
+                c_out_evaluation_train = self.eval_info['c_out_evaluation']
+                y_true_for_loss_train = batch_y[:, -self.args.pred_len:, :c_out_evaluation_train].to(self.device)
+
+                is_criterion_pinball_train = isinstance(criterion, PinballLoss) or \
+                                             (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
+                
+                y_pred_for_loss_train = None # Initialize
+                if is_criterion_pinball_train:
+                    y_pred_for_loss_train = outputs_raw_train[:, -self.args.pred_len:, :]
+                else:
+                    y_pred_for_loss_train = outputs_raw_train[:, -self.args.pred_len:, :c_out_evaluation_train]
+                
+                loss_train = criterion(y_pred_for_loss_train, y_true_for_loss_train)
+                train_loss_epoch_list.append(loss_train.item())
 
                 if (i + 1) % 100 == 0:
-                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, total_loss.item()))
+                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss_train.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
                     print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
@@ -331,20 +267,20 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     time_now = time.time()
 
                 if self.args.use_amp:
-                    scaler.scale(total_loss).backward()
-                    scaler.step(model_optim)
-                    scaler.update()
+                    scaler_amp.scale(loss_train).backward()
+                    scaler_amp.step(model_optim)
+                    scaler_amp.update()
                 else:
-                    total_loss.backward()
+                    loss_train.backward()
                     model_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
-            train_loss = np.average(train_loss)
+            train_loss_avg = np.average(train_loss_epoch_list)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
             test_loss = self.vali(test_data, test_loader, criterion) # Using vali for test as placeholder
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
-                epoch + 1, train_steps, train_loss, vali_loss, test_loss))
+                epoch + 1, train_steps, train_loss_avg, vali_loss, test_loss))
             early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:
                 print("Early stopping")
@@ -365,170 +301,118 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
         preds_scaled_np = []
-        trues_scaled_np = []
+        trues_original_np_targets_only = [] # Store original scale targets for direct comparison if needed
         
         # For visualization, store original unscaled targets if possible
         trues_original_for_viz_np = [] 
-
-        # Determine if in quantile mode and find median index
-        is_quantile_mode = hasattr(self.args, 'quantile_levels') and \
-                           isinstance(self.args.quantile_levels, list) and \
-                           len(self.args.quantile_levels) > 0
+        
+        c_out_evaluation_test = self.eval_info['c_out_evaluation']
+        num_quantiles_test = self.eval_info['num_quantiles']
+        is_quantile_mode_test = num_quantiles_test > 1 and self.eval_info['loss_name'] == 'pinball'
         median_quantile_index = -1
-        if is_quantile_mode:
+        if is_quantile_mode_test:
             try:
-                median_quantile_index = self.args.quantile_levels.index(0.5)
-            except ValueError: # 0.5 not in list
-                logger.warning("0.5 quantile not found in quantile_levels. Using first quantile for metrics/visualization.")
-                median_quantile_index = 0 # Fallback to the first quantile if 0.5 is not present
+                median_quantile_index = self.eval_info['quantile_levels'].index(0.5)
+            except (ValueError, AttributeError):
+                logger.warning("0.5 quantile not found or quantile_levels not set. Using middle index for median.")
+                median_quantile_index = num_quantiles_test // 2
+
+
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+            for i, (batch_x, batch_y_unscaled_targets, batch_x_mark, batch_y_mark) in enumerate(test_loader):
                 batch_x = batch_x.float().to(self.device)
-                # batch_y kept on CPU for now
-                # batch_y = batch_y.float() 
-
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                # Decoder input
+                hist_targets_unscaled_test = batch_y_unscaled_targets[:, :self.args.label_len, :c_out_evaluation_test].cpu().numpy()
+                hist_targets_scaled_test_np = test_data.scaler.transform(hist_targets_unscaled_test.reshape(-1, c_out_evaluation_test)).reshape(hist_targets_unscaled_test.shape)
+                dec_inp_hist_scaled_test = torch.from_numpy(hist_targets_scaled_test_np).float().to(self.device)
+                dec_inp_future_zeros_test = torch.zeros_like(batch_y_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation_test]).float().to(self.device)
+                dec_inp_test = torch.cat([dec_inp_hist_scaled_test, dec_inp_future_zeros_test], dim=1)
                 
-                # encoder - decoder
+                outputs_raw_test = None # Initialize
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
                 else:
-                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
 
-                # Model output is [B, pred_len, C] or [B, pred_len, C, Q]
-                model_outputs_raw = outputs[:, -self.args.pred_len:, :]
+                model_outputs_pred_len_segment = outputs_raw_test[:, -self.args.pred_len:, :] # [B, pred_len, c_out_model]
                 
-                # Log dimensions for debugging
-                if i == 0:  # Log only for first batch to avoid spam
-                    logger.info(f"Test batch dimensions:")
-                    logger.info(f"  batch_x: {batch_x.shape}")
-                    logger.info(f"  batch_y: {batch_y.shape}")
-                    logger.info(f"  batch_x_mark: {batch_x_mark.shape}")
-                    logger.info(f"  batch_y_mark: {batch_y_mark.shape}")
-                    logger.info(f"  dec_inp: {dec_inp.shape}")
-                    logger.info(f"  model outputs (raw): {outputs.shape}") # Full model output
-                    logger.info(f"  model_outputs_raw (pred_len segment): {model_outputs_raw.shape}")
+                # Store original unscaled targets (only the target columns) for direct comparison/saving
+                true_targets_original_batch_np = batch_y_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy()
+                trues_original_np_targets_only.append(true_targets_original_batch_np)
+
+                # For visualization, store the full c_out_evaluation features in original scale
+                trues_original_for_viz_np.append(batch_y_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy())
+
+                # Extract point predictions (median if quantile) for metrics, scaled
+                pred_point_scaled_batch_np = None # Initialize
+                if is_quantile_mode_test and model_outputs_pred_len_segment.shape[-1] == c_out_evaluation_test * num_quantiles_test:
+                    pred_point_scaled_batch_np = model_outputs_pred_len_segment.view(
+                        model_outputs_pred_len_segment.shape[0], self.args.pred_len, c_out_evaluation_test, num_quantiles_test
+                    )[:, :, :, median_quantile_index].detach().cpu().numpy()
+                else: # Standard point prediction or model output already c_out_evaluation
+                    pred_point_scaled_batch_np = model_outputs_pred_len_segment[:, :, :c_out_evaluation_test].detach().cpu().numpy()
                 
-                # Prepare ground_truth_final_scaled for metrics (similar to vali)
-                ground_truth_segment = batch_y[:, -self.args.pred_len:, :self.args.c_out].clone().detach()
-                ground_truth_final_scaled = ground_truth_segment.to(self.device)
+                preds_scaled_np.append(pred_point_scaled_batch_np)
 
-                # Store original unscaled targets for visualization (first c_out features)
-                if hasattr(test_data, 'target_scaler') and test_data.scale and test_data.target_scaler is not None:
-                    num_features_target_scaler_knows = test_data.target_scaler.n_features_in_
-                    num_targets_to_explicitly_scale = min(self.args.c_out, num_features_target_scaler_knows)
-                    
-                    if num_targets_to_explicitly_scale > 0:
-                        unscaled_targets_for_scaler_np = batch_y[:, -self.args.pred_len:, :num_features_target_scaler_knows].numpy()
-                        trues_original_for_viz_np.append(unscaled_targets_for_scaler_np[:,:,:num_targets_to_explicitly_scale]) # Store relevant part
-
-                        scaled_targets_full_set_np = test_data.target_scaler.transform(
-                            unscaled_targets_for_scaler_np.reshape(-1, num_features_target_scaler_knows)
-                        ).reshape(unscaled_targets_for_scaler_np.shape)
-                        
-                        ground_truth_final_scaled[:, :, :num_targets_to_explicitly_scale] = torch.from_numpy(
-                            scaled_targets_full_set_np[:, :, :num_targets_to_explicitly_scale]
-                        ).float().to(self.device)
-                else: # If not Dataset_Custom or no scaling, assume batch_y is already what we need
-                    trues_original_for_viz_np.append(ground_truth_segment.numpy())
-
-                # pred_np_batch will be [B, pred_len, C] or [B, pred_len, C, Q]
-                pred_np_batch_raw = model_outputs_raw.detach().cpu().numpy()
-
-                if is_quantile_mode and pred_np_batch_raw.ndim == 4 and median_quantile_index != -1:
-                    # Extract median predictions for metrics: [B, pred_len, C, Q] -> [B, pred_len, C]
-                    pred_np_batch = pred_np_batch_raw[:, :, :, median_quantile_index]
-                else:
-                    pred_np_batch = pred_np_batch_raw # Assumes [B, pred_len, C]
-                
-                true_np_batch = ground_truth_final_scaled.detach().cpu().numpy()
-                
-                preds_scaled_np.append(pred_np_batch)
-                trues_scaled_np.append(true_np_batch)
-
-                if i % 20 == 0 and self.args.c_out > 0: # Visualization part
+                if i % 20 == 0 and c_out_evaluation_test > 0:
                     input_np = batch_x.detach().cpu().numpy()
                     
-                    # For visualization, we want to show data in its original scale if possible
-                    # pred_to_plot: model's output, needs inverse_transform_targets
-                    # true_to_plot: original unscaled targets from batch_y
+                    pred_for_viz_scaled = pred_point_scaled_batch_np[0] # First sample in batch, scaled point preds
+                    true_for_viz_original = trues_original_for_viz_np[-1][0] # Corresponding original true values (all c_out_eval features)
 
-                    if is_quantile_mode and pred_np_batch_raw.ndim == 4 and median_quantile_index != -1:
-                        pred_for_viz = pred_np_batch_raw[0, :, :, median_quantile_index] # Median prediction for viz
+                    if hasattr(test_data, 'inverse_transform') and test_data.scale:
+                        pred_for_viz_original = test_data.inverse_transform(pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)).reshape(pred_for_viz_scaled.shape)
+                        input_for_viz_original = test_data.inverse_transform(input_np[0].reshape(-1, c_out_evaluation_test)).reshape(input_np[0].shape)
+                        
+                        # Visualize the first target feature (index 0 of c_out_evaluation features)
+                        if input_for_viz_original.shape[-1] > 0 and true_for_viz_original.shape[-1] > 0 and pred_for_viz_original.shape[-1] > 0:
+                            gt_plot = np.concatenate((input_for_viz_original[:, 0], true_for_viz_original[:, 0]), axis=0)
+                            pd_plot = np.concatenate((input_for_viz_original[:, 0], pred_for_viz_original[:, 0]), axis=0)
+                            visual(gt_plot, pd_plot, os.path.join(folder_path, str(i) + '.pdf'))
+                        else:
+                            logger.warning("Cannot visualize: insufficient target features after inverse transform.")
                     else:
-                        pred_for_viz = pred_np_batch_raw[0, :, :] # Standard prediction for viz
-
-                    true_for_viz_original = trues_original_for_viz_np[-1][0, :, :] # Corresponding original true values
-
-                    if hasattr(test_data, 'inverse_transform_targets') and test_data.scale:
-                        # Inverse transform only the target portion of predictions
-                        # Assuming target_scaler was fit on num_features_target_scaler_knows features
-                        # and these are the first ones in c_out.
-                        num_pred_targets_to_inv_transform = min(pred_for_viz.shape[-1], num_features_target_scaler_knows)
-                        
-                        pred_target_part_scaled = pred_for_viz[:, :num_pred_targets_to_inv_transform]
-                        pred_target_part_original = test_data.inverse_transform_targets(pred_target_part_scaled)
-                        
-                        # For input, inverse transform its target part
-                        input_target_part_unscaled = test_data.inverse_transform_targets(input_np[0, :, :num_features_target_scaler_knows])
-                        
-                        # Visualize the first target feature
-                        gt_plot = np.concatenate((input_target_part_unscaled[:, 0], true_for_viz_original[:, 0]), axis=0)
-                        pd_plot = np.concatenate((input_target_part_unscaled[:, 0], pred_target_part_original[:, 0]), axis=0)
-                        visual(gt_plot, pd_plot, os.path.join(folder_path, str(i) + '.pdf'))
-                    else: # If no inverse_transform_targets or not scaled, plot as is (likely scaled)
-                        gt_plot = np.concatenate((input_np[0, :, 0], true_np_batch[0, :, 0]), axis=0)
-                        pd_plot = np.concatenate((input_np[0, :, 0], pred_np_batch[0, :, 0]), axis=0)
-                        visual(gt_plot, pd_plot, os.path.join(folder_path, str(i) + '_scaled.pdf'))
+                        logger.warning("Cannot visualize in original scale: inverse_transform not available or scale=False.")
 
 
-        preds = np.concatenate(preds_scaled_np, axis=0)
-        trues = np.concatenate(trues_scaled_np, axis=0)
-        print('test shape (scaled for metrics):', preds.shape, trues.shape)
-        # preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1]) # Already in correct shape
-        # trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-
-        # result save
-        folder_path_results = './results/' + setting + '/' # Changed from folder_path to avoid conflict
-        if not os.path.exists(folder_path_results):
-            os.makedirs(folder_path_results)
-
-        # dtw calculation (if enabled)
-        dtw_val = 'Not calculated'
-        if getattr(self.args, 'use_dtw', False) and preds.shape[-1] == 1: # DTW typically for univariate
-            dtw_list = []
-            manhattan_distance = lambda x, y: np.abs(x - y)
-            for i in range(preds.shape[0]):
-                x_dtw = preds[i] # Already [pred_len, 1] or similar
-                y_dtw = trues[i]
-                if i % 100 == 0:
-                    print("calculating dtw iter:", i)
-                d, _, _, _ = accelerated_dtw(x_dtw, y_dtw, dist=manhattan_distance)
-                dtw_list.append(d)
-            dtw_val = np.array(dtw_list).mean()
+        preds_final_scaled = np.concatenate(preds_scaled_np, axis=0)
+        trues_final_original_targets_only = np.concatenate(trues_original_np_targets_only, axis=0)
         
-        mae, mse, rmse, mape, mspe = metric(preds, trues) # Metrics on scaled data
-        print('Metrics (on scaled data): mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw_val))
+        # Inverse transform predictions to original scale for final metrics
+        preds_final_original = test_data.scaler.inverse_transform(preds_final_scaled.reshape(-1, c_out_evaluation_test)).reshape(preds_final_scaled.shape)
         
-        with open(os.path.join(folder_path_results, "result_long_term_forecast.txt"), 'a') as f:
+        # Metrics are calculated on original scale data (targets only)
+        # Ensure both preds and trues for metric calculation are [samples, pred_len, num_target_cols]
+        # target_cols from eval_info defines which columns are the true targets
+        num_true_target_cols = len(self.eval_info['target_columns'])
+        
+        preds_for_metric = preds_final_original[:, :, :num_true_target_cols]
+        trues_for_metric = trues_final_original_targets_only[:, :, :num_true_target_cols]
+
+        logger.info(f'Test shape (original scale for metrics): preds={preds_for_metric.shape}, trues={trues_for_metric.shape}')
+        
+        mae, mse, rmse, mape, mspe = metric(preds_for_metric, trues_for_metric)
+        logger.info('Metrics (original scale, targets only): mse:{}, mae:{}, rmse:{}'.format(mse, mae, rmse))
+        
+        dtw_val = 'Not calculated' # Placeholder for DTW
+        
+        with open(os.path.join(folder_path, "result_long_term_forecast.txt"), 'a') as f:
             f.write(setting + "  \n")
-            f.write('Metrics (on scaled data): mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw_val))
+            f.write('Metrics (original scale, targets only): mse:{}, mae:{}, rmse:{}, dtw:{}'.format(mse, mae, rmse, dtw_val))
             f.write('\n')
             f.write('\n')
 
-        np.save(folder_path_results + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folder_path_results + 'pred_scaled.npy', preds) # Save scaled predictions
-        np.save(folder_path_results + 'true_scaled.npy', trues) # Save scaled trues
+        np.save(os.path.join(folder_path, 'metrics.npy'), np.array([mae, mse, rmse, mape, mspe]))
+        np.save(os.path.join(folder_path, 'pred_original.npy'), preds_final_original) # Save original scale predictions (all c_out_eval)
+        np.save(os.path.join(folder_path, 'true_original_targets.npy'), trues_final_original_targets_only) # Save original scale true targets
 
         return
