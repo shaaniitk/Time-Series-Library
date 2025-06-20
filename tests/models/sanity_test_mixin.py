@@ -7,493 +7,362 @@ from data_provider.data_factory import data_provider
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from utils.logger import logger
-from utils.losses import get_loss_function # Import the loss getter
+from utils.dimension_manager import DimensionManager # Import DimensionManager
+import inspect # Import inspect
+from utils.losses import get_loss_function, PinballLoss # Import the loss getter and PinballLoss
 
 class SanityTestMixin:
-    # Added loss_config parameter
     def run_sanity_test(self, ModelClass, device='cpu', epochs=10, model_config=None, loss_config=None):
         logger.info(f"--- Running Sanity Test (Sine Wave Convergence) for: {ModelClass.__name__} ---")
-          # Parameters
+        # Parameters
         seq_len = 100
         pred_len = 50
-        n_points = 2000  # Increased for better train/val split
-        
-        # Model configuration - adjust based on model type for fair comparison
-        if model_config:
-            d_model = model_config.get('d_model', 16)
-            e_layers = model_config.get('e_layers', 2)
-            d_layers = model_config.get('d_layers', 1)
-            d_ff = model_config.get('d_ff', 32)
-            n_heads = model_config.get('n_heads', 2)
-        else:
-            # Default small configuration
-            d_model = 16
-            e_layers = 2
-            d_layers = 1
-            d_ff = 32
-            n_heads = 2
-            
-        enc_in = 6  # All 6 features (3 covariates + 3 targets) for multivariate mode
-        c_out = 6   # Output all 6 features to match input dimension
-        num_kernels = 6
-        label_len = 50
-        top_k = 2
+        n_points = 2000
+        label_len = 50 # Standard for Autoformer family
         batch_size = 16
-        # Angles
-        X = np.arange(n_points) * 5 * np.pi / 180
-        X1 = np.arange(n_points) * 10 * np.pi / 180
-        X2 = np.arange(n_points) * 15 * np.pi / 180
-        # Covariates
-        cov1 = np.sin(X)
-        cov2 = np.sin(X1)
-        cov3 = np.sin(X2)        # Targets
-        t1 = np.sin(X - X1)
-        t2 = np.sin(X1 - X2)
-        t3 = np.sin(X2 - X)        # Split data for the full dataset that will be used by data loader
-        # We need to create the FULL dataset (2000 points) but the data loader will split it
-        
-        # Create the complete dataset for data loader
+
+        # Model configuration defaults (can be overridden by model_config)
+        default_model_params = {
+            'd_model': 16, 'e_layers': 2, 'd_layers': 1,
+            'd_ff': 32, 'n_heads': 2, 'factor': 1,
+            'activation': 'gelu', 'output_attention': False,
+            'moving_avg': 25, 'top_k': 2, 'num_kernels': 6 # For TimesNet
+        }
+        if model_config:
+            default_model_params.update(model_config)
+
+        # Synthetic Data Generation
+        X_time = np.arange(n_points) * 5 * np.pi / 180
+        X1_time = np.arange(n_points) * 10 * np.pi / 180
+        X2_time = np.arange(n_points) * 15 * np.pi / 180
+        cov1 = np.sin(X_time)
+        cov2 = np.sin(X1_time)
+        cov3 = np.sin(X2_time)
+        t1 = np.sin(X_time - X1_time)
+        t2 = np.sin(X1_time - X2_time)
+        t3 = np.sin(X2_time - X_time)
         date_full = pd.date_range(start='2020-01-01', periods=n_points, freq='h')
-        df_full = pd.DataFrame({
-            'date': date_full,
-            'cov1': cov1,
-            'cov2': cov2,
-            'cov3': cov3,
-            't1': t1,
-            't2': t2,
-            't3': t3        })
-        
-        # Correct time series split based on validation requirements
-        # Training: 0 to 1799 (1800 points)
-        # Validation: 1800 to 1949 (150 points) - exactly seq_len + pred_len for 1 window
-        # Test: 1950 to 1999 (50 points)
-        
-        train_end = 1800  # Training ends at point 1799 (1800 points: 0-1799)
-        val_period = seq_len + pred_len  # 150 points needed for validation
-        test_period = pred_len  # 50 points for test
-        
-        val_start = train_end  # 1800 (validation starts immediately after training)
-        val_end = val_start + val_period  # 1950
-          # Test starts where validation ends  
-        test_start = val_end  # 1950
-        
-        # Future covariates and actual targets for final test forecasting (test period only)
-        future_covariates = np.column_stack([
-            cov1[test_start:],
-            cov2[test_start:], 
-            cov3[test_start:]
-        ])
-        actual_targets_orig = np.column_stack([
-            t1[test_start:],
-            t2[test_start:],
-            t3[test_start:]
-        ])
-        
-        logger.info(f"Training data: points 0-{train_end-1} ({train_end} points)")
-        logger.info(f"Validation data: points {val_start}-{val_end-1} ({val_end - val_start} points)")
-        logger.info(f"Test data: points {test_start}-{n_points-1} ({n_points - test_start} points)")# Save the FULL dataset for data loader  
-        # The data loader will internally split based on borders
+        df_full = pd.DataFrame({'date': date_full, 'cov1': cov1, 'cov2': cov2, 'cov3': cov3, 't1': t1, 't2': t2, 't3': t3})
         csv_path = 'synthetic_timeseries_full.csv'
-        df_full.to_csv(csv_path, index=False)  # Full dataset
-        
-        # Create training-only subset for reference
-        df_train_only = df_full.iloc[:train_end]  # Points 0 to 1800
-          # Only cov1, cov2, cov3 as features, t1, t2, t3 as targets
+        df_full.to_csv(csv_path, index=False)
         target_cols = ['t1', 't2', 't3']
-          # Args for data provider
+
+        # Base Args for data_provider and DimensionManager
         class Args:
             pass
         args = Args()
         args.seq_len = seq_len
         args.label_len = label_len
         args.pred_len = pred_len
-        args.d_model = d_model
-        args.e_layers = e_layers
-        args.d_layers = d_layers
-        args.d_ff = d_ff
-        args.enc_in = enc_in  # All 6 features: 3 covariates + 3 targets in 'M' mode
-        args.dec_in = c_out  # Decoder works with target features only
-        args.c_out = c_out   # Output target features only
         args.embed = 'timeF'
         args.freq = 'h'
         args.dropout = 0.1
         args.task_name = 'long_term_forecast'
-        args.features = 'M'  # Multivariate mode - use both covariates and targets
+        args.features = 'M' # Multivariate mode for sanity test (6 features)
         args.data = 'custom'
-        args.target = ','.join(target_cols)  # use all three as targets
+        args.target = ','.join(target_cols)
         args.root_path = '.'
-        args.data_path = csv_path
+        args.data_path = os.path.basename(csv_path) # Use just filename for data_path
         args.num_workers = 0
         args.batch_size = batch_size
         args.augmentation_ratio = 0
         args.seasonal_patterns = None
-        args.top_k = top_k
-        args.num_kernels = num_kernels
-        args.use_amp = False  # Disable AMP for simplicity
-        args.use_multi_gpu = False  # Disable multi-GPU for simplicity
-        args.scale = True  # Enable data scaling (default behavior)
-        
-        # Model-specific parameters (for compatibility with different models)
-        args.n_heads = n_heads  # Dynamic based on model requirements
-        args.factor = 1  # Attention factor
-        args.activation = 'gelu'  # Activation function
-        args.output_attention = False  # Output attention weights
-        args.moving_avg = 25  # For Autoformer decomposition
-        
-        # Configurable split parameters for data loader
-        args.validation_length = 150  # v parameter
-        args.test_length = 50         # t parameter
-        
-        # Use data provider for training (only the reduced training set)
-        dataset, loader = data_provider(args, flag='train')
-        
-        model = ModelClass(args).to(device)
-        model.train()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01) # Fixed learning rate for sanity test
+        args.use_amp = False
+        args.use_multi_gpu = False
+        args.scale = True
+        args.validation_length = seq_len + pred_len # 150
+        args.test_length = pred_len # 50
+        # Add model-specific architectural defaults to args
+        for k, v in default_model_params.items():
+            setattr(args, k, v)
+        # Ensure enc_in, dec_in, c_out are set based on 'M' mode for 6 features
+        # These will be overridden by DimensionManager later for the model,
+        # but data_provider might use them initially.
+        args.enc_in = 6
+        args.dec_in = 6
+        args.c_out = 6
 
-        # Select criterion based on loss_config or default to MSELoss
+
+        # --- Dimension Management ---
+        dm = DimensionManager()
+        dm.analyze_and_configure(
+            data_path=csv_path, # Full path for analysis
+            args=args,
+            task_name=args.task_name,
+            features_mode=args.features,
+            target_columns=target_cols,
+            loss_name=loss_config.get('loss_name', 'mse') if loss_config else 'mse',
+            quantile_levels=loss_config.get('quantile_levels') if loss_config else None
+        )
+        model_init_args = dm.get_model_init_params()
+        eval_info = dm.get_evaluation_info()
+        c_out_evaluation = eval_info['c_out_evaluation'] # Base target features for metrics/scaling
+
+        # Data Loaders
+        dataset, loader = data_provider(args, flag='train')
+        train_scaler = dataset.scaler if hasattr(dataset, 'scaler') else None
+        logger.debug(f"Train dataset scaler obtained: {train_scaler}")
+
+        # Model Initialization
+        model = ModelClass(model_init_args).to(device) # Pass Namespace from DM
+        model.train()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+        # Loss Function
         if loss_config and 'loss_name' in loss_config:
             criterion = get_loss_function(loss_config['loss_name'], **{k: v for k, v in loss_config.items() if k != 'loss_name'})
         else:
-            # Default to MSELoss if no specific loss config is provided
-         criterion = torch.nn.MSELoss()
+            criterion = torch.nn.MSELoss()
         
-        # Training loop with proper time series validation
+        # If model has its own loss computation (e.g., Bayesian models)
+        if hasattr(model, 'configure_optimizer_loss') and callable(getattr(model, 'configure_optimizer_loss')):
+            logger.info(f"Model {ModelClass.__name__} has configure_optimizer_loss. Wrapping base criterion.")
+            criterion = model.configure_optimizer_loss(criterion, verbose=False)
+
+
+        # Training Loop
         best_val_loss = float('inf')
         patience_counter = 0
-        patience = 3  # Early stopping patience
-        
+        patience = 5 # Increased patience
+
         for epoch in range(epochs):
-            # Training phase
             model.train()
             train_losses = []
-            for batch in loader:
-                batch_x, batch_y, batch_x_mark, batch_y_mark = batch
+            for batch_idx, batch_data_train in enumerate(loader):
+                batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data_train
                 batch_x = batch_x.float().to(device)
-                batch_y = batch_y.float().to(device)
+                batch_y = batch_y.float().to(device) # Dataset_Custom scales all features for train
                 batch_x_mark = batch_x_mark.float().to(device)
                 batch_y_mark = batch_y_mark.float().to(device)
+                
                 optimizer.zero_grad()
-                y_pred = model(batch_x, batch_x_mark, batch_y[:, :label_len, :], batch_y_mark)
-                # Only compare prediction part
-                y_true = batch_y[:, -pred_len:, :]
-                y_pred = y_pred[:, -pred_len:, :]
-                loss = criterion(y_pred, y_true)
+                
+                dec_inp = torch.zeros_like(batch_y[:, -pred_len:, :]).float()
+                dec_inp = torch.cat([batch_y[:, :label_len, :], dec_inp], dim=1).float().to(device)
+                
+                y_pred = model(batch_x, batch_x_mark, dec_inp, batch_y_mark) # Raw model output
+                
+                # Prepare y_true for loss: always the first c_out_evaluation features, scaled
+                y_true_for_loss = batch_y[:, -pred_len:, :c_out_evaluation].to(device)
+
+                is_model_quantile_train = hasattr(model, 'is_quantile_mode') and model.is_quantile_mode
+                is_criterion_pinball_train = isinstance(criterion, PinballLoss) or \
+                                             (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
+
+                if is_model_quantile_train and is_criterion_pinball_train:
+                    y_pred_for_loss = y_pred[:, -pred_len:, :] # Use full model output (c_out_model)
+                else:
+                    y_pred_for_loss = y_pred[:, -pred_len:, :c_out_evaluation]
+                
+                loss = criterion(y_pred_for_loss, y_true_for_loss)
                 loss.backward()
                 optimizer.step()
-                train_losses.append(loss.item())            # True forecasting validation phase using proper data loader
+                train_losses.append(loss.item())
+            
+            # Validation Loop
             model.eval()
+            val_args = Args() # Create a fresh Args for validation
+            for attr_name, attr_value in vars(args).items(): # Copy attributes from original args
+                setattr(val_args, attr_name, attr_value)
+            val_args.scaler = train_scaler # Pass the scaler
+            val_args.data_path = os.path.basename(csv_path) # Ensure correct data_path for val_dataset
             
-            # Create validation dataset using the same full dataset
-            # The data loader will use borders to get the right validation slice
-            val_args = Args()
-            for attr in dir(args):
-                if not attr.startswith('_'):
-                    setattr(val_args, attr, getattr(args, attr))
-            val_args.data_path = csv_path  # Use same full dataset
-            
-            # Get validation dataset - data loader will handle the split
             val_dataset, val_loader = data_provider(val_args, flag='val')
             
-            val_losses = []
+            val_losses_scaled = []
             val_losses_orig = []
             
             with torch.no_grad():
-                for batch in val_loader:
-                    batch_x, batch_y, batch_x_mark, batch_y_mark = batch
-                    batch_x = batch_x.float().to(device)
-                    batch_y = batch_y.float().to(device) 
-                    batch_x_mark = batch_x_mark.float().to(device)
-                    batch_y_mark = batch_y_mark.float().to(device)
+                for batch_idx_val, batch_data_val in enumerate(val_loader):
+                    batch_x_val, batch_y_val, batch_x_mark_val, batch_y_mark_val = batch_data_val
+                    batch_x_val = batch_x_val.float().to(device)
+                    # batch_y_val from val_loader has unscaled targets (first c_out_evaluation), scaled covariates
+                    batch_x_mark_val = batch_x_mark_val.float().to(device)
+                    batch_y_mark_val = batch_y_mark_val.float().to(device)
+
+                    # Create dec_inp for validation
+                    # Historical part: scale the target portion of batch_y_val
+                    hist_targets_unscaled_val = batch_y_val[:, :label_len, :c_out_evaluation].cpu().numpy()
+                    hist_targets_scaled_val_np = val_dataset.scaler.transform(hist_targets_unscaled_val.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled_val.shape)
+                    dec_inp_hist_scaled_val = torch.from_numpy(hist_targets_scaled_val_np).float().to(device)
                     
-                    # Get prediction
-                    y_pred = model(batch_x, batch_x_mark, batch_y[:, :label_len, :], batch_y_mark)
-                    y_true = batch_y[:, -pred_len:, :]
-                    y_pred = y_pred[:, -pred_len:, :]
+                    dec_inp_future_zeros_val = torch.zeros_like(batch_y_val[:, -pred_len:, :c_out_evaluation]).float().to(device)
+                    dec_inp_val = torch.cat([dec_inp_hist_scaled_val, dec_inp_future_zeros_val], dim=1)
+
+                    y_pred_val_raw = model(batch_x_val, batch_x_mark_val, dec_inp_val, batch_y_mark_val) # Raw model output
+
+                    # Ground truth for scaled loss: scale the target part of batch_y_val
+                    y_true_targets_unscaled_val_loss = batch_y_val[:, -pred_len:, :c_out_evaluation].cpu().numpy()
+                    y_true_targets_scaled_val_loss_np = val_dataset.scaler.transform(y_true_targets_unscaled_val_loss.reshape(-1, c_out_evaluation)).reshape(y_true_targets_unscaled_val_loss.shape)
+                    y_true_targets_scaled_val_loss = torch.from_numpy(y_true_targets_scaled_val_loss_np).float().to(device)
                     
-                    # Compute validation loss on scaled data (same as training)
-                    val_loss_scaled = criterion(y_pred, y_true).item()
-                    val_losses.append(val_loss_scaled)
+                    is_model_quantile_val = hasattr(model, 'is_quantile_mode') and model.is_quantile_mode
+                    is_criterion_pinball_val = isinstance(criterion, PinballLoss) or \
+                                               (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
+
+                    if is_model_quantile_val and is_criterion_pinball_val:
+                        y_pred_for_loss_val = y_pred_val_raw[:, -pred_len:, :] # Use full model output (c_out_model)
+                    else:
+                        y_pred_for_loss_val = y_pred_val_raw[:, -pred_len:, :c_out_evaluation]
                     
-                    # Also compute validation loss on original scale
+                    val_loss_s = criterion(y_pred_for_loss_val, y_true_targets_scaled_val_loss).item()
+                    val_losses_scaled.append(val_loss_s)
+                    
+                    # Original scale loss calculation
                     try:
-                        # FIX: Proper inverse transform handling
-                        batch_size, pred_len, n_features = y_pred.shape
+                        pred_for_inv_transform_val = y_pred_for_loss_val # This is [B, L, C_eval] or [B, L, C_model]
+                        if is_model_quantile_val and is_criterion_pinball_val:
+                            median_idx = eval_info['num_quantiles'] // 2
+                            pred_for_inv_transform_val = y_pred_for_loss_val.view(
+                                y_pred_for_loss_val.shape[0], pred_len, c_out_evaluation, eval_info['num_quantiles']
+                            )[:, :, :, median_idx]
                         
-                        # Reshape properly for inverse transform: [batch_size * pred_len, n_features]
-                        pred_reshaped = y_pred.cpu().numpy().reshape(-1, n_features)
-                        true_reshaped = y_true.cpu().numpy().reshape(-1, n_features)
+                        pred_orig_np_val = val_dataset.scaler.inverse_transform(
+                            pred_for_inv_transform_val.cpu().numpy().reshape(-1, c_out_evaluation)
+                        ).reshape(pred_for_inv_transform_val.shape)
                         
-                        # Apply inverse transform
-                        pred_orig = val_dataset.inverse_transform(pred_reshaped)
-                        true_orig = val_dataset.inverse_transform(true_reshaped)
-                        
-                        # Reshape back: [batch_size, pred_len, n_features]
-                        pred_orig = pred_orig.reshape(batch_size, pred_len, n_features)
-                        true_orig = true_orig.reshape(batch_size, pred_len, n_features)
-                        
-                        # FIX: Compute MSE only on target features (last 3 if 6 features, all if 3)
-                        if n_features == 6:  # Multivariate case: 3 covariates + 3 targets
-                            target_pred = pred_orig[:, :, -3:]  # Last 3 features are targets
-                            target_true = true_orig[:, :, -3:]
-                        else:  # All features are targets
-                            target_pred = pred_orig
-                            target_true = true_orig
-                            
-                        val_loss_orig = np.mean((target_pred - target_true) ** 2)
-                        val_losses_orig.append(val_loss_orig)
-                        
+                        true_orig_np_val = batch_y_val[:, -pred_len:, :c_out_evaluation].cpu().numpy() # Already unscaled targets
+
+                        val_loss_o = np.mean((pred_orig_np_val[:, :, -len(target_cols):] - true_orig_np_val[:, :, -len(target_cols):]) ** 2)
+                        val_losses_orig.append(val_loss_o)
                     except Exception as e:
                         logger.warning(f"Could not compute original scale validation loss: {e}")
-                        # FIX: Don't silently use scaled loss - use NaN to indicate failure
                         val_losses_orig.append(np.nan)
             
-            # Calculate average losses
             avg_train_loss = np.mean(train_losses)
-            avg_val_loss = np.mean(val_losses) if val_losses else float('inf')
+            avg_val_loss_scaled = np.mean(val_losses_scaled) if val_losses_scaled else float('inf')
+            valid_val_losses_orig_clean = [loss for loss in val_losses_orig if not np.isnan(loss)]
+            avg_val_loss_orig = np.mean(valid_val_losses_orig_clean) if valid_val_losses_orig_clean else np.nan
             
-            # FIX: Handle NaN values properly for original scale validation loss
-            valid_val_losses_orig = [loss for loss in val_losses_orig if not np.isnan(loss)]
-            avg_val_loss_orig = np.mean(valid_val_losses_orig) if valid_val_losses_orig else np.nan
+            log_msg = f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_train_loss:.6f}, Val Loss (scaled): {avg_val_loss_scaled:.6f}"
+            log_msg += f", Val Loss (original): {avg_val_loss_orig:.6f}" if not np.isnan(avg_val_loss_orig) else ", Val Loss (original): N/A"
+            logger.info(log_msg)
             
-            # Display losses with proper NaN handling
-            if np.isnan(avg_val_loss_orig):
-                logger.info(f"Epoch {epoch+1}/{epochs}, Train MSE: {avg_train_loss:.6f}, Val MSE (scaled): {avg_val_loss:.6f}, Val MSE (original): N/A")
-            else:
-                logger.info(f"Epoch {epoch+1}/{epochs}, Train MSE: {avg_train_loss:.6f}, Val MSE (scaled): {avg_val_loss:.6f}, Val MSE (original): {avg_val_loss_orig:.6f}")
-            
-            # Early stopping if test loss gets very low (converged) - use scaled test loss for convergence check
-            # Run test evaluation to check convergence
-            model.eval()
-            test_args = Args()
-            for attr in dir(args):
-                if not attr.startswith('_'):
-                    setattr(test_args, attr, getattr(args, attr))
-            test_args.data_path = csv_path
-            
-            test_dataset, test_loader = data_provider(test_args, flag='test')
-            test_losses_check = []
-            
-            with torch.no_grad():
-                for batch in test_loader:
-                    batch_x, batch_y, batch_x_mark, batch_y_mark = batch
-                    batch_x = batch_x.float().to(device)
-                    # batch_y kept on CPU for scaling processing
-                    batch_x_mark = batch_x_mark.float().to(device)
-                    batch_y_mark = batch_y_mark.float().to(device)
-                    
-                    y_pred = model(batch_x, batch_x_mark, batch_y[:, :label_len, :].to(device), batch_y_mark)
-                    y_true_unscaled = batch_y[:, -pred_len:, :]
-                    y_pred = y_pred[:, -pred_len:, :]
-                    
-                    # Scale the ground truth targets to match model outputs
-                    y_true_scaled = y_true_unscaled.clone()
-                    if hasattr(test_dataset, 'target_scaler') and test_dataset.target_scaler is not None:
-                        # Only scale target features (assume first c_out features are targets)
-                        n_targets = min(c_out, test_dataset.target_scaler.n_features_in_)
-                        if n_targets > 0:
-                            # Scale target portion
-                            targets_np = y_true_unscaled[:, :, :n_targets].numpy()
-                            targets_scaled = test_dataset.target_scaler.transform(
-                                targets_np.reshape(-1, n_targets)
-                            ).reshape(targets_np.shape)
-                            y_true_scaled[:, :, :n_targets] = torch.from_numpy(targets_scaled).float()
-                    
-                    y_true_scaled = y_true_scaled.to(device)
-                    test_loss_scaled = criterion(y_pred, y_true_scaled).item()
-                    test_losses_check.append(test_loss_scaled)
-            
-            avg_test_loss_check = np.mean(test_losses_check) if test_losses_check else float('inf')
-            logger.info(f"Current test MSE (scaled): {avg_test_loss_check:.6f}")
-            
-            if avg_test_loss_check < 0.01:
-                logger.info(f"Early stopping at epoch {epoch+1}, Test MSE (scaled) {avg_test_loss_check:.6f} < 0.01 (converged)")
+            if avg_val_loss_scaled < 0.01:
+                logger.info(f"Early stopping at epoch {epoch+1}, Val Loss (scaled) {avg_val_loss_scaled:.6f} < 0.01 (converged)")
                 break
             
-            # FIX: Early stopping based on validation loss improvement - use scaled loss consistently            if avg_val_loss < best_val_loss:
-                best_val_loss = avg_val_loss
+            if avg_val_loss_scaled < best_val_loss:
+                best_val_loss = avg_val_loss_scaled
                 patience_counter = 0
-                logger.info(f"New best validation loss (scaled): {best_val_loss:.6f}")
             else:
                 patience_counter += 1
-                logger.info(f"Validation loss did not improve. Patience: {patience_counter}/{patience}")
-                
                 if patience_counter >= patience:
                     logger.info(f"Early stopping at epoch {epoch+1} due to no improvement in validation loss")
                     break
         
-        # TEST EVALUATION USING DATA LOADER (same approach as validation)
-        logger.info("Starting test evaluation using data loader")
+        # Test Loop
+        logger.info("Starting final test evaluation")
         model.eval()
+        test_args = Args() # Create a fresh Args for test
+        for attr_name, attr_value in vars(args).items(): # Copy attributes from original args
+            setattr(test_args, attr_name, attr_value)
+        test_args.scaler = train_scaler
+        test_args.data_path = os.path.basename(csv_path)
         
-        # Create test dataset using the same approach as validation
-        test_args = Args()
-        for attr in dir(args):
-            if not attr.startswith('_'):
-                setattr(test_args, attr, getattr(args, attr))
-        test_args.data_path = csv_path  # Use same full dataset
-        
-        # Get test dataset - data loader will handle the split using borders
         test_dataset, test_loader = data_provider(test_args, flag='test')
         
-        test_losses = []
-        test_losses_orig = []
-        
+        first_batch_preds_plot_orig = None
+        first_batch_actuals_plot_orig = None
+        all_preds_for_final_mse_orig = []
+        all_trues_for_final_mse_orig = []
+
         with torch.no_grad():
-            for batch in test_loader:
-                batch_x, batch_y, batch_x_mark, batch_y_mark = batch
-                batch_x = batch_x.float().to(device)
-                batch_y = batch_y.float().to(device) 
-                batch_x_mark = batch_x_mark.float().to(device)
-                batch_y_mark = batch_y_mark.float().to(device)
+            for batch_idx_test, batch_data_test in enumerate(test_loader):
+                batch_x_test, batch_y_test, batch_x_mark_test, batch_y_mark_test = batch_data_test
+                batch_x_test = batch_x_test.float().to(device)
+                batch_x_mark_test = batch_x_mark_test.float().to(device)
+                batch_y_mark_test = batch_y_mark_test.float().to(device)
+
+                hist_targets_unscaled_test = batch_y_test[:, :label_len, :c_out_evaluation].cpu().numpy()
+                hist_targets_scaled_test_np = test_dataset.scaler.transform(hist_targets_unscaled_test.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled_test.shape)
+                dec_inp_hist_scaled_test = torch.from_numpy(hist_targets_scaled_test_np).float().to(device)
+                dec_inp_future_zeros_test = torch.zeros_like(batch_y_test[:, -pred_len:, :c_out_evaluation]).float().to(device)
+                dec_inp_test = torch.cat([dec_inp_hist_scaled_test, dec_inp_future_zeros_test], dim=1)
+
+                y_pred_test_raw = model(batch_x_test, batch_x_mark_test, dec_inp_test, batch_y_mark_test)
+                y_pred_test_pred_len_segment = y_pred_test_raw[:, -pred_len:, :] 
+
+                current_batch_size_test = y_pred_test_pred_len_segment.shape[0]
+                current_output_features_test = y_pred_test_pred_len_segment.shape[-1]
                 
-                # Get prediction (same way as training/validation)
-                y_pred = model(batch_x, batch_x_mark, batch_y[:, :label_len, :], batch_y_mark)
-                y_true = batch_y[:, -pred_len:, :]
-                y_pred = y_pred[:, -pred_len:, :]
+                point_preds_batch_scaled_torch = torch.tensor([]) # Initialize
+
+                is_model_quantile_test = hasattr(model, 'is_quantile_mode') and model.is_quantile_mode
+                expected_quantile_feat_dim_test = c_out_evaluation * eval_info['num_quantiles']
+
+                if is_model_quantile_test and eval_info['num_quantiles'] > 1 and \
+                   current_output_features_test == expected_quantile_feat_dim_test:
+                    median_idx_test = eval_info['num_quantiles'] // 2
+                    point_preds_batch_scaled_torch = y_pred_test_pred_len_segment.view(
+                        current_batch_size_test, pred_len, c_out_evaluation, eval_info['num_quantiles']
+                    )[:, :, :, median_idx_test]
+                elif current_output_features_test == c_out_evaluation:
+                    point_preds_batch_scaled_torch = y_pred_test_pred_len_segment
+                elif current_output_features_test > c_out_evaluation:
+                    point_preds_batch_scaled_torch = y_pred_test_pred_len_segment[:, :, :c_out_evaluation]
+                else:
+                    logger.error(f"[TestLoop] Output features {current_output_features_test} < c_out_evaluation {c_out_evaluation}. This is an error.")
+                    continue # Skip this problematic batch
+
+                if point_preds_batch_scaled_torch.shape[-1] != c_out_evaluation:
+                    logger.critical(f"[TestLoop] FATAL: point_preds_batch_scaled_torch last dim is {point_preds_batch_scaled_torch.shape[-1]}, expected {c_out_evaluation}.")
+                    continue
                 
-                # Compute test loss on scaled data (same as training/validation)
-                test_loss_scaled = criterion(y_pred, y_true).item()
-                test_losses.append(test_loss_scaled)
+                point_preds_batch_orig_np = test_dataset.scaler.inverse_transform(
+                    point_preds_batch_scaled_torch.cpu().numpy().reshape(-1, c_out_evaluation)
+                ).reshape(current_batch_size_test, pred_len, c_out_evaluation)
                 
-                # Also compute test loss on original scale
-                try:
-                    # FIX: Proper inverse transform handling
-                    batch_size, pred_len, n_features = y_pred.shape
-                    
-                    # Reshape properly for inverse transform: [batch_size * pred_len, n_features]
-                    pred_reshaped = y_pred.cpu().numpy().reshape(-1, n_features)
-                    true_reshaped = y_true.cpu().numpy().reshape(-1, n_features)
-                    
-                    # Apply inverse transform
-                    pred_orig = test_dataset.inverse_transform(pred_reshaped)
-                    true_orig = test_dataset.inverse_transform(true_reshaped)
-                    
-                    # Reshape back: [batch_size, pred_len, n_features]
-                    pred_orig = pred_orig.reshape(batch_size, pred_len, n_features)
-                    true_orig = true_orig.reshape(batch_size, pred_len, n_features)
-                    
-                    # FIX: Compute MSE only on target features (last 3 if 6 features, all if 3)
-                    if n_features == 6:  # Multivariate case: 3 covariates + 3 targets
-                        target_pred = pred_orig[:, :, -3:]  # Last 3 features are targets
-                        target_true = true_orig[:, :, -3:]
-                    else:  # All features are targets
-                        target_pred = pred_orig
-                        target_true = true_orig
-                        
-                    test_loss_orig = np.mean((target_pred - target_true) ** 2)
-                    test_losses_orig.append(test_loss_orig)
-                    
-                except Exception as e:
-                    logger.warning(f"Could not compute original scale test loss: {e}")
-                    # FIX: Don't silently use scaled loss - use NaN to indicate failure
-                    test_losses_orig.append(np.nan)
-        
-        # Calculate average test losses
-        avg_test_loss = np.mean(test_losses) if test_losses else float('inf')
-        
-        # FIX: Handle NaN values properly for original scale test loss
-        valid_test_losses_orig = [loss for loss in test_losses_orig if not np.isnan(loss)]
-        avg_test_loss_orig = np.mean(valid_test_losses_orig) if valid_test_losses_orig else np.nan
-        
-        # Display test losses with proper NaN handling
-        if np.isnan(avg_test_loss_orig):
-            logger.info(f"Test MSE (scaled): {avg_test_loss:.6f}, Test MSE (original): N/A")
-        else:
-            logger.info(f"Test MSE (scaled): {avg_test_loss:.6f}, Test MSE (original): {avg_test_loss_orig:.6f}")
-          # For plotting and return values, get the first batch predictions
-        with torch.no_grad():
-            for batch in test_loader:
-                batch_x, batch_y, batch_x_mark, batch_y_mark = batch
-                batch_x = batch_x.float().to(device)
-                batch_y = batch_y.float().to(device) 
-                batch_x_mark = batch_x_mark.float().to(device)
-                batch_y_mark = batch_y_mark.float().to(device)
+                true_batch_c_out_features_orig_np = batch_y_test[:, -pred_len:, :c_out_evaluation].cpu().numpy()
+                true_targets_batch_orig_np = true_batch_c_out_features_orig_np[:, :, -len(target_cols):]
                 
-                # Get prediction for plotting
-                y_pred = model(batch_x, batch_x_mark, batch_y[:, :label_len, :], batch_y_mark)
-                y_true = batch_y[:, -pred_len:, :]
-                y_pred = y_pred[:, -pred_len:, :]
+                all_preds_for_final_mse_orig.append(point_preds_batch_orig_np[:, :, -len(target_cols):])
+                all_trues_for_final_mse_orig.append(true_targets_batch_orig_np)
+
+                if batch_idx_test == 0:
+                    first_batch_preds_plot_orig = point_preds_batch_orig_np[0]
+                    first_batch_actuals_plot_orig = true_batch_c_out_features_orig_np[0]
+
+        final_preds_orig = np.concatenate(all_preds_for_final_mse_orig, axis=0)
+        final_trues_orig = np.concatenate(all_trues_for_final_mse_orig, axis=0)
+        
+        mse_forecast = np.mean((final_preds_orig - final_trues_orig) ** 2)
+        logger.info(f"Final test MSE (targets only, original scale): {mse_forecast:.6f}")
+        
+        # Plotting
+        if first_batch_preds_plot_orig is not None and first_batch_actuals_plot_orig is not None:
+            plot_len_viz = min(pred_len, 50) # Visualize up to 50 steps or pred_len
+            fig, axes = plt.subplots(len(target_cols), 1, figsize=(12, 4 * len(target_cols)))
+            if len(target_cols) == 1: axes = [axes]
+
+            for i, target_col_name in enumerate(target_cols):
+                # Find the index of target_col_name within the c_out_evaluation features
+                # This assumes target_cols are the last len(target_cols) of the c_out_evaluation features
+                target_idx_in_c_out_eval = c_out_evaluation - len(target_cols) + i
                 
-                # Use first batch for plotting
-                forecast_plot = y_pred[0].cpu().numpy()  # [pred_len, 6]
-                actual_plot = y_true[0].cpu().numpy()    # [pred_len, 6]
-                break
-        
-        # Try to get original scale data for plotting
-        try:
-            # FIX: Proper inverse transform for plotting
-            pred_len, n_features = forecast_plot.shape
+                ax = axes[i]
+                ax.plot(range(plot_len_viz), 
+                        first_batch_actuals_plot_orig[:plot_len_viz, target_idx_in_c_out_eval], 
+                        'g-', label=f'Actual {target_col_name}', linewidth=2)
+                ax.plot(range(plot_len_viz), 
+                        first_batch_preds_plot_orig[:plot_len_viz, target_idx_in_c_out_eval], 
+                        'r--', label=f'Forecast {target_col_name}', linewidth=2)
+                
+                mse_target_plot = np.mean((first_batch_preds_plot_orig[:, target_idx_in_c_out_eval] - first_batch_actuals_plot_orig[:, target_idx_in_c_out_eval])**2)
+                ax.set_title(f'{target_col_name} (Plot MSE: {mse_target_plot:.4f}, Original Scale)')
+                ax.set_xlabel('Time Step')
+                ax.set_ylabel('Value')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
             
-            # Reshape for inverse transform
-            forecast_reshaped = forecast_plot.reshape(-1, n_features)
-            actual_reshaped = actual_plot.reshape(-1, n_features)
-            
-            # Apply inverse transform
-            forecast_orig = test_dataset.inverse_transform(forecast_reshaped)
-            actual_orig = test_dataset.inverse_transform(actual_reshaped)
-            
-            # Reshape back
-            forecast_plot = forecast_orig.reshape(pred_len, n_features)
-            actual_plot = actual_orig.reshape(pred_len, n_features)
-            
-            logger.info("Successfully inverse transformed data to original scale for plotting")
-        except Exception as e:
-            logger.warning(f"Could not inverse transform data: {e}. Using scaled data for plotting")
-          # FIX: Calculate final MSE for the test - use only target features
-        if forecast_plot.shape[-1] == 6:  # Multivariate case: 3 covariates + 3 targets
-            target_forecast = forecast_plot[:, -3:]  # Last 3 features are targets
-            target_actual = actual_plot[:, -3:]
-        else:  # All features are targets
-            target_forecast = forecast_plot
-            target_actual = actual_plot
-            
-        mse_forecast = np.mean((target_forecast - target_actual) ** 2)
-        logger.info(f"Final test MSE (targets only): {mse_forecast:.6f}")
+            plt.tight_layout()
+            os.makedirs('pic', exist_ok=True)
+            plt.savefig(f'pic/sanity_test_{ModelClass.__name__}_forecast.png', dpi=150)
+            logger.info(f"Forecast plot saved to pic/sanity_test_{ModelClass.__name__}_forecast.png")
+            plt.close()
         
-        # Plot comparison for targets (simplified approach using the data we already have)
-        plot_len = min(10, pred_len)
-        fig, axes = plt.subplots(3, 1, figsize=(12, 10))
-        target_names = ['Target 1', 'Target 2', 'Target 3']
-        
-        # Use only the target columns for plotting (last 3 columns if 6 features, or all if 3 features)
-        n_features = forecast_plot.shape[-1]
-        if n_features == 6:
-            # Multivariate case - use last 3 features as targets
-            forecast_targets = forecast_plot[:, -3:]
-            actual_targets = actual_plot[:, -3:]
-        else:
-            # Single variate case - use all features
-            forecast_targets = forecast_plot
-            actual_targets = actual_plot
-        
-        for i in range(min(3, forecast_targets.shape[-1])):
-            # Plot actual future values 
-            axes[i].plot(range(plot_len), 
-                        actual_targets[:plot_len, i], 
-                        'g-', label='Actual Future', linewidth=2)
-              # Plot forecasted values
-            axes[i].plot(range(plot_len), 
-                        forecast_targets[:plot_len, i], 
-                        'r--', label='Forecast', linewidth=2)
-            
-            mse_target = np.mean((forecast_targets[:, i] - actual_targets[:, i])**2)
-            axes[i].set_title(f'{target_names[i]} (MSE: {mse_target:.4f})')
-            axes[i].set_xlabel('Time Step')
-            axes[i].set_ylabel('Value')
-            axes[i].legend()
-            axes[i].grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        
-        # Ensure pic directory exists
-        os.makedirs('pic', exist_ok=True)
-        plt.savefig('pic/true_forecasting_evaluation.png', dpi=150)
-        logger.info("Forecast plot saved to pic/true_forecasting_evaluation.png")
-        plt.close()  # Close the figure to free memory
-        
-        # Clean up temp file
         if os.path.exists(csv_path):
             os.remove(csv_path)
         
-        return mse_forecast, forecast_plot, actual_plot
+        return mse_forecast, first_batch_preds_plot_orig, first_batch_actuals_plot_orig
+

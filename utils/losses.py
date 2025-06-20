@@ -304,7 +304,7 @@ class PinballLoss(nn.Module):
         if not all(0 < q_val < 1 for q_val in quantile_levels):
             raise ValueError("Quantiles must be between 0 and 1.")
         self.quantiles = sorted(quantile_levels)
-        self.num_quantiles = len(quantile_levels)
+        self.num_quantiles = len(self.quantiles)
         self.reduction = reduction
 
     def forward(self, y_pred_quantiles: t.Tensor, y_true: t.Tensor) -> t.Tensor:

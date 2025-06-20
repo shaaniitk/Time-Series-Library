@@ -496,13 +496,19 @@ class HierarchicalEnhancedAutoformer(nn.Module):
         self.configs = configs
         self.n_levels = n_levels
 
+        # Store model dimensions from configs (set by DimensionManager)
+        self.enc_in = configs.enc_in
+        self.dec_in = configs.dec_in
+        self.c_out = configs.c_out # This is c_out_model from DimensionManager
+
         self.is_quantile_mode = False
         self.num_quantiles = 1
-        self.num_target_variables = configs.c_out # Original c_out is num target variables
+        # num_target_variables is the number of *base* targets (c_out_evaluation from DimensionManager)
+        self.num_target_variables = getattr(configs, 'c_out_evaluation', configs.c_out) # Use c_out_evaluation if available
 
-        if quantile_levels and isinstance(quantile_levels, list) and len(quantile_levels) > 0:
+        if hasattr(configs, 'quantile_levels') and isinstance(configs.quantile_levels, list) and len(configs.quantile_levels) > 0:
             self.is_quantile_mode = True
-            self.quantiles = sorted(quantile_levels) # type: ignore
+            self.quantiles = sorted(configs.quantile_levels)
             self.num_quantiles = len(self.quantiles)
         
         # Input embedding
@@ -548,7 +554,11 @@ class HierarchicalEnhancedAutoformer(nn.Module):
         )
         
         # Output projection
-        self.projection = nn.Linear(configs.d_model, self.num_target_variables * self.num_quantiles, bias=True)
+        # The input to this projection is dec_out, which is fused_trend + fused_seasonal.
+        # Both fused_trend and fused_seasonal have configs.c_out features after HierarchicalFusion.
+        # Therefore, the in_features for this projection should be configs.c_out.
+        self.projection = nn.Linear(configs.c_out, 
+                                     self.c_out, bias=True) # Project to c_out_model
         
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
                 enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
@@ -627,13 +637,35 @@ class HierarchicalEnhancedAutoformer(nn.Module):
             cross_mask=dec_enc_mask
         )
         
-        # Final combination (like original Autoformer)
-        dec_out = fused_trend + fused_seasonal
-
-        output = dec_out[:, -self.configs.pred_len:, :]
-        if self.is_quantile_mode:
-            # Reshape to [B, pred_len, num_target_variables, num_quantiles]
-            output = output.view(output.size(0), self.configs.pred_len, self.num_target_variables, self.num_quantiles)
+        # Final combination (like EnhancedAutoformer, handling quantiles)
+        if self.is_quantile_mode and self.num_quantiles > 1:
+            # fused_seasonal is [B, L, c_out_model] which is [B, L, num_target_variables * num_quantiles]
+            # fused_trend is [B, L, num_target_variables]
+            
+            # Reshape seasonal part to expose quantile dimension
+            s_reshaped = fused_seasonal.view(
+                fused_seasonal.size(0), fused_seasonal.size(1),
+                self.num_target_variables, self.num_quantiles
+            )
+            # Expand trend part to match seasonal shape
+            t_expanded = fused_trend.unsqueeze(-1).expand_as(s_reshaped)
+            
+            # Add the same trend to each quantile's seasonal deviation
+            dec_out_reshaped = t_expanded + s_reshaped
+            
+            # Reshape back to the final output format
+            dec_out = dec_out_reshaped.view(
+                fused_seasonal.size(0), fused_seasonal.size(1),
+                self.num_target_variables * self.num_quantiles
+            )
+        else:
+            dec_out = fused_trend + fused_seasonal
+        
+        # Apply final projection
+        projected_output = self.projection(dec_out) # dec_out is [B, L, c_out_eval], projection maps to [B, L, c_out_model]
+        output = projected_output[:, -self.configs.pred_len:, :] # Output is [B, pred_len, num_target_variables * num_quantiles]
+        # PinballLoss expects a 3D tensor and handles reshaping internally.
+        # DO NOT reshape to 4D here if PinballLoss is used.
         return output
 
 
@@ -661,6 +693,7 @@ class HierarchicalDecoder(nn.Module):
         self.d_model = configs.d_model
         self.c_out = configs.c_out
         self.label_len = configs.label_len
+        self.num_target_variables = configs.dec_in # dec_in is set to c_out_evaluation by DimensionManager
         self.pred_len = configs.pred_len
         
         # Multi-resolution Enhanced Autoformer decoders
@@ -704,8 +737,8 @@ class HierarchicalDecoder(nn.Module):
                 enhanced_decoder_layer = EnhancedDecoderLayer(
                     self_autocorr_layer,
                     cross_autocorr_layer,
-                    configs.d_model,
-                    configs.c_out,
+                    self.d_model,
+                    self.num_target_variables, # Trend part should have c_out_evaluation features
                     configs.d_ff,
                     dropout=configs.dropout,
                     activation=configs.activation,
@@ -716,15 +749,21 @@ class HierarchicalDecoder(nn.Module):
             decoder = EnhancedDecoder(
                 decoder_layers,
                 norm_layer=torch.nn.LayerNorm(configs.d_model),
-                projection=nn.Linear(configs.d_model, configs.c_out, bias=True)
+                projection=nn.Linear(self.d_model, self.c_out, bias=True) # Seasonal part should have c_out_model features
             )
             self.resolution_decoders.append(decoder)
         
-        # Cross-resolution decoder fusion
-        self.decoder_fusion = HierarchicalFusion(
-            d_model=configs.c_out,  # Note: c_out, not d_model, since decoder outputs c_out
+        # Cross-resolution decoder fusion: one for seasonal, one for trend
+        self.seasonal_fusion = HierarchicalFusion(
+            d_model=self.c_out,  # Seasonal part has c_out_model features
             n_levels=n_levels,
-            fusion_strategy='weighted_sum'  # Use weighted sum for final outputs
+            fusion_strategy='weighted_sum'
+        )
+        
+        self.trend_fusion = HierarchicalFusion(
+            d_model=self.num_target_variables, # Trend part has c_out_evaluation features
+            n_levels=n_levels,
+            fusion_strategy='weighted_sum'
         )
     
     def forward(self, multi_res_dec_inputs, multi_res_enc_outputs, trends, x_mask=None, cross_mask=None):
@@ -756,8 +795,8 @@ class HierarchicalDecoder(nn.Module):
         # Fuse multi-resolution outputs with target length = label_len + pred_len
         # The target length should be the original decoder sequence length
         target_length = self.label_len + self.pred_len
-        fused_seasonal = self.decoder_fusion(seasonal_parts, target_length=target_length)
-        fused_trend = self.decoder_fusion(trend_parts, target_length=target_length)
+        fused_seasonal = self.seasonal_fusion(seasonal_parts, target_length=target_length)
+        fused_trend = self.trend_fusion(trend_parts, target_length=target_length)
         
         return fused_seasonal, fused_trend
 

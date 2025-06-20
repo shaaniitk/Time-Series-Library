@@ -19,11 +19,11 @@ class Model(nn.Module):
     def __init__(self, configs):
         super().__init__()
         logger.info(f"Initializing Autoformer model with configs: {configs}")
+        # Store model dimensions from configs (set by DimensionManager)
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.label_len = configs.label_len
         self.pred_len = configs.pred_len
-
         # Decomp
         kernel_size = configs.moving_avg
         self.decomp = series_decomp(kernel_size)
@@ -73,7 +73,7 @@ class Model(nn.Module):
                     for l in range(configs.d_layers)
                 ],
                 norm_layer=my_Layernorm(configs.d_model),
-                projection=nn.Linear(configs.d_model, configs.c_out, bias=True)
+                projection=nn.Linear(configs.d_model, configs.c_out, bias=True) # c_out is model output size
             )
         if self.task_name == 'imputation':
             self.projection = nn.Linear(
@@ -84,6 +84,7 @@ class Model(nn.Module):
         if self.task_name == 'classification':
             self.act = F.gelu
             self.dropout = nn.Dropout(configs.dropout)
+            # Classification output is num_classes, not c_out
             self.projection = nn.Linear(
                 configs.d_model * configs.seq_len, configs.num_class)
 

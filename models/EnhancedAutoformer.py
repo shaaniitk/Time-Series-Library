@@ -357,18 +357,13 @@ class EnhancedAutoformer(nn.Module):
     """
 
     def __init__(self, configs, quantile_levels: Optional[List[float]] = None):
-        """
-        quantile_levels: List of quantiles to predict (e.g., [0.1, 0.5, 0.9]). If None, standard point prediction.
-        """
         super().__init__()
         logger.info(f"Initializing EnhancedAutoformer with configs: {configs}")
 
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.label_len = configs.label_len
-        self.pred_len = configs.pred_len 
-        
-        # Store model dimensions for dynamic use
+        self.pred_len = configs.pred_len
         self.enc_in = configs.enc_in
         self.dec_in = configs.dec_in
         self.c_out = configs.c_out
@@ -376,15 +371,20 @@ class EnhancedAutoformer(nn.Module):
 
         self.is_quantile_mode = False
         self.num_quantiles = 1
-        self.num_target_variables = configs.c_out # Original c_out is num target variables
+        # num_target_variables is the number of *base* targets (c_out_evaluation from DimensionManager)
+        # This is needed for reshaping when combining trend/seasonal in quantile mode.
+        # It should be derived from the original config or passed explicitly if needed.
+        # For now, assuming configs.c_out in the original args was the base c_out_evaluation.
+        self.num_target_variables = getattr(configs, 'c_out_evaluation', configs.c_out) # Use c_out_evaluation if available
 
-        if quantile_levels and isinstance(quantile_levels, list) and len(quantile_levels) > 0:
+        if hasattr(configs, 'quantile_levels') and isinstance(configs.quantile_levels, list) and len(configs.quantile_levels) > 0:
             self.is_quantile_mode = True
-            self.quantiles = sorted(quantile_levels) # type: ignore
+            self.quantiles = sorted(configs.quantile_levels) # type: ignore
             self.num_quantiles = len(self.quantiles)
+            logger.info(f"EnhancedAutoformer: Quantile mode ON. Quantiles: {self.quantiles}")
 
         # Enhanced decomposition with learnable parameters
-        self.decomp = LearnableSeriesDecomp(configs.c_out)  # Work on target features only
+        self.decomp = LearnableSeriesDecomp(configs.dec_in)  # Decompose on base target variables (dec_in is c_out_evaluation)
 
         # Embedding (same as original)
         self.enc_embedding = DataEmbedding_wo_pos(configs.enc_in, configs.d_model, 
@@ -461,8 +461,8 @@ class EnhancedAutoformer(nn.Module):
                 enhanced_decoder_layer = EnhancedDecoderLayer(
                     self_autocorr_layer,
                     cross_autocorr_layer,
-                    configs.d_model,
-                    configs.c_out,
+                    self.d_model,
+                    self.num_target_variables, # Trend part should have c_out_evaluation features
                     configs.d_ff,
                     dropout=configs.dropout,
                     activation=configs.activation,
@@ -472,8 +472,8 @@ class EnhancedAutoformer(nn.Module):
             self.decoder = EnhancedDecoder(
                 enhanced_decoder_layers,
                 norm_layer=my_Layernorm(configs.d_model),
-                # Output layer dimension adjusted for quantiles if needed
-                projection=nn.Linear(configs.d_model, self.num_target_variables * self.num_quantiles, bias=True)
+                # Output layer dimension is now configs.c_out, which is set by DimensionManager
+                projection=nn.Linear(self.d_model, self.c_out, bias=True)
             )
 
         # Other task projections (same as original)
@@ -489,17 +489,16 @@ class EnhancedAutoformer(nn.Module):
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         """Enhanced forecasting with improved decomposition and correlation."""
         
-        # Enhanced decomposition initialization
-        # Extract target features (first c_out columns) for decomposition
-        # For MS mode: x_enc has all features, but we only decompose the first c_out (targets)
-        target_features = x_enc[:, :, :self.c_out]
+        # Enhanced decomposition initialization on base target variables
+        # For M/MS mode: x_enc has all features, but we only decompose the first num_target_variables (targets)
+        target_features = x_enc[:, :, :self.num_target_variables]
         
         # Use enhanced decomposition on target features only
         seasonal_init, trend_init = self.decomp(target_features)
         
         # Mean and zeros for target features
         mean = torch.mean(target_features, dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
-        zeros = torch.zeros([x_dec.shape[0], self.pred_len, self.c_out], device=x_enc.device)
+        zeros = torch.zeros([x_dec.shape[0], self.pred_len, self.num_target_variables], device=x_enc.device)
         
         # Decoder input preparation
         trend_init = torch.cat([trend_init[:, -self.label_len:, :], mean], dim=1)
@@ -515,7 +514,25 @@ class EnhancedAutoformer(nn.Module):
                                                 cross_mask=None, trend=trend_init)
 
         # Final combination
-        dec_out = trend_part + seasonal_part
+        # seasonal_part shape: [B, L, num_target_variables * num_quantiles] if quantile_mode
+        # trend_part shape:    [B, L, num_target_variables]
+        if self.is_quantile_mode and self.num_quantiles > 1:
+            # Reshape seasonal_part (which is [B, L, C_model]) to [B, L, num_target_variables, num_quantiles]
+            s_reshaped = seasonal_part.view(
+                seasonal_part.size(0), seasonal_part.size(1),
+                self.num_target_variables, self.num_quantiles
+            )
+            # Expand trend_part to [B, L, num_target_variables, num_quantiles]
+            # This adds the same trend component to each quantile's seasonal deviation.
+            t_expanded = trend_part.unsqueeze(-1).expand_as(s_reshaped)
+            
+            dec_out_reshaped = t_expanded + s_reshaped
+            dec_out = dec_out_reshaped.view(
+                seasonal_part.size(0), seasonal_part.size(1), # type: ignore
+                self.num_target_variables * self.num_quantiles
+            )
+        else:
+            dec_out = trend_part + seasonal_part
         return dec_out
 
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
@@ -551,10 +568,10 @@ class EnhancedAutoformer(nn.Module):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             # dec_out shape is [B, L, num_target_variables * num_quantiles]
-            output = dec_out[:, -self.pred_len:, :]
-            if self.is_quantile_mode:
-                # Reshape to [B, pred_len, num_target_variables, num_quantiles]
-                output = output.view(output.size(0), self.pred_len, self.num_target_variables, self.num_quantiles)
+            output = dec_out[:, -self.pred_len:, :] # Output is [B, pred_len, num_target_variables * num_quantiles]
+            # PinballLoss expects a 3D tensor and handles reshaping internally.
+            # DO NOT reshape to 4D here if PinballLoss is used.
+            # If a different loss expects 4D, that loss or the training script should handle it.
             return output
         if self.task_name == 'imputation':
             dec_out = self.imputation(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)

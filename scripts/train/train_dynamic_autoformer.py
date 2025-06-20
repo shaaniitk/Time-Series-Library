@@ -27,9 +27,9 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '
 
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
 from utils.data_analysis import analyze_dataset, validate_config_with_data
-from utils.quantile_utils import get_standard_quantile_levels, quantile_levels_to_string, describe_quantiles
+from utils.quantile_utils import get_standard_quantile_levels, quantile_levels_to_string, describe_quantiles, generate_quantile_levels
 from utils.kl_tuning import KLTuner, suggest_kl_weight
-from utils.dimension_manager import smart_dimension_setup
+from utils.dimension_manager import DimensionManager
 
 warnings.filterwarnings('ignore')
 
@@ -272,11 +272,11 @@ def main():
     
     # Process quantile arguments
     quantile_levels = None
-    if args.quantile_mode or args.quantile_levels:
+    if args.quantile_mode or args.quantile_levels is not None: # Check if quantile_levels was explicitly provided
         if args.quantile_levels:
             # Parse custom quantile levels
             quantile_levels = [float(q.strip()) for q in args.quantile_levels.split(',')]
-            print(f"📊 Custom quantile levels: {quantile_levels}")
+            print(f"📊 Custom quantile levels provided: {quantile_levels}")
         else:
             # Generate standard quantile levels
             coverage_ranges = {
@@ -289,7 +289,6 @@ def main():
             else:
                 from utils.quantile_utils import generate_quantile_levels
                 coverage_range = coverage_ranges[args.quantile_coverage]
-                quantile_levels = generate_quantile_levels(args.num_quantiles, coverage_range)
             
             print(f"📊 Generated {args.num_quantiles} quantile levels ({args.quantile_coverage} coverage):")
             print(f"    {quantile_levels}")
@@ -327,28 +326,38 @@ def main():
     # Load and validate configuration
     config = load_and_validate_config(args.config)
     if config is None:
-        return
+        sys.exit(1)
     
     # Smart dimension management - automatically fix all dimension issues
     print(f"\n🔧 Smart dimension management...")
     data_path = os.path.join(config.get('root_path', 'data'), config.get('data_path', ''))
     
-    if os.path.exists(data_path):
-        # Create dimension manager
-        dm = smart_dimension_setup(data_path)
-        
-        # Auto-fix the config with correct dimensions
-        mode = config.get('features', 'MS')
-        temp_config_path = f"/tmp/temp_config_{mode}_{args.model_type}.yaml"
-        dm.update_config_file(args.config, mode, temp_config_path)
-        
-        # Reload the corrected config
-        with open(temp_config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        
-        dims = dm.get_dimensions_for_mode(mode)
-        print(f"✅ Auto-corrected dimensions: enc_in={dims['enc_in']}, dec_in={dims['dec_in']}, c_out={dims['c_out']}")
-    else:
+    # Create DimensionManager instance
+    dm = DimensionManager()
+
+    # Analyze data and configure dimensions using the manager
+    try:
+        dm.analyze_and_configure(
+            data_path=data_path,
+            config=config, # Pass the loaded config
+            args=args, # Pass the command line args
+            task_name=config.get('task_name', 'long_term_forecast'),
+            features_mode=config.get('features', 'MS'),
+            loss_name=config.get('loss', 'mse'),
+            quantile_levels=quantile_levels # Pass the resolved quantile levels
+        )
+        resolved_dims = dm.get_resolved_dimensions()
+        print(f"✅ Dimensions resolved by manager: enc_in={resolved_dims['enc_in']}, dec_in={resolved_dims['dec_in']}, c_out_model={resolved_dims['c_out_model']}, c_out_evaluation={resolved_dims['c_out_evaluation']}")
+
+        # Optional: Validate the loaded config against resolved dimensions
+        validation = dm.validate_config(config)
+        if not validation['valid']:
+             print("\n⚠️ WARNING: Loaded config dimensions do not match resolved dimensions:")
+             for issue in validation['issues']:
+                  print(f"   - {issue['description']}")
+             # Decide whether to proceed or exit. For now, proceed but warn.
+
+    except Exception as e:
         print(f"⚠️ Data file not found: {data_path}, using config as-is")
     
     # Convert config to args with quantile and KL parameters
@@ -356,7 +365,7 @@ def main():
     
     # Handle synthetic data for convergence testing
     if convergence_test_mode:
-        print(f"\n🔬 Setting up synthetic data for convergence testing...")
+        print(f"\n🔬 Setting up synthetic data for convergence testing (overriding real data config)...")
         
         # Create synthetic config
         synthetic_config = {
@@ -373,20 +382,23 @@ def main():
             synthetic_config['n_targets'] = exp_args.c_out
         
         # Generate synthetic data analysis
-        from utils.data_analysis import analyze_dataset, save_synthetic_data
-        synthetic_analysis = analyze_dataset(
-            data_path="",  # Will be ignored in synthetic mode
-            test_model_convergence_simple_fn=True,
-            synthetic_config=synthetic_config
+        # Use DimensionManager to handle synthetic data analysis
+        dm_synthetic = DimensionManager()
+        dm_synthetic.analyze_and_configure(
+            data_path="", # Dummy path for synthetic mode
+            args=exp_args, # Pass exp_args to DM
+            task_name=exp_args.task_name,
+            features_mode=exp_args.features,
+            loss_name=exp_args.loss,
+            quantile_levels=exp_args.quantile_levels,
+            # Pass synthetic config via args or directly if DM supports it
+            synthetic_config=synthetic_config # Assuming DM analyze_and_configure handles this
         )
-        
-        # Save synthetic data to temporary file
-        synthetic_data_path = save_synthetic_data(synthetic_analysis, f"data/temp_synthetic_{args.synthetic_type}.csv")
-        
-        # Update config to use synthetic data
-        exp_args.data_path = os.path.basename(synthetic_data_path)
-        exp_args.root_path = os.path.dirname(synthetic_data_path)
-        
+        synthetic_resolved_dims = dm_synthetic.get_resolved_dimensions()
+
+        # Update exp_args with synthetic data dimensions and paths from DM
+        exp_args = dm_synthetic.get_model_init_params() # Get Namespace with synthetic dims
+
         # Update dimensions based on synthetic data
         mode = exp_args.features
         mode_config = synthetic_analysis[f'mode_{mode}']
@@ -394,10 +406,10 @@ def main():
         exp_args.dec_in = mode_config['dec_in']
         exp_args.c_out = mode_config['c_out']
         
-        print(f"✅ Synthetic data prepared:")
-        print(f"   Data file: {synthetic_data_path}")
-        print(f"   Mathematical relationships: {len(synthetic_analysis.get('mathematical_relationships', {}))}")
-        print(f"   Updated dimensions: enc_in={exp_args.enc_in}, dec_in={exp_args.dec_in}, c_out={exp_args.c_out}")
+        print(f"✅ Synthetic data dimensions resolved by manager:")
+        print(f"   enc_in={exp_args.enc_in}, dec_in={exp_args.dec_in}, c_out_model={exp_args.c_out}, c_out_evaluation={exp_args.c_out_evaluation}")
+        # Note: The actual synthetic data file is generated and handled by the Dataset class
+        # when data_provider is called with the synthetic flag/config.
     
     # Override GPU settings regardless of config
     exp_args.use_gpu = False
@@ -409,7 +421,7 @@ def main():
     exp_args.model = get_model_class(args.model_type)
     
     # Data path for validation
-    data_path = os.path.join(exp_args.root_path, exp_args.data_path)
+    data_path_for_exp = os.path.join(exp_args.root_path, exp_args.data_path)
     
     # Display final configuration
     print(f"\n📊 Final Training Configuration:")
@@ -422,7 +434,7 @@ def main():
     print(f"   Batch size: {exp_args.batch_size}, Epochs: {exp_args.train_epochs}")
     
     # Check if data file exists
-    if not os.path.exists(data_path):
+    if not convergence_test_mode and not os.path.exists(data_path_for_exp):
         print(f"❌ Data file not found: {data_path}")
         return
     
@@ -430,7 +442,7 @@ def main():
     print(f"\n🏗️ Creating experiment...")
     
     try:
-        exp = Exp_Long_Term_Forecast(exp_args)
+        exp = Exp_Long_Term_Forecast(exp_args) # Pass the updated args Namespace
         
         # KL tuning for Bayesian models if enabled
         if args.enable_kl and args.model_type == 'bayesian':
@@ -487,7 +499,7 @@ def main():
         print(f"\n❌ Training failed: {e}")
         import traceback
         traceback.print_exc()
-        return
+        sys.exit(1) # Exit with error code
     
     print(f"\n🎉 Dynamic Enhanced Autoformer training completed!")
 

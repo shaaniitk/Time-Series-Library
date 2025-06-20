@@ -67,6 +67,10 @@ def data_provider(args, flag=None):
     else:
         if args.data == 'm4':
             drop_last = False
+
+        
+        # Get the scaler from args if it was passed (e.g., from sanity_test_mixin)
+        scaler_to_pass = getattr(args, 'scaler', None)
         data_set = Data(
             args = args,
             root_path=args.root_path,
@@ -78,7 +82,8 @@ def data_provider(args, flag=None):
             scale=getattr(args, 'scale', True),  # Default to True if not specified
             timeenc=timeenc,
             freq=freq,
-            seasonal_patterns=args.seasonal_patterns
+            seasonal_patterns=args.seasonal_patterns,
+            scaler=scaler_to_pass # Pass the scaler to Dataset_Custom
         )
         print(flag, len(data_set))
         data_loader = DataLoader(

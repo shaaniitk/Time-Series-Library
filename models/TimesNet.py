@@ -77,10 +77,8 @@ class Model(nn.Module):
     def __init__(self, configs):
         super().__init__()
         logger.info(f"Initializing TimesNet model with configs: {configs}")
+        # Store model dimensions from configs (set by DimensionManager)
         self.configs = configs
-        self.task_name = configs.task_name
-        self.seq_len = configs.seq_len
-        self.label_len = configs.label_len
         self.pred_len = configs.pred_len
         self.model = nn.ModuleList([TimesBlock(configs)
                                     for _ in range(configs.e_layers)])
@@ -89,25 +87,8 @@ class Model(nn.Module):
         self.layer = configs.e_layers
         self.layer_norm = nn.LayerNorm(configs.d_model)
 
-        # Validate c_out consistency with features mode based on typical training script logic
-        if configs.features == 'M':
-            if configs.c_out != configs.enc_in:
-                raise ValueError(
-                    f"TimesNet Init Error: For features_mode='M', c_out ({configs.c_out}) must equal enc_in ({configs.enc_in})."
-                )
-        elif configs.features == 'MS':
-            if not (0 < configs.c_out <= configs.enc_in): # c_out is num_targets, enc_in includes covariates
-                raise ValueError(
-                    f"TimesNet Init Error: For features_mode='MS', c_out ({configs.c_out}) must be positive and less than or equal to enc_in ({configs.enc_in})."
-                )
-        elif configs.features == 'S':
-            if configs.c_out != configs.enc_in: # For 'S', enc_in IS the number of targets
-                raise ValueError(
-                    f"TimesNet Init Error: For features_mode='S', c_out ({configs.c_out}) must equal enc_in ({configs.enc_in})."
-                )
-
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
-            self.predict_linear = nn.Linear(
+            self.predict_linear = nn.Linear( # This layer aligns sequence length
                 self.seq_len, self.pred_len + self.seq_len)
             self.projection = nn.Linear(
                 configs.d_model, configs.c_out, bias=True)
@@ -116,10 +97,11 @@ class Model(nn.Module):
                 configs.d_model, configs.c_out, bias=True)
         if self.task_name == 'classification':
             self.act = F.gelu
-            self.dropout = nn.Dropout(configs.dropout)
+            self.dropout = nn.Dropout(configs.dropout) # type: ignore
+            # Classification output is num_classes, not c_out
             self.projection = nn.Linear(
                 configs.d_model * configs.seq_len, configs.num_class)
-
+        
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         logger.debug(f"TimesNet forward: x_enc shape {x_enc.shape}, x_dec shape {x_dec.shape}")
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
@@ -162,7 +144,7 @@ class Model(nn.Module):
 
         # Select the appropriate part of means and stdev for de-normalization.
         # This assumes that the c_out channels correspond to the first c_out channels of the input.
-        stdev_for_denorm = stdev[:, 0, :self.configs.c_out].unsqueeze(1).repeat(1, self.pred_len + self.seq_len, 1)
+        stdev_for_denorm = stdev[:, 0, :self.configs.c_out_evaluation].unsqueeze(1).repeat(1, self.pred_len + self.seq_len, 1)
         means_for_denorm = means[:, 0, :self.configs.c_out].unsqueeze(1).repeat(1, self.pred_len + self.seq_len, 1)
 
         dec_out = dec_out.mul(stdev_for_denorm)

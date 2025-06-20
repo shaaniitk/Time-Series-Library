@@ -62,69 +62,80 @@ class Exp_Long_Term_Forecast(Exp_Basic):
     def _select_criterion(self):
         from utils.losses import get_loss_function
         
-        # Get loss function name from args, default to MSE
-        loss_name = getattr(self.args, 'loss', 'mse')
+        loss_name = getattr(self.args, 'loss', 'mse').lower()
+        q_levels = getattr(self.args, 'quantile_levels', None) # For PinballLoss
+        single_q_val = getattr(self.args, 'quantile', 0.5) # For single QuantileLoss
+
+        criterion = None
         
-        # Handle special cases for losses that need extra parameters
-        if loss_name.lower() == 'ps_loss':
+        # Determine if we are in multi-quantile mode based on presence of a list of quantile_levels
+        is_multi_quantile_scenario = isinstance(q_levels, list) and len(q_levels) > 0
+
+        if loss_name == 'pinball' or (loss_name == 'quantile' and is_multi_quantile_scenario):
+            # Use PinballLoss if explicitly 'pinball' or if 'quantile' with a list of levels
+            levels_for_pinball = q_levels
+            if not is_multi_quantile_scenario: # If loss_name was 'pinball' but no q_levels from args
+                levels_for_pinball = [0.1, 0.5, 0.9] # Default for PinballLoss
+                logger.warning(f"Loss is 'pinball' but no quantile_levels provided in args. Defaulting to {levels_for_pinball}")
+            
+            # Validate levels_for_pinball are valid for PinballLoss
+            if not all(isinstance(q, float) and 0 < q < 1 for q in levels_for_pinball):
+                logger.error(f"Invalid quantile_levels for PinballLoss: {levels_for_pinball}. Must be list of floats between 0 and 1.")
+                # Fallback to MSE if invalid to prevent crash, or raise error
+                logger.warning("Falling back to MSELoss due to invalid quantile_levels for PinballLoss.")
+                criterion = nn.MSELoss()
+            else:
+                criterion = get_loss_function('pinball', quantile_levels=levels_for_pinball)
+                logger.info(f"Using PinballLoss with quantiles: {levels_for_pinball}")
+
+        elif loss_name == 'quantile' and not is_multi_quantile_scenario:
+            # Use QuantileLoss (single quantile) if 'quantile' and no multi-levels defined
+            if not (isinstance(single_q_val, float) and 0 < single_q_val < 1):
+                logger.warning(f"Invalid single quantile value: {single_q_val}. Defaulting to 0.5.")
+                single_q_val = 0.5
+            criterion = get_loss_function('quantile', quantile=single_q_val)
+            logger.info(f"Using QuantileLoss (single) with quantile: {single_q_val}")
+        
+        # Handle other specific losses that need parameters from self.args
+        elif loss_name == 'ps_loss':
             criterion = get_loss_function(loss_name, 
                                         pred_len=self.args.pred_len,
                                         mse_weight=getattr(self.args, 'ps_mse_weight', 0.5),
                                         w_corr=getattr(self.args, 'ps_w_corr', 1.0),
                                         w_var=getattr(self.args, 'ps_w_var', 1.0),
                                         w_mean=getattr(self.args, 'ps_w_mean', 1.0))
-        elif loss_name.lower() == 'pinball':
-            # Prioritize 'quantile_levels' if available, then 'quantiles'
-            quantiles_to_use = getattr(self.args, 'quantile_levels', None)
-            if quantiles_to_use is None:
-                quantiles_to_use = getattr(self.args, 'quantile_levels', [0.1, 0.5, 0.9]) # Default
-            if not isinstance(quantiles_to_use, list) or not all(isinstance(q, float) for q in quantiles_to_use if q is not None): # Allow None in list for default
-                logger.warning(f"Invalid quantile_levels/quantiles: {quantiles_to_use}. Defaulting to [0.1, 0.5, 0.9]")
-                quantiles_to_use = [0.1, 0.5, 0.9]
-            criterion = get_loss_function(loss_name, quantiles=quantiles_to_use)
-        elif loss_name.lower() == 'huber':
+            logger.info("Using PS_Loss")
+        elif loss_name == 'huber':
             delta = getattr(self.args, 'huber_delta', 1.0)
             criterion = get_loss_function(loss_name, delta=delta)
-        elif loss_name.lower() == 'focal':
-            alpha = getattr(self.args, 'focal_alpha', 1.0)
-            gamma = getattr(self.args, 'focal_gamma', 2.0)
-            criterion = get_loss_function(loss_name, alpha=alpha, gamma=gamma)
-        elif loss_name.lower() == 'seasonal':
-            season_length = getattr(self.args, 'season_length', 24)
-            seasonal_weight = getattr(self.args, 'seasonal_weight', 1.0)
-            criterion = get_loss_function(loss_name, season_length=season_length, seasonal_weight=seasonal_weight)
-        elif loss_name.lower() == 'trend_aware':
-            trend_weight = getattr(self.args, 'trend_weight', 1.0)
-            noise_weight = getattr(self.args, 'noise_weight', 0.5)
-            criterion = get_loss_function(loss_name, trend_weight=trend_weight, noise_weight=noise_weight)
-        elif loss_name.lower() == 'quantile':
-            quantile = getattr(self.args, 'quantile', 0.5)
-            criterion = get_loss_function(loss_name, quantile=quantile)
-        elif loss_name.lower() == 'dtw':
-            gamma = getattr(self.args, 'dtw_gamma', 1.0)
-            normalize = getattr(self.args, 'dtw_normalize', True)
-            criterion = get_loss_function(loss_name, gamma=gamma, normalize=normalize)
-        elif loss_name.lower() == 'multiscale_trend_aware':
-            trend_window_sizes = getattr(self.args, 'trend_window_sizes', [60, 20, 5])
-            trend_component_weights = getattr(self.args, 'trend_component_weights', [1.0, 0.8, 0.5])
-            noise_component_weight = getattr(self.args, 'noise_component_weight', 0.2)
-            base_loss_fn_str = getattr(self.args, 'base_loss_fn_str', 'mse')
+            logger.info(f"Using HuberLoss with delta: {delta}")
+        elif loss_name == 'multiscale_trend_aware':
             criterion = get_loss_function(
                 loss_name,
-                trend_window_sizes=trend_window_sizes,
-                trend_component_weights=trend_component_weights,
-                noise_component_weight=noise_component_weight,
-                base_loss_fn_str=base_loss_fn_str
+                trend_window_sizes=getattr(self.args, 'trend_window_sizes', [60, 20, 5]),
+                trend_component_weights=getattr(self.args, 'trend_component_weights', [1.0, 0.8, 0.5]),
+                noise_component_weight=getattr(self.args, 'noise_component_weight', 0.2),
+                base_loss_fn_str=getattr(self.args, 'base_loss_fn_str', 'mse')
             )
-        else:
-            # Standard losses (mse, mae, mape, smape, mase, gaussian_nll)
+            logger.info(f"Using MultiScaleTrendAwareLoss with base: {getattr(self.args, 'base_loss_fn_str', 'mse')}")
+        # Add other specific loss handlers here if needed, similar to train_enhanced_autoformer.py
+
+        if criterion is None: # If no specific criterion was set above, fallback to general getter or MSE
             try:
-                criterion = get_loss_function(loss_name)
+                criterion = get_loss_function(loss_name) # For simple losses like 'mse', 'mae'
+                logger.info(f"Using standard loss: {loss_name}")
             except ValueError:
-                logger.warning(f"Unknown loss function: {loss_name}. Falling back to MSE.")
+                logger.warning(f"Unknown or misconfigured loss function: {loss_name}. Falling back to MSE.")
                 criterion = nn.MSELoss()
-                
-        logger.info(f"Using loss function: {loss_name}")
+        
+        # If model has its own compute_loss (e.g., Bayesian models),
+        # the criterion selected here is the 'data_loss' part.
+        if hasattr(self.model, 'configure_optimizer_loss') and callable(getattr(self.model, 'configure_optimizer_loss')):
+            logger.info(f"Model {self.args.model} has configure_optimizer_loss. Wrapping base criterion.")
+            return self.model.configure_optimizer_loss(criterion, verbose=getattr(self.args, 'verbose_loss', False))
+        
+        return criterion
+ 
         return criterion
  
 

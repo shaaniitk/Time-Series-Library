@@ -21,19 +21,34 @@ class TestEnhancedAutoformerSine(unittest.TestCase, SanityTestMixin):
             'd_model': 32, 
             'd_ff': 64
         }
+
+        # Run without quantile levels first
+        mse_no_quantiles, _, _ = self.run_sanity_test(
+            EnhancedAutoformerModel,
+            device='cuda' if torch.cuda.is_available() else 'cpu',
+            epochs=15, # Slightly more epochs for robust convergence check
+            model_config=model_specific_config_overrides,
+            loss_config={'loss_name': 'mse'} # No quantiles
+        )
+        logger.info(f"EnhancedAutoformer Sine Test (No Quantiles) Final MSE: {mse_no_quantiles:.6f}")
+        self.assertLess(mse_no_quantiles, 0.15, "EnhancedAutoformer did not converge without quantiles (MSE > 0.15)")
+
+        # Run with quantile levels
         loss_config_pinball = {
             'loss_name': 'pinball',
             'quantile_levels': [0.1, 0.5, 0.9]
         }
-        mse, _, _ = self.run_sanity_test(
+
+        mse_with_quantiles, _, _ = self.run_sanity_test(
             EnhancedAutoformerModel,
             device='cuda' if torch.cuda.is_available() else 'cpu',
             epochs=15, # Slightly more epochs for robust convergence check
             model_config=model_specific_config_overrides,
             loss_config=loss_config_pinball
         )
-        logger.info(f"EnhancedAutoformer Sine Test Final MSE: {mse:.6f}")
-        self.assertLess(mse, 0.15, "EnhancedAutoformer did not converge on synthetic sine wave data with Pinball loss (MSE > 0.15)")
+
+        logger.info(f"EnhancedAutoformer Sine Test Final MSE: {mse_with_quantiles:.6f}")
+        self.assertLess(mse_with_quantiles, 0.15, "EnhancedAutoformer did not converge on synthetic sine wave data with Pinball loss (MSE > 0.15)")
 
 if __name__ == '__main__':
     # Set up logging for direct execution

@@ -121,7 +121,8 @@ class Dataset_ETT_hour(Dataset):
 class Dataset_ETT_minute(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
                  features='S', data_path='ETTm1.csv',
-                 target='OT', scale=True, timeenc=0, freq='t', seasonal_patterns=None):
+                 target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None,
+                 scaler=None): # Add scaler parameter
         # size [seq_len, label_len, pred_len]
         self.args = args
         # info
@@ -224,7 +225,8 @@ class Dataset_ETT_minute(Dataset):
 class Dataset_Custom(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None):
+                 target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None,
+                 scaler=None): # Add scaler parameter
         # size [seq_len, label_len, pred_len]
         self.args = args
         # info
@@ -253,14 +255,15 @@ class Dataset_Custom(Dataset):
         self.timeenc = timeenc
         self.freq = freq
 
+        self.scaler_passed_in = scaler # Store the passed scaler
         self.root_path = root_path
         self.data_path = data_path
         logger.info(f"Initializing Dataset_Custom with targets: {target}")
         self.__read_data__()
 
     def __read_data__(self):
-        logger.debug(f"Reading data from {os.path.join(self.root_path, self.data_path)}")
-        self.scaler = StandardScaler()
+        logger.debug(f"Dataset_Custom (flag={self.set_type}): Reading data from {os.path.join(self.root_path, self.data_path)}")
+        # self.scaler will be set based on logic below
         try:
             df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
         except Exception as e:
@@ -314,61 +317,51 @@ class Dataset_Custom(Dataset):
         elif self.features == 'S':
             df_data = df_raw[self.target_list]
         
-        data = df_data.values
+        data_unscaled = df_data.values
+        
+        # Initialize self.scaler to None. It will be set if scaling is applied.
+        self.scaler = None 
+
         if self.scale:
-            logger.debug("Applying selective scaling for custom financial data")
-            logger.debug(f"df_data columns after removing date: {df_data.columns.tolist()}")
-            logger.debug(f"Total features: {data.shape[1]}, first 4 should be OHLC targets")
-            logger.debug(f"Border1s[0] (training end): {border1s[0]}, Border2s[0] (training end): {border2s[0]}")
-            
-            # Identify target columns (first 4: OHLC) and covariate columns (rest)
-            target_cols = list(range(4))  # log_Open, log_High, log_Low, log_Close
-            covariate_cols = list(range(4, data.shape[1]))  # All other features
-            logger.debug(f"Target columns (indices): {target_cols}")
-            logger.debug(f"Covariate columns (indices): {covariate_cols}")
-              # Initialize scaled data
-            scaled_data = data.copy()
-            
-            if len(target_cols) > 0 and data.shape[1] >= 4:
-                # Scale targets: fit on training data, transform only training portion
-                target_train_data = data[border1s[0]:border2s[0], target_cols]
-                target_scaler = StandardScaler()
-                target_scaler.fit(target_train_data)
-                
-                logger.debug(f"Target train data shape: {target_train_data.shape}")
-                logger.debug(f"Target train data sample (first 3 rows): {target_train_data[:3] if len(target_train_data) > 0 else 'No data'}")
-                
-                # Transform only training portion of targets (avoid data leakage)
-                scaled_data[border1s[0]:border2s[0], target_cols] = target_scaler.transform(
-                    data[border1s[0]:border2s[0], target_cols]
-                )
-                
-                # Store target scaler for inverse transform
-                self.target_scaler = target_scaler
-                logger.debug(f"Target columns {target_cols} scaled using training data only")
-                logger.debug(f"Training targets: rows {border1s[0]}:{border2s[0]}")
-                logger.debug(f"Target data beyond training (unscaled): {data[border2s[0]:border2s[0]+2, target_cols] if border2s[0] < len(data) else 'No validation/test data'}")
-            
-            if len(covariate_cols) > 0:
-                # Scale covariates: fit and transform using entire covariate dataset
-                covariate_scaler = StandardScaler()
-                covariate_scaler.fit(data[:, covariate_cols])
-                
-                # Transform entire covariate dataset in one step
-                scaled_data[:, covariate_cols] = covariate_scaler.transform(
-                    data[:, covariate_cols]
-                )
-                
-                # Store covariate scaler for future use
-                self.covariate_scaler = covariate_scaler
-                logger.debug(f"Covariate columns {covariate_cols} scaled using full dataset statistics")
-            
-            # For compatibility with existing code, keep main scaler as target scaler
-            self.scaler = getattr(self, 'target_scaler', StandardScaler())
-            data = scaled_data
+            current_scaler_to_use = None
+            if self.scaler_passed_in is not None:
+                current_scaler_to_use = self.scaler_passed_in
+                logger.debug(f"Dataset_Custom (flag={self.set_type}): Using provided scaler. Expected features: {current_scaler_to_use.n_features_in_ if hasattr(current_scaler_to_use, 'n_features_in_') else 'N/A'}")
+            elif self.set_type == 0: # 'train' and no scaler passed
+                logger.debug(f"Dataset_Custom (flag=train): Creating and fitting a new scaler.")
+                current_scaler_to_use = StandardScaler()
+                # Fit on the training portion of df_data (all selected features)
+                # df_data contains all columns (except date) for M/MS, or just targets for S
+                # border1s[0] and border2s[0] define the actual training split range from df_raw
+                # So, we need to slice df_data (which is based on df_raw[cols_data]) using these global borders.
+                # df_data itself is not pre-sliced by train/val/test borders.
+                train_data_for_fitting_scaler = df_data.iloc[border1s[0]:border2s[0]].values
+                current_scaler_to_use.fit(train_data_for_fitting_scaler)
+                logger.debug(f"Dataset_Custom: New scaler fit on training data. Expected features: {current_scaler_to_use.n_features_in_}")
+            else: # 'val' or 'test' and no scaler passed
+                logger.error(f"Dataset_Custom (flag={self.set_type}): No scaler provided and not in training mode. Scaling will be skipped. This is likely an error if scaling is expected.")
+
+            if current_scaler_to_use is not None and hasattr(current_scaler_to_use, 'n_features_in_'):
+                if data_unscaled.shape[1] == current_scaler_to_use.n_features_in_:
+                    data_scaled_for_x = current_scaler_to_use.transform(data_unscaled)
+                    if self.set_type == 0: # 'train'
+                        data_scaled_for_y = data_scaled_for_x # Use scaled data for y in train
+                    else: # 'val' or 'test'
+                        data_scaled_for_y = data_unscaled # Use unscaled data for y in val/test
+                    self.scaler = current_scaler_to_use # Store the scaler used
+                    logger.debug(f"Dataset_Custom (flag={self.set_type}): Applied scaling. data_x will be scaled. data_y for train will be scaled, for val/test will be unscaled.")
+                else:
+                    logger.error(f"Dataset_Custom (flag={self.set_type}): Feature mismatch for scaling. Data has {data_unscaled.shape[1]} features, scaler expects {current_scaler_to_use.n_features_in_}. Scaling skipped.")
+                    data_scaled_for_x = data_unscaled
+                    data_scaled_for_y = data_unscaled
+            else:
+                logger.warning(f"Dataset_Custom (flag={self.set_type}): Scaling enabled but no usable scaler. Data will not be scaled.")
+                data_scaled_for_x = data_unscaled
+                data_scaled_for_y = data_unscaled
         else:
             logger.debug("Skipping scaling step")
-            data = data
+            data_scaled_for_x = data_unscaled
+            data_scaled_for_y = data_unscaled
 
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
@@ -384,8 +377,8 @@ class Dataset_Custom(Dataset):
             data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
             data_stamp = data_stamp.transpose(1, 0)
 
-        self.data_x = data[border1:border2]
-        self.data_y = data[border1:border2]
+        self.data_x = data_scaled_for_x[border1:border2]
+        self.data_y = data_scaled_for_y[border1:border2] # This is now correctly unscaled for val/test
 
         if self.set_type == 0 and getattr(self.args, 'augmentation_ratio', 0) > 0:
             self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
@@ -412,39 +405,15 @@ class Dataset_Custom(Dataset):
 
     def inverse_transform(self, data):
         """
-        Inverse transform for predictions. 
-        For target predictions (first 4 columns), use target_scaler.
-        For full data with both targets and covariates, handle appropriately.
+        Inverse transform using the main scaler of this dataset instance.
         """
-        if hasattr(self, 'target_scaler') and self.target_scaler is not None:
-            # If data has only target columns (4 columns), use target_scaler directly
-            if data.shape[-1] == 4:
-                return self.target_scaler.inverse_transform(data)
-            
-            # If data has both targets and covariates, inverse transform separately
-            elif data.shape[-1] > 4 and hasattr(self, 'covariate_scaler') and self.covariate_scaler is not None:
-                # Separate targets and covariates
-                targets = data[..., :4]
-                covariates = data[..., 4:]
-                
-                # Inverse transform each separately
-                inv_targets = self.target_scaler.inverse_transform(
-                    targets.reshape(-1, 4)
-                ).reshape(targets.shape)
-                
-                inv_covariates = self.covariate_scaler.inverse_transform(
-                    covariates.reshape(-1, covariates.shape[-1])
-                ).reshape(covariates.shape)
-                
-                # Combine back
-                return np.concatenate([inv_targets, inv_covariates], axis=-1)
-            
-            # Fallback: assume it's targets only
+        if self.scale and self.scaler is not None and hasattr(self.scaler, 'n_features_in_'):
+            if data.shape[-1] == self.scaler.n_features_in_:
+                return self.scaler.inverse_transform(data)
             else:
-                return self.target_scaler.inverse_transform(data)
-        
-        # Fallback to original scaler if selective scaling wasn't used
-        return self.scaler.inverse_transform(data)
+                logger.warning(f"Dataset_Custom: Inverse transform shape mismatch. Data has {data.shape[-1]} features, scaler expects {self.scaler.n_features_in_}. Returning data as is.")
+                return data
+        return data # Return as is if not scaled or scaler not available/fit
     
     def inverse_transform_targets(self, target_data):
         """Convenience method to inverse transform only target predictions"""
