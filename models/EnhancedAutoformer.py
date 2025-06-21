@@ -384,7 +384,12 @@ class EnhancedAutoformer(nn.Module):
             logger.info(f"EnhancedAutoformer: Quantile mode ON. Quantiles: {self.quantiles}")
 
         # Enhanced decomposition with learnable parameters
-        self.decomp = LearnableSeriesDecomp(configs.dec_in)  # Decompose on base target variables (dec_in is c_out_evaluation)
+        # This should operate on the features that are actually fed into the decoder's embedding.
+        # In Exp_Long_Term_Forecast, dec_inp is constructed from scaled historical targets + scaled historical covariates
+        # and zeroed future targets + scaled future covariates.
+        # The dimension of dec_inp is `dec_in` from DimensionManager, which is `num_targets + num_covariates` for MS/M.
+        # So, self.decomp should be initialized with configs.dec_in.
+        self.decomp = LearnableSeriesDecomp(configs.dec_in)
 
         # Embedding (same as original)
         self.enc_embedding = DataEmbedding_wo_pos(configs.enc_in, configs.d_model, 
@@ -488,30 +493,48 @@ class EnhancedAutoformer(nn.Module):
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         """Enhanced forecasting with improved decomposition and correlation."""
-        
-        # Enhanced decomposition initialization on base target variables
-        # For M/MS mode: x_enc has all features, but we only decompose the first num_target_variables (targets)
-        target_features = x_enc[:, :, :self.num_target_variables]
-        
-        # Use enhanced decomposition on target features only
-        seasonal_init, trend_init = self.decomp(target_features)
-        
-        # Mean and zeros for target features
-        mean = torch.mean(target_features, dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
-        zeros = torch.zeros([x_dec.shape[0], self.pred_len, self.num_target_variables], device=x_enc.device)
-        
-        # Decoder input preparation
-        trend_init = torch.cat([trend_init[:, -self.label_len:, :], mean], dim=1)
-        seasonal_init = torch.cat([seasonal_init[:, -self.label_len:, :], zeros], dim=1)
+        # x_dec is the pre-constructed decoder input from Exp_Long_Term_Forecast
+        # It contains historical targets (scaled) + historical covariates (scaled)
+        # and zeroed-out future targets + future covariates (scaled)
+
+        # Enhanced decomposition initialization on the full decoder input (x_dec)
+        # seasonal_init_full and trend_init_full will have shape [B, L, configs.dec_in] (e.g., 118 features)
+        seasonal_init_full, trend_init_full = self.decomp(x_dec)
+
+        # --- Prepare trend_init for decoder accumulation ---
+        # This trend is accumulated in the decoder and must match the output dimension of EnhancedDecoderLayer's projection.
+        # EnhancedDecoderLayer's projection outputs `self.num_target_variables` features (e.g., 20).
+        # So, we take only the target part of the initial trend.
+        trend_init_for_decoder_accumulation = trend_init_full[:, :, :self.num_target_variables]
+
+        # Mean for extending the `trend_init_for_decoder_accumulation`.
+        # This mean should also be over the target features only.
+        mean_for_trend_extension = torch.mean(x_dec[:, :, :self.num_target_variables], dim=1).unsqueeze(1).repeat(1, self.pred_len, 1)
+
+        # Concatenate for the `trend` argument to `self.decoder`.
+        trend_arg_to_decoder = torch.cat([trend_init_for_decoder_accumulation[:, -self.label_len:, :], mean_for_trend_extension], dim=1)
+
+        # --- Prepare seasonal_init for dec_embedding ---
+        # `dec_embedding` is initialized with `configs.dec_in` (e.g., 118 features).
+        # So, the seasonal input to `dec_embedding` must have `configs.dec_in` features.
+        # `seasonal_init_full` already has `configs.dec_in` features.
+        # The `zeros` for seasonal extension should match the full `x_dec` dimension.
+        zeros_for_seasonal_extension = torch.zeros([x_dec.shape[0], self.pred_len, x_dec.shape[2]], device=x_enc.device)
+
+        # Concatenate for the `seasonal_init` argument to `self.dec_embedding`.
+        seasonal_arg_to_dec_embedding = torch.cat([seasonal_init_full[:, -self.label_len:, :], zeros_for_seasonal_extension], dim=1)
 
         # Enhanced encoding
         enc_out = self.enc_embedding(x_enc, x_mark_enc)
         enc_out, attns = self.encoder(enc_out, attn_mask=None)
 
         # Enhanced decoding
-        dec_out = self.dec_embedding(seasonal_init, x_mark_dec)
+        # `dec_embedding` receives `seasonal_arg_to_dec_embedding` (118 features).
+        dec_out = self.dec_embedding(seasonal_arg_to_dec_embedding, x_mark_dec)
+
+        # `self.decoder` receives `trend_arg_to_decoder` (20 features).
         seasonal_part, trend_part = self.decoder(dec_out, enc_out, x_mask=None, 
-                                                cross_mask=None, trend=trend_init)
+                                                cross_mask=None, trend=trend_arg_to_decoder)
 
         # Final combination
         # seasonal_part shape: [B, L, num_target_variables * num_quantiles] if quantile_mode
