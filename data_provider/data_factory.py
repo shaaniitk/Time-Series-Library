@@ -1,9 +1,129 @@
-from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, PSMSegLoader, \
-    MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader
-from data_provider.uea import collate_fn
+import os
+import numpy as np
+import pandas as pd
+import torch
 from torch.utils.data import DataLoader
+
+# --- Imports for the NEW robust pipeline ---
+from data_provider.data_loader import ForecastingDataset
+from data_provider.data_prepare import FinancialDataManager
+from utils.dimension_manager import DimensionManager
+from utils.scaler_manager import ScalerManager
+from typing import Tuple # Ensure Tuple is imported
 from utils.logger import logger
 
+# --- Imports for the OLD pipeline (for backward compatibility) ---
+from data_provider.data_loader import (
+    Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, 
+    PSMSegLoader, MSLSegLoader, SMAPSegLoader, SMDSegLoader, 
+    SWATSegLoader, UEAloader
+)
+from utils.timefeatures import time_features # Import time_features
+from data_provider.uea import collate_fn
+
+# --- NEW, ROBUST DATA PIPELINE FOR FINANCIAL FORECASTING ---
+def setup_financial_forecasting_data(args):
+    """
+    The new, robust entry point for the specific financial forecasting task.
+    It orchestrates loading, scaling, and dataloader creation using our new managers.
+    """    # Step 1: Prepare the initial merged dataframe
+    logger.info("Step 1: Preparing financial data using FinancialDataManager...") # Use FinancialDataManager to load and merge data
+    fin_manager = FinancialDataManager(
+        data_root=args.root_path,
+        target_file=args.data_path, # Use args.data_path as the target file
+        # dynamic_cov_file=args.dynamic_cov_path, # Assuming these are handled by prepare_data if not None
+        # static_cov_file=args.static_cov_path
+    )
+    merged_df = fin_manager.prepare_data(
+        target_file=args.data_path, # Pass again to ensure it's used
+        # dynamic_cov_file=args.dynamic_cov_path,
+        # static_cov_file=args.static_cov_path
+    )
+
+    # Ensure target_columns and all_columns are correctly set in fin_manager
+    # This is crucial for DimensionManager and ScalerManager
+    if not fin_manager.target_columns:
+        # Fallback if prepare_data didn't set them (e.g., if target_file was None)
+        # This should ideally be handled by FinancialDataManager itself.
+        logger.warning("FinancialDataManager did not identify target columns. Attempting to infer from args.")
+        fin_manager.target_columns = [col.strip() for col in args.target.split(',') if col.strip()]
+    
+    # All columns in the merged_df (including 'date')
+    fin_manager.all_columns = merged_df.columns.tolist()
+    logger.info(f"FinancialDataManager reports {len(fin_manager.target_columns)} target columns: {fin_manager.target_columns}")
+    logger.info(f"FinancialDataManager reports {len(fin_manager.all_columns)} total columns (including date).")
+
+    # Step 2: Create the DimensionManager
+    logger.info("Step 2: Initializing DimensionManager...")
+    # Filter out 'date' from all_features for dimension management
+    all_features_no_date = [col for col in fin_manager.all_columns if col != 'date']
+    dim_manager = DimensionManager(
+        mode=args.features,
+        target_features=fin_manager.target_columns,
+        all_features=all_features_no_date, # Exclude date column from feature list for DM
+        loss_function=args.loss,
+        quantiles=getattr(args, 'quantile_levels', [])
+    )
+    logger.info(dim_manager)
+
+    # Step 3: Split data into train/val/test sets
+    logger.info("Step 3: Splitting data into train/val/test sets (chronological)...")
+    df_train, df_val, df_test = _split_data(merged_df, args.validation_length, args.test_length)
+
+    # Step 4: Create and fit the ScalerManager with the correct data scopes
+    logger.info("Step 4: Fitting scalers with correct data scopes...")
+    scaler_manager = ScalerManager(
+        # Pass the actual lists of target and covariate features (excluding 'date')
+        target_features=dim_manager.target_features,
+        covariate_features=dim_manager.covariate_features
+    )
+    scaler_manager.fit(train_df=df_train, full_df=merged_df)
+    
+    # Step 5: Create datasets and dataloaders
+    logger.info("Step 5: Creating datasets and dataloaders...")
+    data_loaders = {}
+    for flag, df_split in [('train', df_train), ('val', df_val), ('test', df_test)]:
+        # ScalerManager.transform expects a DataFrame, it will select columns internally
+        data_x_scaled = scaler_manager.transform(df_split)
+        
+        # Get unscaled data as numpy array (excluding date)
+        all_features_no_date = [col for col in df_split.columns if col != 'date']
+        data_y_unscaled = df_split[all_features_no_date].values
+        
+        # Extract time features
+        df_stamp = df_split[['date']].copy()
+        df_stamp['date'] = pd.to_datetime(df_stamp['date'])
+        date_index = pd.DatetimeIndex(df_stamp['date'].values)
+        logger.debug(f"Created DatetimeIndex with {len(date_index)} dates for time features")
+        # Fixed time_features call with DatetimeIndex instead of Series
+        data_stamp = time_features(date_index, freq=args.freq)
+        
+        dataset = ForecastingDataset(data_x_scaled, data_y_unscaled, data_stamp, args, dim_manager)
+        shuffle = True if flag == 'train' else False
+        drop_last = True # Always drop last for consistent batch sizes in training/validation
+        data_loaders[flag] = DataLoader(
+            dataset, batch_size=args.batch_size, shuffle=shuffle,
+            num_workers=args.num_workers, drop_last=drop_last
+        )
+    logger.info("Data pipeline setup complete.")
+    return data_loaders['train'], data_loaders['val'], data_loaders['test'], scaler_manager, dim_manager # Return the loaders and managers
+
+def _split_data(df: pd.DataFrame, validation_length: int, test_length: int) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Helper to split a dataframe chronologically into train, validation, and test sets.
+    The validation and test sets are taken from the end of the dataframe.
+    """
+    total_len = len(df)
+    num_test = test_length
+    num_val = validation_length
+    num_train = total_len - num_val - num_test
+    df_train = df.iloc[0:num_train].copy()
+    df_val = df.iloc[num_train:num_train + num_val].copy()
+    df_test = df.iloc[num_train + num_val:].copy()
+    return df_train, df_val, df_test
+# --- END OF NEW PIPELINE ---
+
+# --- LEGACY PIPELINE FOR BACKWARD COMPATIBILITY ---
 data_dict = {
     'ETTh1': Dataset_ETT_hour,
     'ETTh2': Dataset_ETT_hour,
@@ -19,27 +139,30 @@ data_dict = {
     'UEA': UEAloader
 }
 
-
-def data_provider(args, flag=None):
-    logger.info(f"Creating data provider for flag={flag}")
+def data_provider(args, flag):
+    """
+    Legacy entry point for non-financial or legacy tasks.
+    """
     Data = data_dict[args.data]
     timeenc = 0 if args.embed != 'timeF' else 1
 
-    # shuffle_flag = (flag == 'train') # Original: Shuffle only for training set
-    shuffle_flag = False  # Always disable shuffle for all sets
-    drop_last = False
-    batch_size = args.batch_size
-    freq = args.freq
+    if flag == 'test':
+        shuffle_flag = False
+        drop_last = True
+        batch_size = args.batch_size
+        freq = args.freq
+    else:
+        shuffle_flag = True
+        drop_last = True
+        batch_size = args.batch_size
+        freq = args.freq
 
     if args.task_name == 'anomaly_detection':
-        drop_last = False
         data_set = Data(
-            args = args,
             root_path=args.root_path,
             win_size=args.seq_len,
             flag=flag,
         )
-        print(flag, len(data_set))
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
@@ -48,13 +171,10 @@ def data_provider(args, flag=None):
             drop_last=drop_last)
         return data_set, data_loader
     elif args.task_name == 'classification':
-        drop_last = False
         data_set = Data(
-            args = args,
             root_path=args.root_path,
             flag=flag,
         )
-
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
@@ -65,29 +185,18 @@ def data_provider(args, flag=None):
         )
         return data_set, data_loader
     else:
-        if args.data == 'm4':
-            drop_last = False
-
-        
-        # Get the scaler from args if it was passed (e.g., from sanity_test_mixin)
-        scaler_to_pass = getattr(args, 'scaler', None)
-        target_scaler_to_pass = getattr(args, 'target_scaler', None)
         data_set = Data(
-            args = args,
+            args=args,
             root_path=args.root_path,
             data_path=args.data_path,
             flag=flag,
             size=[args.seq_len, args.label_len, args.pred_len],
             features=args.features,
             target=args.target,
-            scale=getattr(args, 'scale', True),  # Default to True if not specified
             timeenc=timeenc,
             freq=freq,
-            seasonal_patterns=args.seasonal_patterns,
-            scaler=scaler_to_pass, # Pass the scaler to Dataset_Custom
-            target_scaler=target_scaler_to_pass # Pass the target scaler
+            seasonal_patterns=getattr(args, 'seasonal_patterns', 'Monthly')
         )
-        print(flag, len(data_set))
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,

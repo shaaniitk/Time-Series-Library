@@ -3,6 +3,7 @@ from exp.exp_basic import Exp_Basic
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
 from utils.logger import logger
+from argparse import Namespace # Import Namespace for model_init_args
 from utils.dimension_manager import DimensionManager # Import DimensionManager
 from utils.losses import PinballLoss # Import PinballLoss for type checking
 import torch
@@ -21,38 +22,55 @@ warnings.filterwarnings('ignore')
 
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
-        logger.info(f"Initializing Exp_Long_Term_Forecast with args: {args}")
-        self.dm = DimensionManager()
-        # Analyze data and configure dimensions based on args
-        data_path_for_dm = os.path.join(args.root_path, args.data_path)
-        if not os.path.exists(data_path_for_dm):
-             logger.warning(f"Data path for DimensionManager analysis not found: {data_path_for_dm}. Using args as is.")
-             # If data path is not found, DM might not be able to analyze.
-             # Proceed with caution, or ensure data_path is always correct.
-             self.model_init_args = args # Fallback to original args
-             self.eval_info = { # Provide default eval_info
-                 'c_out_evaluation': args.c_out,
-                 'num_quantiles': len(getattr(args, 'quantile_levels', [])) if getattr(args, 'quantile_levels', []) else 1,
-                 'quantile_levels': getattr(args, 'quantile_levels', None),
-                 'loss_name': args.loss,
-                 'target_columns': args.target.split(',') if isinstance(args.target, str) else args.target
-             }
-        else:
-            self.dm.analyze_and_configure(
-                data_path=data_path_for_dm, # Use full path for analysis
-                args=args,
-                task_name=args.task_name,
-                features_mode=args.features,
-                target_columns=args.target,
-                loss_name=args.loss,
-                quantile_levels=getattr(args, 'quantile_levels', None)
-            )
-            self.model_init_args = self.dm.get_model_init_params()
-            self.eval_info = self.dm.get_evaluation_info()
+        # The Exp_Long_Term_Forecast class is now initialized with pre-configured
+        # DimensionManager, ScalerManager, and data loaders from train_dynamic_autoformer.py.
+        # This simplifies its role to focus purely on the training/validation/testing loop.
+        # The args object is still passed for general configuration.
+        # The actual DM and ScalerManager are passed as separate arguments.
+        logger.info(f"Initializing Exp_Long_Term_Forecast with provided managers and loaders.")
+        
+        # Store the managers and loaders
+        self.dm = args.dim_manager # DimensionManager instance
+        self.scaler_manager = args.scaler_manager # ScalerManager instance
+        self.train_loader = args.train_loader
+        self.vali_loader = args.vali_loader
+        self.test_loader = args.test_loader
+
+        # Construct model initialization arguments and evaluation info from DimensionManager and args
+        # DimensionManager provides the core input/output feature dimensions
+        # args provides other model hyperparameters (d_model, layers, etc.)
+
+        # Start with a copy of all relevant args from the config file
+        model_specific_args = {k: v for k, v in vars(args).items() if k not in [
+            'dim_manager', 'scaler_manager', 'train_loader', 'vali_loader', 'test_loader',
+            # Exclude data-related args that are handled by DM/ScalerManager
+            'root_path', 'data_path', 'target', 'features', 'freq', 'scale', 'timeenc',
+            'validation_length', 'test_length', 'val_len', 'test_len'
+        ]}
+
+        # Override/add core model dimensions from DimensionManager
+        model_specific_args['enc_in'] = self.dm.enc_in
+        model_specific_args['dec_in'] = self.dm.dec_in
+        model_specific_args['c_out'] = self.dm.c_out_model # Use c_out_model for the final projection layer
+
+        self.model_init_args = Namespace(**model_specific_args)
+        
+        self.eval_info = {
+            'c_out_evaluation': self.dm.c_out_evaluation, # Number of actual target features for evaluation
+            'num_quantiles': len(self.dm.quantiles) if self.dm.quantiles else 1,
+            'quantile_levels': self.dm.quantiles,
+            'loss_name': self.dm.loss_function,
+            'target_columns': self.dm.target_features # List of target column names
+        }
 
         # Initialize the parent class *after* model_init_args is set.
         # Pass the resolved args to the parent, which will store it as self.args.
         super(Exp_Long_Term_Forecast, self).__init__(self.model_init_args)
+        
+        # Ensure the args object used by the parent also has the managers
+        # This is important if any other part of the code expects args.scaler_manager or args.dim_manager
+        self.args.dim_manager = self.dm
+        self.args.scaler_manager = self.scaler_manager
 
     def _build_model(self):
         ModelClass = self.model_dict[self.args.model].Model
@@ -63,22 +81,6 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
         return model
-
-    def _get_data(self, flag):
-        # Pass the scaler from train_data to val_data and test_data args
-        # The self.args object is shared and modified here.
-        if flag == 'train':
-            data_set, data_loader = data_provider(self.args, flag='train')
-            # Store the fitted scaler from the training dataset in self.args
-            # so it can be passed to val/test data_provider calls.
-            self.args.scaler = data_set.scaler if hasattr(data_set, 'scaler') else None
-            self.args.target_scaler = data_set.target_scaler if hasattr(data_set, 'target_scaler') else None
-            logger.debug(f"Stored train_scaler in self.args: {self.args.scaler is not None}")
-            logger.debug(f"Stored train_target_scaler in self.args: {self.args.target_scaler is not None}")
-        else: # 'val' or 'test'
-            # Ensure self.args.scaler (from training) is used
-            data_set, data_loader = data_provider(self.args, flag=flag)
-        return data_set, data_loader
 
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
@@ -152,12 +154,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         
         return criterion
 
-    def vali(self, vali_data, vali_loader, criterion):
+    def vali(self, vali_loader, criterion):
         logger.info("Running validation phase")
         total_loss = []
         self.model.eval()
-        with torch.no_grad():
-            for i, (batch_x, batch_y_val_unscaled_targets, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
+        with torch.no_grad(): # Use self.vali_loader directly
+            for i, (batch_x, batch_y_val_unscaled_all_features, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
                 batch_x = batch_x.float().to(self.device)
                 # batch_y_val_unscaled_targets has unscaled targets, scaled covariates (if M/MS)
                 batch_x_mark = batch_x_mark.float().to(self.device)
@@ -165,29 +167,29 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 # Decoder input construction
                 # batch_y_val_unscaled_targets contains ALL features (targets + covariates) in original scale
-                total_features_in_batch_y = batch_y_val_unscaled_targets.shape[-1]
-                c_out_evaluation = self.eval_info['c_out_evaluation'] # Number of actual targets
+                total_features_in_batch_y = batch_y_val_unscaled_all_features.shape[-1]
+                c_out_evaluation = self.eval_info['c_out_evaluation'] # Number of actual targets (e.g., 4 for OHLC)
 
                 # Historical part of decoder input (label_len)
                 # Targets: scale using target_scaler
-                hist_targets_unscaled = batch_y_val_unscaled_targets[:, :self.args.label_len, :c_out_evaluation].cpu().numpy()
-                hist_targets_scaled = vali_data.target_scaler.transform(hist_targets_unscaled.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled.shape)
+                hist_targets_unscaled = batch_y_val_unscaled_all_features[:, :self.args.label_len, :c_out_evaluation].cpu().numpy()
+                hist_targets_scaled = self.scaler_manager.target_scaler.transform(hist_targets_unscaled.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled.shape)
                 
                 # Covariates: scale using main scaler (if present)
                 hist_covariates_scaled = None
                 if total_features_in_batch_y > c_out_evaluation: # Check if covariates exist
-                    hist_covariates_unscaled = batch_y_val_unscaled_targets[:, :self.args.label_len, c_out_evaluation:].cpu().numpy()
-                    hist_covariates_scaled = vali_data.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(hist_covariates_unscaled.shape)
+                    hist_covariates_unscaled = batch_y_val_unscaled_all_features[:, :self.args.label_len, c_out_evaluation:].cpu().numpy()
+                    hist_covariates_scaled = self.scaler_manager.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(hist_covariates_unscaled.shape)
                 
                 # Future part of decoder input (pred_len)
                 # Targets: zero out
-                future_targets_zeros = torch.zeros_like(batch_y_val_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation]).float().to(self.device)
+                future_targets_zeros = torch.zeros_like(batch_y_val_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation]).float().to(self.device)
                 
                 # Covariates: scale using main scaler (if present)
                 future_covariates_scaled = None
                 if total_features_in_batch_y > c_out_evaluation:
-                    future_covariates_unscaled = batch_y_val_unscaled_targets[:, -self.args.pred_len:, c_out_evaluation:].cpu().numpy()
-                    future_covariates_scaled = vali_data.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(future_covariates_unscaled.shape)
+                    future_covariates_unscaled = batch_y_val_unscaled_all_features[:, -self.args.pred_len:, c_out_evaluation:].cpu().numpy()
+                    future_covariates_scaled = self.scaler_manager.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(future_covariates_unscaled.shape)
 
                 # Concatenate to form dec_inp
                 dec_inp_val = self._construct_dec_inp(hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled)
@@ -199,8 +201,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 
                 # Prepare y_true for loss: scale the target part of batch_y_val_unscaled_targets
-                y_true_targets_unscaled_val_loss = batch_y_val_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation].cpu().numpy()
-                y_true_targets_scaled_val_loss_np = vali_data.target_scaler.transform(y_true_targets_unscaled_val_loss.reshape(-1, c_out_evaluation)).reshape(y_true_targets_unscaled_val_loss.shape)
+                y_true_targets_unscaled_val_loss = batch_y_val_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation].cpu().numpy()
+                y_true_targets_scaled_val_loss_np = self.scaler_manager.target_scaler.transform(y_true_targets_unscaled_val_loss.reshape(-1, c_out_evaluation)).reshape(y_true_targets_unscaled_val_loss.shape)
                 y_true_for_loss_val = torch.from_numpy(y_true_targets_scaled_val_loss_np).float().to(self.device)
 
                 # Prepare y_pred for loss
@@ -221,9 +223,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
     def train(self, setting):
         logger.info(f"Starting training with setting: {setting}")
-        train_data, train_loader = self._get_data(flag='train')
-        vali_data, vali_loader = self._get_data(flag='val')
-        test_data, test_loader = self._get_data(flag='test') # Test loader uses train_scaler via self.args
+        # Data loaders are passed in during initialization
+        train_loader = self.train_loader
+        vali_loader = self.vali_loader # Used in self.vali()
+        test_loader = self.test_loader # Used in self.vali()
 
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
@@ -246,17 +249,38 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             self.model.train()
             epoch_time = time.time()
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
+            for i, (batch_x, batch_y_unscaled_all_features, batch_x_mark, batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
+                # batch_x is already scaled by ForecastingDataset
                 batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float().to(self.device) # For training, Dataset_Custom provides scaled targets
+                # batch_y_unscaled_all_features is UNCALED from ForecastingDataset
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                # For training, batch_y is already scaled by Dataset_Custom. So this is fine.
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device) 
+                # Decoder input construction for training
+                # batch_y_unscaled_all_features contains ALL features (targets + covariates) in original scale
+                total_features_in_batch_y = batch_y_unscaled_all_features.shape[-1]
+                c_out_evaluation_train = self.eval_info['c_out_evaluation'] # Number of actual targets
+
+                # Historical part of decoder input (label_len)
+                hist_targets_unscaled_train = batch_y_unscaled_all_features[:, :self.args.label_len, :c_out_evaluation_train].cpu().numpy()
+                hist_targets_scaled_train = self.scaler_manager.target_scaler.transform(hist_targets_unscaled_train.reshape(-1, c_out_evaluation_train)).reshape(hist_targets_unscaled_train.shape)
+                
+                hist_covariates_scaled_train = None
+                if total_features_in_batch_y > c_out_evaluation_train: # Check if covariates exist
+                    hist_covariates_unscaled_train = batch_y_unscaled_all_features[:, :self.args.label_len, c_out_evaluation_train:].cpu().numpy()
+                    hist_covariates_scaled_train = self.scaler_manager.scaler.transform(hist_covariates_unscaled_train.reshape(-1, total_features_in_batch_y - c_out_evaluation_train)).reshape(hist_covariates_unscaled_train.shape)
+                
+                # Future part of decoder input (pred_len) - zero targets, real covariates
+                future_targets_zeros_train = torch.zeros_like(batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_train]).float().to(self.device)
+                
+                future_covariates_scaled_train = None
+                if total_features_in_batch_y > c_out_evaluation_train:
+                    future_covariates_unscaled_train = batch_y_unscaled_all_features[:, -self.args.pred_len:, c_out_evaluation_train:].cpu().numpy()
+                    future_covariates_scaled_train = self.scaler_manager.scaler.transform(future_covariates_unscaled_train.reshape(-1, total_features_in_batch_y - c_out_evaluation_train)).reshape(future_covariates_unscaled_train.shape)
+
+                dec_inp = self._construct_dec_inp(hist_targets_scaled_train, hist_covariates_scaled_train, future_targets_zeros_train, future_covariates_scaled_train)
 
                 outputs_raw_train = None # Initialize
                 if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
@@ -264,9 +288,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
                     outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                
-                c_out_evaluation_train = self.eval_info['c_out_evaluation']
-                y_true_for_loss_train = batch_y[:, -self.args.pred_len:, :c_out_evaluation_train].to(self.device)
+                # Prepare y_true for loss: scale the target part of batch_y
+                y_true_targets_unscaled_train_loss = batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_train].cpu().numpy()
+                y_true_for_loss_train = torch.from_numpy(self.scaler_manager.target_scaler.transform(y_true_targets_unscaled_train_loss.reshape(-1, c_out_evaluation_train)).reshape(y_true_targets_unscaled_train_loss.shape)).float().to(self.device)
 
                 is_criterion_pinball_train = isinstance(criterion, PinballLoss) or \
                                              (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
@@ -298,8 +322,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss_avg = np.average(train_loss_epoch_list)
-            vali_loss = self.vali(vali_data, vali_loader, criterion)
-            test_loss = self.vali(test_data, test_loader, criterion) # Using vali for test as placeholder
+            vali_loss = self.vali(vali_loader, criterion)
+            test_loss = self.vali(test_loader, criterion) # Using vali for test as placeholder
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss_avg, vali_loss, test_loss))
@@ -317,7 +341,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
     def test(self, setting, test=0):
         logger.info(f"Starting test with setting: {setting}, test={test}")
-        test_data, test_loader = self._get_data(flag='test')
+        test_loader = self.test_loader # Use pre-stored test_loader from init
         if test:
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
@@ -346,31 +370,31 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y_unscaled_targets, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+            for i, (batch_x, batch_y_unscaled_all_features, batch_x_mark, batch_y_mark) in enumerate(test_loader):
                 batch_x = batch_x.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 # Decoder input
-                # batch_y_unscaled_targets contains ALL features (targets + covariates) in original scale
-                total_features_in_batch_y = batch_y_unscaled_targets.shape[-1]
-
+                # batch_y_unscaled_all_features contains ALL features (targets + covariates) in original scale
+                total_features_in_batch_y = batch_y_unscaled_all_features.shape[-1]
+                
                 # Historical part of decoder input (label_len)
-                hist_targets_unscaled = batch_y_unscaled_targets[:, :self.args.label_len, :c_out_evaluation_test].cpu().numpy()
-                hist_targets_scaled = test_data.target_scaler.transform(hist_targets_unscaled.reshape(-1, c_out_evaluation_test)).reshape(hist_targets_unscaled.shape)
+                hist_targets_unscaled = batch_y_unscaled_all_features[:, :self.args.label_len, :c_out_evaluation_test].cpu().numpy()
+                hist_targets_scaled = self.scaler_manager.target_scaler.transform(hist_targets_unscaled.reshape(-1, c_out_evaluation_test)).reshape(hist_targets_unscaled.shape)
                 
                 hist_covariates_scaled = None
                 if total_features_in_batch_y > c_out_evaluation_test:
-                    hist_covariates_unscaled = batch_y_unscaled_targets[:, :self.args.label_len, c_out_evaluation_test:].cpu().numpy()
-                    hist_covariates_scaled = test_data.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(hist_covariates_unscaled.shape)
+                    hist_covariates_unscaled = batch_y_unscaled_all_features[:, :self.args.label_len, c_out_evaluation_test:].cpu().numpy()
+                    hist_covariates_scaled = self.scaler_manager.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(hist_covariates_unscaled.shape)
                 
                 # Future part of decoder input (pred_len)
-                future_targets_zeros = torch.zeros_like(batch_y_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation_test]).float().to(self.device)
+                future_targets_zeros = torch.zeros_like(batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_test]).float().to(self.device)
                 
                 future_covariates_scaled = None
                 if total_features_in_batch_y > c_out_evaluation_test:
-                    future_covariates_unscaled = batch_y_unscaled_targets[:, -self.args.pred_len:, c_out_evaluation_test:].cpu().numpy()
-                    future_covariates_scaled = test_data.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(future_covariates_unscaled.shape)
+                    future_covariates_unscaled = batch_y_unscaled_all_features[:, -self.args.pred_len:, c_out_evaluation_test:].cpu().numpy()
+                    future_covariates_scaled = self.scaler_manager.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(future_covariates_unscaled.shape)
 
                 # Concatenate to form dec_inp
                 dec_inp_test = self._construct_dec_inp(hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled)
@@ -385,11 +409,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 model_outputs_pred_len_segment = outputs_raw_test[:, -self.args.pred_len:, :] # [B, pred_len, c_out_model]
                 
                 # Store original unscaled targets (only the target columns) for direct comparison/saving
-                true_targets_original_batch_np = batch_y_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy()
+                true_targets_original_batch_np = batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy()
                 trues_original_np_targets_only.append(true_targets_original_batch_np)
 
                 # For visualization, store the full c_out_evaluation features in original scale
-                trues_original_for_viz_np.append(batch_y_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy())
+                trues_original_for_viz_np.append(batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy())
 
                 # Extract point predictions (median if quantile) for metrics, scaled
                 pred_point_scaled_batch_np = None # Initialize 
@@ -408,9 +432,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     pred_for_viz_scaled = pred_point_scaled_batch_np[0] # First sample in batch, scaled point preds
                     true_for_viz_original = trues_original_for_viz_np[-1][0] # Corresponding original true values (all c_out_eval features)
 
-                    if hasattr(test_data, 'inverse_transform') and test_data.scale:
-                        pred_for_viz_original = test_data.inverse_transform_targets(pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)).reshape(pred_for_viz_scaled.shape) # Use target_scaler
-                        input_for_viz_original = test_data.inverse_transform(input_np[0].reshape(-1, c_out_evaluation_test)).reshape(input_np[0].shape)
+                    if self.scaler_manager.scale: # Check if scaling is enabled
+                        pred_for_viz_original = self.scaler_manager.inverse_transform_targets(pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)).reshape(pred_for_viz_scaled.shape) # Use target_scaler
+                        input_for_viz_original = self.scaler_manager.inverse_transform_all_features(input_np[0].reshape(-1, self.scaler_manager.scaler.n_features_in_)).reshape(input_np[0].shape) # Use main scaler
                         
                         # Visualize the first target feature (index 0 of c_out_evaluation features)
                         if input_for_viz_original.shape[-1] > 0 and true_for_viz_original.shape[-1] > 0 and pred_for_viz_original.shape[-1] > 0:
@@ -427,7 +451,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         trues_final_original_targets_only = np.concatenate(trues_original_np_targets_only, axis=0)
         
         # Inverse transform predictions to original scale for final metrics using target_scaler
-        preds_final_original = test_data.inverse_transform_targets(preds_final_scaled.reshape(-1, c_out_evaluation_test)).reshape(preds_final_scaled.shape)
+        preds_final_original = self.scaler_manager.inverse_transform_targets(preds_final_scaled.reshape(-1, c_out_evaluation_test)).reshape(preds_final_scaled.shape)
         
         # Metrics are calculated on original scale data (targets only)
         # Ensure both preds and trues for metric calculation are [samples, pred_len, num_target_cols]
@@ -478,28 +502,3 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         # Combine historical and future parts
         dec_inp = torch.cat([dec_inp_hist, dec_inp_future], dim=1)
         return dec_inp
-        # Ensure both preds and trues for metric calculation are [samples, pred_len, num_target_cols]
-        # target_cols from eval_info defines which columns are the true targets
-        num_true_target_cols = len(self.eval_info['target_columns'])
-        
-        preds_for_metric = preds_final_original[:, :, :num_true_target_cols]
-        trues_for_metric = trues_final_original_targets_only[:, :, :num_true_target_cols]
-
-        logger.info(f'Test shape (original scale for metrics): preds={preds_for_metric.shape}, trues={trues_for_metric.shape}')
-        
-        mae, mse, rmse, mape, mspe = metric(preds_for_metric, trues_for_metric)
-        logger.info('Metrics (original scale, targets only): mse:{}, mae:{}, rmse:{}'.format(mse, mae, rmse))
-        
-        dtw_val = 'Not calculated' # Placeholder for DTW
-        
-        with open(os.path.join(folder_path, "result_long_term_forecast.txt"), 'a') as f:
-            f.write(setting + "  \n")
-            f.write('Metrics (original scale, targets only): mse:{}, mae:{}, rmse:{}, dtw:{}'.format(mse, mae, rmse, dtw_val))
-            f.write('\n')
-            f.write('\n')
-
-        np.save(os.path.join(folder_path, 'metrics.npy'), np.array([mae, mse, rmse, mape, mspe]))
-        np.save(os.path.join(folder_path, 'pred_original.npy'), preds_final_original) # Save original scale predictions (all c_out_eval)
-        np.save(os.path.join(folder_path, 'true_original_targets.npy'), trues_final_original_targets_only) # Save original scale true targets
-
-        return

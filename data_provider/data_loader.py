@@ -17,6 +17,57 @@ from utils.logger import logger  # <-- Add logger import
 warnings.filterwarnings('ignore')
 
 
+class ForecastingDataset(Dataset):
+    """
+    A simple, stateless PyTorch Dataset that serves pre-scaled data for financial forecasting.
+    This dataset assumes data is already properly scaled and prepared.
+    """
+    def __init__(self, data_x, data_y, data_stamp, args, dim_manager):
+        """
+        Initialize the dataset with scaled and unscaled data.
+        
+        Args:
+            data_x (np.ndarray): Pre-scaled feature data (for model input)
+            data_y (np.ndarray): Unscaled feature data (for ground truth and decoder input construction)
+            data_stamp (np.ndarray): Time features
+            args: Configuration arguments containing seq_len, label_len, pred_len
+            dim_manager (DimensionManager): Manages all dimension/feature logic
+        """
+        self.data_x = data_x
+        self.data_y = data_y
+        self.data_stamp = data_stamp
+        self.seq_len = args.seq_len
+        self.label_len = args.label_len
+        self.pred_len = args.pred_len
+        self.dim_manager = dim_manager
+        
+        # Set total number of samples
+        self.total_samples = len(self.data_x) - self.seq_len - self.pred_len + 1
+        logger.debug(f"Created ForecastingDataset with {self.total_samples} samples")
+    
+    def __getitem__(self, index):
+        """
+        Get a single training/validation/test instance.
+        """
+        s_begin = index
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+        
+        # Get scaled data for x, and unscaled data for y
+        seq_x = self.data_x[s_begin:s_end]
+        seq_y = self.data_y[r_begin:r_end] # This is the unscaled data
+        
+        # Extract time features
+        seq_x_mark = self.data_stamp[s_begin:s_end]
+        seq_y_mark = self.data_stamp[r_begin:r_end]
+        
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+    
+    def __len__(self):
+        return self.total_samples
+
+
 class Dataset_ETT_hour(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
