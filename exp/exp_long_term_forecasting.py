@@ -72,7 +72,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             # Store the fitted scaler from the training dataset in self.args
             # so it can be passed to val/test data_provider calls.
             self.args.scaler = data_set.scaler if hasattr(data_set, 'scaler') else None
-            logger.debug(f"Stored train_scaler in self.args: {self.args.scaler}")
+            self.args.target_scaler = data_set.target_scaler if hasattr(data_set, 'target_scaler') else None
+            logger.debug(f"Stored train_scaler in self.args: {self.args.scaler is not None}")
+            logger.debug(f"Stored train_target_scaler in self.args: {self.args.target_scaler is not None}")
         else: # 'val' or 'test'
             # Ensure self.args.scaler (from training) is used
             data_set, data_loader = data_provider(self.args, flag=flag)
@@ -162,15 +164,33 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 # Decoder input construction
-                c_out_evaluation = self.eval_info['c_out_evaluation']
-                hist_targets_unscaled_val = batch_y_val_unscaled_targets[:, :self.args.label_len, :c_out_evaluation].cpu().numpy()
-                logger.info(f"Vali: hist_targets_unscaled_val shape: {hist_targets_unscaled_val.shape}, c_out_evaluation: {c_out_evaluation}")
-                # Use the scaler from the validation dataset (which should be the train_scaler)
-                hist_targets_scaled_val_np = vali_data.scaler.transform(hist_targets_unscaled_val.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled_val.shape)
-                dec_inp_hist_scaled_val = torch.from_numpy(hist_targets_scaled_val_np).float().to(self.device)
+                # batch_y_val_unscaled_targets contains ALL features (targets + covariates) in original scale
+                total_features_in_batch_y = batch_y_val_unscaled_targets.shape[-1]
+                c_out_evaluation = self.eval_info['c_out_evaluation'] # Number of actual targets
+
+                # Historical part of decoder input (label_len)
+                # Targets: scale using target_scaler
+                hist_targets_unscaled = batch_y_val_unscaled_targets[:, :self.args.label_len, :c_out_evaluation].cpu().numpy()
+                hist_targets_scaled = vali_data.target_scaler.transform(hist_targets_unscaled.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled.shape)
                 
-                dec_inp_future_zeros_val = torch.zeros_like(batch_y_val_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation]).float().to(self.device)
-                dec_inp_val = torch.cat([dec_inp_hist_scaled_val, dec_inp_future_zeros_val], dim=1)
+                # Covariates: scale using main scaler (if present)
+                hist_covariates_scaled = None
+                if total_features_in_batch_y > c_out_evaluation: # Check if covariates exist
+                    hist_covariates_unscaled = batch_y_val_unscaled_targets[:, :self.args.label_len, c_out_evaluation:].cpu().numpy()
+                    hist_covariates_scaled = vali_data.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(hist_covariates_unscaled.shape)
+                
+                # Future part of decoder input (pred_len)
+                # Targets: zero out
+                future_targets_zeros = torch.zeros_like(batch_y_val_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation]).float().to(self.device)
+                
+                # Covariates: scale using main scaler (if present)
+                future_covariates_scaled = None
+                if total_features_in_batch_y > c_out_evaluation:
+                    future_covariates_unscaled = batch_y_val_unscaled_targets[:, -self.args.pred_len:, c_out_evaluation:].cpu().numpy()
+                    future_covariates_scaled = vali_data.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(future_covariates_unscaled.shape)
+
+                # Concatenate to form dec_inp
+                dec_inp_val = self._construct_dec_inp(hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled)
                 
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
@@ -180,7 +200,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 # Prepare y_true for loss: scale the target part of batch_y_val_unscaled_targets
                 y_true_targets_unscaled_val_loss = batch_y_val_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation].cpu().numpy()
-                y_true_targets_scaled_val_loss_np = vali_data.scaler.transform(y_true_targets_unscaled_val_loss.reshape(-1, c_out_evaluation)).reshape(y_true_targets_unscaled_val_loss.shape)
+                y_true_targets_scaled_val_loss_np = vali_data.target_scaler.transform(y_true_targets_unscaled_val_loss.reshape(-1, c_out_evaluation)).reshape(y_true_targets_unscaled_val_loss.shape)
                 y_true_for_loss_val = torch.from_numpy(y_true_targets_scaled_val_loss_np).float().to(self.device)
 
                 # Prepare y_pred for loss
@@ -235,10 +255,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                # For training, batch_y is already scaled by Dataset_Custom. So this is fine.
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device) 
 
                 outputs_raw_train = None # Initialize
-                if self.args.use_amp:
+                if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
                         outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
@@ -331,14 +352,31 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 # Decoder input
-                hist_targets_unscaled_test = batch_y_unscaled_targets[:, :self.args.label_len, :c_out_evaluation_test].cpu().numpy()
-                hist_targets_scaled_test_np = test_data.scaler.transform(hist_targets_unscaled_test.reshape(-1, c_out_evaluation_test)).reshape(hist_targets_unscaled_test.shape)
-                dec_inp_hist_scaled_test = torch.from_numpy(hist_targets_scaled_test_np).float().to(self.device)
-                dec_inp_future_zeros_test = torch.zeros_like(batch_y_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation_test]).float().to(self.device)
-                dec_inp_test = torch.cat([dec_inp_hist_scaled_test, dec_inp_future_zeros_test], dim=1)
+                # batch_y_unscaled_targets contains ALL features (targets + covariates) in original scale
+                total_features_in_batch_y = batch_y_unscaled_targets.shape[-1]
+
+                # Historical part of decoder input (label_len)
+                hist_targets_unscaled = batch_y_unscaled_targets[:, :self.args.label_len, :c_out_evaluation_test].cpu().numpy()
+                hist_targets_scaled = test_data.target_scaler.transform(hist_targets_unscaled.reshape(-1, c_out_evaluation_test)).reshape(hist_targets_unscaled.shape)
+                
+                hist_covariates_scaled = None
+                if total_features_in_batch_y > c_out_evaluation_test:
+                    hist_covariates_unscaled = batch_y_unscaled_targets[:, :self.args.label_len, c_out_evaluation_test:].cpu().numpy()
+                    hist_covariates_scaled = test_data.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(hist_covariates_unscaled.shape)
+                
+                # Future part of decoder input (pred_len)
+                future_targets_zeros = torch.zeros_like(batch_y_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation_test]).float().to(self.device)
+                
+                future_covariates_scaled = None
+                if total_features_in_batch_y > c_out_evaluation_test:
+                    future_covariates_unscaled = batch_y_unscaled_targets[:, -self.args.pred_len:, c_out_evaluation_test:].cpu().numpy()
+                    future_covariates_scaled = test_data.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(future_covariates_unscaled.shape)
+
+                # Concatenate to form dec_inp
+                dec_inp_test = self._construct_dec_inp(hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled)
                 
                 outputs_raw_test = None # Initialize
-                if self.args.use_amp:
+                if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
                         outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
                 else:
@@ -354,7 +392,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 trues_original_for_viz_np.append(batch_y_unscaled_targets[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy())
 
                 # Extract point predictions (median if quantile) for metrics, scaled
-                pred_point_scaled_batch_np = None # Initialize
+                pred_point_scaled_batch_np = None # Initialize 
                 if is_quantile_mode_test and model_outputs_pred_len_segment.shape[-1] == c_out_evaluation_test * num_quantiles_test:
                     pred_point_scaled_batch_np = model_outputs_pred_len_segment.view(
                         model_outputs_pred_len_segment.shape[0], self.args.pred_len, c_out_evaluation_test, num_quantiles_test
@@ -371,7 +409,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     true_for_viz_original = trues_original_for_viz_np[-1][0] # Corresponding original true values (all c_out_eval features)
 
                     if hasattr(test_data, 'inverse_transform') and test_data.scale:
-                        pred_for_viz_original = test_data.inverse_transform(pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)).reshape(pred_for_viz_scaled.shape)
+                        pred_for_viz_original = test_data.inverse_transform_targets(pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)).reshape(pred_for_viz_scaled.shape) # Use target_scaler
                         input_for_viz_original = test_data.inverse_transform(input_np[0].reshape(-1, c_out_evaluation_test)).reshape(input_np[0].shape)
                         
                         # Visualize the first target feature (index 0 of c_out_evaluation features)
@@ -388,10 +426,58 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         preds_final_scaled = np.concatenate(preds_scaled_np, axis=0)
         trues_final_original_targets_only = np.concatenate(trues_original_np_targets_only, axis=0)
         
-        # Inverse transform predictions to original scale for final metrics
-        preds_final_original = test_data.scaler.inverse_transform(preds_final_scaled.reshape(-1, c_out_evaluation_test)).reshape(preds_final_scaled.shape)
+        # Inverse transform predictions to original scale for final metrics using target_scaler
+        preds_final_original = test_data.inverse_transform_targets(preds_final_scaled.reshape(-1, c_out_evaluation_test)).reshape(preds_final_scaled.shape)
         
         # Metrics are calculated on original scale data (targets only)
+        # Ensure both preds and trues for metric calculation are [samples, pred_len, num_target_cols]
+        # target_cols from eval_info defines which columns are the true targets
+        num_true_target_cols = len(self.eval_info['target_columns'])
+        
+        preds_for_metric = preds_final_original[:, :, :num_true_target_cols]
+        trues_for_metric = trues_final_original_targets_only[:, :, :num_true_target_cols]
+
+        logger.info(f'Test shape (original scale, targets only): preds={preds_for_metric.shape}, trues={trues_for_metric.shape}')
+        
+        mae, mse, rmse, mape, mspe = metric(preds_for_metric, trues_for_metric)
+        logger.info('Metrics (original scale, targets only): mse:{}, mae:{}, rmse:{}'.format(mse, mae, rmse))
+        
+        dtw_val = 'Not calculated' # Placeholder for DTW
+        
+        with open(os.path.join(folder_path, "result_long_term_forecast.txt"), 'a') as f:
+            f.write(setting + "  \n")
+            f.write('Metrics (original scale, targets only): mse:{}, mae:{}, rmse:{}, dtw:{}'.format(mse, mae, rmse, dtw_val))
+            f.write('\n')
+            f.write('\n')
+
+        np.save(os.path.join(folder_path, 'metrics.npy'), np.array([mae, mse, rmse, mape, mspe]))
+        np.save(os.path.join(folder_path, 'pred_original.npy'), preds_final_original) # Save original scale predictions (all c_out_eval)
+        np.save(os.path.join(folder_path, 'true_original_targets.npy'), trues_final_original_targets_only) # Save original scale true targets
+
+        return
+
+    def _construct_dec_inp(self, hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled):
+        """Helper to construct decoder input based on feature mode."""
+        # Convert numpy arrays to tensors and move to device
+        hist_targets_scaled_t = torch.from_numpy(hist_targets_scaled).float().to(self.device)
+        future_targets_zeros_t = future_targets_zeros.float().to(self.device)
+
+        if hist_covariates_scaled is not None and future_covariates_scaled is not None:
+            hist_covariates_scaled_t = torch.from_numpy(hist_covariates_scaled).float().to(self.device)
+            future_covariates_scaled_t = torch.from_numpy(future_covariates_scaled).float().to(self.device)
+
+            # Concatenate targets and covariates for historical part
+            dec_inp_hist = torch.cat([hist_targets_scaled_t, hist_covariates_scaled_t], dim=-1)
+            # Concatenate zeros for targets and scaled covariates for future part
+            dec_inp_future = torch.cat([future_targets_zeros_t, future_covariates_scaled_t], dim=-1)
+        else:
+            # No covariates, just targets (e.g., S mode)
+            dec_inp_hist = hist_targets_scaled_t
+            dec_inp_future = future_targets_zeros_t
+
+        # Combine historical and future parts
+        dec_inp = torch.cat([dec_inp_hist, dec_inp_future], dim=1)
+        return dec_inp
         # Ensure both preds and trues for metric calculation are [samples, pred_len, num_target_cols]
         # target_cols from eval_info defines which columns are the true targets
         num_true_target_cols = len(self.eval_info['target_columns'])

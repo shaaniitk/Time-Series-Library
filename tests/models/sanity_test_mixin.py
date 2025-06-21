@@ -101,6 +101,7 @@ class SanityTestMixin:
         # Data Loaders
         dataset, loader = data_provider(args, flag='train')
         train_scaler = dataset.scaler if hasattr(dataset, 'scaler') else None
+        train_target_scaler = dataset.target_scaler if hasattr(dataset, 'target_scaler') else None
         logger.debug(f"Train dataset scaler obtained: {train_scaler}")
         logger.info(f"Train scaler n_features_in_ (after fit): {train_scaler.n_features_in_ if train_scaler else 'N/A'}")
 
@@ -140,7 +141,7 @@ class SanityTestMixin:
                 
                 dec_inp = torch.zeros_like(batch_y[:, -pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :label_len, :], dec_inp], dim=1).float().to(device)
-                
+
                 y_pred = model(batch_x, batch_x_mark, dec_inp, batch_y_mark) # Raw model output
                 
                 # Prepare y_true for loss: always the first c_out_evaluation features, scaled
@@ -149,7 +150,6 @@ class SanityTestMixin:
                 is_model_quantile_train = hasattr(model, 'is_quantile_mode') and model.is_quantile_mode
                 is_criterion_pinball_train = isinstance(criterion, PinballLoss) or \
                                              (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
-
                 if is_model_quantile_train and is_criterion_pinball_train:
                     y_pred_for_loss = y_pred[:, -pred_len:, :] # Use full model output (c_out_model)
                 else:
@@ -166,6 +166,7 @@ class SanityTestMixin:
             for attr_name, attr_value in vars(args).items(): # Copy attributes from original args
                 setattr(val_args, attr_name, attr_value)
             val_args.scaler = train_scaler # Pass the scaler
+            val_args.target_scaler = train_target_scaler # Pass the target scaler
             val_args.data_path = os.path.basename(csv_path) # Ensure correct data_path for val_dataset
             
             val_dataset, val_loader = data_provider(val_args, flag='val')
@@ -177,7 +178,7 @@ class SanityTestMixin:
                 for batch_idx_val, batch_data_val in enumerate(val_loader):
                     batch_x_val, batch_y_val, batch_x_mark_val, batch_y_mark_val = batch_data_val
                     batch_x_val = batch_x_val.float().to(device)
-                    # batch_y_val from val_loader has unscaled targets (first c_out_evaluation), scaled covariates
+                    # batch_y_val from val_loader has ALL features (targets + covariates) in original scale
                     batch_x_mark_val = batch_x_mark_val.float().to(device)
                     batch_y_mark_val = batch_y_mark_val.float().to(device)
 
@@ -187,8 +188,36 @@ class SanityTestMixin:
                     hist_targets_scaled_val_np = val_dataset.scaler.transform(hist_targets_unscaled_val.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled_val.shape)
                     dec_inp_hist_scaled_val = torch.from_numpy(hist_targets_scaled_val_np).float().to(device)
                     
+                    # Covariates for historical part (if any)
+                    hist_covariates_scaled_val_np = None
+                    if batch_y_val.shape[-1] > c_out_evaluation: # Check if covariates exist
+                        hist_covariates_unscaled_val = batch_y_val[:, :label_len, c_out_evaluation:].cpu().numpy()
+                        hist_covariates_scaled_val_np = val_dataset.scaler.transform(hist_covariates_unscaled_val.reshape(-1, batch_y_val.shape[-1] - c_out_evaluation)).reshape(hist_covariates_unscaled_val.shape)
+                    
+                    # Future part: zero targets
                     dec_inp_future_zeros_val = torch.zeros_like(batch_y_val[:, -pred_len:, :c_out_evaluation]).float().to(device)
-                    dec_inp_val = torch.cat([dec_inp_hist_scaled_val, dec_inp_future_zeros_val], dim=1)
+                    
+                    # Future covariates (if any)
+                    future_covariates_scaled_val_np = None
+                    if batch_y_val.shape[-1] > c_out_evaluation:
+                        future_covariates_unscaled_val = batch_y_val[:, -pred_len:, c_out_evaluation:].cpu().numpy()
+                        future_covariates_scaled_val_np = val_dataset.scaler.transform(future_covariates_unscaled_val.reshape(-1, batch_y_val.shape[-1] - c_out_evaluation)).reshape(future_covariates_unscaled_val.shape)
+
+                    # Construct dec_inp based on whether covariates are present
+                    if hist_covariates_scaled_val_np is not None and future_covariates_scaled_val_np is not None:
+                        dec_inp_hist_scaled_val_t = torch.from_numpy(hist_targets_scaled_val_np).float().to(device)
+                        hist_covariates_scaled_val_t = torch.from_numpy(hist_covariates_scaled_val_np).float().to(device)
+                        dec_inp_hist = torch.cat([dec_inp_hist_scaled_val_t, hist_covariates_scaled_val_t], dim=-1)
+
+                        dec_inp_future_zeros_val_t = dec_inp_future_zeros_val.float().to(device)
+                        future_covariates_scaled_val_t = torch.from_numpy(future_covariates_scaled_val_np).float().to(device)
+                        dec_inp_future = torch.cat([dec_inp_future_zeros_val_t, future_covariates_scaled_val_t], dim=-1)
+                        
+                        dec_inp_val = torch.cat([dec_inp_hist, dec_inp_future], dim=1)
+                    else:
+                        # No covariates, just targets
+                        dec_inp_hist_scaled_val_t = torch.from_numpy(hist_targets_scaled_val_np).float().to(device)
+                        dec_inp_val = torch.cat([dec_inp_hist_scaled_val_t, dec_inp_future_zeros_val], dim=1)
 
                     y_pred_val_raw = model(batch_x_val, batch_x_mark_val, dec_inp_val, batch_y_mark_val) # Raw model output
 
@@ -200,7 +229,6 @@ class SanityTestMixin:
                     is_model_quantile_val = hasattr(model, 'is_quantile_mode') and model.is_quantile_mode
                     is_criterion_pinball_val = isinstance(criterion, PinballLoss) or \
                                                (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
-
                     if is_model_quantile_val and is_criterion_pinball_val:
                         y_pred_for_loss_val = y_pred_val_raw[:, -pred_len:, :] # Use full model output (c_out_model)
                     else:
@@ -218,7 +246,7 @@ class SanityTestMixin:
                                 y_pred_for_loss_val.shape[0], pred_len, c_out_evaluation, eval_info['num_quantiles']
                             )[:, :, :, median_idx]
                         
-                        pred_orig_np_val = val_dataset.scaler.inverse_transform(
+                        pred_orig_np_val = val_dataset.inverse_transform_targets( # Use target_scaler
                             pred_for_inv_transform_val.cpu().numpy().reshape(-1, c_out_evaluation)
                         ).reshape(pred_for_inv_transform_val.shape)
                         
@@ -276,13 +304,30 @@ class SanityTestMixin:
                 batch_y_mark_test = batch_y_mark_test.float().to(device)
 
                 hist_targets_unscaled_test = batch_y_test[:, :label_len, :c_out_evaluation].cpu().numpy()
-                hist_targets_scaled_test_np = test_dataset.scaler.transform(hist_targets_unscaled_test.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled_test.shape)
+                hist_targets_scaled_test_np = test_dataset.target_scaler.transform(hist_targets_unscaled_test.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled_test.shape)
                 dec_inp_hist_scaled_test = torch.from_numpy(hist_targets_scaled_test_np).float().to(device)
+                
+                # Covariates for historical part (if any)
+                hist_covariates_scaled_test_np = None
+                if batch_y_test.shape[-1] > c_out_evaluation:
+                    hist_covariates_unscaled_test = batch_y_test[:, :label_len, c_out_evaluation:].cpu().numpy()
+                    hist_covariates_scaled_test_np = test_dataset.scaler.transform(hist_covariates_unscaled_test.reshape(-1, batch_y_test.shape[-1] - c_out_evaluation)).reshape(hist_covariates_unscaled_test.shape)
+
+                # Future part: zero targets
                 dec_inp_future_zeros_test = torch.zeros_like(batch_y_test[:, -pred_len:, :c_out_evaluation]).float().to(device)
-                dec_inp_test = torch.cat([dec_inp_hist_scaled_test, dec_inp_future_zeros_test], dim=1)
+                
+                # Future covariates (if any)
+                future_covariates_scaled_test_np = None
+                if batch_y_test.shape[-1] > c_out_evaluation:
+                    future_covariates_unscaled_test = batch_y_test[:, -pred_len:, c_out_evaluation:].cpu().numpy()
+                    future_covariates_scaled_test_np = test_dataset.scaler.transform(future_covariates_unscaled_test.reshape(-1, batch_y_test.shape[-1] - c_out_evaluation)).reshape(future_covariates_unscaled_test.shape)
+
+                # Construct dec_inp based on whether covariates are present
+                dec_inp_test = self._construct_dec_inp(hist_targets_scaled_test_np, hist_covariates_scaled_test_np, dec_inp_future_zeros_test, future_covariates_scaled_test_np)
 
                 y_pred_test_raw = model(batch_x_test, batch_x_mark_test, dec_inp_test, batch_y_mark_test)
                 y_pred_test_pred_len_segment = y_pred_test_raw[:, -pred_len:, :] 
+
 
                 current_batch_size_test = y_pred_test_pred_len_segment.shape[0]
                 current_output_features_test = y_pred_test_pred_len_segment.shape[-1]
@@ -312,7 +357,7 @@ class SanityTestMixin:
                     continue
                 
                 point_preds_batch_orig_np = test_dataset.scaler.inverse_transform(
-                    point_preds_batch_scaled_torch.cpu().numpy().reshape(-1, c_out_evaluation)
+                    point_preds_batch_scaled_torch.cpu().numpy().reshape(-1, test_dataset.scaler.n_features_in_) # Use main scaler for all features
                 ).reshape(current_batch_size_test, pred_len, c_out_evaluation)
                 
                 true_batch_c_out_features_orig_np = batch_y_test[:, -pred_len:, :c_out_evaluation].cpu().numpy()
@@ -367,3 +412,22 @@ class SanityTestMixin:
             os.remove(csv_path)
         
         return mse_forecast, first_batch_preds_plot_orig, first_batch_actuals_plot_orig
+
+    def _construct_dec_inp(self, hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled):
+        """Helper to construct decoder input based on feature mode."""
+        # Convert numpy arrays to tensors and move to device
+        hist_targets_scaled_t = torch.from_numpy(hist_targets_scaled).float().to(self.device)
+        future_targets_zeros_t = future_targets_zeros.float().to(self.device)
+
+        if hist_covariates_scaled is not None and future_covariates_scaled is not None:
+            hist_covariates_scaled_t = torch.from_numpy(hist_covariates_scaled).float().to(self.device)
+            future_covariates_scaled_t = torch.from_numpy(future_covariates_scaled).float().to(self.device)
+
+            dec_inp_hist = torch.cat([hist_targets_scaled_t, hist_covariates_scaled_t], dim=-1)
+            dec_inp_future = torch.cat([future_targets_zeros_t, future_covariates_scaled_t], dim=-1)
+        else:
+            dec_inp_hist = hist_targets_scaled_t
+            dec_inp_future = future_targets_zeros_t
+
+        dec_inp = torch.cat([dec_inp_hist, dec_inp_future], dim=1)
+        return dec_inp

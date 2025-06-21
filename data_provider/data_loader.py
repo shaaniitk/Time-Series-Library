@@ -225,8 +225,8 @@ class Dataset_ETT_minute(Dataset):
 class Dataset_Custom(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None,
-                 scaler=None): # Add scaler parameter
+                 target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None, scaler=None,
+                 target_scaler=None):
         # size [seq_len, label_len, pred_len]
         self.args = args
         # info
@@ -256,6 +256,7 @@ class Dataset_Custom(Dataset):
         self.freq = freq
 
         self.scaler_passed_in = scaler # Store the passed scaler
+        self.target_scaler_passed_in = target_scaler
         self.root_path = root_path
         self.data_path = data_path
         logger.info(f"Initializing Dataset_Custom with targets: {target}")
@@ -263,108 +264,77 @@ class Dataset_Custom(Dataset):
 
     def __read_data__(self):
         logger.debug(f"Dataset_Custom (flag={self.set_type}): Reading data from {os.path.join(self.root_path, self.data_path)}")
-        # self.scaler will be set based on logic below
+        self.target_scaler = None # Initialize target-specific scaler
         self.scaler = None # Ensure scaler is explicitly reset for each instance
         try:
             df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
         except Exception as e:
             logger.error(f"Failed to read CSV: {e}")
-            raise        # Use dynamic borders based on actual data size and validation requirements
+            raise
+
+        # --- Border calculation ---
         data_len = len(df_raw)
-          # For synthetic data, use configurable borders
         if hasattr(self.args, 'data') and self.args.data == 'custom':
-            # Parameters: n=data_len, s=seq_len, p=pred_len, v=validation_length, t=test_length
-            n = data_len
-            s = self.seq_len 
-            p = self.pred_len
-            
-            # Get configurable parameters from args (with defaults)
-            v = getattr(self.args, 'validation_length', 150)  # validation_length
-            t = getattr(self.args, 'test_length', 50)         # test_length
-            
-            # Your mathematical formulation:
-            # Training: 0 to (n - t - v)
-            # Validation: (n - t - s - v) to (n - t)  
-            # Test: (n - s - t) to n
-            
+            n, s, p = data_len, self.seq_len, self.pred_len
+            v = getattr(self.args, 'validation_length', 150)
+            t = getattr(self.args, 'test_length', 50)
             border1s = [0, n - t - s - v, n - s - t]
             border2s = [n - t - v, n - t, n]
-            
             logger.info(f"Border calculation: n={n}, s={s}, p={p}, v={v}, t={t}")
             logger.info(f"border1s = {border1s}")
             logger.info(f"border2s = {border2s}")
-            
-            border1 = border1s[self.set_type]
-            border2 = border2s[self.set_type]
-        else:
-            # Original ETT borders for other datasets
+        else: # Fallback to original ETT borders
             border1s = [0, 12 * 30 * 24 * 4 - self.seq_len, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4 - self.seq_len]
             border2s = [12 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 8 * 30 * 24 * 4]
-            border1 = border1s[self.set_type]
-            border2 = border2s[self.set_type]
-
-        cols = list(df_raw.columns)
-        # Remove all targets and 'date' from feature columns
-        for tgt in self.target_list:
-            if tgt in cols:
-                cols.remove(tgt)
-        if 'date' in cols:
-            cols.remove('date')        # Features: all columns except date and targets
-        feature_cols = cols
-          # --- Feature selection ---
-        if self.features == 'M' or self.features == 'MS':
-            cols_data = df_raw.columns[1:]  # All columns except date (standard TSLib behavior)
-            df_data = df_raw[cols_data]
-        elif self.features == 'S':
-            df_data = df_raw[self.target_list]
         
-        data_unscaled = df_data.values
-        
-        # Initialize self.scaler to None. It will be set if scaling is applied.
-        self.scaler = None 
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
 
+        # --- Define feature sets ---
+        # This class will always load all features. The `features` arg is a hint for downstream components.
+        cols_for_all_features = [col for col in df_raw.columns if col != 'date']
+        df_data_all_features = df_raw[cols_for_all_features]
+
+        # --- Scaling ---
+        data_scaled = df_data_all_features.values # Default to unscaled if self.scale is False
         if self.scale:
-            current_scaler_to_use = None
-            if self.scaler_passed_in is not None:
-                current_scaler_to_use = self.scaler_passed_in
-                logger.debug(f"Dataset_Custom (flag={self.set_type}): Using provided scaler. Expected features: {current_scaler_to_use.n_features_in_ if hasattr(current_scaler_to_use, 'n_features_in_') else 'N/A'}")
-            elif self.set_type == 0: # 'train' and no scaler passed
-                logger.debug(f"Dataset_Custom (flag=train): Creating and fitting a new scaler.")
-                current_scaler_to_use = StandardScaler()
-                # Fit on the training portion of df_data (all selected features)
-                # df_data contains all columns (except date) for M/MS, or just targets for S
-                # border1s[0] and border2s[0] define the actual training split range from df_raw
-                # So, we need to slice df_data (which is based on df_raw[cols_data]) using these global borders.
-                # df_data itself is not pre-sliced by train/val/test borders.
-                train_data_for_fitting_scaler = df_data.iloc[border1s[0]:border2s[0]].values
-                current_scaler_to_use.fit(train_data_for_fitting_scaler)
-                logger.debug(f"Dataset_Custom: New scaler fit on training data. Expected features: {current_scaler_to_use.n_features_in_}")
-            else: # 'val' or 'test' and no scaler passed
-                logger.error(f"Dataset_Custom (flag={self.set_type}): No scaler provided and not in training mode. Scaling will be skipped. This is likely an error if scaling is expected.")
+            # Use passed-in scaler for val/test, or fit a new one for train
+            main_scaler_to_use = self.scaler_passed_in
+            self.target_scaler = self.target_scaler_passed_in
+            
+            if self.set_type == 0: # 'train' mode
+                # Fit main scaler on all features
+                logger.debug(f"Dataset_Custom (flag=train): Creating and fitting a new main scaler.")
+                main_scaler_to_use = StandardScaler()
+                train_data_for_main_scaler = df_data_all_features.iloc[border1s[0]:border2s[0]].values
+                main_scaler_to_use.fit(train_data_for_main_scaler)
+                logger.debug(f"Dataset_Custom: Main scaler fit on {main_scaler_to_use.n_features_in_} features.")
+                
+                # Fit target scaler on target features
+                if self.target_list:
+                    logger.debug(f"Dataset_Custom (flag=train): Creating and fitting a target_scaler.")
+                    self.target_scaler = StandardScaler()
+                    train_targets_for_fitting = df_raw[self.target_list].iloc[border1s[0]:border2s[0]].values
+                    self.target_scaler.fit(train_targets_for_fitting)
+                    logger.debug(f"Dataset_Custom: Target scaler fit on {self.target_scaler.n_features_in_} features.")
+            elif self.target_scaler is None:
+                logger.warning(f"Dataset_Custom (flag={self.set_type}): No target_scaler was passed in. "
+                               f"Target-specific scaling/inverse_transform will fail if used.")
 
-            if current_scaler_to_use is not None and hasattr(current_scaler_to_use, 'n_features_in_'):
-                if data_unscaled.shape[1] == current_scaler_to_use.n_features_in_:
-                    logger.info(f"Dataset_Custom (flag={self.set_type}): About to transform data with shape {data_unscaled.shape[1]} using scaler expecting {current_scaler_to_use.n_features_in_} features.")
-                    data_scaled_for_x = current_scaler_to_use.transform(data_unscaled)
-                    if self.set_type == 0: # 'train'
-                        data_scaled_for_y = data_scaled_for_x # Use scaled data for y in train
-                    else: # 'val' or 'test'
-                        data_scaled_for_y = data_unscaled # Use unscaled data for y in val/test
-                    self.scaler = current_scaler_to_use # Store the scaler used
-                    logger.debug(f"Dataset_Custom (flag={self.set_type}): Applied scaling. data_x will be scaled. data_y for train will be scaled, for val/test will be unscaled.")
-                else:
-                    logger.error(f"Dataset_Custom (flag={self.set_type}): Feature mismatch for scaling. Data has {data_unscaled.shape[1]} features, scaler expects {current_scaler_to_use.n_features_in_}. Scaling skipped.")
-                    data_scaled_for_x = data_unscaled
-                    data_scaled_for_y = data_unscaled
+            if main_scaler_to_use is not None:
+                data_scaled = main_scaler_to_use.transform(df_data_all_features.values)
+                self.scaler = main_scaler_to_use # Store the scaler used
+                logger.debug(f"Dataset_Custom (flag={self.set_type}): Applied scaling to all features.")
             else:
                 logger.warning(f"Dataset_Custom (flag={self.set_type}): Scaling enabled but no usable scaler. Data will not be scaled.")
-                data_scaled_for_x = data_unscaled
-                data_scaled_for_y = data_unscaled
-        else:
-            logger.debug("Skipping scaling step")
-            data_scaled_for_x = data_unscaled
-            data_scaled_for_y = data_unscaled
 
+        # --- Final Data Assignment ---
+        # data_x is always all features, scaled
+        self.data_x = data_scaled[border1:border2]
+        # data_y is always all features, unscaled
+        self.data_y = df_data_all_features.values[border1:border2]
+
+        # --- Time Features ---
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
         if self.timeenc == 0:
@@ -378,14 +348,11 @@ class Dataset_Custom(Dataset):
         elif self.timeenc == 1:
             data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
             data_stamp = data_stamp.transpose(1, 0)
-
-        self.data_x = data_scaled_for_x[border1:border2]
-        self.data_y = data_scaled_for_y[border1:border2] # This is now correctly unscaled for val/test
-
+        self.data_stamp = data_stamp
+        
         if self.set_type == 0 and getattr(self.args, 'augmentation_ratio', 0) > 0:
             self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
 
-        self.data_stamp = data_stamp
         logger.info(f"Loaded data shape: {df_raw.shape}")
         logger.info(f"Data_x shape: {self.data_x.shape}, Data_y shape: {self.data_y.shape}")
 
@@ -418,11 +385,13 @@ class Dataset_Custom(Dataset):
         return data # Return as is if not scaled or scaler not available/fit
     
     def inverse_transform_targets(self, target_data):
-        """Convenience method to inverse transform only target predictions"""
-        if hasattr(self, 'target_scaler') and self.target_scaler is not None:
+        """
+        Inverse transform target data using the dedicated target_scaler.
+        """
+        if self.scale and hasattr(self, 'target_scaler') and self.target_scaler is not None:
             return self.target_scaler.inverse_transform(target_data)
-        return self.scaler.inverse_transform(target_data)
-
+        logger.warning("inverse_transform_targets called but no target_scaler available or scale=False. Returning data as is.")
+        return target_data
 
 class Dataset_M4(Dataset):
     def __init__(self, args, root_path, flag='pred', size=None,
