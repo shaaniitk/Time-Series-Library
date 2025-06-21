@@ -52,6 +52,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         model_specific_args['enc_in'] = self.dm.enc_in
         model_specific_args['dec_in'] = self.dm.dec_in
         model_specific_args['c_out'] = self.dm.c_out_model # Use c_out_model for the final projection layer
+        model_specific_args['c_out_evaluation'] = self.dm.c_out_evaluation # Pass the base evaluation c_out
 
         self.model_init_args = Namespace(**model_specific_args)
         

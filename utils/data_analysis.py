@@ -126,7 +126,7 @@ def analyze_dataset(data_path: str,
         },
         'mode_MS': {
             'enc_in': n_total_features,
-            'dec_in': n_targets,
+            'dec_in': n_total_features,
             'c_out': n_targets,
             'description': f"Multi-target: {n_total_features} → {n_targets}"
         },

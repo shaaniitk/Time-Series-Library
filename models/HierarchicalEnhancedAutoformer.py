@@ -567,21 +567,36 @@ class HierarchicalEnhancedAutoformer(nn.Module):
         """
         # PROPER AUTOFORMER-STYLE FORECASTING
         
-        # Enhanced decomposition initialization (like EnhancedAutoformer)
-        target_features = x_enc[:, :, :x_dec.shape[2]]
-        seasonal_init, trend_init = self.decomp(target_features)
-        
-        # Mean and zeros for target features
-        mean = torch.mean(target_features, dim=1).unsqueeze(1).repeat(1, self.configs.pred_len, 1)
-        zeros = torch.zeros([x_dec.shape[0], self.configs.pred_len, x_dec.shape[2]], device=x_enc.device)
-        
-        # Decoder input preparation
-        trend_init = torch.cat([trend_init[:, -self.configs.label_len:, :], mean], dim=1)
-        seasonal_init = torch.cat([seasonal_init[:, -self.configs.label_len:, :], zeros], dim=1)
+        # Enhanced decomposition initialization on the full decoder input (x_dec)
+        # seasonal_init_full and trend_init_full will have shape [B, L, configs.dec_in] (e.g., 118 features)
+        seasonal_init_full, trend_init_full = self.decomp(x_dec)
+
+        # --- Prepare trend_init for decoder accumulation ---
+        # This trend is accumulated in the decoder and must match the output dimension of EnhancedDecoderLayer's projection.
+        # EnhancedDecoderLayer's projection outputs `self.num_target_variables` features (e.g., 4).
+        # So, we take only the target part of the initial trend.
+        trend_init_for_decoder_accumulation = trend_init_full[:, :, :self.num_target_variables]
+
+        # Mean for extending the `trend_init_for_decoder_accumulation`.
+        # This mean should also be over the target features only.
+        mean_for_trend_extension = torch.mean(x_dec[:, :, :self.num_target_variables], dim=1).unsqueeze(1).repeat(1, self.configs.pred_len, 1)
+
+        # Concatenate for the `trend` argument to `self.decoder`.
+        trend_arg_to_decoder = torch.cat([trend_init_for_decoder_accumulation[:, -self.configs.label_len:, :], mean_for_trend_extension], dim=1)
+
+        # --- Prepare seasonal_init for dec_embedding ---
+        # `dec_embedding` is initialized with `configs.dec_in` (e.g., 118 features).
+        # So, the seasonal input to `dec_embedding` must have `configs.dec_in` features.
+        # `seasonal_init_full` already has `configs.dec_in` features.
+        # The `zeros` for seasonal extension should match the full `x_dec` dimension.
+        zeros_for_seasonal_extension = torch.zeros([x_dec.shape[0], self.configs.pred_len, x_dec.shape[2]], device=x_enc.device)
+
+        # Concatenate for the `seasonal_init` argument to `self.dec_embedding`.
+        seasonal_arg_to_dec_embedding = torch.cat([seasonal_init_full[:, -self.configs.label_len:, :], zeros_for_seasonal_extension], dim=1)
         
         # Input embedding
         enc_out = self.enc_embedding(x_enc, x_mark_enc)
-        dec_out = self.dec_embedding(seasonal_init, x_mark_dec)
+        dec_out = self.dec_embedding(seasonal_arg_to_dec_embedding, x_mark_dec) # Use the full seasonal part
         
         # Hierarchical decomposition of encoder output
         multi_res_enc_features = self.decomposer(enc_out)
@@ -615,15 +630,15 @@ class HierarchicalEnhancedAutoformer(nn.Module):
                 dec_input_resized = dec_out
                 
             # Resize trend
-            if trend_init.size(1) != target_length:
+            if trend_arg_to_decoder.size(1) != target_length:
                 trend_resized = F.interpolate(
-                    trend_init.transpose(1, 2),
+                    trend_arg_to_decoder.transpose(1, 2),
                     size=target_length,
                     mode='linear',
                     align_corners=False
                 ).transpose(1, 2)
             else:
-                trend_resized = trend_init
+                trend_resized = trend_arg_to_decoder
                 
             multi_res_dec_inputs.append(dec_input_resized)
             multi_res_trends.append(trend_resized)
@@ -691,9 +706,9 @@ class HierarchicalDecoder(nn.Module):
         
         self.n_levels = n_levels
         self.d_model = configs.d_model
-        self.c_out = configs.c_out
+        self.c_out = configs.c_out # This is c_out_model (e.g., 12)
         self.label_len = configs.label_len
-        self.num_target_variables = configs.dec_in # dec_in is set to c_out_evaluation by DimensionManager
+        self.num_target_variables = configs.c_out_evaluation # This should be the base number of targets (e.g., 4)
         self.pred_len = configs.pred_len
         
         # Multi-resolution Enhanced Autoformer decoders
