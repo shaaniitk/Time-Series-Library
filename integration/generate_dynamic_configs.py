@@ -10,7 +10,7 @@ through quantile regression and KL divergence loss.
 import os
 import sys
 import yaml
-
+import sys # Import sys for stdout.flush()
 # Add root directory to path
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
@@ -45,6 +45,7 @@ def get_quantile_config_options():
     print("3. Comprehensive (7 quantiles: 5%, 20%, 35%, 50%, 65%, 80%, 95%)")
     print("4. Extensive (9 quantiles: 5%, 15%, 25%, 35%, 50%, 65%, 75%, 85%, 95%)")
     print("5. Custom quantile levels")
+    sys.stdout.flush() # Ensure options are printed before input
     
     while True:
         try:
@@ -108,6 +109,7 @@ def get_quantile_config_options():
     # Ask about KL loss for Bayesian models
     print("\n🧠 KL DIVERGENCE LOSS CONFIGURATION")
     print("(For Bayesian models only)")
+    sys.stdout.flush() # Ensure options are printed before input
     
     kl_config = {}
     
@@ -513,8 +515,10 @@ def create_enhanced_template_configs_with_quantiles():
         if data_path == "":
             data_path = "data/prepared_financial_data.csv"
         
-        full_data_path = os.path.join('..', data_path) if not os.path.isabs(data_path) else data_path
-        
+        # The script is run from the project root, so the path should be relative to it.
+        # Do not prepend '..' to the path.
+        full_data_path = data_path
+
         if os.path.exists(full_data_path):
             print(f"✅ Dataset found: {full_data_path}")
             break
@@ -654,7 +658,7 @@ def create_enhanced_template_configs_with_quantiles():
             # Generate final config with dynamic dimensions if analysis available
             if analysis:
                 try:
-                    output_file = f"../config/config_enhanced_autoformer_{mode}_{complexity}_auto.yaml"
+                    output_file = f"config/config_enhanced_autoformer_{mode}_{complexity}_auto.yaml"
                     # Update model_id in the config dictionary itself
                     config['model_id'] = f"enhanced_autoformer_{mode}_{complexity}_auto"
 
@@ -682,6 +686,7 @@ def create_enhanced_template_configs_with_quantiles():
                     with open(output_file, 'w') as f:
                         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
                     final_config = output_file # Path to the created file
+                    print(f"   Absolute path where config is saved: {os.path.abspath(final_config)}")
                     created_files.append(final_config)
                     
                     print(f"✅ Created: {os.path.basename(final_config)}")
@@ -690,7 +695,7 @@ def create_enhanced_template_configs_with_quantiles():
                     print(f"❌ Failed to create {mode}_{complexity}: {e}")
             else:
                 # Save template config without dynamic analysis
-                output_file = f"../config/config_enhanced_autoformer_{mode}_{complexity}_template.yaml"
+                output_file = f"config/config_enhanced_autoformer_{mode}_{complexity}_template.yaml"
                 config['model_id'] = f"enhanced_autoformer_{mode}_{complexity}_template"
                 if quantile_options:
                     output_file = output_file.replace('_template.yaml', f'_quantile_q{quantile_options["num_quantiles"]}_template.yaml')
@@ -700,6 +705,7 @@ def create_enhanced_template_configs_with_quantiles():
                 with open(output_file, 'w') as f:
                     yaml.dump(config, f, default_flow_style=False, indent=2)
                 
+                print(f"   Absolute path where template is saved: {os.path.abspath(output_file)}")
                 created_files.append(output_file)
                 print(f"✅ Created template: {os.path.basename(output_file)}")
     
@@ -752,6 +758,7 @@ def main():
         
         # Ask if user wants synthetic data for testing
         synthetic_mode = input("\nGenerate configs for synthetic data convergence testing? (y/n): ").lower().strip()
+        sys.stdout.flush() # Ensure prompt is visible
         if synthetic_mode in ['y', 'yes']:
             generate_synthetic_configs()
             return
@@ -980,11 +987,11 @@ def generate_synthetic_configs():
                 if quantile_options:
                     # Add quantile support
                     config = create_config_with_quantiles(base_config, quantile_options, synthetic_analysis, "synthetic")
-                    
-                    output_file = f"../config/config_synthetic_{synthetic_type}_{mode}_{complexity}_quantile_q{quantile_options['num_quantiles']}.yaml"
+
+                    output_file = f"config/config_synthetic_{synthetic_type}_{mode}_{complexity}_quantile_q{quantile_options['num_quantiles']}.yaml"
                 else:
                     config = base_config
-                    output_file = f"../config/config_synthetic_{synthetic_type}_{mode}_{complexity}.yaml"
+                    output_file = f"config/config_synthetic_{synthetic_type}_{mode}_{complexity}.yaml"
                 
                 # Save config
                 os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -1005,3 +1012,6 @@ def generate_synthetic_configs():
     if created_files:
         example_config = os.path.basename(created_files[0])
         print(f"   python scripts/train/train_dynamic_autoformer.py --config config/{example_config} --synthetic_data")
+
+if __name__ == "__main__":
+    main()

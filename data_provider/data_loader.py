@@ -264,6 +264,7 @@ class Dataset_Custom(Dataset):
     def __read_data__(self):
         logger.debug(f"Dataset_Custom (flag={self.set_type}): Reading data from {os.path.join(self.root_path, self.data_path)}")
         # self.scaler will be set based on logic below
+        self.scaler = None # Ensure scaler is explicitly reset for each instance
         try:
             df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path))
         except Exception as e:
@@ -343,6 +344,7 @@ class Dataset_Custom(Dataset):
 
             if current_scaler_to_use is not None and hasattr(current_scaler_to_use, 'n_features_in_'):
                 if data_unscaled.shape[1] == current_scaler_to_use.n_features_in_:
+                    logger.info(f"Dataset_Custom (flag={self.set_type}): About to transform data with shape {data_unscaled.shape[1]} using scaler expecting {current_scaler_to_use.n_features_in_} features.")
                     data_scaled_for_x = current_scaler_to_use.transform(data_unscaled)
                     if self.set_type == 0: # 'train'
                         data_scaled_for_y = data_scaled_for_x # Use scaled data for y in train

@@ -102,6 +102,7 @@ class SanityTestMixin:
         dataset, loader = data_provider(args, flag='train')
         train_scaler = dataset.scaler if hasattr(dataset, 'scaler') else None
         logger.debug(f"Train dataset scaler obtained: {train_scaler}")
+        logger.info(f"Train scaler n_features_in_ (after fit): {train_scaler.n_features_in_ if train_scaler else 'N/A'}")
 
         # Model Initialization
         model = ModelClass(model_init_args).to(device) # Pass Namespace from DM
@@ -303,6 +304,7 @@ class SanityTestMixin:
                     point_preds_batch_scaled_torch = y_pred_test_pred_len_segment[:, :, :c_out_evaluation]
                 else:
                     logger.error(f"[TestLoop] Output features {current_output_features_test} < c_out_evaluation {c_out_evaluation}. This is an error.")
+                    logger.error(f"[TestLoop] y_pred_test_pred_len_segment shape: {y_pred_test_pred_len_segment.shape}")
                     continue # Skip this problematic batch
 
                 if point_preds_batch_scaled_torch.shape[-1] != c_out_evaluation:
@@ -365,4 +367,3 @@ class SanityTestMixin:
             os.remove(csv_path)
         
         return mse_forecast, first_batch_preds_plot_orig, first_batch_actuals_plot_orig
-

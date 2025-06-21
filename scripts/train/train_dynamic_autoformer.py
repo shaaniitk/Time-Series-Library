@@ -45,6 +45,7 @@ def set_seed(seed=42):
 def load_and_validate_config(config_path, data_path=None):
     """Load config and optionally validate against data"""
     
+    print(f"Attempting to open config at absolute path: {os.path.abspath(config_path)}")
     # Load configuration
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -396,16 +397,9 @@ def main():
         )
         synthetic_resolved_dims = dm_synthetic.get_resolved_dimensions()
 
-        # Update exp_args with synthetic data dimensions and paths from DM
+        # Update exp_args with synthetic data dimensions from the manager
         exp_args = dm_synthetic.get_model_init_params() # Get Namespace with synthetic dims
-
-        # Update dimensions based on synthetic data
-        mode = exp_args.features
-        mode_config = synthetic_analysis[f'mode_{mode}']
-        exp_args.enc_in = mode_config['enc_in']
-        exp_args.dec_in = mode_config['dec_in']
-        exp_args.c_out = mode_config['c_out']
-        
+        exp_args.data_path = 'synthetic_data.csv' # Use a placeholder name for synthetic data
         print(f"✅ Synthetic data dimensions resolved by manager:")
         print(f"   enc_in={exp_args.enc_in}, dec_in={exp_args.dec_in}, c_out_model={exp_args.c_out}, c_out_evaluation={exp_args.c_out_evaluation}")
         # Note: The actual synthetic data file is generated and handled by the Dataset class

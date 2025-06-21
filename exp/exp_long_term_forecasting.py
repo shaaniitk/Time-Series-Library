@@ -22,12 +22,9 @@ warnings.filterwarnings('ignore')
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         logger.info(f"Initializing Exp_Long_Term_Forecast with args: {args}")
-        super(Exp_Long_Term_Forecast, self).__init__(args)
-
-        # Initialize DimensionManager
         self.dm = DimensionManager()
         # Analyze data and configure dimensions based on args
-        data_path_for_dm = os.path.join(self.args.root_path, self.args.data_path)
+        data_path_for_dm = os.path.join(args.root_path, args.data_path)
         if not os.path.exists(data_path_for_dm):
              logger.warning(f"Data path for DimensionManager analysis not found: {data_path_for_dm}. Using args as is.")
              # If data path is not found, DM might not be able to analyze.
@@ -43,16 +40,19 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         else:
             self.dm.analyze_and_configure(
                 data_path=data_path_for_dm, # Use full path for analysis
-                args=self.args,
-                task_name=self.args.task_name,
-                features_mode=self.args.features,
-                target_columns=self.args.target,
-                loss_name=self.args.loss,
-                quantile_levels=getattr(self.args, 'quantile_levels', None)
+                args=args,
+                task_name=args.task_name,
+                features_mode=args.features,
+                target_columns=args.target,
+                loss_name=args.loss,
+                quantile_levels=getattr(args, 'quantile_levels', None)
             )
             self.model_init_args = self.dm.get_model_init_params()
             self.eval_info = self.dm.get_evaluation_info()
 
+        # Initialize the parent class *after* model_init_args is set.
+        # Pass the resolved args to the parent, which will store it as self.args.
+        super(Exp_Long_Term_Forecast, self).__init__(self.model_init_args)
 
     def _build_model(self):
         ModelClass = self.model_dict[self.args.model].Model
@@ -164,6 +164,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 # Decoder input construction
                 c_out_evaluation = self.eval_info['c_out_evaluation']
                 hist_targets_unscaled_val = batch_y_val_unscaled_targets[:, :self.args.label_len, :c_out_evaluation].cpu().numpy()
+                logger.info(f"Vali: hist_targets_unscaled_val shape: {hist_targets_unscaled_val.shape}, c_out_evaluation: {c_out_evaluation}")
                 # Use the scaler from the validation dataset (which should be the train_scaler)
                 hist_targets_scaled_val_np = vali_data.scaler.transform(hist_targets_unscaled_val.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled_val.shape)
                 dec_inp_hist_scaled_val = torch.from_numpy(hist_targets_scaled_val_np).float().to(self.device)

@@ -36,7 +36,8 @@ class DimensionManager:
                               features_mode: str = 'MS',
                               target_columns: Optional[Union[str, List[str]]] = None,
                               loss_name: str = 'mse',
-                              quantile_levels: Optional[List[float]] = None):
+                              quantile_levels: Optional[List[float]] = None,
+                              synthetic_config: Optional[Dict] = None):
         """
         Analyzes the dataset and configures dimensions.
 
@@ -49,6 +50,7 @@ class DimensionManager:
             target_columns: Explicit target columns (overrides config/args).
             loss_name: The name of the loss function.
             quantile_levels: List of quantile levels for quantile regression.
+            synthetic_config: If provided, generate synthetic data instead of reading from data_path.
         """
         self._config = config
         self._args = args
@@ -61,22 +63,30 @@ class DimensionManager:
 
         # 1. Analyze the dataset
         try:
-            # Use analyze_dataset from data_analysis.py
-            # Pass target_columns from args/config if not explicitly provided
-            if target_columns is None and args is not None and hasattr(args, 'target'):
-                 target_columns = args.target
-            elif target_columns is None and config is not None and 'target' in config:
-                 target_columns = config['target']
+            if synthetic_config:
+                logger.info("Synthetic mode enabled in DimensionManager.")
+                self._analysis_results = analyze_dataset(
+                    data_path="", # Dummy path
+                    test_model_convergence_simple_fn=True,
+                    synthetic_config=synthetic_config
+                )
+            else:
+                # Use analyze_dataset from data_analysis.py for real data
+                # Pass target_columns from args/config if not explicitly provided
+                if target_columns is None and args is not None and hasattr(args, 'target'):
+                    target_columns = args.target
+                elif target_columns is None and config is not None and 'target' in config:
+                    target_columns = config['target']
 
-            # analyze_dataset might need the full path, construct it if root_path is in args/config
-            full_data_path = data_path
-            if args is not None and hasattr(args, 'root_path') and args.root_path and not os.path.isabs(data_path):
-                 full_data_path = os.path.join(args.root_path, data_path)
-            elif config is not None and 'root_path' in config and config['root_path'] and not os.path.isabs(data_path):
-                 full_data_path = os.path.join(config['root_path'], data_path)
+                # analyze_dataset might need the full path, construct it if root_path is in args/config
+                full_data_path = data_path
+                if args is not None and hasattr(args, 'root_path') and args.root_path and not os.path.isabs(data_path):
+                    full_data_path = os.path.join(args.root_path, data_path)
+                elif config is not None and 'root_path' in config and config['root_path'] and not os.path.isabs(data_path):
+                    full_data_path = os.path.join(config['root_path'], data_path)
 
-            self._analysis_results = analyze_dataset(full_data_path, target_columns=target_columns)
-            logger.info("Dataset analysis complete.")
+                self._analysis_results = analyze_dataset(full_data_path, target_columns=target_columns)
+                logger.info("Dataset analysis complete.")
         except FileNotFoundError:
             logger.error(f"Dataset not found at {data_path}. Cannot analyze dimensions.")
             raise # Re-raise the error
@@ -113,7 +123,7 @@ class DimensionManager:
         # Determine num_quantiles
         num_quantiles = 1
         if q_levels and isinstance(q_levels, list) and len(q_levels) > 0:
-            num_quantiles = len(q_levels)
+            num_quantiles = len(q_levels) # Ensure num_quantiles is correctly set
             logger.info(f"Quantile levels provided: {q_levels}. Num quantiles: {num_quantiles}")
         else:
              logger.info("No quantile levels provided. Assuming point prediction (num_quantiles=1).")
