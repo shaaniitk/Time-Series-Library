@@ -40,13 +40,10 @@ def setup_financial_forecasting_data(args):
         # static_cov_file=args.static_cov_path
     )
 
-    # Ensure target_columns and all_columns are correctly set in fin_manager
-    # This is crucial for DimensionManager and ScalerManager
-    if not fin_manager.target_columns:
-        # Fallback if prepare_data didn't set them (e.g., if target_file was None)
-        # This should ideally be handled by FinancialDataManager itself.
-        logger.warning("FinancialDataManager did not identify target columns. Attempting to infer from args.")
-        fin_manager.target_columns = [col.strip() for col in args.target.split(',') if col.strip()]
+    # --- FIX: Enforce the target columns from the config ---
+    # This ensures that the 'target' argument from the config file is the single source of truth,
+    # overriding any columns inferred by the FinancialDataManager.
+    fin_manager.target_columns = [col.strip() for col in args.target.split(',') if col.strip()]
     
     # All columns in the merged_df (including 'date')
     fin_manager.all_columns = merged_df.columns.tolist()
@@ -97,10 +94,11 @@ def setup_financial_forecasting_data(args):
         logger.debug(f"Created DatetimeIndex with {len(date_index)} dates for time features")
         # Fixed time_features call with DatetimeIndex instead of Series
         data_stamp = time_features(date_index, freq=args.freq)
+        data_stamp = data_stamp.transpose(1, 0) # Transpose to (num_dates, num_time_features)
         
         dataset = ForecastingDataset(data_x_scaled, data_y_unscaled, data_stamp, args, dim_manager)
         shuffle = True if flag == 'train' else False
-        drop_last = True # Always drop last for consistent batch sizes in training/validation
+        drop_last = True if flag == 'train' else False # Only drop last for training
         data_loaders[flag] = DataLoader(
             dataset, batch_size=args.batch_size, shuffle=shuffle,
             num_workers=args.num_workers, drop_last=drop_last

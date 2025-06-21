@@ -43,6 +43,37 @@ ALL_FORECASTING_MODELS = [
     'HierarchicalEnhancedAutoformer',
 ]
 
+# --- Complexity Variations ---
+# Each complexity level defines the *base* parameters for models.
+complexity_configs = {
+    'ultralight': {
+        'seq_len': 48, 'label_len': 24, 'pred_len': 12,
+        'd_model': 64, 'n_heads': 4, 'e_layers': 1, 'd_layers': 1, 'd_ff': 128,
+        'batch_size': 64, 'dropout': 0.05
+    },
+    'light': {
+        'seq_len': 96, 'label_len': 48, 'pred_len': 24,
+        'd_model': 128, 'n_heads': 8, 'e_layers': 2, 'd_layers': 1, 'd_ff': 256,
+        'batch_size': 32, 'dropout': 0.1
+    },
+    'medium': {
+        'seq_len': 192, 'label_len': 96, 'pred_len': 48,
+        'd_model': 256, 'n_heads': 8, 'e_layers': 3, 'd_layers': 2, 'd_ff': 512,
+        'batch_size': 16, 'dropout': 0.15
+    },
+    'heavy': {
+        'seq_len': 336, 'label_len': 168, 'pred_len': 96,
+        'd_model': 512, 'n_heads': 16, 'e_layers': 4, 'd_layers': 3, 'd_ff': 1024,
+        'batch_size': 8, 'dropout': 0.2
+    },
+    'veryheavy': {
+        'seq_len': 512, 'label_len': 256, 'pred_len': 128,
+        'd_model': 768, 'n_heads': 16, 'e_layers': 6, 'd_layers': 4, 'd_ff': 2048,
+        'batch_size': 4, 'dropout': 0.25
+    }
+}
+
+# --- Helper function to get user input with validation ---
 def get_user_input():
     """Gets necessary input from the user to generate configs."""
     print("--- Dynamic Configuration Generator ---")
@@ -63,15 +94,109 @@ def get_user_input():
             break
         else:
             logger.warning("You must specify at least one target column.")
+
+    # --- New prompts for model, complexity, and feature mode ---
+    print("\n--- Model and Complexity Selection ---")
+    print("Available complexities:")
+    for comp_level in complexity_configs.keys():
+        print(f"  - {comp_level}")
+    while True:
+        complexity = input("Enter desired complexity (e.g., ultralight, medium, heavy): ").strip().lower()
+        if complexity in complexity_configs:
+            break
+        else:
+            logger.warning("Invalid complexity. Please choose from the list.")
+
+    print("\nAvailable models:")
+    for i, model_name in enumerate(ALL_FORECASTING_MODELS):
+        print(f"  {i+1}. {model_name}")
+    while True:
+        model_choice = input("Enter model number (e.g., 1 for Autoformer): ").strip()
+        try:
+            model_index = int(model_choice) - 1
+            if 0 <= model_index < len(ALL_FORECASTING_MODELS):
+                model_name = ALL_FORECASTING_MODELS[model_index]
+                break
+            else:
+                logger.warning("Invalid model number.")
+        except ValueError:
+            logger.warning("Invalid input. Please enter a number.")
+
+    print("\nAvailable feature modes (how data is handled):")
+    print("  - M: Multivariate (All features -> All features)")
+    print("  - MS: Multi-target (All features -> Target features only)")
+    print("  - S: Univariate (Target features only -> Target features only)")
+    while True:
+        feature_mode = input("Enter feature mode (M, MS, S): ").strip().upper()
+        if feature_mode in ['M', 'MS', 'S']:
+            break
+        else:
+            logger.warning("Invalid feature mode. Please choose M, MS, or S.")
+
+    # --- Sequence Lengths (with defaults from chosen complexity) ---
+    default_seq_len = complexity_configs[complexity]['seq_len']
+    default_pred_len = complexity_configs[complexity]['pred_len']
+    seq_len = int(input(f"Enter sequence length (default: {default_seq_len}): ") or default_seq_len)
+    pred_len = int(input(f"Enter prediction length (default: {default_pred_len}): ") or default_pred_len)
+    label_len = int(input(f"Enter label length (default: {seq_len // 2}): ") or (seq_len // 2))
+
+    # --- New prompts for loss and Bayesian settings ---
+    print("\n--- Loss Function Settings ---")
+    print("Available loss types (common examples: mse, mae, pinball, huber, ps_loss, multiscale_trend_aware):")
+    # Dynamically list common losses from utils/losses.py if possible, or provide a curated list
+    # For now, providing a general prompt.
+    loss_type = input("Enter loss type: ").strip().lower()
+    if not loss_type:
+        loss_type = 'mse' # Default if empty
+    
+    # Ensure quantile_levels is always a list, even if empty
+    quantile_levels = []
+
+    quantile_levels = []
+    if loss_type in ['pinball', 'quantile']:
+        while True:
+            q_input = input("Enter comma-separated quantile levels (e.g., 0.1,0.5,0.9) or leave empty for default: ").strip()
+            if q_input:
+                try:
+                    parsed_quantiles = sorted([float(q.strip()) for q in q_input.split(',')])
+                    if all(0 < q < 1 for q in parsed_quantiles):
+                        quantile_levels = parsed_quantiles
+                        break
+                    else:
+                        logger.warning("Quantile levels must be floats between 0 and 1.")
+                except ValueError:
+                    logger.warning("Invalid input. Please enter comma-separated numbers.")
+            else:
+                # Default quantiles if user leaves empty for pinball/quantile loss
+                quantile_levels = [0.1, 0.5, 0.9]
+                logger.info(f"Using default quantile levels: {quantile_levels}")
+                break
+    
+    # --- KL Loss settings (only if a Bayesian model is selected) ---
+    enable_kl = False
+    kl_weight = 0.0
+    if model_name == 'BayesianEnhancedAutoformer': # Only ask if the chosen model is Bayesian
+        print("\n--- KL Loss Settings (for Bayesian models) ---")
+        kl_input = input("Enable KL Loss for Bayesian models? (y/n): ").strip().lower()
+        if kl_input == 'y':
+            enable_kl = True
+            while True:
+                try:
+                    kl_weight = float(input("Enter KL Loss weight (e.g., 1e-5, 1e-4): ").strip())
+                    break
+                except ValueError:
+                    logger.warning("Invalid input. Please enter a number.")
+    # --- End of new prompts ---
             
-    return data_path, target_columns
+    return data_path, target_columns, complexity, model_name, feature_mode, \
+           seq_len, label_len, pred_len, loss_type, quantile_levels, enable_kl, kl_weight
 
 def generate_configurations():
     """
-    Main function to generate configuration files based on templates and user input.
-    This version does NOT write low-level dimensions to the config files.
+    Generates a single configuration file based on user input.
     """
-    data_path, target_columns = get_user_input()
+    data_path, target_columns, complexity, model_name, feature_mode, \
+    seq_len, label_len, pred_len, loss_type, quantile_levels, enable_kl, kl_weight = get_user_input()
 
     # --- Base Template ---
     # This template contains only high-level settings.
@@ -80,10 +205,13 @@ def generate_configurations():
         'task_name': 'long_term_forecast',
         'is_training': 1,
         'checkpoints': './checkpoints/',
-        
+
         # --- Data Settings ---
         'root_path': os.path.dirname(data_path),
         'data_path': os.path.basename(data_path),
+        'seq_len': seq_len,
+        'label_len': label_len,
+        'pred_len': pred_len,
         'target': ','.join(target_columns),
         'features': '{mode}',  # Placeholder for M, MS, S
         'freq': 'h',           # Default, adjust in YAML if needed
@@ -92,7 +220,7 @@ def generate_configurations():
         'train_epochs': 10,
         'patience': 3,
         'learning_rate': 0.0001,
-        'loss': 'mse',
+        'loss': loss_type, # Use user-defined loss type
         'lradj': 'type1',
         'use_amp': False,
         
@@ -102,82 +230,72 @@ def generate_configurations():
         'num_workers': 0,
     }
 
-    # --- Complexity Variations ---
-    # Each complexity level now defines the *base* parameters.
-    # The script will iterate through ALL_FORECASTING_MODELS for each complexity.
-    complexity_configs = {
-        'ultralight': {
-            'seq_len': 48, 'label_len': 24, 'pred_len': 12,
-            'd_model': 64, 'n_heads': 4, 'e_layers': 1, 'd_layers': 1, 'd_ff': 128,
-            'batch_size': 64, 'dropout': 0.05
-        },
-        'light': {
-            # 'models': ['DLinear', 'EnhancedAutoformer'], # Removed: now iterates all models
-            'seq_len': 96, 'label_len': 48, 'pred_len': 24,
-            'd_model': 128, 'n_heads': 8, 'e_layers': 2, 'd_layers': 1, 'd_ff': 256,
-            'batch_size': 32, 'dropout': 0.1
-        },
-        'medium': {
-            # 'models': ['Autoformer', 'BayesianEnhancedAutoformer'], # Removed
-            'seq_len': 192, 'label_len': 96, 'pred_len': 48,
-            'd_model': 256, 'n_heads': 8, 'e_layers': 3, 'd_layers': 2, 'd_ff': 512,
-            'batch_size': 16, 'dropout': 0.15
-        },
-        'heavy': {
-            # 'models': ['Autoformer', 'HierarchicalEnhancedAutoformer'], # Removed
-            'seq_len': 336, 'label_len': 168, 'pred_len': 96,
-            'd_model': 512, 'n_heads': 16, 'e_layers': 4, 'd_layers': 3, 'd_ff': 1024,
-            'batch_size': 8, 'dropout': 0.2
-        },
-        'veryheavy': {
-            'seq_len': 512, 'label_len': 256, 'pred_len': 128,
-            'd_model': 768, 'n_heads': 16, 'e_layers': 6, 'd_layers': 4, 'd_ff': 2048,
-            'batch_size': 4, 'dropout': 0.25
-        }
-    }
+    # Add quantile levels if provided
+    if quantile_levels:
+        base_template['quantile_levels'] = quantile_levels
 
-    modes = ['M', 'MS', 'S']
-    created_files = []
+    # Add KL weight if enabled
+    if enable_kl:
+        base_template['kl_weight'] = kl_weight
+
     output_dir = "configs"
     os.makedirs(output_dir, exist_ok=True) # Ensure the configs directory exists
 
-    logger.info("--- Generating Configuration Files ---")
+    # Apply complexity settings
+    config = base_template.copy()
+    config.update(complexity_configs[complexity])
+    
+    # Override seq_len, label_len, pred_len with user input
+    config['seq_len'] = seq_len
+    config['label_len'] = label_len
+    config['pred_len'] = pred_len
 
-    for mode in modes:
-        for complexity, settings in complexity_configs.items():
-            # Iterate through ALL forecasting models for each complexity level
-            for model_name in ALL_FORECASTING_MODELS:
-                config = base_template.copy()
-                config.update(settings) # Apply complexity settings
-                
-                # Set the model and feature mode
-                config['model'] = model_name
-                config['features'] = mode
-                
-                # Create a unique model_id
-                config['model_id'] = f"{model_name}_{mode}_{complexity}"
-                
-                # Add a metadata note for clarity
-                config['_metadata'] = {
-                    'note': 'enc_in, dec_in, and c_out are determined automatically at runtime by DimensionManager.',
-                    'generated_by': 'integration/generate_dynamic_configs.py'
-                }
+    # Set model and feature mode
+    config['model'] = model_name
+    config['features'] = feature_mode
+    
+    # Add quantile levels if provided
+    if quantile_levels: # This will be an empty list if not applicable
+        config['quantile_levels'] = quantile_levels
 
-                filename = f"config_{config['model_id']}.yaml"
-                output_path = os.path.join(output_dir, filename)
-                
-                try:
-                    with open(output_path, 'w') as f:
-                        yaml.dump(config, f, default_flow_style=False, sort_keys=False, indent=2)
-                    created_files.append(output_path)
-                    logger.info(f"✅ Created: {output_path}")
-                except Exception as e:
-                    logger.error(f"❌ Failed to create {output_path}: {e}")
+    # Add KL weight if enabled
+    if enable_kl:
+        config['kl_weight'] = kl_weight
 
-    logger.info(f"\n🎉 Generation complete! {len(created_files)} files created in '{output_dir}/'.")
-    if created_files:
-        example_config = os.path.relpath(created_files[0]).replace('\\', '/')
-        logger.info(f"\n🚀 To run an experiment, use:\n   python scripts/train/train_dynamic_autoformer.py --config {example_config}")
+    # --- Dynamic Dimension Calculation ---
+    # Analyze the dataset to get correct enc_in, dec_in, c_out
+    data_analysis = analyze_dataset(
+        data_path=data_path,
+        target_columns=target_columns,
+        # loss_name and quantile_levels are not arguments for analyze_dataset
+    )
+    
+    mode_config_dims = data_analysis[f'mode_{feature_mode}']
+    config['enc_in'] = mode_config_dims['enc_in']
+    config['dec_in'] = mode_config_dims['dec_in']
+    config['c_out'] = mode_config_dims['c_out']
+
+    # Create a unique model_id
+    config['model_id'] = f"{model_name}_{feature_mode}_{complexity}_sl{seq_len}_pl{pred_len}"
+
+    # Add a metadata note for clarity
+    config['_metadata'] = {
+        'note': 'enc_in, dec_in, and c_out are determined automatically at runtime by DimensionManager.',
+        'generated_by': 'integration/generate_dynamic_configs.py'
+    }
+
+    filename = f"config_{config['model_id']}.yaml"
+    output_path = os.path.join(output_dir, filename)
+
+    try:
+        # Pre-calculate the relative path string to simplify the f-string
+        relative_output_path = os.path.relpath(output_path).replace('\\', '/')
+        with open(output_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False, indent=2)
+        logger.info(f"\n🎉 Configuration generated successfully: {output_path}")
+        logger.info(f"\n🚀 To run this experiment, use:\n   python scripts/train/train_dynamic_autoformer.py --config {relative_output_path}")
+    except Exception as e:
+        logger.error(f"❌ Failed to create {output_path}: {e}")
 
 if __name__ == "__main__":
     generate_configurations()

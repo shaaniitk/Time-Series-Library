@@ -93,6 +93,28 @@ def main():
         if not hasattr(args, 'output_attention'):
             args.output_attention = False  # Default output_attention
         
+        # Add common missing architectural/task defaults if not present in config
+        if not hasattr(args, 'task_name'):
+            args.task_name = 'long_term_forecast'
+        if not hasattr(args, 'seq_len'):
+            args.seq_len = 96
+        if not hasattr(args, 'label_len'):
+            args.label_len = 48
+        if not hasattr(args, 'pred_len'):
+            args.pred_len = 24
+        if not hasattr(args, 'd_model'):
+            args.d_model = 512
+        if not hasattr(args, 'freq'):
+            args.freq = 'h'
+        if not hasattr(args, 'dropout'):
+            args.dropout = 0.1
+        if not hasattr(args, 'factor'):
+            args.factor = 1
+        if not hasattr(args, 'n_heads'):
+            args.n_heads = 8
+        if not hasattr(args, 'd_ff'):
+            args.d_ff = 2048
+        
         # Dynamically set use_gpu if not specified in config
         if not hasattr(args, 'use_gpu'):
             if torch.cuda.is_available():
@@ -101,13 +123,27 @@ def main():
                 args.use_gpu = True
             else:
                 args.use_gpu = False
-            log.info(f"Dynamically set use_gpu to {args.use_gpu} based on hardware detection.")
+            log.info(f"Dynamically set use_gpu to {args.use_gpu} based on hardware detection.") # This line already exists
+
+        # Dynamically set gpu_type if not specified in config
+        if not hasattr(args, 'gpu_type'):
+            if torch.cuda.is_available():
+                args.gpu_type = 'cuda'
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                args.gpu_type = 'mps'
+            else:
+                args.gpu_type = 'cpu'
+            log.info(f"Dynamically set gpu_type to {args.gpu_type} based on hardware detection.")
         
         # Add default validation and test lengths if not present in config
+        # Ensure validation_length and test_length are at least seq_len + pred_len
+        min_len_for_dataset = args.seq_len + args.pred_len
         if not hasattr(args, 'validation_length'):
-            args.validation_length = 150 # Default value, adjust as needed
+            args.validation_length = max(150, min_len_for_dataset) # Default value, adjust as needed
+        else: args.validation_length = max(args.validation_length, min_len_for_dataset)
         if not hasattr(args, 'test_length'):
-            args.test_length = 50 # Default value, adjust as needed
+            args.test_length = max(120, min_len_for_dataset) # Default value, adjust as needed
+        else: args.test_length = max(args.test_length, min_len_for_dataset)
         
         log.info(f"Converted config to args: {args.__dict__}")
         

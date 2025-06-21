@@ -15,7 +15,7 @@ class ScalerManager:
         print(f"ScalerManager initialized with {len(self.target_features)} target features and {len(self.covariate_features)} covariate features")
         
         self.target_scaler = StandardScaler()
-        self.covariate_scaler: Optional[StandardScaler] = StandardScaler() if self.covariate_features else None
+        self.scaler: Optional[StandardScaler] = StandardScaler() if self.covariate_features else None # Renamed for consistency
 
     def fit(self, train_df: pd.DataFrame, full_df: pd.DataFrame):
         """
@@ -27,9 +27,9 @@ class ScalerManager:
         print(f"  - Fitting target scaler on {len(train_df)} training rows.")
         self.target_scaler.fit(train_df[self.target_features])
         
-        if self.covariate_scaler:
+        if self.scaler:
             print(f"  - Fitting covariate scaler on {len(full_df)} total rows.")
-            self.covariate_scaler.fit(full_df[self.covariate_features])
+            self.scaler.fit(full_df[self.covariate_features])
         
         print("Scalers fitted successfully.")
     
@@ -39,8 +39,8 @@ class ScalerManager:
     def transform(self, df: pd.DataFrame) -> np.ndarray:
         """Scales a dataframe and returns a combined numpy array [targets, covariates]."""
         scaled_targets = self.target_scaler.transform(df[self.target_features])
-        if self.covariate_scaler:
-            scaled_covariates = self.covariate_scaler.transform(df[self.covariate_features])
+        if self.scaler:
+            scaled_covariates = self.scaler.transform(df[self.covariate_features])
             return np.concatenate([scaled_targets, scaled_covariates], axis=1)
         return scaled_targets
 
@@ -64,10 +64,26 @@ class ScalerManager:
         # Standard case for point predictions
         return self.target_scaler.inverse_transform(data)
 
-    def inverse_transform_all_features(self, data: np.ndarray) -> np.ndarray: # New method for all features
+    def inverse_transform_all_features(self, data: np.ndarray) -> np.ndarray:
         """
-        Inverse-transforms data using the main scaler (fitted on all features).
+        Inverse-transforms data containing both target and covariate features,
+        using their respective scalers.
+        Assumes data columns are ordered as [targets, covariates].
         """
-        if self.scaler is None:
-            raise ValueError("Main scaler not fitted. Cannot inverse transform all features.")
-        return self.scaler.inverse_transform(data) # This is correct, it uses the main scaler
+        num_targets = len(self.target_features)
+        
+        # Split the data into target and covariate parts
+        target_data_scaled = data[:, :num_targets]
+        covariate_data_scaled = data[:, num_targets:]
+        
+        # Inverse transform the target part
+        target_data_unscaled = self.inverse_transform_targets(target_data_scaled)
+        
+        # Inverse transform the covariate part if it exists
+        if self.scaler and covariate_data_scaled.shape[1] > 0:
+            covariate_data_unscaled = self.scaler.inverse_transform(covariate_data_scaled)
+            # Combine the unscaled parts
+            return np.concatenate([target_data_unscaled, covariate_data_unscaled], axis=1)
+        else:
+            # If no covariates, just return the unscaled targets
+            return target_data_unscaled

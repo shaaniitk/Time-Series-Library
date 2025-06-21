@@ -43,8 +43,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         # Start with a copy of all relevant args from the config file
         model_specific_args = {k: v for k, v in vars(args).items() if k not in [
             'dim_manager', 'scaler_manager', 'train_loader', 'vali_loader', 'test_loader',
-            # Exclude data-related args that are handled by DM/ScalerManager
-            'root_path', 'data_path', 'target', 'features', 'freq', 'scale', 'timeenc',
+            # Exclude data-related args that are handled by DM/ScalerManager or are not model-specific
+            'root_path', 'data_path', 'target', 'features', 'scale', 'timeenc',
             'validation_length', 'test_length', 'val_len', 'test_len'
         ]}
 
@@ -65,7 +65,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         # Initialize the parent class *after* model_init_args is set.
         # Pass the resolved args to the parent, which will store it as self.args.
-        super(Exp_Long_Term_Forecast, self).__init__(self.model_init_args)
+        super(Exp_Long_Term_Forecast, self).__init__(args)
         
         # Ensure the args object used by the parent also has the managers
         # This is important if any other part of the code expects args.scaler_manager or args.dim_manager
@@ -177,7 +177,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 # Covariates: scale using main scaler (if present)
                 hist_covariates_scaled = None
-                if total_features_in_batch_y > c_out_evaluation: # Check if covariates exist
+                if total_features_in_batch_y > c_out_evaluation and self.scaler_manager.scaler: # Check if covariates exist
                     hist_covariates_unscaled = batch_y_val_unscaled_all_features[:, :self.args.label_len, c_out_evaluation:].cpu().numpy()
                     hist_covariates_scaled = self.scaler_manager.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(hist_covariates_unscaled.shape)
                 
@@ -187,7 +187,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 # Covariates: scale using main scaler (if present)
                 future_covariates_scaled = None
-                if total_features_in_batch_y > c_out_evaluation:
+                if total_features_in_batch_y > c_out_evaluation and self.scaler_manager.scaler:
                     future_covariates_unscaled = batch_y_val_unscaled_all_features[:, -self.args.pred_len:, c_out_evaluation:].cpu().numpy()
                     future_covariates_scaled = self.scaler_manager.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(future_covariates_unscaled.shape)
 
@@ -268,7 +268,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 hist_targets_scaled_train = self.scaler_manager.target_scaler.transform(hist_targets_unscaled_train.reshape(-1, c_out_evaluation_train)).reshape(hist_targets_unscaled_train.shape)
                 
                 hist_covariates_scaled_train = None
-                if total_features_in_batch_y > c_out_evaluation_train: # Check if covariates exist
+                if total_features_in_batch_y > c_out_evaluation_train and self.scaler_manager.scaler: # Check if covariates exist
                     hist_covariates_unscaled_train = batch_y_unscaled_all_features[:, :self.args.label_len, c_out_evaluation_train:].cpu().numpy()
                     hist_covariates_scaled_train = self.scaler_manager.scaler.transform(hist_covariates_unscaled_train.reshape(-1, total_features_in_batch_y - c_out_evaluation_train)).reshape(hist_covariates_unscaled_train.shape)
                 
@@ -276,7 +276,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 future_targets_zeros_train = torch.zeros_like(batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_train]).float().to(self.device)
                 
                 future_covariates_scaled_train = None
-                if total_features_in_batch_y > c_out_evaluation_train:
+                if total_features_in_batch_y > c_out_evaluation_train and self.scaler_manager.scaler:
                     future_covariates_unscaled_train = batch_y_unscaled_all_features[:, -self.args.pred_len:, c_out_evaluation_train:].cpu().numpy()
                     future_covariates_scaled_train = self.scaler_manager.scaler.transform(future_covariates_unscaled_train.reshape(-1, total_features_in_batch_y - c_out_evaluation_train)).reshape(future_covariates_unscaled_train.shape)
 
@@ -384,7 +384,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 hist_targets_scaled = self.scaler_manager.target_scaler.transform(hist_targets_unscaled.reshape(-1, c_out_evaluation_test)).reshape(hist_targets_unscaled.shape)
                 
                 hist_covariates_scaled = None
-                if total_features_in_batch_y > c_out_evaluation_test:
+                if total_features_in_batch_y > c_out_evaluation_test and self.scaler_manager.scaler:
                     hist_covariates_unscaled = batch_y_unscaled_all_features[:, :self.args.label_len, c_out_evaluation_test:].cpu().numpy()
                     hist_covariates_scaled = self.scaler_manager.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(hist_covariates_unscaled.shape)
                 
@@ -392,7 +392,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 future_targets_zeros = torch.zeros_like(batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_test]).float().to(self.device)
                 
                 future_covariates_scaled = None
-                if total_features_in_batch_y > c_out_evaluation_test:
+                if total_features_in_batch_y > c_out_evaluation_test and self.scaler_manager.scaler:
                     future_covariates_unscaled = batch_y_unscaled_all_features[:, -self.args.pred_len:, c_out_evaluation_test:].cpu().numpy()
                     future_covariates_scaled = self.scaler_manager.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(future_covariates_unscaled.shape)
 
@@ -432,9 +432,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     pred_for_viz_scaled = pred_point_scaled_batch_np[0] # First sample in batch, scaled point preds
                     true_for_viz_original = trues_original_for_viz_np[-1][0] # Corresponding original true values (all c_out_eval features)
 
-                    if self.scaler_manager.scale: # Check if scaling is enabled
+                    if hasattr(self.args, 'scale') and self.args.scale: # Check if scaling is enabled
                         pred_for_viz_original = self.scaler_manager.inverse_transform_targets(pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)).reshape(pred_for_viz_scaled.shape) # Use target_scaler
-                        input_for_viz_original = self.scaler_manager.inverse_transform_all_features(input_np[0].reshape(-1, self.scaler_manager.scaler.n_features_in_)).reshape(input_np[0].shape) # Use main scaler
+                        # The input_np is batch_x, which has shape [B, seq_len, enc_in]
+                        # enc_in is the total number of features (targets + covariates)
+                        total_features = self.dm.enc_in
+                        input_for_viz_original = self.scaler_manager.inverse_transform_all_features(input_np[0].reshape(-1, total_features)).reshape(input_np[0].shape)
                         
                         # Visualize the first target feature (index 0 of c_out_evaluation features)
                         if input_for_viz_original.shape[-1] > 0 and true_for_viz_original.shape[-1] > 0 and pred_for_viz_original.shape[-1] > 0:
