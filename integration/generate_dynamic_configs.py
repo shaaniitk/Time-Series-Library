@@ -35,7 +35,7 @@ complexity_configs = {
     },
     'heavy': {
         'seq_len': 336, 'label_len': 168, 'pred_len': 96,
-        'd_model': 512, 'n_heads': 16, 'e_layers': 4, 'd_layers': 3, 'd_ff': 512*4,
+        'd_model': 512, 'n_heads': 16, 'e_layers': 6, 'd_layers': 4, 'd_ff': 512*4,
         'batch_size': 32, 'dropout': 0.15
     },
     'veryheavy': {
