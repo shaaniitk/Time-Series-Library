@@ -20,27 +20,27 @@ ALL_FORECASTING_MODELS = [
 complexity_configs = {
     'ultralight': {
         'seq_len': 48, 'label_len': 24, 'pred_len': 12,
-        'd_model': 64, 'n_heads': 4, 'e_layers': 1, 'd_layers': 1, 'd_ff': 128,
+        'd_model': 64, 'n_heads': 4, 'e_layers': 1, 'd_layers': 1, 'd_ff': 128*2,
         'batch_size': 64, 'dropout': 0.05
     },
     'light': {
         'seq_len': 96, 'label_len': 48, 'pred_len': 24,
-        'd_model': 128, 'n_heads': 8, 'e_layers': 2, 'd_layers': 1, 'd_ff': 256,
+        'd_model': 128, 'n_heads': 8, 'e_layers': 2, 'd_layers': 1, 'd_ff': 256*2,
         'batch_size': 32, 'dropout': 0.1
     },
     'medium': {
         'seq_len': 192, 'label_len': 96, 'pred_len': 48,
-        'd_model': 256, 'n_heads': 8, 'e_layers': 3, 'd_layers': 2, 'd_ff': 512,
+        'd_model': 256, 'n_heads': 8, 'e_layers': 3, 'd_layers': 2, 'd_ff': 512*2,
         'batch_size': 16, 'dropout': 0.15
     },
     'heavy': {
         'seq_len': 336, 'label_len': 168, 'pred_len': 96,
-        'd_model': 512, 'n_heads': 16, 'e_layers': 4, 'd_layers': 3, 'd_ff': 1024,
-        'batch_size': 8, 'dropout': 0.2
+        'd_model': 512, 'n_heads': 16, 'e_layers': 4, 'd_layers': 3, 'd_ff': 512*4,
+        'batch_size': 32, 'dropout': 0.15
     },
     'veryheavy': {
         'seq_len': 512, 'label_len': 256, 'pred_len': 128,
-        'd_model': 768, 'n_heads': 16, 'e_layers': 6, 'd_layers': 4, 'd_ff': 2048,
+        'd_model': 768, 'n_heads': 16, 'e_layers': 6, 'd_layers': 4, 'd_ff': 768*4,
         'batch_size': 4, 'dropout': 0.25
     }
 }
