@@ -1,0 +1,294 @@
+(.venv) Shantanus-MacBook-Air-2:Time-Series-Library shantanumisra$ python integration/generate_dynamic_configs.py 
+--- Dynamic Configuration Generator ---
+Enter the path to your dataset CSV file: data/prepared_financial_data.csv
+Enter comma-separated target column names (e.g., TARGET_1,TARGET_2): log_Open,log_High,log_Low,log_Close
+
+--- Model and Complexity Selection ---
+Available complexities:
+  - ultralight
+  - light
+  - medium
+  - heavy
+  - veryheavy
+Enter desired complexity (e.g., ultralight, medium, heavy): heavy
+
+Available models:
+  1. Autoformer
+  2. EnhancedAutoformer
+  3. BayesianEnhancedAutoformer
+  4. HierarchicalEnhancedAutoformer
+Enter model number (e.g., 1 for Autoformer): 3
+
+Available feature modes (how data is handled):
+  - M: Multivariate (All features -> All features)
+  - MS: Multi-target (All features -> Target features only)
+  - S: Univariate (Target features only -> Target features only)
+Enter feature mode (M, MS, S): S
+Enter sequence length (default: 336): 400
+Enter prediction length (default: 96): 60
+Enter label length (default: 200): 60
+
+--- Loss Function Settings ---
+Available loss types (common examples: mse, mae, pinball, huber, ps_loss, multiscale_trend_aware):
+Enter loss type: pinball
+Enter comma-separated quantile levels (e.g., 0.1,0.5,0.9) or leave empty for default: 0.01,0.1,0.3,0.5,0.7,0.9,0.99
+
+--- KL Loss Settings (for Bayesian models) ---
+Enable KL Loss for Bayesian models? (y/n): y
+Enter KL Loss weight (e.g., 1e-5, 1e-4): 1e-4
+
+Use GPU for training? (y/n, default: y): n
+INFO:utils.data_analysis:Analyzing dataset: data/prepared_financial_data.csv
+INFO:utils.data_analysis:Loaded dataset with shape: (7109, 119)
+INFO:utils.data_analysis:Columns: ['date', 'log_Open', 'log_High', 'log_Low', 'log_Close', 'time_delta', 'dyn_Sun_sin', 'dyn_Sun_cos', 'dyn_Sun_speed', 'dyn_Sun_sign_sin', 'dyn_Sun_sign_cos', 'dyn_Sun_distance', 'dyn_Sun_lat', 'dyn_Moon_sin', 'dyn_Moon_cos', 'dyn_Moon_speed', 'dyn_Moon_sign_sin', 'dyn_Moon_sign_cos', 'dyn_Moon_distance', 'dyn_Moon_lat', 'dyn_Mars_sin', 'dyn_Mars_cos', 'dyn_Mars_speed', 'dyn_Mars_sign_sin', 'dyn_Mars_sign_cos', 'dyn_Mars_distance', 'dyn_Mars_lat', 'dyn_Mercury_sin', 'dyn_Mercury_cos', 'dyn_Mercury_speed', 'dyn_Mercury_sign_sin', 'dyn_Mercury_sign_cos', 'dyn_Mercury_distance', 'dyn_Mercury_lat', 'dyn_Jupiter_sin', 'dyn_Jupiter_cos', 'dyn_Jupiter_speed', 'dyn_Jupiter_sign_sin', 'dyn_Jupiter_sign_cos', 'dyn_Jupiter_distance', 'dyn_Jupiter_lat', 'dyn_Venus_sin', 'dyn_Venus_cos', 'dyn_Venus_speed', 'dyn_Venus_sign_sin', 'dyn_Venus_sign_cos', 'dyn_Venus_distance', 'dyn_Venus_lat', 'dyn_Saturn_sin', 'dyn_Saturn_cos', 'dyn_Saturn_speed', 'dyn_Saturn_sign_sin', 'dyn_Saturn_sign_cos', 'dyn_Saturn_distance', 'dyn_Saturn_lat', 'dyn_Uranus_sin', 'dyn_Uranus_cos', 'dyn_Uranus_speed', 'dyn_Uranus_sign_sin', 'dyn_Uranus_sign_cos', 'dyn_Uranus_distance', 'dyn_Uranus_lat', 'dyn_Neptune_sin', 'dyn_Neptune_cos', 'dyn_Neptune_speed', 'dyn_Neptune_sign_sin', 'dyn_Neptune_sign_cos', 'dyn_Neptune_distance', 'dyn_Neptune_lat', 'dyn_Pluto_sin', 'dyn_Pluto_cos', 'dyn_Pluto_speed', 'dyn_Pluto_sign_sin', 'dyn_Pluto_sign_cos', 'dyn_Pluto_distance', 'dyn_Pluto_lat', 'dyn_Mean Rahu_sin', 'dyn_Mean Rahu_cos', 'dyn_Mean Rahu_speed', 'dyn_Mean Rahu_sign_sin', 'dyn_Mean Rahu_sign_cos', 'dyn_Mean Ketu_sin', 'dyn_Mean Ketu_cos', 'dyn_Mean Ketu_speed', 'dyn_Mean Ketu_sign_sin', 'dyn_Mean Ketu_sign_cos', 'dyn_Sun_shadbala', 'dyn_Moon_shadbala', 'dyn_Mars_shadbala', 'dyn_Mercury_shadbala', 'dyn_Jupiter_shadbala', 'dyn_Venus_shadbala', 'dyn_Saturn_shadbala', 'Sun_sin', 'Sun_cos', 'Moon_sin', 'Moon_cos', 'Mars_sin', 'Mars_cos', 'Mercury_sin', 'Mercury_cos', 'Jupiter_sin', 'Jupiter_cos', 'Venus_sin', 'Venus_cos', 'Saturn_sin', 'Saturn_cos', 'Uranus_sin', 'Uranus_cos', 'Neptune_sin', 'Neptune_cos', 'Pluto_sin', 'Pluto_cos', 'Mean Rahu_sin', 'Mean Rahu_cos', 'Mean Ketu_sin', 'Mean Ketu_cos', 'Ascendant_sin', 'Ascendant_cos']
+INFO:utils.data_analysis:Using date column: date
+INFO:utils.data_analysis:Dataset analysis complete:
+INFO:utils.data_analysis:  Total features: 118
+INFO:utils.data_analysis:  Target features: 4 ['log_Open', 'log_High', 'log_Low', 'log_Close']
+INFO:utils.data_analysis:  Covariate features: 114
+INFO:utils.data_analysis:  Samples: 7109
+2025-06-22 15:08:11,038 [INFO] TSLib: 
+🎉 Configuration generated successfully: configs/config_BayesianEnhancedAutoformer_S_heavy_sl400_pl60.yaml
+INFO:TSLib:
+🎉 Configuration generated successfully: configs/config_BayesianEnhancedAutoformer_S_heavy_sl400_pl60.yaml
+2025-06-22 15:08:11,039 [INFO] TSLib: 
+🚀 To run this experiment, use:
+   python scripts/train/train_dynamic_autoformer.py --config configs/config_BayesianEnhancedAutoformer_S_heavy_sl400_pl60.yaml
+INFO:TSLib:
+🚀 To run this experiment, use:
+   python scripts/train/train_dynamic_autoformer.py --config configs/config_BayesianEnhancedAutoformer_S_heavy_sl400_pl60.yaml
+(.venv) Shantanus-MacBook-Air-2:Time-Series-Library shantanumisra$  python scripts/train/train_dynamic_autoformer.py --config configs/config_BayesianEnhancedAutoformer_S_heavy_sl400_pl60.yaml
+Python path: ['/Users/shantanumisra/workspace/Time-Series-Library/scripts/train', '/usr/local/Cellar/python@3.11/3.11.13/Frameworks/Python.framework/Versions/3.11/lib/python311.zip', '/usr/local/Cellar/python@3.11/3.11.13/Frameworks/Python.framework/Versions/3.11/lib/python3.11', '/usr/local/Cellar/python@3.11/3.11.13/Frameworks/Python.framework/Versions/3.11/lib/python3.11/lib-dynload', '/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages', '/Users/shantanumisra/workspace/Time-Series-Library']
+Current directory: /Users/shantanumisra/workspace/Time-Series-Library
+Project root: /Users/shantanumisra/workspace/Time-Series-Library
+2025-06-22 15:08:25,860 - matplotlib - DEBUG - matplotlib data path: /Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/matplotlib/mpl-data
+2025-06-22 15:08:25,867 - matplotlib - DEBUG - CONFIGDIR=/Users/shantanumisra/.matplotlib
+2025-06-22 15:08:25,884 - matplotlib - DEBUG - interactive is False
+2025-06-22 15:08:25,888 - matplotlib - DEBUG - platform is darwin
+2025-06-22 15:08:26,056 - matplotlib - DEBUG - CACHEDIR=/Users/shantanumisra/.matplotlib
+2025-06-22 15:08:26,059 - matplotlib.font_manager - DEBUG - Using fontManager instance from /Users/shantanumisra/.matplotlib/fontlist-v390.json
+2025-06-22 15:08:26,357 - matplotlib.pyplot - DEBUG - Loaded backend agg version v2.2.
+2025-06-22 15:08:27,967 - __main__ - INFO - Starting script execution
+2025-06-22 15:08:27,970 - __main__ - INFO - Loading config from configs/config_BayesianEnhancedAutoformer_S_heavy_sl400_pl60.yaml
+2025-06-22 15:08:27,977 - __main__ - INFO - Config loaded successfully: {'task_name': 'long_term_forecast', 'is_training': 1, 'checkpoints': './checkpoints/', 'root_path': 'data', 'data_path': 'prepared_financial_data.csv', 'seq_len': 400, 'label_len': 60, 'pred_len': 60, 'target': 'log_Open,log_High,log_Low,log_Close', 'features': 'S', 'freq': 'h', 'train_epochs': 10, 'patience': 3, 'learning_rate': 0.0001, 'loss': 'pinball', 'lradj': 'type1', 'use_amp': False, 'use_gpu': False, 'gpu': 0, 'num_workers': 0, 'd_model': 512, 'n_heads': 16, 'e_layers': 4, 'd_layers': 3, 'd_ff': 1024, 'batch_size': 8, 'dropout': 0.2, 'model': 'BayesianEnhancedAutoformer', 'quantile_levels': [0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99], 'kl_weight': 0.0001, 'enc_in': 4, 'dec_in': 4, 'c_out': 4, 'model_id': 'BayesianEnhancedAutoformer_S_heavy_sl400_pl60', '_metadata': {'note': 'enc_in, dec_in, and c_out are determined automatically at runtime by DimensionManager.', 'generated_by': 'integration/generate_dynamic_configs.py'}}
+2025-06-22 15:08:28,030 - __main__ - INFO - Dynamically set gpu_type to cpu based on hardware detection.
+2025-06-22 15:08:28,030 - __main__ - INFO - Converted config to args: {'task_name': 'long_term_forecast', 'is_training': 1, 'checkpoints': './checkpoints/', 'root_path': 'data', 'data_path': 'prepared_financial_data.csv', 'seq_len': 400, 'label_len': 60, 'pred_len': 60, 'target': 'log_Open,log_High,log_Low,log_Close', 'features': 'S', 'freq': 'h', 'train_epochs': 10, 'patience': 3, 'learning_rate': 0.0001, 'loss': 'pinball', 'lradj': 'type1', 'use_amp': False, 'use_gpu': False, 'gpu': 0, 'num_workers': 0, 'd_model': 512, 'n_heads': 16, 'e_layers': 4, 'd_layers': 3, 'd_ff': 1024, 'batch_size': 8, 'dropout': 0.2, 'model': 'BayesianEnhancedAutoformer', 'quantile_levels': [0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99], 'kl_weight': 0.0001, 'enc_in': 4, 'dec_in': 4, 'c_out': 4, 'model_id': 'BayesianEnhancedAutoformer_S_heavy_sl400_pl60', '_metadata': {'note': 'enc_in, dec_in, and c_out are determined automatically at runtime by DimensionManager.', 'generated_by': 'integration/generate_dynamic_configs.py'}, 'model_type': 'enhanced', 'config': 'configs/config_BayesianEnhancedAutoformer_S_heavy_sl400_pl60.yaml', 'augmentation_ratio': 0, 'use_multi_gpu': False, 'devices': '0', 'embed': 'timeF', 'activation': 'gelu', 'output_attention': False, 'factor': 1, 'gpu_type': 'cpu', 'validation_length': 460, 'test_length': 460}
+2025-06-22 15:08:28,030 - __main__ - INFO - Setting up data pipeline...
+2025-06-22 15:08:28,030 [INFO] TSLib: Step 1: Preparing financial data using FinancialDataManager...
+2025-06-22 15:08:28,030 - TSLib - INFO - Step 1: Preparing financial data using FinancialDataManager...
+2025-06-22 15:08:28,031 [INFO] TSLib: Initialized FinancialDataManager with data_root: data
+2025-06-22 15:08:28,031 - TSLib - INFO - Initialized FinancialDataManager with data_root: data
+2025-06-22 15:08:28,031 [INFO] TSLib: Starting complete data preparation pipeline
+2025-06-22 15:08:28,031 - TSLib - INFO - Starting complete data preparation pipeline
+2025-06-22 15:08:28,031 [INFO] TSLib: Loading target data from: data/prepared_financial_data.csv
+2025-06-22 15:08:28,031 - TSLib - INFO - Loading target data from: data/prepared_financial_data.csv
+2025-06-22 15:08:28,031 [INFO] TSLib: Loading CSV file: data/prepared_financial_data.csv
+2025-06-22 15:08:28,031 - TSLib - INFO - Loading CSV file: data/prepared_financial_data.csv
+2025-06-22 15:08:28,262 [INFO] TSLib: Successfully loaded file: (7109, 119)
+2025-06-22 15:08:28,262 - TSLib - INFO - Successfully loaded file: (7109, 119)
+2025-06-22 15:08:28,283 [INFO] TSLib: Loaded target data: (7109, 119), Target columns: ['log_Open', 'log_High', 'log_Low', 'log_Close', 'time_delta', 'dyn_Sun_sin', 'dyn_Sun_cos', 'dyn_Sun_speed', 'dyn_Sun_sign_sin', 'dyn_Sun_sign_cos', 'dyn_Sun_distance', 'dyn_Sun_lat', 'dyn_Moon_sin', 'dyn_Moon_cos', 'dyn_Moon_speed', 'dyn_Moon_sign_sin', 'dyn_Moon_sign_cos', 'dyn_Moon_distance', 'dyn_Moon_lat', 'dyn_Mars_sin', 'dyn_Mars_cos', 'dyn_Mars_speed', 'dyn_Mars_sign_sin', 'dyn_Mars_sign_cos', 'dyn_Mars_distance', 'dyn_Mars_lat', 'dyn_Mercury_sin', 'dyn_Mercury_cos', 'dyn_Mercury_speed', 'dyn_Mercury_sign_sin', 'dyn_Mercury_sign_cos', 'dyn_Mercury_distance', 'dyn_Mercury_lat', 'dyn_Jupiter_sin', 'dyn_Jupiter_cos', 'dyn_Jupiter_speed', 'dyn_Jupiter_sign_sin', 'dyn_Jupiter_sign_cos', 'dyn_Jupiter_distance', 'dyn_Jupiter_lat', 'dyn_Venus_sin', 'dyn_Venus_cos', 'dyn_Venus_speed', 'dyn_Venus_sign_sin', 'dyn_Venus_sign_cos', 'dyn_Venus_distance', 'dyn_Venus_lat', 'dyn_Saturn_sin', 'dyn_Saturn_cos', 'dyn_Saturn_speed', 'dyn_Saturn_sign_sin', 'dyn_Saturn_sign_cos', 'dyn_Saturn_distance', 'dyn_Saturn_lat', 'dyn_Uranus_sin', 'dyn_Uranus_cos', 'dyn_Uranus_speed', 'dyn_Uranus_sign_sin', 'dyn_Uranus_sign_cos', 'dyn_Uranus_distance', 'dyn_Uranus_lat', 'dyn_Neptune_sin', 'dyn_Neptune_cos', 'dyn_Neptune_speed', 'dyn_Neptune_sign_sin', 'dyn_Neptune_sign_cos', 'dyn_Neptune_distance', 'dyn_Neptune_lat', 'dyn_Pluto_sin', 'dyn_Pluto_cos', 'dyn_Pluto_speed', 'dyn_Pluto_sign_sin', 'dyn_Pluto_sign_cos', 'dyn_Pluto_distance', 'dyn_Pluto_lat', 'dyn_Mean Rahu_sin', 'dyn_Mean Rahu_cos', 'dyn_Mean Rahu_speed', 'dyn_Mean Rahu_sign_sin', 'dyn_Mean Rahu_sign_cos', 'dyn_Mean Ketu_sin', 'dyn_Mean Ketu_cos', 'dyn_Mean Ketu_speed', 'dyn_Mean Ketu_sign_sin', 'dyn_Mean Ketu_sign_cos', 'dyn_Sun_shadbala', 'dyn_Moon_shadbala', 'dyn_Mars_shadbala', 'dyn_Mercury_shadbala', 'dyn_Jupiter_shadbala', 'dyn_Venus_shadbala', 'dyn_Saturn_shadbala', 'Sun_sin', 'Sun_cos', 'Moon_sin', 'Moon_cos', 'Mars_sin', 'Mars_cos', 'Mercury_sin', 'Mercury_cos', 'Jupiter_sin', 'Jupiter_cos', 'Venus_sin', 'Venus_cos', 'Saturn_sin', 'Saturn_cos', 'Uranus_sin', 'Uranus_cos', 'Neptune_sin', 'Neptune_cos', 'Pluto_sin', 'Pluto_cos', 'Mean Rahu_sin', 'Mean Rahu_cos', 'Mean Ketu_sin', 'Mean Ketu_cos', 'Ascendant_sin', 'Ascendant_cos']
+2025-06-22 15:08:28,283 - TSLib - INFO - Loaded target data: (7109, 119), Target columns: ['log_Open', 'log_High', 'log_Low', 'log_Close', 'time_delta', 'dyn_Sun_sin', 'dyn_Sun_cos', 'dyn_Sun_speed', 'dyn_Sun_sign_sin', 'dyn_Sun_sign_cos', 'dyn_Sun_distance', 'dyn_Sun_lat', 'dyn_Moon_sin', 'dyn_Moon_cos', 'dyn_Moon_speed', 'dyn_Moon_sign_sin', 'dyn_Moon_sign_cos', 'dyn_Moon_distance', 'dyn_Moon_lat', 'dyn_Mars_sin', 'dyn_Mars_cos', 'dyn_Mars_speed', 'dyn_Mars_sign_sin', 'dyn_Mars_sign_cos', 'dyn_Mars_distance', 'dyn_Mars_lat', 'dyn_Mercury_sin', 'dyn_Mercury_cos', 'dyn_Mercury_speed', 'dyn_Mercury_sign_sin', 'dyn_Mercury_sign_cos', 'dyn_Mercury_distance', 'dyn_Mercury_lat', 'dyn_Jupiter_sin', 'dyn_Jupiter_cos', 'dyn_Jupiter_speed', 'dyn_Jupiter_sign_sin', 'dyn_Jupiter_sign_cos', 'dyn_Jupiter_distance', 'dyn_Jupiter_lat', 'dyn_Venus_sin', 'dyn_Venus_cos', 'dyn_Venus_speed', 'dyn_Venus_sign_sin', 'dyn_Venus_sign_cos', 'dyn_Venus_distance', 'dyn_Venus_lat', 'dyn_Saturn_sin', 'dyn_Saturn_cos', 'dyn_Saturn_speed', 'dyn_Saturn_sign_sin', 'dyn_Saturn_sign_cos', 'dyn_Saturn_distance', 'dyn_Saturn_lat', 'dyn_Uranus_sin', 'dyn_Uranus_cos', 'dyn_Uranus_speed', 'dyn_Uranus_sign_sin', 'dyn_Uranus_sign_cos', 'dyn_Uranus_distance', 'dyn_Uranus_lat', 'dyn_Neptune_sin', 'dyn_Neptune_cos', 'dyn_Neptune_speed', 'dyn_Neptune_sign_sin', 'dyn_Neptune_sign_cos', 'dyn_Neptune_distance', 'dyn_Neptune_lat', 'dyn_Pluto_sin', 'dyn_Pluto_cos', 'dyn_Pluto_speed', 'dyn_Pluto_sign_sin', 'dyn_Pluto_sign_cos', 'dyn_Pluto_distance', 'dyn_Pluto_lat', 'dyn_Mean Rahu_sin', 'dyn_Mean Rahu_cos', 'dyn_Mean Rahu_speed', 'dyn_Mean Rahu_sign_sin', 'dyn_Mean Rahu_sign_cos', 'dyn_Mean Ketu_sin', 'dyn_Mean Ketu_cos', 'dyn_Mean Ketu_speed', 'dyn_Mean Ketu_sign_sin', 'dyn_Mean Ketu_sign_cos', 'dyn_Sun_shadbala', 'dyn_Moon_shadbala', 'dyn_Mars_shadbala', 'dyn_Mercury_shadbala', 'dyn_Jupiter_shadbala', 'dyn_Venus_shadbala', 'dyn_Saturn_shadbala', 'Sun_sin', 'Sun_cos', 'Moon_sin', 'Moon_cos', 'Mars_sin', 'Mars_cos', 'Mercury_sin', 'Mercury_cos', 'Jupiter_sin', 'Jupiter_cos', 'Venus_sin', 'Venus_cos', 'Saturn_sin', 'Saturn_cos', 'Uranus_sin', 'Uranus_cos', 'Neptune_sin', 'Neptune_cos', 'Pluto_sin', 'Pluto_cos', 'Mean Rahu_sin', 'Mean Rahu_cos', 'Mean Ketu_sin', 'Mean Ketu_cos', 'Ascendant_sin', 'Ascendant_cos']
+2025-06-22 15:08:28,287 [INFO] TSLib: Date range: 1996-11-05 00:00:00 to 2025-06-09 00:00:00
+2025-06-22 15:08:28,287 - TSLib - INFO - Date range: 1996-11-05 00:00:00 to 2025-06-09 00:00:00
+2025-06-22 15:08:28,288 [INFO] TSLib: No dynamic covariates file specified, skipping
+2025-06-22 15:08:28,288 - TSLib - INFO - No dynamic covariates file specified, skipping
+2025-06-22 15:08:28,290 [INFO] TSLib: No static covariates file specified, skipping
+2025-06-22 15:08:28,290 - TSLib - INFO - No static covariates file specified, skipping
+2025-06-22 15:08:28,291 [INFO] TSLib: Aligning data using method: forward_fill
+2025-06-22 15:08:28,291 - TSLib - INFO - Aligning data using method: forward_fill
+2025-06-22 15:08:28,297 [INFO] TSLib: Final aligned data shape: (7109, 119)
+2025-06-22 15:08:28,297 - TSLib - INFO - Final aligned data shape: (7109, 119)
+2025-06-22 15:08:28,297 [INFO] TSLib: Columns: Target(118), Dynamic(0), Static(0)
+2025-06-22 15:08:28,297 - TSLib - INFO - Columns: Target(118), Dynamic(0), Static(0)
+2025-06-22 15:08:28,297 [INFO] TSLib: Data preparation completed successfully
+2025-06-22 15:08:28,297 - TSLib - INFO - Data preparation completed successfully
+2025-06-22 15:08:28,298 [INFO] TSLib: FinancialDataManager reports 4 target columns: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-06-22 15:08:28,298 - TSLib - INFO - FinancialDataManager reports 4 target columns: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-06-22 15:08:28,298 [INFO] TSLib: FinancialDataManager reports 119 total columns (including date).
+2025-06-22 15:08:28,298 - TSLib - INFO - FinancialDataManager reports 119 total columns (including date).
+2025-06-22 15:08:28,298 [INFO] TSLib: Step 2: Initializing DimensionManager...
+2025-06-22 15:08:28,298 - TSLib - INFO - Step 2: Initializing DimensionManager...
+2025-06-22 15:08:28,298 [INFO] TSLib: DimensionManager(Mode='S', Loss='pinball')
+  - Features: 4 targets, 114 covariates
+  - Model Dims: In=4, Out(Layer)=28, Out(Eval)=4
+2025-06-22 15:08:28,298 - TSLib - INFO - DimensionManager(Mode='S', Loss='pinball')
+  - Features: 4 targets, 114 covariates
+  - Model Dims: In=4, Out(Layer)=28, Out(Eval)=4
+2025-06-22 15:08:28,298 [INFO] TSLib: Step 3: Splitting data into train/val/test sets (chronological)...
+2025-06-22 15:08:28,298 - TSLib - INFO - Step 3: Splitting data into train/val/test sets (chronological)...
+2025-06-22 15:08:28,300 [INFO] TSLib: Step 4: Fitting scalers with correct data scopes...
+2025-06-22 15:08:28,300 - TSLib - INFO - Step 4: Fitting scalers with correct data scopes...
+ScalerManager initialized with 4 target features and 114 covariate features
+Fitting scalers...
+  - Fitting target scaler on 6189 training rows.
+  - Fitting covariate scaler on 7109 total rows.
+Scalers fitted successfully.
+2025-06-22 15:08:28,339 [INFO] TSLib: Step 5: Creating datasets and dataloaders...
+2025-06-22 15:08:28,339 - TSLib - INFO - Step 5: Creating datasets and dataloaders...
+2025-06-22 15:08:28,392 [INFO] TSLib: Data pipeline setup complete.
+2025-06-22 15:08:28,392 - TSLib - INFO - Data pipeline setup complete.
+2025-06-22 15:08:28,393 - __main__ - INFO - Data pipeline setup complete.
+2025-06-22 15:08:28,393 - __main__ - INFO - Initializing experiment
+2025-06-22 15:08:28,393 [INFO] TSLib: Initializing Exp_Long_Term_Forecast with provided managers and loaders.
+2025-06-22 15:08:28,393 - TSLib - INFO - Initializing Exp_Long_Term_Forecast with provided managers and loaders.
+Use CPU
+2025-06-22 15:08:28,393 [INFO] TSLib: Initializing BayesianEnhancedAutoformer with method=bayesian
+2025-06-22 15:08:28,393 - TSLib - INFO - Initializing BayesianEnhancedAutoformer with method=bayesian
+2025-06-22 15:08:28,394 [INFO] TSLib: BayesianEnhancedAutoformer: Quantile mode ON. Quantiles: [0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99]
+2025-06-22 15:08:28,394 - TSLib - INFO - BayesianEnhancedAutoformer: Quantile mode ON. Quantiles: [0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99]
+2025-06-22 15:08:28,394 [INFO] TSLib: Initializing EnhancedAutoformer with configs: Namespace(task_name='long_term_forecast', is_training=1, checkpoints='./checkpoints/', seq_len=400, label_len=60, pred_len=60, freq='h', train_epochs=10, patience=3, learning_rate=0.0001, loss='pinball', lradj='type1', use_amp=False, use_gpu=False, gpu=0, num_workers=0, d_model=512, n_heads=16, e_layers=4, d_layers=3, d_ff=1024, batch_size=8, dropout=0.2, model='BayesianEnhancedAutoformer', kl_weight=0.0001, enc_in=4, dec_in=4, c_out=4, model_id='BayesianEnhancedAutoformer_S_heavy_sl400_pl60', _metadata={'note': 'enc_in, dec_in, and c_out are determined automatically at runtime by DimensionManager.', 'generated_by': 'integration/generate_dynamic_configs.py'}, model_type='enhanced', config='configs/config_BayesianEnhancedAutoformer_S_heavy_sl400_pl60.yaml', augmentation_ratio=0, use_multi_gpu=False, devices='0', embed='timeF', activation='gelu', output_attention=False, factor=1, gpu_type='cpu', c_out_evaluation=4)
+2025-06-22 15:08:28,394 - TSLib - INFO - Initializing EnhancedAutoformer with configs: Namespace(task_name='long_term_forecast', is_training=1, checkpoints='./checkpoints/', seq_len=400, label_len=60, pred_len=60, freq='h', train_epochs=10, patience=3, learning_rate=0.0001, loss='pinball', lradj='type1', use_amp=False, use_gpu=False, gpu=0, num_workers=0, d_model=512, n_heads=16, e_layers=4, d_layers=3, d_ff=1024, batch_size=8, dropout=0.2, model='BayesianEnhancedAutoformer', kl_weight=0.0001, enc_in=4, dec_in=4, c_out=4, model_id='BayesianEnhancedAutoformer_S_heavy_sl400_pl60', _metadata={'note': 'enc_in, dec_in, and c_out are determined automatically at runtime by DimensionManager.', 'generated_by': 'integration/generate_dynamic_configs.py'}, model_type='enhanced', config='configs/config_BayesianEnhancedAutoformer_S_heavy_sl400_pl60.yaml', augmentation_ratio=0, use_multi_gpu=False, devices='0', embed='timeF', activation='gelu', output_attention=False, factor=1, gpu_type='cpu', c_out_evaluation=4)
+2025-06-22 15:08:28,394 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,394 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,417 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,417 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,421 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,421 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,432 [INFO] TSLib: Initializing EnhancedEncoderLayer
+2025-06-22 15:08:28,432 - TSLib - INFO - Initializing EnhancedEncoderLayer
+2025-06-22 15:08:28,449 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,449 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,451 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,451 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,458 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,458 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,458 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,458 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,474 [INFO] TSLib: Initializing EnhancedEncoderLayer
+2025-06-22 15:08:28,474 - TSLib - INFO - Initializing EnhancedEncoderLayer
+2025-06-22 15:08:28,491 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,491 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,494 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,494 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,496 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,496 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,496 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,496 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,512 [INFO] TSLib: Initializing EnhancedEncoderLayer
+2025-06-22 15:08:28,512 - TSLib - INFO - Initializing EnhancedEncoderLayer
+2025-06-22 15:08:28,655 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,655 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,657 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,657 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,663 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,663 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,664 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,664 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,675 [INFO] TSLib: Initializing EnhancedEncoderLayer
+2025-06-22 15:08:28,675 - TSLib - INFO - Initializing EnhancedEncoderLayer
+2025-06-22 15:08:28,687 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,687 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,689 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,689 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,692 [INFO] TSLib: Initializing EnhancedEncoder
+2025-06-22 15:08:28,692 - TSLib - INFO - Initializing EnhancedEncoder
+2025-06-22 15:08:28,740 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,740 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,741 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,741 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,753 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,753 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,753 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,753 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,766 [INFO] TSLib: Initializing EnhancedDecoderLayer
+2025-06-22 15:08:28,766 - TSLib - INFO - Initializing EnhancedDecoderLayer
+2025-06-22 15:08:28,777 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,777 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,779 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,779 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,781 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,781 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,800 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,800 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,801 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,801 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,811 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,811 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,812 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,812 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,823 [INFO] TSLib: Initializing EnhancedDecoderLayer
+2025-06-22 15:08:28,823 - TSLib - INFO - Initializing EnhancedDecoderLayer
+2025-06-22 15:08:28,835 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,835 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,839 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,839 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,842 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,842 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,852 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,852 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,853 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,853 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,865 [INFO] TSLib: Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,865 - TSLib - INFO - Initializing AdaptiveAutoCorrelation with enhanced features
+2025-06-22 15:08:28,866 [INFO] TSLib: Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,866 - TSLib - INFO - Initializing AdaptiveAutoCorrelationLayer
+2025-06-22 15:08:28,881 [INFO] TSLib: Initializing EnhancedDecoderLayer
+2025-06-22 15:08:28,881 - TSLib - INFO - Initializing EnhancedDecoderLayer
+2025-06-22 15:08:28,895 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,895 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,899 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,899 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,902 [INFO] TSLib: Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,902 - TSLib - INFO - Initializing LearnableSeriesDecomp
+2025-06-22 15:08:28,915 [INFO] TSLib: Initializing EnhancedDecoder
+2025-06-22 15:08:28,915 - TSLib - INFO - Initializing EnhancedDecoder
+2025-06-22 15:08:28,916 [INFO] TSLib: BayesianEnhancedAutoformer: Added quantile expansion layer 4 -> 28
+2025-06-22 15:08:28,916 - TSLib - INFO - BayesianEnhancedAutoformer: Added quantile expansion layer 4 -> 28
+2025-06-22 15:08:28,917 [INFO] TSLib: Converting layers to Bayesian: ['projection']
+2025-06-22 15:08:28,917 - TSLib - INFO - Converting layers to Bayesian: ['projection']
+2025-06-22 15:08:28,917 [INFO] TSLib: Initializing BayesianLinear: 512 -> 4
+2025-06-22 15:08:28,917 - TSLib - INFO - Initializing BayesianLinear: 512 -> 4
+2025-06-22 15:08:28,920 [INFO] TSLib: Converted decoder projection: 512->4
+2025-06-22 15:08:28,920 - TSLib - INFO - Converted decoder projection: 512->4
+2025-06-22 15:08:28,931 - __main__ - INFO - Experiment initialized successfully
+2025-06-22 15:08:28,931 - __main__ - INFO - Starting training
+2025-06-22 15:08:28,932 [INFO] TSLib: Starting training with setting: BayesianEnhancedAutoformer_S_heavy_sl400_pl60_S_400_60
+2025-06-22 15:08:28,932 - TSLib - INFO - Starting training with setting: BayesianEnhancedAutoformer_S_heavy_sl400_pl60_S_400_60
+2025-06-22 15:08:28,937 [INFO] TSLib: Using PinballLoss with quantiles: [0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99]
+2025-06-22 15:08:28,937 - TSLib - INFO - Using PinballLoss with quantiles: [0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99]
+2025-06-22 15:08:28,938 [INFO] TSLib: Model BayesianEnhancedAutoformer has configure_optimizer_loss. Wrapping base criterion.
+2025-06-22 15:08:28,938 - TSLib - INFO - Model BayesianEnhancedAutoformer has configure_optimizer_loss. Wrapping base criterion.
+2025-06-22 15:08:28,938 [INFO] TSLib: BayesianEnhancedAutoformer: Wrapped loss is PinballLoss based.
+2025-06-22 15:08:28,938 - TSLib - INFO - BayesianEnhancedAutoformer: Wrapped loss is PinballLoss based.
+2025-06-22 15:08:28,953 - __main__ - ERROR - Error loading config: Input feature dimension mismatch. Expected 4, got 118
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/Time-Series-Library/scripts/train/train_dynamic_autoformer.py", line 170, in main
+    exp.train(setting)
+  File "/Users/shantanumisra/workspace/Time-Series-Library/exp/exp_long_term_forecasting.py", line 292, in train
+    outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/models/BayesianEnhancedAutoformer.py", line 140, in forward
+    return self._single_forward(x_enc, x_mark_enc, x_dec, x_mark_dec)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/models/BayesianEnhancedAutoformer.py", line 153, in _single_forward
+    output = self.base_model(x_enc, x_mark_enc, x_dec, x_mark_dec)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/models/EnhancedAutoformer.py", line 592, in forward
+    dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/models/EnhancedAutoformer.py", line 502, in forecast
+    seasonal_init_full, trend_init_full = self.decomp(x_dec)
+                                          ^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/models/EnhancedAutoformer.py", line 61, in forward
+    assert D == self.input_dim, f"Input feature dimension mismatch. Expected {self.input_dim}, got {D}"
+           ^^^^^^^^^^^^^^^^^^^
+AssertionError: Input feature dimension mismatch. Expected 4, got 118
+(.venv) Shantanus-MacBook-Air-2:Time-Series-Library shantanumisra$ 
