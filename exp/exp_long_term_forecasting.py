@@ -491,16 +491,24 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         hist_targets_scaled_t = torch.from_numpy(hist_targets_scaled).float().to(self.device)
         future_targets_zeros_t = future_targets_zeros.float().to(self.device)
 
-        if hist_covariates_scaled is not None and future_covariates_scaled is not None:
-            hist_covariates_scaled_t = torch.from_numpy(hist_covariates_scaled).float().to(self.device)
-            future_covariates_scaled_t = torch.from_numpy(future_covariates_scaled).float().to(self.device)
+        # Determine if covariates should be included in decoder input based on feature mode
+        if self.args.features in ['M', 'MS']:
+            if hist_covariates_scaled is not None and future_covariates_scaled is not None:
+                hist_covariates_scaled_t = torch.from_numpy(hist_covariates_scaled).float().to(self.device)
+                future_covariates_scaled_t = torch.from_numpy(future_covariates_scaled).float().to(self.device)
 
-            # Concatenate targets and covariates for historical part
-            dec_inp_hist = torch.cat([hist_targets_scaled_t, hist_covariates_scaled_t], dim=-1)
-            # Concatenate zeros for targets and scaled covariates for future part
-            dec_inp_future = torch.cat([future_targets_zeros_t, future_covariates_scaled_t], dim=-1)
-        else:
-            # No covariates, just targets (e.g., S mode)
+                # Concatenate targets and covariates for historical part
+                dec_inp_hist = torch.cat([hist_targets_scaled_t, hist_covariates_scaled_t], dim=-1)
+                # Concatenate zeros for targets and scaled covariates for future part
+                dec_inp_future = torch.cat([future_targets_zeros_t, future_covariates_scaled_t], dim=-1)
+            else:
+                # This case should ideally not happen if covariates exist and mode is M/MS,
+                # but as a fallback, just use targets.
+                logger.warning("Covariates expected for M/MS mode but not provided to _construct_dec_inp. Proceeding with targets only.")
+                dec_inp_hist = hist_targets_scaled_t
+                dec_inp_future = future_targets_zeros_t
+        elif self.args.features == 'S':
+            # For S mode, only targets are used in the decoder input
             dec_inp_hist = hist_targets_scaled_t
             dec_inp_future = future_targets_zeros_t
 

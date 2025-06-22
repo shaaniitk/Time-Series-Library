@@ -26,7 +26,7 @@ class DimensionManager:
         if self.mode == 'S':
             self.enc_in = self.dec_in = self.c_out_evaluation = self.num_targets
         elif self.mode == 'MS':
-            self.enc_in = self.num_targets + self.num_covariates; self.dec_in = self.num_targets
+            self.enc_in = self.num_targets + self.num_covariates; self.dec_in = self.num_targets + self.num_covariates
             self.c_out_evaluation = self.num_targets
         elif self.mode == 'M':
             self.enc_in = self.dec_in = self.num_targets + self.num_covariates
