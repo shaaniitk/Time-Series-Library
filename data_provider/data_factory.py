@@ -81,7 +81,12 @@ def setup_financial_forecasting_data(args):
     data_loaders = {}
     for flag, df_split in [('train', df_train), ('val', df_val), ('test', df_test)]:
         # ScalerManager.transform expects a DataFrame, it will select columns internally
-        data_x_scaled = scaler_manager.transform(df_split)
+        # For 'S' mode, data_x_scaled should only contain target features for the encoder input
+        if args.features == 'S':
+            data_x_scaled = scaler_manager.target_scaler.transform(df_split[dim_manager.target_features])
+        else:
+            # For 'M' and 'MS' modes, data_x_scaled includes all features
+            data_x_scaled = scaler_manager.transform(df_split)
         
         # Get unscaled data as numpy array (excluding date)
         all_features_no_date = [col for col in df_split.columns if col != 'date']
