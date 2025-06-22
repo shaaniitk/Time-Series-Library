@@ -434,7 +434,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     pred_for_viz_scaled = pred_point_scaled_batch_np[0] # First sample in batch, scaled point preds
                     true_for_viz_original = trues_original_for_viz_np[-1][0] # Corresponding original true values (all c_out_eval features)
 
-                    if hasattr(self.args, 'scale') and self.args.scale: # Check if scaling is enabled
+                    if self.scaler_manager is not None: # Check if a scaler manager exists, which implies scaling was done
                         pred_for_viz_original = self.scaler_manager.inverse_transform_targets(pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)).reshape(pred_for_viz_scaled.shape) # Use target_scaler
                         # The input_np is batch_x, which has shape [B, seq_len, enc_in]
                         # enc_in is the total number of features (targets + covariates)
