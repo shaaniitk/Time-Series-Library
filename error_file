@@ -1,3 +1,4 @@
+2025-06-22 15:41:44,482 - __main__ - ERROR - Error loading config: Given groups=1, weight of size [512, 4, 3], expected input[8, 118, 402] to have 4 channels, but got 118 channels instead
 Traceback (most recent call last):
   File "/Users/shantanumisra/workspace/Time-Series-Library/scripts/train/train_dynamic_autoformer.py", line 170, in main
     exp.train(setting)
@@ -25,16 +26,37 @@ Traceback (most recent call last):
   File "/Users/shantanumisra/workspace/Time-Series-Library/models/EnhancedAutoformer.py", line 592, in forward
     dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/shantanumisra/workspace/Time-Series-Library/models/EnhancedAutoformer.py", line 502, in forecast
-    seasonal_init_full, trend_init_full = self.decomp(x_dec)
-                                          ^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/models/EnhancedAutoformer.py", line 528, in forecast
+    enc_out = self.enc_embedding(x_enc, x_mark_enc)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
     return self._call_impl(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
     return forward_call(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/shantanumisra/workspace/Time-Series-Library/models/EnhancedAutoformer.py", line 61, in forward
-    assert D == self.input_dim, f"Input feature dimension mismatch. Expected {self.input_dim}, got {D}"
-           ^^^^^^^^^^^^^^^^^^^
-AssertionError: Input feature dimension mismatch. Expected 4, got 118
+  File "/Users/shantanumisra/workspace/Time-Series-Library/layers/Embed.py", line 164, in forward
+    x = self.value_embedding(x) + self.temporal_embedding(x_mark)
+        ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/layers/Embed.py", line 42, in forward
+    x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 310, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/Time-Series-Library/.venv/lib/python3.11/site-packages/torch/nn/modules/conv.py", line 303, in _conv_forward
+    return F.conv1d(F.pad(input, self._reversed_padding_repeated_twice, mode=self.padding_mode),
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Given groups=1, weight of size [512, 4, 3], expected input[8, 118, 402] to have 4 channels, but got 118 channels instead
