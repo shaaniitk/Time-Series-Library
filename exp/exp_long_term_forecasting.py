@@ -236,13 +236,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         time_now = time.time()
 
         train_steps = len(train_loader)
-        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True)
+        warmup_epochs = getattr(self.args, 'warmup_epochs', 0)
+        early_stopping = EarlyStopping(patience=self.args.patience, verbose=True, warmup_epochs=warmup_epochs)
 
         model_optim = self._select_optimizer()
         criterion = self._select_criterion()
 
         if self.args.use_amp:
-            scaler_amp = torch.cuda.amp.GradScaler()
+            scaler_amp = torch.cuda.amp.GradScaler() # type: ignore
 
         for epoch in range(self.args.train_epochs):
             iter_count = 0
@@ -328,7 +329,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss_avg, vali_loss, test_loss))
-            early_stopping(vali_loss, self.model, path)
+            early_stopping(vali_loss, self.model, path, epoch)
             if early_stopping.early_stop:
                 print("Early stopping")
                 break

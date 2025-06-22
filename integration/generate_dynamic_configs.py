@@ -9,42 +9,14 @@ from utils.data_analysis import analyze_dataset
 from utils.logger import logger
 
 # --- Comprehensive List of Forecasting Models ---
-# This list includes models generally suitable for long-term forecasting tasks
-# and compatible with the DimensionManager's M/MS/S modes.
-# Models for classification/anomaly detection or highly specialized inputs are excluded for clarity.
 ALL_FORECASTING_MODELS = [
     'Autoformer',
-    # 'Transformer',
-    # 'DLinear',
-    # 'FEDformer',
-    # 'Informer',
-    # 'TimesNet',
-    # 'PatchTST',
-    # 'Crossformer',
-    # 'ETSformer',
-    # 'Reformer',
-    # 'Pyraformer',
-    # 'MICN',
-    # 'iTransformer',
-    # 'Koopa',
-    # 'TiDE',
-    # 'FreTS',
-    # 'TimeMixer',
-    # 'TSMixer',
-    # 'SegRNN',
-    # 'TemporalFusionTransformer',
-    # 'SCINet',
-    # 'PAttn',
-    # 'TimeXer',
-    # 'WPMixer',
-    # 'MultiPatchFormer',
     'EnhancedAutoformer',
     'BayesianEnhancedAutoformer',
     'HierarchicalEnhancedAutoformer',
 ]
 
 # --- Complexity Variations ---
-# Each complexity level defines the *base* parameters for models.
 complexity_configs = {
     'ultralight': {
         'seq_len': 48, 'label_len': 24, 'pred_len': 12,
@@ -95,7 +67,7 @@ def get_user_input():
         else:
             logger.warning("You must specify at least one target column.")
 
-    # --- New prompts for model, complexity, and feature mode ---
+    # --- Model and Complexity Selection ---
     print("\n--- Model and Complexity Selection ---")
     print("Available complexities:")
     for comp_level in complexity_configs.keys():
@@ -133,25 +105,18 @@ def get_user_input():
         else:
             logger.warning("Invalid feature mode. Please choose M, MS, or S.")
 
-    # --- Sequence Lengths (with defaults from chosen complexity) ---
+    # --- Sequence Lengths ---
     default_seq_len = complexity_configs[complexity]['seq_len']
     default_pred_len = complexity_configs[complexity]['pred_len']
     seq_len = int(input(f"Enter sequence length (default: {default_seq_len}): ") or default_seq_len)
     pred_len = int(input(f"Enter prediction length (default: {default_pred_len}): ") or default_pred_len)
     label_len = int(input(f"Enter label length (default: {seq_len // 2}): ") or (seq_len // 2))
 
-    # --- New prompts for loss and Bayesian settings ---
+    # --- Loss Function Settings ---
     print("\n--- Loss Function Settings ---")
     print("Available loss types (common examples: mse, mae, pinball, huber, ps_loss, multiscale_trend_aware):")
-    # Dynamically list common losses from utils/losses.py if possible, or provide a curated list
-    # For now, providing a general prompt.
-    loss_type = input("Enter loss type: ").strip().lower()
-    if not loss_type:
-        loss_type = 'mse' # Default if empty
+    loss_type = input("Enter loss type: ").strip().lower() or 'mse'
     
-    # Ensure quantile_levels is always a list, even if empty
-    quantile_levels = []
-
     quantile_levels = []
     if loss_type in ['pinball', 'quantile']:
         while True:
@@ -167,15 +132,14 @@ def get_user_input():
                 except ValueError:
                     logger.warning("Invalid input. Please enter comma-separated numbers.")
             else:
-                # Default quantiles if user leaves empty for pinball/quantile loss
                 quantile_levels = [0.1, 0.5, 0.9]
                 logger.info(f"Using default quantile levels: {quantile_levels}")
                 break
     
-    # --- KL Loss settings (only if a Bayesian model is selected) ---
+    # --- KL Loss settings ---
     enable_kl = False
     kl_weight = 0.0
-    if model_name == 'BayesianEnhancedAutoformer': # Only ask if the chosen model is Bayesian
+    if model_name == 'BayesianEnhancedAutoformer':
         print("\n--- KL Loss Settings (for Bayesian models) ---")
         kl_input = input("Enable KL Loss for Bayesian models? (y/n): ").strip().lower()
         if kl_input == 'y':
@@ -186,66 +150,65 @@ def get_user_input():
                     break
                 except ValueError:
                     logger.warning("Invalid input. Please enter a number.")
-    # --- End of new prompts ---
+
+    # --- Hierarchical Model Specific Prompts ---
+    n_levels = 3
+    fusion_strategy = 'weighted_concat'
+    if model_name == 'HierarchicalEnhancedAutoformer':
+        print("\n--- Hierarchical Model Settings ---")
+        try:
+            n_levels = int(input("Enter number of hierarchy levels (e.g., 1, 2, 3): ").strip() or 3)
+        except ValueError:
+            logger.warning("Invalid input. Defaulting to 3 levels.")
+            n_levels = 3
+        fusion_strategy = input("Enter fusion strategy (weighted_sum, weighted_concat): ").strip().lower() or 'weighted_concat'
+        if fusion_strategy not in ['weighted_sum', 'weighted_concat']:
+            logger.warning("Invalid strategy. Defaulting to 'weighted_concat'.")
+            fusion_strategy = 'weighted_concat'
+
+    # --- GPU prompt ---
+    use_gpu_input = input("\nUse GPU for training? (y/n, default: y): ").strip().lower()
+    use_gpu = use_gpu_input != 'n'
             
     return data_path, target_columns, complexity, model_name, feature_mode, \
-           seq_len, label_len, pred_len, loss_type, quantile_levels, enable_kl, kl_weight
+           seq_len, label_len, pred_len, loss_type, quantile_levels, enable_kl, kl_weight, \
+           n_levels, fusion_strategy, use_gpu
 
 def generate_configurations():
-    """
-    Generates a single configuration file based on user input.
-    """
+    """Generates a single configuration file based on user input."""
     data_path, target_columns, complexity, model_name, feature_mode, \
-    seq_len, label_len, pred_len, loss_type, quantile_levels, enable_kl, kl_weight = get_user_input()
+    seq_len, label_len, pred_len, loss_type, quantile_levels, enable_kl, kl_weight, \
+    n_levels, fusion_strategy, use_gpu = get_user_input()
 
     # --- Base Template ---
-    # This template contains only high-level settings.
-    # `enc_in`, `dec_in`, `c_out` are intentionally omitted.
     base_template = {
         'task_name': 'long_term_forecast',
         'is_training': 1,
         'checkpoints': './checkpoints/',
-
-        # --- Data Settings ---
         'root_path': os.path.dirname(data_path),
         'data_path': os.path.basename(data_path),
         'seq_len': seq_len,
         'label_len': label_len,
         'pred_len': pred_len,
         'target': ','.join(target_columns),
-        'features': '{mode}',  # Placeholder for M, MS, S
-        'freq': 'h',           # Default, adjust in YAML if needed
-        
-        # --- Training Settings ---
+        'features': '{mode}',
+        'freq': 'h',
         'train_epochs': 10,
         'patience': 3,
         'learning_rate': 0.0001,
-        'loss': loss_type, # Use user-defined loss type
+        'loss': loss_type,
         'lradj': 'type1',
         'use_amp': False,
-        
-        # --- GPU Settings ---
-        'use_gpu': True,
+        'use_gpu': use_gpu,
         'gpu': 0,
         'num_workers': 0,
     }
-
-    # Add quantile levels if provided
-    if quantile_levels:
-        base_template['quantile_levels'] = quantile_levels
-
-    # Add KL weight if enabled
-    if enable_kl:
-        base_template['kl_weight'] = kl_weight
-
-    output_dir = "configs"
-    os.makedirs(output_dir, exist_ok=True) # Ensure the configs directory exists
 
     # Apply complexity settings
     config = base_template.copy()
     config.update(complexity_configs[complexity])
     
-    # Override seq_len, label_len, pred_len with user input
+    # Override sequence lengths with user input
     config['seq_len'] = seq_len
     config['label_len'] = label_len
     config['pred_len'] = pred_len
@@ -254,20 +217,19 @@ def generate_configurations():
     config['model'] = model_name
     config['features'] = feature_mode
     
-    # Add quantile levels if provided
-    if quantile_levels: # This will be an empty list if not applicable
+    # Add optional settings
+    if quantile_levels:
         config['quantile_levels'] = quantile_levels
-
-    # Add KL weight if enabled
     if enable_kl:
         config['kl_weight'] = kl_weight
+    if model_name == 'HierarchicalEnhancedAutoformer':
+        config['n_levels'] = n_levels
+        config['fusion_strategy'] = fusion_strategy
 
     # --- Dynamic Dimension Calculation ---
-    # Analyze the dataset to get correct enc_in, dec_in, c_out
     data_analysis = analyze_dataset(
         data_path=data_path,
         target_columns=target_columns,
-        # loss_name and quantile_levels are not arguments for analyze_dataset
     )
     
     mode_config_dims = data_analysis[f'mode_{feature_mode}']
@@ -284,11 +246,13 @@ def generate_configurations():
         'generated_by': 'integration/generate_dynamic_configs.py'
     }
 
+    output_dir = "configs"
+    os.makedirs(output_dir, exist_ok=True)
+
     filename = f"config_{config['model_id']}.yaml"
     output_path = os.path.join(output_dir, filename)
 
     try:
-        # Pre-calculate the relative path string to simplify the f-string
         relative_output_path = os.path.relpath(output_path).replace('\\', '/')
         with open(output_path, 'w') as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False, indent=2)
