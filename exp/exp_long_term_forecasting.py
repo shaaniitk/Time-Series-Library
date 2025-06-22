@@ -28,6 +28,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         # The args object is still passed for general configuration.
         # The actual DM and ScalerManager are passed as separate arguments.
         logger.info(f"Initializing Exp_Long_Term_Forecast with provided managers and loaders.")
+        logger.debug(f"Exp_Long_Term_Forecast __init__: args.scaler_manager is not None = {args.scaler_manager is not None}")
         
         # Store the managers and loaders
         self.dm = args.dim_manager # DimensionManager instance
@@ -434,20 +435,28 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     pred_for_viz_scaled = pred_point_scaled_batch_np[0] # First sample in batch, scaled point preds
                     true_for_viz_original = trues_original_for_viz_np[-1][0] # Corresponding original true values (all c_out_eval features)
 
-                    if self.scaler_manager is not None: # Check if a scaler manager exists, which implies scaling was done
-                        pred_for_viz_original = self.scaler_manager.inverse_transform_targets(pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)).reshape(pred_for_viz_scaled.shape) # Use target_scaler
-                        # The input_np is batch_x, which has shape [B, seq_len, enc_in]
-                        # enc_in is the total number of features (targets + covariates)
-                        total_features = self.dm.enc_in
-                        input_for_viz_original = self.scaler_manager.inverse_transform_all_features(input_np[0].reshape(-1, total_features)).reshape(input_np[0].shape)
+                    logger.debug(f"Viz check: self.args.scale={self.args.scale}")
+                    logger.debug(f"Viz check: self.scaler_manager is not None={self.scaler_manager is not None}")
+                    logger.debug(f"Viz check: self.scaler_manager.target_scaler is not None={self.scaler_manager.target_scaler is not None if self.scaler_manager else 'N/A'}")
+
+                    # Check if scaling is enabled and scaler manager is properly initialized
+                    if self.args.scale and self.scaler_manager and self.scaler_manager.target_scaler:
+                        pred_for_viz_original = self.scaler_manager.inverse_transform_targets(
+                            pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)
+                        ).reshape(pred_for_viz_scaled.shape) # Use target_scaler
+                        
+                        total_features = self.dm.enc_in # enc_in is the total number of features (targets + covariates)
+                        input_for_viz_original = self.scaler_manager.inverse_transform_all_features(
+                            input_np[0].reshape(-1, total_features)
+                        ).reshape(input_np[0].shape)
                         
                         # Visualize the first target feature (index 0 of c_out_evaluation features)
-                        if input_for_viz_original.shape[-1] > 0 and true_for_viz_original.shape[-1] > 0 and pred_for_viz_original.shape[-1] > 0:
+                        if input_for_viz_original.shape[-1] > 0 and true_for_viz_original.shape[-1] > 0 and pred_for_viz_original.shape[-1] > 0: # Ensure dimensions are valid for plotting
                             gt_plot = np.concatenate((input_for_viz_original[:, 0], true_for_viz_original[:, 0]), axis=0)
                             pd_plot = np.concatenate((input_for_viz_original[:, 0], pred_for_viz_original[:, 0]), axis=0)
                             visual(gt_plot, pd_plot, os.path.join(folder_path, str(i) + '.pdf'))
-                        else:
-                            logger.warning("Cannot visualize: insufficient target features after inverse transform.")
+                        else: # This branch is taken if the shapes are invalid for plotting (e.g., 0-dimension)
+                            logger.warning("Cannot visualize: insufficient target features after inverse transform.") 
                     else:
                         logger.warning("Cannot visualize in original scale: inverse_transform not available or scale=False.")
 

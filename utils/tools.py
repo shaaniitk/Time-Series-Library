@@ -1,4 +1,9 @@
 import os
+import gc
+import shutil
+import tempfile
+import glob
+import logging
 
 import numpy as np
 import torch
@@ -8,6 +13,279 @@ import math
 from utils.logger import logger
 
 plt.switch_backend('agg')
+
+
+def clear_all_cache(workspace_path=None, verbose=True):
+    """
+    Clear all types of cache (Python, PyTorch, etc.)
+    
+    Args:
+        workspace_path (str): Path to workspace. If None, uses current directory
+        verbose (bool): Whether to print detailed output
+    
+    Returns:
+        dict: Summary of clearing results
+    """
+    results = {}
+    
+    if verbose:
+        print("=" * 60)
+        print("COMPREHENSIVE CACHE CLEARING")
+        print("=" * 60)
+    
+    # Clear Python cache
+    python_cleared = clear_python_cache(workspace_path, verbose)
+    results['python_cache_cleared'] = python_cleared
+    
+    if verbose:
+        print("\n" + "-" * 40)
+    
+    # Clear PyTorch cache
+    torch_cleared = clear_torch_cache(verbose)
+    results['torch_cache_cleared'] = torch_cleared
+    
+    if verbose:
+        print("\n" + "=" * 60)
+        print("CACHE CLEARING SUMMARY")
+        print("=" * 60)
+        print(f"Python cache items cleared: {python_cleared}")
+        print(f"PyTorch cache cleared: {'Yes' if torch_cleared else 'No'}")
+        print("\nNext steps for VS Code cache:")
+        print("1. Close VS Code completely")
+        print("2. Delete these directories (if they exist):")
+        print("   - %APPDATA%\\Code\\User\\workspaceStorage")
+        print("   - %APPDATA%\\Code\\User\\History")
+        print("   - %APPDATA%\\Code\\logs")
+        print("   - %APPDATA%\\Code\\CachedExtensions")
+        print("3. In VS Code, run: Ctrl+Shift+P > 'Developer: Reload Window'")
+        print("4. In VS Code, run: Ctrl+Shift+P > 'Python: Clear Cache and Reload Window'")
+        print("=" * 60)
+    
+    return results
+
+
+def clear_python_cache(workspace_path=None, verbose=True):
+    """
+    Clear all Python cache files (__pycache__, .pyc, .pyo files) from the workspace
+    
+    Args:
+        workspace_path (str): Path to workspace. If None, uses current directory
+        verbose (bool): Whether to print detailed output
+    
+    Returns:
+        int: Number of items cleared
+    """
+    if workspace_path is None:
+        workspace_path = os.getcwd()
+    
+    cleared_count = 0
+    
+    if verbose:
+        print(f"Clearing Python cache from: {workspace_path}")
+    
+    # Clear __pycache__ directories
+    for root, dirs, files in os.walk(workspace_path):
+        for dir_name in dirs[:]:  # Use slice to avoid modification during iteration
+            if dir_name == '__pycache__':
+                cache_path = os.path.join(root, dir_name)
+                try:
+                    shutil.rmtree(cache_path)
+                    if verbose:
+                        print(f"Removed: {cache_path}")
+                    cleared_count += 1
+                    dirs.remove(dir_name)  # Don't recurse into deleted directory
+                except Exception as e:
+                    if verbose:
+                        print(f"Error removing {cache_path}: {e}")
+    
+    # Clear .pyc and .pyo files
+    for pattern in ['**/*.pyc', '**/*.pyo']:
+        for file_path in glob.glob(os.path.join(workspace_path, pattern), recursive=True):
+            try:
+                os.remove(file_path)
+                if verbose:
+                    print(f"Removed: {file_path}")
+                cleared_count += 1
+            except Exception as e:
+                if verbose:
+                    print(f"Error removing {file_path}: {e}")
+    
+    # Clear pytest cache
+    pytest_cache = os.path.join(workspace_path, '.pytest_cache')
+    if os.path.exists(pytest_cache):
+        try:
+            shutil.rmtree(pytest_cache)
+            if verbose:
+                print(f"Removed: {pytest_cache}")
+            cleared_count += 1
+        except Exception as e:
+            if verbose:
+                print(f"Error removing {pytest_cache}: {e}")
+    
+    if verbose:
+        print(f"Python cache clearing complete! Cleared {cleared_count} items.")
+    
+    return cleared_count
+
+
+def clear_torch_cache(verbose=True):
+    """
+    Clear PyTorch cache
+    
+    Args:
+        verbose (bool): Whether to print output
+    
+    Returns:
+        bool: True if successful
+    """
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            if verbose:
+                print("PyTorch CUDA cache cleared")
+        
+        # Clear PyTorch hub cache
+        torch_cache_dir = torch.hub.get_dir()
+        if os.path.exists(torch_cache_dir):
+            for item in os.listdir(torch_cache_dir):
+                item_path = os.path.join(torch_cache_dir, item)
+                if os.path.isdir(item_path):
+                    try:
+                        shutil.rmtree(item_path)
+                        if verbose:
+                            print(f"Removed PyTorch hub cache: {item_path}")
+                    except Exception as e:
+                        if verbose:
+                            print(f"Error removing {item_path}: {e}")
+        
+        return True
+    except Exception as e:
+        if verbose:
+            print(f"Error clearing PyTorch cache: {e}")
+        return False
+
+
+def clear_vscode_cache():
+    """
+    Instructions and helper for clearing VS Code cache.
+    This function provides guidance since VS Code cache clearing requires manual steps.
+    """
+    logger.info("VS Code cache clearing instructions:")
+    
+    vscode_cache_paths = []
+    
+    # Windows paths
+    if os.name == 'nt':
+        user_profile = os.environ.get('USERPROFILE', '')
+        vscode_cache_paths.extend([
+            os.path.join(user_profile, 'AppData', 'Roaming', 'Code', 'CachedData'),
+            os.path.join(user_profile, 'AppData', 'Roaming', 'Code', 'logs'),
+            os.path.join(user_profile, 'AppData', 'Roaming', 'Code', 'User', 'workspaceStorage'),
+            os.path.join(user_profile, '.vscode', 'extensions'),
+        ])
+    
+    # macOS paths
+    elif os.name == 'posix' and 'Darwin' in os.uname().sysname:
+        home = os.path.expanduser('~')
+        vscode_cache_paths.extend([
+            os.path.join(home, 'Library', 'Application Support', 'Code', 'CachedData'),
+            os.path.join(home, 'Library', 'Application Support', 'Code', 'logs'),
+            os.path.join(home, 'Library', 'Application Support', 'Code', 'User', 'workspaceStorage'),
+            os.path.join(home, '.vscode', 'extensions'),
+        ])
+    
+    # Linux paths
+    else:
+        home = os.path.expanduser('~')
+        vscode_cache_paths.extend([
+            os.path.join(home, '.config', 'Code', 'CachedData'),
+            os.path.join(home, '.config', 'Code', 'logs'),
+            os.path.join(home, '.config', 'Code', 'User', 'workspaceStorage'),
+            os.path.join(home, '.vscode', 'extensions'),
+        ])
+    
+    print("\n" + "="*60)
+    print("VS CODE CACHE CLEARING INSTRUCTIONS")
+    print("="*60)
+    print("\n1. CLOSE VS Code completely before clearing cache")
+    print("\n2. Cache directories to clear:")
+    
+    for path in vscode_cache_paths:
+        if os.path.exists(path):
+            print(f"   ✓ {path}")
+        else:
+            print(f"   ✗ {path} (not found)")
+    
+    print("\n3. Manual steps:")
+    print("   - Close VS Code completely")
+    print("   - Delete the cache directories listed above")
+    print("   - Restart VS Code")
+    
+    print("\n4. VS Code Commands (run in Command Palette):")
+    print("   - 'Developer: Reload Window'")
+    print("   - 'Developer: Reload Window With Extensions Disabled'")
+    print("   - 'Python: Clear Cache and Reload Window'")
+    
+    print("\n5. Workspace-specific cache:")
+    print("   - Close workspace")
+    print("   - Delete .vscode folder in project root")
+    print("   - Reopen workspace")
+    
+    print("="*60)
+    
+    return vscode_cache_paths
+
+
+def clear_workspace_cache(workspace_path=None):
+    """
+    Clear workspace-specific cache files.
+    
+    Args:
+        workspace_path: Path to workspace (default: current directory)
+    """
+    if workspace_path is None:
+        workspace_path = os.getcwd()
+    
+    logger.info(f"Clearing workspace cache in: {workspace_path}")
+    
+    cache_patterns = [
+        '.vscode',
+        '__pycache__',
+        '*.pyc',
+        '*.pyo',
+        '.pytest_cache',
+        '.coverage',
+        'node_modules',
+        '.DS_Store',
+        'Thumbs.db'
+    ]
+    
+    cleared_items = []
+    
+    for root, dirs, files in os.walk(workspace_path):
+        # Clear cache directories
+        for cache_dir in [d for d in dirs if d in cache_patterns]:
+            cache_path = os.path.join(root, cache_dir)
+            try:
+                shutil.rmtree(cache_path)
+                cleared_items.append(cache_path)
+                logger.info(f"Cleared directory: {cache_path}")
+            except Exception as e:
+                logger.warning(f"Could not clear {cache_path}: {e}")
+        
+        # Clear cache files
+        for file in files:
+            if any(file.endswith(pattern.replace('*', '')) for pattern in cache_patterns if '*' in pattern):
+                file_path = os.path.join(root, file)
+                try:
+                    os.remove(file_path)
+                    cleared_items.append(file_path)
+                    logger.info(f"Cleared file: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Could not clear {file_path}: {e}")
+    
+    logger.info(f"Workspace cache clearing completed. Cleared {len(cleared_items)} items.")
+    return cleared_items
 
 
 def adjust_learning_rate(optimizer, epoch, args):

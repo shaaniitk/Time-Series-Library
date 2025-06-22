@@ -164,6 +164,7 @@ def main():
         # Instantiate Exp_Long_Term_Forecast with the updated args
         exp = Exp_Long_Term_Forecast(args)
         log.info("Experiment initialized successfully")
+        log.debug(f"Exp_Long_Term_Forecast instance has scaler_manager: {exp.scaler_manager is not None}")
         
         log.info("Starting training")
         setting = f"{args.model_id}_{args.features}_{args.seq_len}_{args.pred_len}"
