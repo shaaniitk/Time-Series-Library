@@ -487,12 +487,16 @@ class HierarchicalEnhancedAutoformer(nn.Module):
     Complete Hierarchical Enhanced Autoformer integrating all components.
     """
     
-    def __init__(self, configs, quantile_levels: Optional[List[float]] = None,
-                 n_levels=3, wavelet_type='db4', 
-                 fusion_strategy='weighted_concat', use_cross_attention=True):
+    def __init__(self, configs, quantile_levels: Optional[List[float]] = None):
         super(HierarchicalEnhancedAutoformer, self).__init__()
         logger.info("Initializing HierarchicalEnhancedAutoformer")
         
+        # Read hierarchical parameters from configs object with defaults
+        n_levels = getattr(configs, 'n_levels', 3)
+        wavelet_type = getattr(configs, 'wavelet_type', 'db4')
+        fusion_strategy = getattr(configs, 'fusion_strategy', 'weighted_concat')
+        use_cross_attention = getattr(configs, 'use_cross_attention', True)
+
         self.configs = configs
         self.n_levels = n_levels
 
