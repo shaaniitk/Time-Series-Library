@@ -5,6 +5,16 @@ from models import Autoformer, Transformer, TimesNet, Nonstationary_Transformer,
     Koopa, TiDE, FreTS, TimeMixer, TSMixer, SegRNN, MambaSimple, TemporalFusionTransformer, SCINet, PAttn, TimeXer, \
     WPMixer, MultiPatchFormer, EnhancedAutoformer, BayesianEnhancedAutoformer, HierarchicalEnhancedAutoformer
 
+# Import HF models and factory
+from models.HFEnhancedAutoformer import HFEnhancedAutoformer
+from models.HFAdvancedFactory import (
+    HFBayesianEnhancedAutoformer,
+    HFHierarchicalEnhancedAutoformer, 
+    HFQuantileEnhancedAutoformer,
+    HFFullEnhancedAutoformer,
+    create_hf_model_from_config
+)
+
 
 class Exp_Basic(object):
     def __init__(self, args):
@@ -15,6 +25,11 @@ class Exp_Basic(object):
             'EnhancedAutoformer': EnhancedAutoformer,
             'BayesianEnhancedAutoformer': BayesianEnhancedAutoformer,
             'HierarchicalEnhancedAutoformer': HierarchicalEnhancedAutoformer,
+            'HFEnhancedAutoformer': HFEnhancedAutoformer,
+            'HFBayesianEnhancedAutoformer': HFBayesianEnhancedAutoformer,
+            'HFHierarchicalEnhancedAutoformer': HFHierarchicalEnhancedAutoformer,
+            'HFQuantileEnhancedAutoformer': HFQuantileEnhancedAutoformer,
+            'HFFullEnhancedAutoformer': HFFullEnhancedAutoformer,
             'Transformer': Transformer,
             'Nonstationary_Transformer': Nonstationary_Transformer,
             'DLinear': DLinear,
