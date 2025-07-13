@@ -43,11 +43,9 @@ class Decomposition(nn.Module):
         self.eps = 1e-5
 
         self.dwt = DWT1DForward(wave=self.wavelet_name, J=self.level,
-                                use_amp=self.use_amp).cuda() if self.device.type == 'cuda' else DWT1DForward(
-            wave=self.wavelet_name, J=self.level, use_amp=self.use_amp)
+                                use_amp=self.use_amp).to(self.device)
         self.idwt = DWT1DInverse(wave=self.wavelet_name,
-                                 use_amp=self.use_amp).cuda() if self.device.type == 'cuda' else DWT1DInverse(
-            wave=self.wavelet_name, use_amp=self.use_amp)
+                                 use_amp=self.use_amp).to(self.device)
 
         self.input_w_dim = self._dummy_forward(self.input_length) if not self.no_decomposition else [
             self.input_length]  # length of the input seq after decompose
@@ -363,6 +361,10 @@ def afb1d(x, h0, h1, use_amp, mode='zero', dim=-1):
     if not isinstance(h1, torch.Tensor):
         h1 = torch.tensor(np.copy(np.array(h1).ravel()[::-1]),
                           dtype=torch.float, device=x.device)
+
+    # Move filters to the correct device
+    h0 = h0.to(x.device)
+    h1 = h1.to(x.device)
     L = h0.numel()
     L2 = L // 2
     shape = [1, 1, 1, 1]
@@ -459,6 +461,10 @@ def afb1d_atrous(x, h0, h1, mode='periodic', dim=-1, dilation=1):
     if not isinstance(h1, torch.Tensor):
         h1 = torch.tensor(np.copy(np.array(h1).ravel()[::-1]),
                           dtype=torch.float, device=x.device)
+
+    # Move filters to the correct device
+    h0 = h0.to(x.device)
+    h1 = h1.to(x.device)
     L = h0.numel()
     shape = [1, 1, 1, 1]
     shape[d] = L

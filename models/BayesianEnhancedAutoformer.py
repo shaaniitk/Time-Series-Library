@@ -18,8 +18,8 @@ from models.EnhancedAutoformer import EnhancedAutoformer
 from layers.BayesianLayers import BayesianLinear, BayesianConv1d, convert_to_bayesian, collect_kl_divergence, DropoutSampling
 from layers.Embed import DataEmbedding_wo_pos
 from utils.logger import logger
-from argparse import Namespace # For creating a temporary configs object
-from utils.losses import get_loss_function # For checking PinballLoss type
+from argparse import Namespace
+from utils.losses import PinballLoss # More direct import for type checking
 
 class BayesianEnhancedAutoformer(nn.Module):
     """
@@ -32,41 +32,7 @@ class BayesianEnhancedAutoformer(nn.Module):
     - Supports multiple uncertainty estimation methods
     """
     
-    def _setup_bayesian_layers(self, bayesian_layers):
-        """Convert specified layers to Bayesian versions"""
-        logger.info(f"Converting layers to Bayesian: {bayesian_layers}")
-        
-        self.bayesian_layers_list = []
-        
-        if 'projection' in bayesian_layers:
-            projection_found = False
-            
-            if hasattr(self.base_model, 'projection'):
-                original_proj = self.base_model.projection
-                bayesian_proj = BayesianLinear(
-                    original_proj.in_features,
-                    original_proj.out_features,
-                    bias=original_proj.bias is not None
-                )
-                self.base_model.projection = bayesian_proj
-                self.bayesian_layers_list.append(bayesian_proj)
-                projection_found = True
-                logger.info(f"Converted top-level projection: {original_proj.in_features}->{original_proj.out_features}")
-            
-            elif hasattr(self.base_model, 'decoder') and hasattr(self.base_model.decoder, 'projection'):
-                original_proj = self.base_model.decoder.projection
-                bayesian_proj = BayesianLinear(
-                    original_proj.in_features,
-                    original_proj.out_features,
-                    bias=original_proj.bias is not None
-                )
-                self.base_model.decoder.projection = bayesian_proj
-                self.bayesian_layers_list.append(bayesian_proj)
-                projection_found = True
-                logger.info(f"Converted decoder projection: {original_proj.in_features}->{original_proj.out_features}")
-            
-            if not projection_found:
-                logger.warning("No projection layer found to convert to Bayesian!")
+   
         
     def _setup_dropout_layers(self):
         """Add Monte Carlo dropout layers for uncertainty estimation"""
@@ -130,21 +96,46 @@ class BayesianEnhancedAutoformer(nn.Module):
             logger.info(f"BayesianEnhancedAutoformer: Added quantile expansion layer {self.original_c_out} -> {self.c_out}")
         
         if uncertainty_method == 'bayesian':
-            self._setup_bayesian_layers(bayesian_layers)
+            logger.info(f"Converting layers to Bayesian: {bayesian_layers}")
+            # This is the safe way to convert layers.
+            self.bayesian_layers_list = convert_to_bayesian(self.base_model, bayesian_layers)
+            logger.info(f"Converted {len(self.bayesian_layers_list)} layers to Bayesian.")
         elif uncertainty_method == 'dropout':
             self._setup_dropout_layers()
+
         
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
-                return_uncertainty=False, detailed_uncertainty=False):
-        if not return_uncertainty:
-            return self._single_forward(x_enc, x_mark_enc, x_dec, x_mark_dec)
+    def _bayesian_forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, detailed=False):
+        """
+        Performs forward pass with Bayesian sampling for uncertainty estimation.
+        This version fixes the gradient tracking issues of the original implementation.
+        """
+        logger.debug(f"Computing Bayesian uncertainty with {self.n_samples} samples")
         
-        if self.uncertainty_method == 'bayesian':
-            return self._bayesian_forward(x_enc, x_mark_enc, x_dec, x_mark_dec, detailed_uncertainty)
-        elif self.uncertainty_method == 'dropout':
-            return self._dropout_forward(x_enc, x_mark_enc, x_dec, x_mark_dec, detailed_uncertainty)
-        else:
-            raise ValueError(f"Unknown uncertainty method: {self.uncertainty_method}")
+        # Create a list to store predictions from each sample
+        predictions = []
+
+        # The context manager for gradients depends on whether we are training or evaluating.
+        # During training, we need gradients for all samples to properly train the distributions.
+        # During evaluation, we don't need any gradients.
+        grad_context = torch.enable_grad if self.training else torch.no_grad
+
+        with grad_context():
+            for _ in range(self.n_samples):
+                # Each call to _single_forward will produce a different result
+                # because the Bayesian layers will sample new weights.
+                pred = self._single_forward(x_enc, x_mark_enc, x_dec, x_mark_dec)
+                predictions.append(pred)
+
+        # Stack the predictions to compute statistics
+        # Shape: [n_samples, batch_size, pred_len, c_out]
+        pred_stack = torch.stack(predictions)
+        
+        # During evaluation, we detach the stack from the computation graph
+        # as we only need the final statistics.
+        if not self.training:
+            pred_stack = pred_stack.detach()
+
+        return self._compute_uncertainty_statistics(pred_stack, detailed)
     
     def _single_forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         if self.uncertainty_method == 'dropout':
@@ -163,10 +154,14 @@ class BayesianEnhancedAutoformer(nn.Module):
     def _bayesian_forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, detailed=False):
         logger.debug(f"Computing Bayesian uncertainty with {self.n_samples} samples")
         predictions = []
+        # When training, enable gradients for all samples to update distributions.
+        # When evaluating, only the first sample needs gradients for the prediction.
+        grad_context = torch.enable_grad if self.training else torch.no_grad
+
         for i in range(self.n_samples):
-            with torch.no_grad() if i > 0 else torch.enable_grad():
+            with torch.enable_grad() if i == 0 else grad_context():
                 pred = self._single_forward(x_enc, x_mark_enc, x_dec, x_mark_dec)
-                predictions.append(pred.detach() if i > 0 else pred)
+                predictions.append(pred.detach() if i > 0 and not self.training else pred)
         pred_stack = torch.stack(predictions)
         return self._compute_uncertainty_statistics(pred_stack, detailed)
     
@@ -196,8 +191,6 @@ class BayesianEnhancedAutoformer(nn.Module):
         }
         if self.is_quantile_mode and self.quantiles:
             result.update(self._compute_quantile_uncertainty(pred_stack, self.quantiles))
-        if detailed:
-            result.update(self._compute_detailed_uncertainty(pred_stack))
         return result
     
     def _compute_confidence_intervals(self, pred_stack, confidence_levels=[0.68, 0.95, 0.99]):
@@ -220,6 +213,8 @@ class BayesianEnhancedAutoformer(nn.Module):
             return {}
         n_quantiles = len(self.quantiles)
         batch_size, seq_len, total_features = pred_stack.shape[1], pred_stack.shape[2], pred_stack.shape[3]
+        if total_features % n_quantiles != 0:
+            raise ValueError(f"Total features ({total_features}) must be divisible by the number of quantiles ({n_quantiles})")
         features_per_quantile = total_features // n_quantiles
         quantile_results = {}
         for i, q_level in enumerate(current_quantiles_list):
@@ -253,20 +248,19 @@ class BayesianEnhancedAutoformer(nn.Module):
         certainty = 1.0 / (1.0 + cv)
         return certainty
     
-    def _compute_detailed_uncertainty(self, pred_stack):
-        total_var = torch.var(pred_stack, dim=0)
-        epistemic_var = total_var * 0.7
-        aleatoric_var = total_var - epistemic_var
-        return {
-            'epistemic_uncertainty': torch.sqrt(epistemic_var),
-            'aleatoric_uncertainty': torch.sqrt(aleatoric_var),
-            'total_uncertainty_decomposed': torch.sqrt(total_var)
-        }
-    
-    def get_kl_loss(self):
+    def get_kl_loss(self, max_kl_value=1e6):
         if self.uncertainty_method != 'bayesian':
             return 0.0
-        return collect_kl_divergence(self) * self.kl_weight_param
+        
+        kl_div = collect_kl_divergence(self)
+        
+        # Clip KL divergence to prevent instability
+        kl_div_clipped = torch.clamp(kl_div, max=max_kl_value)
+        
+        if kl_div > kl_div_clipped:
+            logger.warning(f"Clipped KL divergence from {kl_div:.4f} to {kl_div_clipped:.4f}")
+
+        return kl_div_clipped * self.kl_weight_param
 
     def compute_loss(self, predictions, targets, base_criterion, return_components=False):
         """
@@ -315,7 +309,7 @@ class BayesianEnhancedAutoformer(nn.Module):
                     logger.info(f"Bayesian Loss - Data: {recent['data_loss']:.6f}, KL: {recent['kl_contribution']:.6f}, Total: {recent['total_loss']:.6f}")
             return loss_components['total_loss']
         
-        if isinstance(base_criterion, get_loss_function('pinball', quantile_levels=[0.5]).__class__):
+        if isinstance(base_criterion, PinballLoss):
             enhanced_bayesian_loss._is_pinball_loss_based = True
             logger.info("BayesianEnhancedAutoformer: Wrapped loss is PinballLoss based.")
             

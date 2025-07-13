@@ -68,6 +68,9 @@ class AdaptiveAutoCorrelation(nn.Module):
             min_k = max(2, int(0.1 * math.log(length)))
             max_k = min(int(0.3 * length), int(self.factor * math.log(length) * 2))
             
+            if min_k > max_k:
+                max_k = min_k
+            
             adaptive_k = torch.clamp(elbow_candidates, min_k, max_k)
             
             # Use median across batch for stability

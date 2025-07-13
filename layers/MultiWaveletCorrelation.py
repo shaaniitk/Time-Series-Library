@@ -298,7 +298,7 @@ class MultiWaveletCross(nn.Module):
         self.out = nn.Linear(c * k, ich)
         self.modes1 = modes
 
-    def forward(self, q, k, v, mask=None):
+    def forward(self, q, k, v, seq_len_q, seq_len_kv, mask=None):
         B, N, H, E = q.shape  # (B, N, H, E) torch.Size([3, 768, 8, 2])
         _, S, _, _ = k.shape  # (B, S, H, E) torch.Size([3, 96, 8, 2])
 

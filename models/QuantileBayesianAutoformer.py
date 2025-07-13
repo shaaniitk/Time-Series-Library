@@ -4,6 +4,7 @@ Combined Bayesian Autoformer with KL Loss + Quantile Loss
 Normalized contributions that sum to 1.0
 """
 
+from argparse import Namespace
 import torch
 import torch.nn as nn
 import numpy as np
@@ -36,16 +37,20 @@ class QuantileBayesianAutoformer(BayesianEnhancedAutoformer):
         logger.info(f"Initializing QuantileBayesianAutoformer with {self.n_quantiles} quantiles: {quantiles}")
         logger.info(f"Loss weights: KL={self.kl_weight:.3f}, Quantile={self.quantile_weight:.3f}")
         
-        # Modify configs to output quantiles for each target
-        original_c_out = configs.c_out
-        configs.c_out = original_c_out * self.n_quantiles  # Expand output for quantiles
+        # Create a defensive copy of configs to avoid mutation
+        configs_copy_dict = vars(configs).copy()
+        original_c_out = configs_copy_dict['c_out']
+        
+        # Modify the copy to output quantiles for each target
+        configs_copy_dict['c_out'] = original_c_out * self.n_quantiles
+        configs_for_parent = Namespace(**configs_copy_dict)
         
         # Store original target count for later use
         self.original_c_out = original_c_out
         
         # Initialize parent Bayesian model
         super(QuantileBayesianAutoformer, self).__init__(
-            configs, 
+            configs_for_parent,
             uncertainty_method=uncertainty_method,
             bayesian_layers=bayesian_layers,
             kl_weight=1.0  # We'll handle normalization in compute_loss

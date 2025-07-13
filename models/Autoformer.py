@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers.Embed import DataEmbedding, DataEmbedding_wo_pos
 from layers.AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
-from layers.Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLayer, my_Layernorm, series_decomp
+from layers.Normalization import get_norm_layer
 import math
 import numpy as np
 from utils.logger import logger
@@ -43,10 +43,10 @@ class Model(nn.Module):
                     configs.d_ff,
                     moving_avg=configs.moving_avg,
                     dropout=configs.dropout,
-                    activation=configs.activation
+        self.activation = getattr(F, configs.activation, F.relu)
                 ) for l in range(configs.e_layers)
             ],
-            norm_layer=my_Layernorm(configs.d_model)
+            norm_layer=get_norm_layer(configs.norm_type, configs.d_model)
         )
         # Decoder
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
@@ -68,11 +68,11 @@ class Model(nn.Module):
                         configs.d_ff,
                         moving_avg=configs.moving_avg,
                         dropout=configs.dropout,
-                        activation=configs.activation,
+            self.activation = getattr(F, configs.activation, F.relu),
                     )
                     for l in range(configs.d_layers)
                 ],
-                norm_layer=my_Layernorm(configs.d_model),
+                norm_layer=get_norm_layer(configs.norm_type, configs.d_model),
                 projection=nn.Linear(configs.d_model, configs.c_out, bias=True) # c_out is model output size
             )
         if self.task_name == 'imputation':

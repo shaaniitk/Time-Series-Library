@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from layers.Embed import DataEmbedding_wo_pos
-from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelation, AdaptiveAutoCorrelationLayer
-from layers.Autoformer_EncDec import my_Layernorm
+from layers.Attention import get_attention_layer
+from layers.Normalization import get_norm_layer
 import math
 import numpy as np # type: ignore
 from utils.logger import logger
@@ -50,6 +50,9 @@ class LearnableSeriesDecomp(nn.Module):
         
     def forward(self, x):
         """
+        Vectorized implementation of the forward pass.
+        Groups samples by predicted kernel size to avoid looping over the batch.
+        
         Args:
             x: [B, L, D] input time series
             
@@ -59,59 +62,55 @@ class LearnableSeriesDecomp(nn.Module):
         """
         B, L, D = x.shape
         assert D == self.input_dim, f"Input feature dimension mismatch. Expected {self.input_dim}, got {D}"
+
+        # Predict optimal kernel size for each sample (vectorized)
+        x_global = x.mean(dim=1)
+        kernel_logits = self.kernel_predictor(x_global)
+        predicted_k_float = (kernel_logits * (self.max_kernel_size - 5) + 5)
+
+        # Calculate kernel sizes for the whole batch
+        k_float = predicted_k_float.squeeze(-1)
+        kernel_sizes = torch.round(k_float).int()
+        kernel_sizes = torch.clamp(kernel_sizes, 3, min(self.max_kernel_size, L // 2))
+        # Make kernel sizes odd
+        kernel_sizes = kernel_sizes - (kernel_sizes % 2 == 0).int()
+        kernel_sizes = torch.clamp(kernel_sizes, min=3)
+
+        trend = torch.zeros_like(x)
         
-        # Predict optimal kernel size for each sample
-        # Use global average to determine kernel size
-        x_global = x.mean(dim=1)  # [B, D] - average over time for each feature
-        kernel_logits = self.kernel_predictor(x_global)  # [B, 1]
-        
-        # Convert to kernel size (between 5 and max_kernel_size)
-        # Ensure kernel_sizes are odd and within reasonable bounds for each sample
-        # The kernel_predictor outputs values between 0 and 1. Scale and round.
-        predicted_k_float = (kernel_logits * (self.max_kernel_size - 5) + 5) # [B, 1]
-        
-        # Batch-wise processing with different kernel sizes
-        seasonal_outputs = []
-        trend_outputs = []
-        
-        # Process each sample in the batch
-        for b in range(B):
-            # For each sample, determine a single kernel size k
-            k_float = predicted_k_float[b].item() 
-            k = max(3, min(int(round(k_float)), self.max_kernel_size, L // 2)) # Ensure k is at most L/2
-            if k % 2 == 0: k -=1 # make it odd for symmetric padding, helps maintain sequence length
-            k = max(3, k) # ensure min kernel size 3 for meaningful convolution
+        # Group samples by kernel size to process them in batches
+        unique_kernels = torch.unique(kernel_sizes)
+
+        for k_val in unique_kernels:
+            k = k_val.item()
             
-            # Get the feature-specific weights, truncated to current kernel size k
-            # self.feature_specific_trend_weights is [D, 1, K_max]
-            # We need weights of shape [D, 1, k] for conv1d with groups=D
-            current_weights_unnormalized = self.feature_specific_trend_weights[:, :, :k] # [D, 1, k]
+            # Find indices of samples that use this kernel size
+            indices = torch.where(kernel_sizes == k)[0]
             
-            # Normalize them per feature (e.g., softmax or simple division to act like moving avg weights)
-            normalized_weights = F.softmax(current_weights_unnormalized, dim=2) # Softmax over the kernel dimension for each feature
+            # Gather the samples for the current kernel size
+            batch_subset = x[indices]
             
-            # Padding for convolution to maintain length
+            # Prepare for convolution
             padding = k // 2
-            sample_x_b_permuted = x[b:b+1].transpose(1, 2)  # [1, D, L]
-            x_padded = F.pad(sample_x_b_permuted, (padding, padding), mode='replicate') # [1, D, L_padded]
+            subset_permuted = batch_subset.transpose(1, 2)
+            subset_padded = F.pad(subset_permuted, (padding, padding), mode='replicate')
             
-            # Apply convolution with learnable weights
-            trend_b_conv = F.conv1d(
-                x_padded,
-                normalized_weights, # [D, 1, k] - PyTorch handles broadcasting the batch dim for weights
+            # Get and normalize weights for this kernel size
+            current_weights_unnormalized = self.feature_specific_trend_weights[:, :, :k]
+            normalized_weights = F.softmax(current_weights_unnormalized, dim=2)
+            
+            # Perform convolution on the subset
+            trend_conv = F.conv1d(
+                subset_padded,
+                normalized_weights,
                 groups=self.input_dim,
                 padding=0
-            ) # Output: [1, D, L]
+            )
             
-            trend_b_final = trend_b_conv.transpose(1, 2)  # [1, L, D]
-            seasonal_b_final = x[b:b+1] - trend_b_final
-            
-            seasonal_outputs.append(seasonal_b_final)
-            trend_outputs.append(trend_b_final)
-        
-        seasonal = torch.cat(seasonal_outputs, dim=0)
-        trend = torch.cat(trend_outputs, dim=0)
-        
+            # Scatter the results back to their original positions
+            trend[indices] = trend_conv.transpose(1, 2)
+
+        seasonal = x - trend
         return seasonal, trend
 
 
@@ -142,7 +141,7 @@ class EnhancedEncoderLayer(nn.Module):
         self.decomp2 = LearnableSeriesDecomp(d_model)
         
         self.dropout = nn.Dropout(dropout)
-        self.activation = F.relu if activation == "relu" else F.gelu
+        self.activation = getattr(F, activation, F.relu)
         
         # Layer scaling for better gradient flow
         self.attention_scale = nn.Parameter(torch.ones(1) * 0.1)
@@ -187,13 +186,6 @@ class EnhancedEncoder(nn.Module):
         self.attn_layers = nn.ModuleList(attn_layers)
         self.conv_layers = nn.ModuleList(conv_layers) if conv_layers is not None else None
         self.norm = norm_layer
-        
-        # Cross-layer connections for better information flow
-        if len(attn_layers) > 1:
-            self.cross_layer_connections = nn.ModuleList([
-                nn.Linear(attn_layers[0].attention.inner_correlation.factor * 64, 64)  # Adjust based on d_model
-                for _ in range(len(attn_layers) - 1)
-            ])
 
     def forward(self, x, attn_mask=None):
         attns = []
@@ -252,7 +244,7 @@ class EnhancedDecoderLayer(nn.Module):
             nn.Conv1d(in_channels=d_model, out_channels=c_out, kernel_size=1, bias=False)
         )
         
-        self.activation = F.relu if activation == "relu" else F.gelu
+        self.activation = getattr(F, activation, F.relu)
         
         # Attention scaling
         self.self_attn_scale = nn.Parameter(torch.ones(1) * 0.1)
@@ -398,20 +390,7 @@ class EnhancedAutoformer(nn.Module):
         # Enhanced encoder with adaptive autocorrelation
         enhanced_autocorr_layers = []
         for l in range(configs.e_layers):
-            adaptive_autocorr = AdaptiveAutoCorrelation(
-                False, configs.factor, 
-                attention_dropout=configs.dropout,
-                output_attention=False,
-                adaptive_k=True,
-                multi_scale=True,
-                scales=[1, 2, 4]  # Multi-scale analysis
-            )
-            
-            autocorr_layer = AdaptiveAutoCorrelationLayer(
-                adaptive_autocorr,
-                configs.d_model, 
-                configs.n_heads
-            )
+            autocorr_layer = get_attention_layer(configs)
             
             enhanced_layer = EnhancedEncoderLayer(
                 autocorr_layer,
@@ -424,7 +403,7 @@ class EnhancedAutoformer(nn.Module):
 
         self.encoder = EnhancedEncoder(
             enhanced_autocorr_layers,
-            norm_layer=my_Layernorm(configs.d_model)
+            norm_layer=get_norm_layer(configs.norm_type, configs.d_model)
         )
 
         # Enhanced decoder for forecasting tasks
@@ -434,34 +413,9 @@ class EnhancedAutoformer(nn.Module):
             
             enhanced_decoder_layers = []
             for l in range(configs.d_layers):
-                # Self-attention
-                self_adaptive_autocorr = AdaptiveAutoCorrelation(
-                    True, configs.factor,
-                    attention_dropout=configs.dropout,
-                    output_attention=False,
-                    adaptive_k=True,
-                    multi_scale=True,
-                    scales=[1, 2]  # Smaller scales for decoder
-                )
-                self_autocorr_layer = AdaptiveAutoCorrelationLayer(
-                    self_adaptive_autocorr,
-                    configs.d_model,
-                    configs.n_heads
-                )
+                self_autocorr_layer = get_attention_layer(configs)
                 
-                # Cross-attention
-                cross_adaptive_autocorr = AdaptiveAutoCorrelation(
-                    False, configs.factor,
-                    attention_dropout=configs.dropout,
-                    output_attention=False,
-                    adaptive_k=True,
-                    multi_scale=False  # Single scale for cross-attention
-                )
-                cross_autocorr_layer = AdaptiveAutoCorrelationLayer(
-                    cross_adaptive_autocorr,
-                    configs.d_model,
-                    configs.n_heads
-                )
+                cross_autocorr_layer = get_attention_layer(configs)
                 
                 enhanced_decoder_layer = EnhancedDecoderLayer(
                     self_autocorr_layer,
@@ -476,7 +430,7 @@ class EnhancedAutoformer(nn.Module):
 
             self.decoder = EnhancedDecoder(
                 enhanced_decoder_layers,
-                norm_layer=my_Layernorm(configs.d_model),
+                norm_layer=get_norm_layer(configs.norm_type, configs.d_model),
                 # Output layer dimension is now configs.c_out, which is set by DimensionManager
                 projection=nn.Linear(self.d_model, self.c_out, bias=True)
             )
@@ -540,6 +494,12 @@ class EnhancedAutoformer(nn.Module):
         # seasonal_part shape: [B, L, num_target_variables * num_quantiles] if quantile_mode
         # trend_part shape:    [B, L, num_target_variables]
         if self.is_quantile_mode and self.num_quantiles > 1:
+            # Add validation for robust reshaping
+            total_features = seasonal_part.shape[-1]
+            expected_features = self.num_target_variables * self.num_quantiles
+            assert total_features == expected_features, \
+                f"Shape mismatch for quantile reshape. Expected {expected_features} features, but got {total_features}."
+
             # Reshape seasonal_part (which is [B, L, C_model]) to [B, L, num_target_variables, num_quantiles]
             s_reshaped = seasonal_part.view(
                 seasonal_part.size(0), seasonal_part.size(1),

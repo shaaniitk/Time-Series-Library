@@ -172,7 +172,7 @@ class FinancialDataManager:
         # Ensure date column exists and is properly formatted
         # _load_file should have already handled date index -> column conversion
         if 'date' in df.columns:
-            df['date'] = pd.to_datetime(df['date'])
+            df['date'] = pd.to_datetime(df['date'], format="%d-%m-%Y")
             df = df.sort_values('date').reset_index(drop=True)
             self.date_column = 'date'
         else:

@@ -92,6 +92,8 @@ def main():
             args.activation = 'gelu'  # Default activation
         if not hasattr(args, 'output_attention'):
             args.output_attention = False  # Default output_attention
+        if not hasattr(args, 'scale'):
+            args.scale = True # Default to True as the pipeline is designed for it
         
         # Add common missing architectural/task defaults if not present in config
         if not hasattr(args, 'task_name'):

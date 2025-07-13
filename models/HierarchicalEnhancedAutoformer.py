@@ -64,14 +64,22 @@ class WaveletHierarchicalDecomposer(nn.Module):
         """
         batch_size, seq_len, d_model = x.shape
         
+        # Check for DWT compatibility before attempting the transform
+        if seq_len < 2 ** self.levels:
+            logger.warning(
+                f"Sequence length {seq_len} is too short for {self.levels} DWT levels. "
+                f"Required minimum length is {2 ** self.levels}. Using fallback decomposition."
+            )
+            return self._fallback_decomposition(x)
+
         # Prepare input for DWT (needs [B, C, L] format)
         x_dwt = x.transpose(1, 2)  # [B, d_model, seq_len]
         
         # Apply DWT decomposition
         try:
             low_freq, high_freqs = self.dwt_forward(x_dwt)
-        except Exception as e:
-            logger.warning(f"DWT failed, using fallback decomposition: {e}")
+        except (ValueError, RuntimeError) as e:
+            logger.error(f"DWT failed with a critical error: {e}", exc_info=True)
             return self._fallback_decomposition(x)
         
         # Process decomposed components
@@ -149,6 +157,7 @@ class CrossResolutionAttention(nn.Module):
         self.n_levels = n_levels
         self.d_model = d_model
         self.n_heads = n_heads
+        assert d_model % n_heads == 0, "d_model must be divisible by n_heads"
         self.head_dim = d_model // n_heads
         self.use_multiwavelet = use_multiwavelet
         
@@ -157,10 +166,8 @@ class CrossResolutionAttention(nn.Module):
             self.cross_res_attention = nn.ModuleList([
                 MultiWaveletCross(
                     in_channels=self.head_dim,  # Dimension per head (e.g., 64)
-                    out_channels=self.head_dim, # Dimension per head (e.g., 64)
-                    seq_len_q=96,  # Will be adapted dynamically
-                    seq_len_kv=96,
-                    modes=min(32, self.head_dim // 2),
+                    out_channels=self.head_dim, # Dimension per head (e.g., 64) 
+                    modes=min(32, self.head_dim // 2), # seq_len_q and seq_len_kv will be set dynamically
                     c=64,
                     k=8,
                     ich=d_model,  # Total dimension (e.g., 512)
@@ -174,9 +181,6 @@ class CrossResolutionAttention(nn.Module):
                 nn.MultiheadAttention(d_model, n_heads, batch_first=True)
                 for _ in range(n_levels - 1)
             ])
-        
-        # Learnable fusion weights for cross-resolution features
-        self.fusion_weights = nn.Parameter(torch.ones(n_levels) / n_levels)
         
         # Cross-resolution projection layers
         self.cross_projections = nn.ModuleList([
@@ -211,8 +215,8 @@ class CrossResolutionAttention(nn.Module):
                     cross_attended = self._apply_multiwavelet_cross(
                         coarse_features, aligned_fine, i
                     )
-                except Exception as e:
-                    logger.warning(f"MultiWavelet cross-attention failed, using fallback: {e}")
+                except (AttributeError, RuntimeError) as e:
+                    logger.error(f"MultiWavelet cross-attention failed with a critical error: {e}", exc_info=True)
                     cross_attended = self._apply_standard_attention(
                         coarse_features, aligned_fine, i
                     )
@@ -255,9 +259,14 @@ class CrossResolutionAttention(nn.Module):
         value_4d = key_4d  # Use same as key for cross-attention style
         
         # Apply MultiWaveletCross
-        attended, _ = self.cross_res_attention[layer_idx](query_4d, key_4d, value_4d)
+        # BUG FIX: Was calling an undefined function 'attention_layer'.
+        # Corrected to call the appropriate module from the list.
+        attention_layer = self.cross_res_attention[layer_idx]
+        attended, _ = attention_layer(
+            query_4d, key_4d, value_4d, query_features.size(1), key_value_features.size(1)
+        )
         
-        # Reshape back to 3D: (B, N, D)  
+        # Reshape back to 3D: (B, N, D)
         attended = attended.view(batch_size, seq_len, d_model)
         
         return attended
@@ -277,45 +286,48 @@ class HierarchicalEncoder(nn.Module):
     Hierarchical encoder that processes multiple resolutions with Enhanced Autoformer layers.
     """
     
-    def __init__(self, configs, n_levels=3, use_enhanced_layers=True):
+    def __init__(self, configs, n_levels=3, use_enhanced_layers=True, share_weights=False):
         super(HierarchicalEncoder, self).__init__()
         logger.info(f"Initializing HierarchicalEncoder with {n_levels} levels")
         
         self.n_levels = n_levels
         self.d_model = configs.d_model
+        self.share_weights = share_weights
         
         # Multi-resolution Enhanced Autoformer encoders
-        if use_enhanced_layers:
+        try:
             from models.EnhancedAutoformer import EnhancedEncoder, EnhancedEncoderLayer
-            from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelationLayer, AdaptiveAutoCorrelation
-            
-            self.resolution_encoders = nn.ModuleList()
-            for i in range(n_levels):
-                # Create Enhanced encoder for each resolution
-                encoder_layers = [
-                    EnhancedEncoderLayer(
-                        AdaptiveAutoCorrelationLayer(
-                            AdaptiveAutoCorrelation(
-                                factor=configs.factor,
-                                attention_dropout=configs.dropout,
-                                output_attention=False,
-                                adaptive_k=True,
-                                multi_scale=True
-                            ),
-                            configs.d_model,
-                            configs.n_heads
-                        ),
-                        configs.d_model,
-                        configs.d_ff,
-                        dropout=configs.dropout,
-                        activation=configs.activation
-                    ) for _ in range(configs.e_layers)
-                ]
+            from layers.Attention import get_attention_layer
+            from layers.Normalization import get_norm_layer
+
+            def create_single_encoder():
+                """Helper function to create one encoder instance"""
+                enhanced_autocorr_layers = []
+                for _ in range(configs.e_layers):
+                    autocorr_layer = get_attention_layer(configs)
+                    enhanced_layer = EnhancedEncoderLayer(
+                        autocorr_layer, configs.d_model, configs.d_ff,
+                        dropout=configs.dropout, activation=configs.activation
+                    )
+                    enhanced_autocorr_layers.append(enhanced_layer)
                 
-                encoder = EnhancedEncoder(encoder_layers, norm_layer=torch.nn.LayerNorm(configs.d_model))
-                self.resolution_encoders.append(encoder)
-        else:
-            # Fallback to simpler encoders
+                encoder = EnhancedEncoder(
+                    enhanced_autocorr_layers,
+                    norm_layer=get_norm_layer(configs.norm_type, configs.d_model)
+                )
+                return encoder
+
+            if self.share_weights:
+                logger.info(f"Using one shared encoder for all {n_levels} levels.")
+                shared_encoder = create_single_encoder()
+                self.resolution_encoders = nn.ModuleList([shared_encoder] * n_levels)
+            else:
+                logger.info(f"Initialized {n_levels} separate encoders.")
+                self.resolution_encoders = nn.ModuleList([create_single_encoder() for _ in range(n_levels)])
+            
+            logger.info(f"Successfully initialized EnhancedAutoformer encoders.")
+        except ImportError as e:
+            logger.warning(f"Failed to import EnhancedAutoformer components: {e}. Using fallback.")
             self.resolution_encoders = nn.ModuleList([
                 nn.TransformerEncoder(
                     nn.TransformerEncoderLayer(
@@ -344,8 +356,8 @@ class HierarchicalEncoder(nn.Module):
                         base='legendre'
                     ) for _ in range(n_levels)
                 ])
-            except Exception as e:
-                logger.warning(f"Failed to initialize MultiWaveletTransform: {e}")
+            except ImportError as e:
+                logger.warning(f"Failed to import MultiWaveletTransform: {e}")
                 self.use_multiwavelet = False
     
     def forward(self, multi_res_features, attn_mask=None):
@@ -372,8 +384,8 @@ class HierarchicalEncoder(nn.Module):
                         features_adapted, features_adapted, features_adapted, attn_mask
                     )
                     features = features_wavelet.squeeze(2)
-                except Exception as e:
-                    logger.debug(f"MultiWavelet transform failed for level {i}: {e}")
+                except (AttributeError, RuntimeError) as e:
+                    logger.error(f"MultiWavelet transform failed for level {i} with a critical error: {e}", exc_info=True)
             
             # Apply resolution-specific encoder
             if hasattr(encoder, 'forward'):
@@ -455,18 +467,22 @@ class HierarchicalFusion(nn.Module):
         
         # Apply fusion strategy
         if self.fusion_strategy == 'weighted_concat':
+            # Apply learnable weights to each aligned feature before concatenation
+            weights = F.softmax(self.fusion_weights, dim=0)
+            weighted_aligned_features = [
+                features * weights[i] for i, features in enumerate(aligned_features)
+            ]
             # Concatenate and project
-            concatenated = torch.cat(aligned_features, dim=-1)
+            concatenated = torch.cat(weighted_aligned_features, dim=-1)
             fused = self.fusion_projection(concatenated)
             
         elif self.fusion_strategy == 'weighted_sum':
             # Weighted sum of features
             fused = torch.zeros_like(aligned_features[0])
             weights = F.softmax(self.fusion_weights, dim=0)
-            
             for i, features in enumerate(aligned_features):
                 fused += weights[i] * features
-                
+
         elif self.fusion_strategy == 'attention_fusion':
             # Use attention to fuse features
             stacked_features = torch.stack(aligned_features, dim=2)  # [B, L, n_levels, D]
@@ -484,7 +500,11 @@ class HierarchicalFusion(nn.Module):
 
 class HierarchicalEnhancedAutoformer(nn.Module):
     """
-    Complete Hierarchical Enhanced Autoformer integrating all components.
+    Complete Hierarchical Enhanced Autoformer.
+
+    This version refactors the decoder to be more efficient. Instead of a full
+    hierarchical decoder, it fuses the multi-scale encoder outputs and uses a
+    single, standard EnhancedDecoder.
     """
     
     def __init__(self, configs, quantile_levels: Optional[List[float]] = None):
@@ -495,6 +515,7 @@ class HierarchicalEnhancedAutoformer(nn.Module):
         n_levels = getattr(configs, 'n_levels', 3)
         wavelet_type = getattr(configs, 'wavelet_type', 'db4')
         fusion_strategy = getattr(configs, 'fusion_strategy', 'weighted_concat')
+        share_encoder_weights = getattr(configs, 'share_encoder_weights', False)
         use_cross_attention = getattr(configs, 'use_cross_attention', True)
 
         self.configs = configs
@@ -532,10 +553,48 @@ class HierarchicalEnhancedAutoformer(nn.Module):
         )
         
         # Hierarchical encoder
-        self.encoder = HierarchicalEncoder(configs, n_levels=n_levels)
+        self.encoder = HierarchicalEncoder(configs, n_levels=n_levels, share_weights=share_encoder_weights)
         
-        # Hierarchical decoder (PROPER DECODER!)
-        self.decoder = HierarchicalDecoder(configs, n_levels=n_levels)
+        # --- DECODER REFACTOR ---
+        # Replace HierarchicalDecoder with a single, more efficient EnhancedDecoder.
+        from models.EnhancedAutoformer import EnhancedDecoder, EnhancedDecoderLayer
+        from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelationLayer, AdaptiveAutoCorrelation
+
+        decoder_layers = []
+        for _ in range(configs.d_layers):
+            # Self-attention in decoder
+            self_adaptive_autocorr = AdaptiveAutoCorrelation(
+                True, configs.factor,
+                attention_dropout=configs.dropout,
+                output_attention=False,
+                adaptive_k=True,
+                multi_scale=True,
+                scales=[1, 2]
+            )
+            self_autocorr_layer = AdaptiveAutoCorrelationLayer(self_adaptive_autocorr, configs.d_model, configs.n_heads)
+            
+            # Cross-attention with encoder
+            cross_adaptive_autocorr = AdaptiveAutoCorrelation(
+                False, configs.factor,
+                attention_dropout=configs.dropout,
+                output_attention=False,
+                adaptive_k=True,
+                multi_scale=False
+            )
+            cross_autocorr_layer = AdaptiveAutoCorrelationLayer(cross_adaptive_autocorr, configs.d_model, configs.n_heads)
+            
+            decoder_layers.append(EnhancedDecoderLayer(
+                self_autocorr_layer,
+                cross_autocorr_layer,
+                configs.d_model,
+                self.num_target_variables, # Trend part dim
+                configs.d_ff,
+                dropout=configs.dropout,
+                activation=configs.activation,
+            ))
+
+        self.decoder = EnhancedDecoder(decoder_layers, norm_layer=torch.nn.LayerNorm(configs.d_model),
+                                       projection=nn.Linear(configs.d_model, self.c_out, bias=True)) # Seasonal part dim
         
         # Hierarchical decomposition for trend/seasonal initialization
         self.decomp = LearnableSeriesDecomp(input_dim=configs.dec_in, init_kernel_size=25)
@@ -564,127 +623,71 @@ class HierarchicalEnhancedAutoformer(nn.Module):
         self.projection = nn.Linear(configs.c_out, 
                                      self.c_out, bias=True) # Project to c_out_model
         
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
-                enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
-        """
-        Hierarchical Enhanced Autoformer forward pass with PROPER DECODER.
-        """
-        # PROPER AUTOFORMER-STYLE FORECASTING
-        
-        # Enhanced decomposition initialization on the full decoder input (x_dec)
-        # seasonal_init_full and trend_init_full will have shape [B, L, configs.dec_in] (e.g., 118 features)
+    def _prepare_decoder_inputs(self, x_dec):
         seasonal_init_full, trend_init_full = self.decomp(x_dec)
 
-        # --- Prepare trend_init for decoder accumulation ---
-        # This trend is accumulated in the decoder and must match the output dimension of EnhancedDecoderLayer's projection.
-        # EnhancedDecoderLayer's projection outputs `self.num_target_variables` features (e.g., 4).
-        # So, we take only the target part of the initial trend.
         trend_init_for_decoder_accumulation = trend_init_full[:, :, :self.num_target_variables]
-
-        # Mean for extending the `trend_init_for_decoder_accumulation`.
-        # This mean should also be over the target features only.
         mean_for_trend_extension = torch.mean(x_dec[:, :, :self.num_target_variables], dim=1).unsqueeze(1).repeat(1, self.configs.pred_len, 1)
-
-        # Concatenate for the `trend` argument to `self.decoder`.
         trend_arg_to_decoder = torch.cat([trend_init_for_decoder_accumulation[:, -self.configs.label_len:, :], mean_for_trend_extension], dim=1)
 
-        # --- Prepare seasonal_init for dec_embedding ---
-        # `dec_embedding` is initialized with `configs.dec_in` (e.g., 118 features).
-        # So, the seasonal input to `dec_embedding` must have `configs.dec_in` features.
-        # `seasonal_init_full` already has `configs.dec_in` features.
-        # The `zeros` for seasonal extension should match the full `x_dec` dimension.
-        zeros_for_seasonal_extension = torch.zeros([x_dec.shape[0], self.configs.pred_len, x_dec.shape[2]], device=x_enc.device)
-
-        # Concatenate for the `seasonal_init` argument to `self.dec_embedding`.
+        zeros_for_seasonal_extension = torch.zeros([x_dec.shape[0], self.configs.pred_len, x_dec.shape[2]], device=x_dec.device)
         seasonal_arg_to_dec_embedding = torch.cat([seasonal_init_full[:, -self.configs.label_len:, :], zeros_for_seasonal_extension], dim=1)
-        
-        # Input embedding
+
+        return trend_arg_to_decoder, seasonal_arg_to_dec_embedding
+
+    def _encode_and_fuse(self, x_enc, x_mark_enc, dec_out, enc_self_mask):
         enc_out = self.enc_embedding(x_enc, x_mark_enc)
-        dec_out = self.dec_embedding(seasonal_arg_to_dec_embedding, x_mark_dec) # Use the full seasonal part
-        
-        # Hierarchical decomposition of encoder output
         multi_res_enc_features = self.decomposer(enc_out)
-        
-        # Hierarchical encoding
         encoded_features = self.encoder(multi_res_enc_features, attn_mask=enc_self_mask)
-        
-        # Cross-resolution attention on encoder features
+
         if self.cross_attention is not None:
             cross_attended_features = self.cross_attention(encoded_features)
         else:
             cross_attended_features = encoded_features
-        
-        # Prepare multi-resolution decoder inputs and trends
-        multi_res_dec_inputs = []
-        multi_res_trends = []
-        
-        for i, enc_features in enumerate(cross_attended_features):
-            # Resize decoder input and trend to match encoder resolution
-            target_length = enc_features.size(1)
-            
-            # Resize decoder input
-            if dec_out.size(1) != target_length:
-                dec_input_resized = F.interpolate(
-                    dec_out.transpose(1, 2),
-                    size=target_length,
-                    mode='linear',
-                    align_corners=False
-                ).transpose(1, 2)
-            else:
-                dec_input_resized = dec_out
-                
-            # Resize trend
-            if trend_arg_to_decoder.size(1) != target_length:
-                trend_resized = F.interpolate(
-                    trend_arg_to_decoder.transpose(1, 2),
-                    size=target_length,
-                    mode='linear',
-                    align_corners=False
-                ).transpose(1, 2)
-            else:
-                trend_resized = trend_arg_to_decoder
-                
-            multi_res_dec_inputs.append(dec_input_resized)
-            multi_res_trends.append(trend_resized)
-        
-        # Hierarchical decoding with proper seasonal/trend separation
+
+        fused_encoder_context = self.fusion(cross_attended_features, target_length=dec_out.size(1))
+        return fused_encoder_context
+
+    def _decode_and_combine(self, dec_out, fused_encoder_context, trend_arg_to_decoder, dec_self_mask, dec_enc_mask):
         fused_seasonal, fused_trend = self.decoder(
-            multi_res_dec_inputs,
-            cross_attended_features, 
-            multi_res_trends,
+            dec_out,
+            fused_encoder_context,
             x_mask=dec_self_mask,
-            cross_mask=dec_enc_mask
+            cross_mask=dec_enc_mask,
+            trend=trend_arg_to_decoder
         )
-        
-        # Final combination (like EnhancedAutoformer, handling quantiles)
+
         if self.is_quantile_mode and self.num_quantiles > 1:
-            # fused_seasonal is [B, L, c_out_model] which is [B, L, num_target_variables * num_quantiles]
-            # fused_trend is [B, L, num_target_variables]
-            
-            # Reshape seasonal part to expose quantile dimension
             s_reshaped = fused_seasonal.view(
                 fused_seasonal.size(0), fused_seasonal.size(1),
                 self.num_target_variables, self.num_quantiles
             )
-            # Expand trend part to match seasonal shape
             t_expanded = fused_trend.unsqueeze(-1).expand_as(s_reshaped)
-            
-            # Add the same trend to each quantile's seasonal deviation
             dec_out_reshaped = t_expanded + s_reshaped
-            
-            # Reshape back to the final output format
             dec_out = dec_out_reshaped.view(
                 fused_seasonal.size(0), fused_seasonal.size(1),
                 self.num_target_variables * self.num_quantiles
             )
         else:
             dec_out = fused_trend + fused_seasonal
+
+        return dec_out
+
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
+                enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
+        """
+        Hierarchical Enhanced Autoformer forward pass with a simplified, efficient decoder.
+        """
+        trend_arg_to_decoder, seasonal_arg_to_dec_embedding = self._prepare_decoder_inputs(x_dec)
+
+        dec_out_embedding = self.dec_embedding(seasonal_arg_to_dec_embedding, x_mark_dec)
+
+        fused_encoder_context = self._encode_and_fuse(x_enc, x_mark_enc, dec_out_embedding, enc_self_mask)
+
+        dec_out = self._decode_and_combine(dec_out_embedding, fused_encoder_context, trend_arg_to_decoder, dec_self_mask, dec_enc_mask)
         
-        # Apply final projection
-        projected_output = self.projection(dec_out) # dec_out is [B, L, c_out_eval], projection maps to [B, L, c_out_model]
-        output = projected_output[:, -self.configs.pred_len:, :] # Output is [B, pred_len, num_target_variables * num_quantiles]
-        # PinballLoss expects a 3D tensor and handles reshaping internally.
-        # DO NOT reshape to 4D here if PinballLoss is used.
+        projected_output = self.projection(dec_out)
+        output = projected_output[:, -self.configs.pred_len:, :]
         return output
 
 
@@ -697,127 +700,6 @@ class HierarchicalEnhancedAutoformer(nn.Module):
             'uses_cross_attention': self.cross_attention is not None,
             'uses_multiwavelet': getattr(self.cross_attention, 'use_multiwavelet', False)
         }
-
-
-class HierarchicalDecoder(nn.Module):
-    """
-    Hierarchical decoder that processes multiple resolutions with proper trend/seasonal decomposition.
-    """
-    
-    def __init__(self, configs, n_levels=3):
-        super(HierarchicalDecoder, self).__init__()
-        logger.info(f"Initializing HierarchicalDecoder with {n_levels} levels")
-        
-        self.n_levels = n_levels
-        self.d_model = configs.d_model
-        self.c_out = configs.c_out # This is c_out_model (e.g., 12)
-        self.label_len = configs.label_len
-        self.num_target_variables = configs.c_out_evaluation # This should be the base number of targets (e.g., 4)
-        self.pred_len = configs.pred_len
-        
-        # Multi-resolution Enhanced Autoformer decoders
-        from models.EnhancedAutoformer import EnhancedDecoder, EnhancedDecoderLayer
-        from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelationLayer, AdaptiveAutoCorrelation
-        
-        self.resolution_decoders = nn.ModuleList()
-        for i in range(n_levels):
-            # Create Enhanced decoder layers for each resolution
-            decoder_layers = []
-            for _ in range(configs.d_layers):
-                # Self-attention in decoder
-                self_adaptive_autocorr = AdaptiveAutoCorrelation(
-                    True, configs.factor,
-                    attention_dropout=configs.dropout,
-                    output_attention=False,
-                    adaptive_k=True,
-                    multi_scale=True,
-                    scales=[1, 2]  # Smaller scales for decoder
-                )
-                self_autocorr_layer = AdaptiveAutoCorrelationLayer(
-                    self_adaptive_autocorr,
-                    configs.d_model,
-                    configs.n_heads
-                )
-                
-                # Cross-attention with encoder
-                cross_adaptive_autocorr = AdaptiveAutoCorrelation(
-                    False, configs.factor,
-                    attention_dropout=configs.dropout,
-                    output_attention=False,
-                    adaptive_k=True,
-                    multi_scale=False  # Single scale for cross-attention
-                )
-                cross_autocorr_layer = AdaptiveAutoCorrelationLayer(
-                    cross_adaptive_autocorr,
-                    configs.d_model,
-                    configs.n_heads
-                )
-                
-                enhanced_decoder_layer = EnhancedDecoderLayer(
-                    self_autocorr_layer,
-                    cross_autocorr_layer,
-                    self.d_model,
-                    self.num_target_variables, # Trend part should have c_out_evaluation features
-                    configs.d_ff,
-                    dropout=configs.dropout,
-                    activation=configs.activation,
-                )
-                decoder_layers.append(enhanced_decoder_layer)
-            
-            # Create Enhanced decoder for each resolution
-            decoder = EnhancedDecoder(
-                decoder_layers,
-                norm_layer=torch.nn.LayerNorm(configs.d_model),
-                projection=nn.Linear(self.d_model, self.c_out, bias=True) # Seasonal part should have c_out_model features
-            )
-            self.resolution_decoders.append(decoder)
-        
-        # Cross-resolution decoder fusion: one for seasonal, one for trend
-        self.seasonal_fusion = HierarchicalFusion(
-            d_model=self.c_out,  # Seasonal part has c_out_model features
-            n_levels=n_levels,
-            fusion_strategy='weighted_sum'
-        )
-        
-        self.trend_fusion = HierarchicalFusion(
-            d_model=self.num_target_variables, # Trend part has c_out_evaluation features
-            n_levels=n_levels,
-            fusion_strategy='weighted_sum'
-        )
-    
-    def forward(self, multi_res_dec_inputs, multi_res_enc_outputs, trends, x_mask=None, cross_mask=None):
-        """
-        Process multiple resolutions through hierarchical decoding.
-        
-        Args:
-            multi_res_dec_inputs: List of decoder inputs at different resolutions
-            multi_res_enc_outputs: List of encoder outputs at different resolutions  
-            trends: List of trend initializations at different resolutions
-            x_mask, cross_mask: Attention masks
-            
-        Returns:
-            Fused seasonal and trend components
-        """
-        seasonal_parts = []
-        trend_parts = []
-        
-        for i, (dec_input, enc_output, trend, decoder) in enumerate(
-            zip(multi_res_dec_inputs, multi_res_enc_outputs, trends, self.resolution_decoders)
-        ):
-            # Apply resolution-specific decoder
-            seasonal_part, trend_part = decoder(
-                dec_input, enc_output, x_mask=x_mask, cross_mask=cross_mask, trend=trend
-            )
-            seasonal_parts.append(seasonal_part)
-            trend_parts.append(trend_part)
-        
-        # Fuse multi-resolution outputs with target length = label_len + pred_len
-        # The target length should be the original decoder sequence length
-        target_length = self.label_len + self.pred_len
-        fused_seasonal = self.seasonal_fusion(seasonal_parts, target_length=target_length)
-        fused_trend = self.trend_fusion(trend_parts, target_length=target_length)
-        
-        return fused_seasonal, fused_trend
 
 
 # Factory function for easy creation
