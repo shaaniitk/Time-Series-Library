@@ -66,6 +66,18 @@ class HFEnhancedAutoformer(nn.Module):
         # Input projection layer (time series -> transformer space)
         self.input_projection = nn.Linear(configs.enc_in, self.d_model)
         
+        # Temporal embedding for covariates (following DataEmbedding pattern)
+        from layers.Embed import TimeFeatureEmbedding, TemporalEmbedding
+        embed_type = getattr(configs, 'embed', 'timeF')
+        freq = getattr(configs, 'freq', 'h')
+        
+        if embed_type != 'timeF':
+            self.temporal_embedding = TemporalEmbedding(d_model=self.d_model, embed_type=embed_type, freq=freq)
+        else:
+            self.temporal_embedding = TimeFeatureEmbedding(d_model=self.d_model, embed_type=embed_type, freq=freq)
+            
+        logger.info(f"Created temporal embedding with type: {embed_type}, freq: {freq}")
+        
         # Output projection (transformer space -> prediction)
         self.output_projection = nn.Linear(self.d_model, configs.c_out)
         
@@ -79,6 +91,7 @@ class HFEnhancedAutoformer(nn.Module):
         
         logger.info(f"✅ HFEnhancedAutoformer initialized successfully")
         logger.info(f"   Input projection: {configs.enc_in} -> {self.d_model}")
+        logger.info(f"   Temporal embedding: {embed_type} with freq {freq}")
         logger.info(f"   Output projection: {self.d_model} -> {configs.c_out}")
         
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
@@ -99,6 +112,12 @@ class HFEnhancedAutoformer(nn.Module):
         # Project input to model dimension
         projected_input = self.input_projection(x_enc)  # (batch, seq_len, d_model)
         
+        # Add temporal embedding from covariates (following DataEmbedding pattern)
+        if x_mark_enc is not None:
+            temporal_emb = self.temporal_embedding(x_mark_enc)  # (batch, seq_len, d_model)
+            projected_input = projected_input + temporal_emb
+            logger.debug(f"Added temporal embedding from covariates: {x_mark_enc.shape} -> {temporal_emb.shape}")
+        
         # Add positional encoding
         pos_enc = self.positional_encoding[:, :seq_len, :].expand(batch_size, -1, -1)
         projected_input = projected_input + pos_enc
@@ -113,6 +132,14 @@ class HFEnhancedAutoformer(nn.Module):
                 decoder_input = torch.zeros(
                     batch_size, self.configs.pred_len, self.d_model
                 ).to(x_enc.device)
+                
+                # Add temporal embedding from decoder covariates if available
+                if x_mark_dec is not None:
+                    # Use decoder mark features for the prediction horizon
+                    dec_mark = x_mark_dec[:, -self.configs.pred_len:, :]  # Last pred_len steps
+                    decoder_temporal_emb = self.temporal_embedding(dec_mark)
+                    decoder_input = decoder_input + decoder_temporal_emb
+                    logger.debug(f"Added decoder temporal embedding: {dec_mark.shape} -> {decoder_temporal_emb.shape}")
                 
                 # Add positional encoding to decoder input
                 decoder_pos_enc = self.positional_encoding[:, :self.configs.pred_len, :].expand(batch_size, -1, -1)

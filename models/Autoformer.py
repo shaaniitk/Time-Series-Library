@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers.Embed import DataEmbedding, DataEmbedding_wo_pos
 from layers.AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
+from layers.Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLayer, my_Layernorm, series_decomp
 from layers.Normalization import get_norm_layer
 import math
 import numpy as np
@@ -43,7 +44,7 @@ class Model(nn.Module):
                     configs.d_ff,
                     moving_avg=configs.moving_avg,
                     dropout=configs.dropout,
-        self.activation = getattr(F, configs.activation, F.relu)
+                    activation=configs.activation
                 ) for l in range(configs.e_layers)
             ],
             norm_layer=get_norm_layer(configs.norm_type, configs.d_model)
@@ -68,7 +69,7 @@ class Model(nn.Module):
                         configs.d_ff,
                         moving_avg=configs.moving_avg,
                         dropout=configs.dropout,
-            self.activation = getattr(F, configs.activation, F.relu),
+                        activation=configs.activation,
                     )
                     for l in range(configs.d_layers)
                 ],
