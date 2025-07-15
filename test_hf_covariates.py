@@ -52,8 +52,8 @@ def create_test_config():
         'pred_len': 24,
         
         # Model dimensions
-        'enc_in': 7,    # Number of input features
-        'dec_in': 7,    # Number of decoder input features  
+        'enc_in': 6,    # Number of input features (actual data features)
+        'dec_in': 6,    # Number of decoder input features  
         'c_out': 1,     # Number of output features (target only)
         'd_model': 256, # Model dimension
         'n_heads': 8,
@@ -117,7 +117,6 @@ def create_synthetic_data():
         'MUFL': 0.7 * trend1 + 0.3 * trend2 + 0.9 * daily_pattern,
         'MULL': 0.5 * trend1 + 0.5 * trend2 + 0.6 * weekly_pattern,
         'LUFL': trend1 * 0.8 + 2 * daily_pattern,
-        'LULL': trend2 * 0.9 + 1.5 * weekly_pattern,
         'OT': trend1 + trend2 + daily_pattern + weekly_pattern + np.random.normal(0, 1, n_samples)  # Target
     }
     

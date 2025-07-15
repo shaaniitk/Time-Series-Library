@@ -167,6 +167,19 @@ class HFQuantileAutoformer(nn.Module):
             logger.error(f"Cannot import HFEnhancedAutoformer: {e}")
             raise ImportError("Step 4 requires Step 1 (HFEnhancedAutoformer) to be completed first")
         
+        # Add temporal embedding for covariates (following base model pattern)
+        from layers.Embed import TemporalEmbedding, TimeFeatureEmbedding
+        
+        # Choose embedding type based on config
+        if configs.embed == 'timeF':
+            self.temporal_embedding = TimeFeatureEmbedding(
+                d_model=self.d_model, 
+                embed_type=configs.embed, 
+                freq=configs.freq
+            )
+        else:
+            self.temporal_embedding = TemporalEmbedding(d_model=self.d_model)
+        
         # Get the model dimension from base model
         try:
             base_d_model = self.base_model.get_model_dimension()
@@ -335,25 +348,42 @@ class HFQuantileAutoformer(nn.Module):
     
     def _get_base_features(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         """
-        Extract features from base model
+        Extract features from base model with covariate support
         
-        SAFE: Uses the base model without modification
+        SAFE: Uses the base model with proper covariate integration
         """
-        # Forward through base model to get hidden features
-        with torch.no_grad():
-            base_output = self.base_model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            
-        # We need the hidden features, not the final prediction
-        # For now, we'll use a simple embedding approach
-        batch_size = x_enc.shape[0]
+        # Forward through base model with covariates to get prediction
+        base_output = self.base_model(x_enc, x_mark_enc, x_dec, x_mark_dec)
         
-        # Create feature representation using the base model dimension
+        # Extract base features from input for quantile processing
+        batch_size, seq_len, features = x_enc.shape
+        
+        # Get base model dimension
         try:
             base_d_model = self.base_model.get_model_dimension()
         except:
             base_d_model = self.d_model
             
-        base_features = torch.randn(batch_size, self.pred_len, base_d_model).to(x_enc.device)
+        # Create base feature representation from input
+        if not hasattr(self, 'feature_projection'):
+            self.feature_projection = nn.Linear(features, base_d_model).to(x_enc.device)
+        
+        base_features = self.feature_projection(x_enc)  # (batch, seq_len, d_model)
+        
+        # Add temporal embeddings if covariates are provided
+        if x_mark_enc is not None:
+            temporal_emb = self.temporal_embedding(x_mark_enc)
+            base_features = base_features + temporal_emb
+        
+        # Ensure we have the right shape for prediction length
+        if base_features.shape[1] != self.pred_len:
+            # Take the last pred_len timesteps or interpolate
+            if base_features.shape[1] >= self.pred_len:
+                base_features = base_features[:, -self.pred_len:, :]
+            else:
+                # Repeat to match pred_len
+                repeat_factor = (self.pred_len + base_features.shape[1] - 1) // base_features.shape[1]
+                base_features = base_features.repeat(1, repeat_factor, 1)[:, :self.pred_len, :]
         
         return base_features
     

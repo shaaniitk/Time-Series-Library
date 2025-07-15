@@ -1,7 +1,9 @@
 from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelation, AdaptiveAutoCorrelationLayer
 
 def get_attention_layer(configs):
-    if configs.attention_type == 'adaptive_autocorrelation':
+    attention_type = getattr(configs, 'attention_type', 'autocorrelation')
+    
+    if attention_type == 'adaptive_autocorrelation':
         return AdaptiveAutoCorrelationLayer(
             AdaptiveAutoCorrelation(
                 False, configs.factor, 
@@ -15,4 +17,9 @@ def get_attention_layer(configs):
             configs.n_heads
         )
     else:
-        raise ValueError(f'Unknown attention_type: {configs.attention_type}')
+        # Default to standard AutoCorrelation
+        from layers.AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
+        return AutoCorrelationLayer(
+            AutoCorrelation(False, configs.factor, attention_dropout=configs.dropout, output_attention=False),
+            configs.d_model, configs.n_heads
+        )

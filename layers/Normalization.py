@@ -12,9 +12,9 @@ class RMSNorm(nn.Module):
         return x / (norm * self.eps) * self.weight
 
 def get_norm_layer(norm_type, d_model):
-    if norm_type == 'layernorm':
+    if norm_type.lower() == 'layernorm':
         return nn.LayerNorm(d_model)
-    elif norm_type == 'rmsnorm':
+    elif norm_type.lower() == 'rmsnorm':
         return RMSNorm(d_model)
     else:
         raise ValueError(f'Unknown norm_type: {norm_type}')

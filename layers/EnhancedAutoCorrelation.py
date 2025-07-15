@@ -93,9 +93,11 @@ class AdaptiveAutoCorrelation(nn.Module):
         
         for i, scale in enumerate(self.scales):
             if scale == 1:
-                # Original scale
-                q_fft = torch.fft.rfft(queries, dim=-1)
-                k_fft = torch.fft.rfft(keys, dim=-1)
+                # Original scale - ensure contiguous tensors
+                q_input = queries.contiguous()
+                k_input = keys.contiguous()
+                q_fft = torch.fft.rfft(q_input, dim=-1)
+                k_fft = torch.fft.rfft(k_input, dim=-1)
             else:
                 # Downsampled scale - reshape for pooling
                 if length >= scale * 2:  # Ensure enough points for downsampling
@@ -112,8 +114,8 @@ class AdaptiveAutoCorrelation(nn.Module):
                     q_down = q_down.squeeze(1).reshape(B, H, E, downsampled_L)
                     k_down = k_down.squeeze(1).reshape(B, H, E, downsampled_L)
                     
-                    q_fft = torch.fft.rfft(q_down, dim=-1)
-                    k_fft = torch.fft.rfft(k_down, dim=-1)
+                    q_fft = torch.fft.rfft(q_down.contiguous(), dim=-1)
+                    k_fft = torch.fft.rfft(k_down.contiguous(), dim=-1)
                 else:
                     # Skip scales that are too large
                     continue
@@ -129,7 +131,7 @@ class AdaptiveAutoCorrelation(nn.Module):
             k_fft_normalized = k_fft_conj / k_magnitude
             
             res = q_fft * k_fft_normalized
-            corr = torch.fft.irfft(res, dim=-1)
+            corr = torch.fft.irfft(res.contiguous(), dim=-1)
             
             # ALWAYS ensure correlation matches target length exactly
             B, H, E, curr_L = corr.shape

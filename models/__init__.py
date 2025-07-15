@@ -1,33 +1,33 @@
 # Standard models
-from .Autoformer import Autoformer
-from .Transformer import Transformer
-from .TimesNet import TimesNet
-from .Nonstationary_Transformer import Nonstationary_Transformer
-from .DLinear import DLinear
-from .FEDformer import FEDformer
-from .Informer import Informer
-from .LightTS import LightTS
-from .Reformer import Reformer
-from .ETSformer import ETSformer
-from .Pyraformer import Pyraformer
-from .PatchTST import PatchTST
-from .MICN import MICN
-from .Crossformer import Crossformer
-from .FiLM import FiLM
-from .iTransformer import iTransformer
-from .Koopa import Koopa
-from .TiDE import TiDE
-from .FreTS import FreTS
-from .TimeMixer import TimeMixer
-from .TSMixer import TSMixer
-from .SegRNN import SegRNN
-from .MambaSimple import MambaSimple
-from .TemporalFusionTransformer import TemporalFusionTransformer
-from .SCINet import SCINet
-from .PAttn import PAttn
-from .TimeXer import TimeXer
-from .WPMixer import WPMixer
-from .MultiPatchFormer import MultiPatchFormer
+from .Autoformer import Model as Autoformer
+from .Transformer import Model as Transformer
+from .TimesNet import Model as TimesNet
+from .Nonstationary_Transformer import Model as Nonstationary_Transformer
+from .DLinear import Model as DLinear
+from .FEDformer import Model as FEDformer
+from .Informer import Model as Informer
+from .LightTS import Model as LightTS
+from .Reformer import Model as Reformer
+from .ETSformer import Model as ETSformer
+from .Pyraformer import Model as Pyraformer
+from .PatchTST import Model as PatchTST
+from .MICN import Model as MICN
+from .Crossformer import Model as Crossformer
+from .FiLM import Model as FiLM
+from .iTransformer import Model as iTransformer
+from .Koopa import Model as Koopa
+from .TiDE import Model as TiDE
+from .FreTS import Model as FreTS
+from .TimeMixer import Model as TimeMixer
+from .TSMixer import Model as TSMixer
+from .SegRNN import Model as SegRNN
+from .MambaSimple import Model as MambaSimple
+from .TemporalFusionTransformer import Model as TemporalFusionTransformer
+from .SCINet import Model as SCINet
+from .PAttn import Model as PAttn
+from .TimeXer import Model as TimeXer
+from .WPMixer import Model as WPMixer
+from .MultiPatchFormer import Model as MultiPatchFormer
 
 # Enhanced models
 from .EnhancedAutoformer import EnhancedAutoformer
@@ -36,6 +36,7 @@ from .HierarchicalEnhancedAutoformer import HierarchicalEnhancedAutoformer
 
 # HF models
 from .HFEnhancedAutoformer import HFEnhancedAutoformer
+from .HFBayesianAutoformerProduction import HFBayesianAutoformerProduction
 from .HFAdvancedFactory import (
     HFBayesianEnhancedAutoformer,
     HFHierarchicalEnhancedAutoformer,

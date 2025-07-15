@@ -282,7 +282,7 @@ class EnhancedDecoder(nn.Module):
     Enhanced Autoformer decoder with improved trend-seasonal integration.
     """
     
-    def __init__(self, layers, norm_layer=None, projection=None):
+    def __init__(self, layers, c_out, norm_layer=None, projection=None):
         super(EnhancedDecoder, self).__init__()
         logger.info("Initializing EnhancedDecoder")
         
@@ -292,20 +292,6 @@ class EnhancedDecoder(nn.Module):
         
         # Trend integration module
         if len(layers) > 0:
-            # Get the output dimension from the decoder layer projection
-            c_out = None
-            for layer in layers:
-                if hasattr(layer, 'projection') and hasattr(layer.projection, '2'):
-                    # Sequential with Conv1d as final layer
-                    if hasattr(layer.projection[2], 'out_channels'):
-                        c_out = layer.projection[2].out_channels
-                        break
-            
-            if c_out is None:
-                # Fallback to d_model if we can't determine c_out
-                d_model = layers[0].conv1.in_channels
-                c_out = d_model
-                
             self.trend_integration = nn.Sequential(
                 nn.Linear(c_out, c_out),
                 nn.ReLU(),
@@ -430,6 +416,7 @@ class EnhancedAutoformer(nn.Module):
 
             self.decoder = EnhancedDecoder(
                 enhanced_decoder_layers,
+                self.num_target_variables, # Pass c_out directly
                 norm_layer=get_norm_layer(configs.norm_type, configs.d_model),
                 # Output layer dimension is now configs.c_out, which is set by DimensionManager
                 projection=nn.Linear(self.d_model, self.c_out, bias=True)
@@ -491,45 +478,55 @@ class EnhancedAutoformer(nn.Module):
                                                 cross_mask=None, trend=trend_arg_to_decoder)
 
         # Final combination
-        # seasonal_part shape: [B, L, num_target_variables * num_quantiles] if quantile_mode
-        # trend_part shape:    [B, L, num_target_variables]
+        # The output of the decoder is the seasonal part. The trend part is added to it.
+        # The shape of seasonal_part is [B, L, c_out], where c_out can be num_target_variables * num_quantiles.
+        # The shape of trend_part is [B, L, num_target_variables].
         if self.is_quantile_mode and self.num_quantiles > 1:
-            # Add validation for robust reshaping
-            total_features = seasonal_part.shape[-1]
-            expected_features = self.num_target_variables * self.num_quantiles
-            assert total_features == expected_features, \
-                f"Shape mismatch for quantile reshape. Expected {expected_features} features, but got {total_features}."
-
-            # Reshape seasonal_part (which is [B, L, C_model]) to [B, L, num_target_variables, num_quantiles]
-            s_reshaped = seasonal_part.view(
-                seasonal_part.size(0), seasonal_part.size(1),
-                self.num_target_variables, self.num_quantiles
-            )
-            # Expand trend_part to [B, L, num_target_variables, num_quantiles]
-            # This adds the same trend component to each quantile's seasonal deviation.
-            t_expanded = trend_part.unsqueeze(-1).expand_as(s_reshaped)
-            
-            dec_out_reshaped = t_expanded + s_reshaped
-            dec_out = dec_out_reshaped.view(
-                seasonal_part.size(0), seasonal_part.size(1), # type: ignore
-                self.num_target_variables * self.num_quantiles
-            )
+            # In quantile mode, the trend is added to each quantile's seasonal component.
+            # The seasonal_part is already shaped [B, L, num_target_variables * num_quantiles].
+            # We need to expand the trend to match this shape.
+            trend_part_expanded = trend_part.unsqueeze(-1).repeat(1, 1, 1, self.num_quantiles)
+            trend_part_expanded = trend_part_expanded.view(seasonal_part.shape)
+            dec_out = trend_part_expanded + seasonal_part
         else:
             dec_out = trend_part + seasonal_part
         return dec_out
 
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
-        """Enhanced imputation (same as original for now)."""
+        """Enhanced imputation with encoder-decoder architecture."""
+        # Encoder
         enc_out = self.enc_embedding(x_enc, x_mark_enc)
         enc_out, attns = self.encoder(enc_out, attn_mask=None)
-        dec_out = self.projection(enc_out)
+
+        # Decoder
+        # For imputation, the decoder input is the same as the encoder input
+        seasonal_init, trend_init = self.decomp(x_enc)
+
+        # The rest of the logic is similar to forecast, but without the future prediction part
+        dec_out = self.dec_embedding(seasonal_init, x_mark_enc)
+        seasonal_part, trend_part = self.decoder(dec_out, enc_out, x_mask=None, cross_mask=None, trend=trend_init)
+
+        # Final combination
+        dec_out = trend_part + seasonal_part
         return dec_out
 
     def anomaly_detection(self, x_enc):
-        """Enhanced anomaly detection (same as original for now)."""
+        """Enhanced anomaly detection with encoder-decoder architecture."""
+        # Encoder
         enc_out = self.enc_embedding(x_enc, None)
         enc_out, attns = self.encoder(enc_out, attn_mask=None)
-        dec_out = self.projection(enc_out)
+
+        # Decoder
+        # For anomaly detection, the decoder input is the same as the encoder input
+        seasonal_init, trend_init = self.decomp(x_enc)
+
+        # The rest of the logic is similar to forecast, but without the future prediction part
+        # We use x_enc for both seasonal_init and x_mark_enc for dec_embedding
+        dec_out = self.dec_embedding(seasonal_init, None)
+        seasonal_part, trend_part = self.decoder(dec_out, enc_out, x_mask=None, cross_mask=None, trend=trend_init)
+
+        # Final combination
+        dec_out = trend_part + seasonal_part
         return dec_out
 
     def classification(self, x_enc, x_mark_enc):
