@@ -14,8 +14,7 @@ import time
 import traceback
 
 # Add the project root to Python path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-sys.path.insert(0, PROJECT_ROOT)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from models.modular_autoformer import ModularAutoformer
 from utils.modular_components.registry import create_global_registry

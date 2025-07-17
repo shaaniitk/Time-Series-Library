@@ -3,10 +3,16 @@
 Simple test for the modified BayesianEnhancedAutoformer with quantile loss
 """
 
+import sys
+import os
 import torch
 import torch.nn as nn
 import numpy as np
 from argparse import Namespace
+
+# Add project root to path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, PROJECT_ROOT)
 
 from models.BayesianEnhancedAutoformer import BayesianEnhancedAutoformer
 from utils.losses import PinballLoss

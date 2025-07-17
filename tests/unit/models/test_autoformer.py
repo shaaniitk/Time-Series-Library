@@ -1,5 +1,12 @@
 import unittest
+import sys
+import os
 import torch
+
+# Add project root to path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, PROJECT_ROOT)
+
 from models.Autoformer import Model as Autoformer
 from tests.models.sanity_test_mixin import SanityTestMixin
 from utils.logger import logger

@@ -7,7 +7,10 @@ from types import SimpleNamespace
 import sys
 import os
 import time
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# Add project root to path
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, PROJECT_ROOT)
 
 from models.Autoformer_Fixed import Model as AutoformerFixed
 from layers.Autoformer_EncDec import series_decomp
