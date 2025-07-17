@@ -1,0 +1,96 @@
+{
+  "configuration": {
+    "seq_len": 96,
+    "pred_len": 24,
+    "enc_in": 7,
+    "c_out": 7,
+    "d_model": 512,
+    "n_heads": 8,
+    "e_layers": 2,
+    "d_layers": 1,
+    "d_ff": 2048,
+    "dropout": 0.1,
+    "activation": "gelu",
+    "backbone_type": "chronos",
+    "processor_type": "frequency_domain",
+    "attention_type": "multi_head",
+    "loss_type": "mse",
+    "embedding_type": "standard",
+    "output_type": "linear",
+    "suite_name": "HFEnhancedAutoformer",
+    "use_bayesian": false,
+    "use_quantile": false,
+    "use_hierarchical": false,
+    "quantile_levels": null,
+    "uncertainty_method": "none",
+    "n_samples": 50,
+    "auto_insert_adapters": true,
+    "allowed_adapters": [
+      "linear",
+      "mlp"
+    ],
+    "strict_validation": true,
+    "allow_warnings": true,
+    "device": "cpu",
+    "mixed_precision": false
+  },
+  "validation": {
+    "is_valid": false,
+    "errors": [
+      "Component frequency_domain requires capability 'frequency_domain_compatible' from multi_head, but it's not available. Available capabilities: ['parallel', 'time_domain_compatible', 'standard_attention']",
+      "Failed to validate requirements for mse: Component 'mse' not found in loss. Available: ['bayesian_mse', 'mock_loss']",
+      "Failed to validate requirements for linear: Component 'linear' not found in output. Available: []"
+    ],
+    "warnings": [
+      "Processor strategy 'frequency_domain' may not be optimal with attention 'multi_head'. Consider: ['fourier_attention', 'autocorr_attention']"
+    ]
+  },
+  "component_info": {
+    "backbone:chronos": {
+      "capabilities": [
+        "seq2seq",
+        "frequency_domain",
+        "time_domain",
+        "transformer_based"
+      ],
+      "requirements": [],
+      "compatibility_tags": [
+        "autoregressive",
+        "huggingface_compatible",
+        "attention_based"
+      ]
+    },
+    "processor:frequency_domain": {
+      "capabilities": [
+        "frequency_domain",
+        "fourier_based",
+        "spectral_analysis"
+      ],
+      "requirements": [
+        {
+          "target": "attention",
+          "capability": "frequency_domain_compatible",
+          "optional": false
+        }
+      ],
+      "compatibility_tags": []
+    },
+    "attention:multi_head": {
+      "capabilities": [
+        "parallel",
+        "time_domain_compatible",
+        "standard_attention"
+      ],
+      "requirements": [],
+      "compatibility_tags": [
+        "pytorch_native",
+        "transformer_standard"
+      ]
+    },
+    "loss:mse": {
+      "error": "Component 'mse' not found in loss. Available: ['bayesian_mse', 'mock_loss']"
+    }
+  },
+  "compatibility_matrix": {},
+  "suggestions": []
+}

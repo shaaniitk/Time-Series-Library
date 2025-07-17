@@ -286,7 +286,7 @@ class HierarchicalEncoder(nn.Module):
     Hierarchical encoder that processes multiple resolutions with Enhanced Autoformer layers.
     """
     
-    def __init__(self, configs, n_levels=3, use_enhanced_layers=True, share_weights=False):
+    def __init__(self, configs, n_levels=3, use_enhanced_layers=True, share_weights=False, _attention_factory=None, decomp_params=None):
         super(HierarchicalEncoder, self).__init__()
         logger.info(f"Initializing HierarchicalEncoder with {n_levels} levels")
         
@@ -294,54 +294,36 @@ class HierarchicalEncoder(nn.Module):
         self.d_model = configs.d_model
         self.share_weights = share_weights
         
-        # Multi-resolution Enhanced Autoformer encoders
-        try:
+        if decomp_params:
+            self.decomposer = WaveletHierarchicalDecomposer(**decomp_params)
+        else:
+            self.decomposer = None
+        
+        def create_single_encoder():
             from models.EnhancedAutoformer import EnhancedEncoder, EnhancedEncoderLayer
-            from layers.Attention import get_attention_layer
             from layers.Normalization import get_norm_layer
 
-            def create_single_encoder():
-                """Helper function to create one encoder instance"""
-                enhanced_autocorr_layers = []
-                for _ in range(configs.e_layers):
-                    autocorr_layer = get_attention_layer(configs)
-                    enhanced_layer = EnhancedEncoderLayer(
-                        autocorr_layer, configs.d_model, configs.d_ff,
-                        dropout=configs.dropout, activation=configs.activation
-                    )
-                    enhanced_autocorr_layers.append(enhanced_layer)
-                
-                encoder = EnhancedEncoder(
-                    enhanced_autocorr_layers,
-                    norm_layer=get_norm_layer(configs.norm_type, configs.d_model)
-                )
-                return encoder
-
-            if self.share_weights:
-                logger.info(f"Using one shared encoder for all {n_levels} levels.")
-                shared_encoder = create_single_encoder()
-                self.resolution_encoders = nn.ModuleList([shared_encoder] * n_levels)
+            # Use the factory if provided, otherwise use the legacy method
+            if _attention_factory:
+                autocorr_layer = _attention_factory()
             else:
-                logger.info(f"Initialized {n_levels} separate encoders.")
-                self.resolution_encoders = nn.ModuleList([create_single_encoder() for _ in range(n_levels)])
-            
-            logger.info(f"Successfully initialized EnhancedAutoformer encoders.")
-        except ImportError as e:
-            logger.warning(f"Failed to import EnhancedAutoformer components: {e}. Using fallback.")
-            self.resolution_encoders = nn.ModuleList([
-                nn.TransformerEncoder(
-                    nn.TransformerEncoderLayer(
-                        d_model=configs.d_model,
-                        nhead=configs.n_heads,
-                        dim_feedforward=configs.d_ff,
-                        dropout=configs.dropout,
-                        batch_first=True
-                    ),
-                    num_layers=configs.e_layers
-                ) for _ in range(n_levels)
-            ])
+                from layers.Attention import get_attention_layer
+                autocorr_layer = get_attention_layer(configs)
+
+            enhanced_layer = EnhancedEncoderLayer(
+                autocorr_layer, configs.d_model, configs.d_ff,
+                dropout=configs.dropout, activation=configs.activation
+            )
+            return EnhancedEncoder([enhanced_layer], norm_layer=get_norm_layer('LayerNorm', configs.d_model))
+
+        if self.share_weights:
+            logger.info(f"Using one shared encoder for all {n_levels} levels.")
+            shared_encoder = create_single_encoder()
+            self.resolution_encoders = nn.ModuleList([shared_encoder] * n_levels)
+        else:
+            logger.info(f"Initialized {n_levels} separate encoders.")
+            self.resolution_encoders = nn.ModuleList([create_single_encoder() for _ in range(n_levels)])
         
-        # Multi-wavelet transforms for each resolution (optional)
         self.use_multiwavelet = True
         if self.use_multiwavelet:
             try:

@@ -6,6 +6,7 @@ enabling easy extension and plugin-like architecture.
 """
 
 import logging
+import torch.nn as nn
 from typing import Dict, Type, Any, List, Optional
 from .base_interfaces import ComponentType, BaseComponent
 from .config_schemas import ComponentConfig
@@ -193,6 +194,47 @@ class ComponentRegistry:
         return (component_type in self._components and 
                 component_name in self._components[component_type])
     
+    def get_component_info(self, component_type: str, component_name: str) -> Dict[str, Any]:
+        """
+        Get comprehensive information about a component
+        
+        Args:
+            component_type: Type of component
+            component_name: Name of the component
+            
+        Returns:
+            Dictionary with component information including metadata and capabilities
+        """
+        if not self.is_registered(component_type, component_name):
+            return {'error': f'Component {component_type}:{component_name} not found'}
+        
+        # Get component class and metadata
+        component_class = self.get(component_type, component_name)
+        metadata = self.get_metadata(component_type, component_name)
+        
+        # Extract capabilities and requirements if available
+        info = {
+            'component_type': component_type,
+            'component_name': component_name,
+            'class_name': component_class.__name__,
+            'metadata': metadata,
+        }
+        
+        # Add capabilities and requirements if component supports them
+        if hasattr(component_class, 'get_capabilities'):
+            try:
+                info['capabilities'] = component_class.get_capabilities()
+            except:
+                info['capabilities'] = []
+        
+        if hasattr(component_class, 'get_requirements'):
+            try:
+                info['requirements'] = component_class.get_requirements()
+            except:
+                info['requirements'] = []
+        
+        return info
+    
     def get_compatible_components(self, 
                                  component_type: str, 
                                  requirements: Dict[str, Any]) -> List[str]:
@@ -306,3 +348,90 @@ def list_all_components() -> Dict[str, List[str]]:
 def get_global_registry() -> ComponentRegistry:
     """Get the global component registry"""
     return _global_registry
+
+
+def create_global_registry() -> ComponentRegistry:
+    """
+    Create and initialize the global registry with components
+    
+    Returns:
+        Initialized ComponentRegistry
+    """
+    # Clear existing registry
+    _global_registry.clear()
+    
+    # Register example components
+    try:
+        from .example_components import register_example_components
+        register_example_components(_global_registry)
+        logger.info("Global registry initialized with example components")
+    except ImportError as e:
+        logger.warning(f"Could not load example components: {e}")
+    
+    # Try to register components from existing modules
+    try:
+        _register_fallback_components(_global_registry)
+        logger.info("✅ Registered fallback components")
+    except Exception as e:
+        logger.warning(f"Could not register fallback components: {e}")
+    
+    return _global_registry
+
+
+def _register_fallback_components(registry: ComponentRegistry):
+    """Register basic fallback components"""
+    
+    # Simple fallback components that can be used for testing
+    class MockBackbone(BaseComponent):
+        def __init__(self, config):
+            super().__init__(config)
+            self.d_model = getattr(config, 'd_model', 512)
+        
+        def forward(self, x, **kwargs):
+            return x
+        
+        def get_output_dim(self):
+            return self.d_model
+        
+        @classmethod
+        def get_capabilities(cls):
+            return ['mock', 'testing']
+    
+    class MockProcessor(BaseComponent):
+        def __init__(self, config):
+            super().__init__(config)
+            self.d_model = getattr(config, 'd_model', 512)
+        
+        def forward(self, embedded_input, backbone_output, target_length, **kwargs):
+            # Simple repeat to target length
+            if backbone_output.size(1) != target_length:
+                pooled = backbone_output.mean(dim=1, keepdim=True)
+                return pooled.repeat(1, target_length, 1)
+            return backbone_output
+        
+        def get_output_dim(self):
+            return self.d_model
+        
+        @classmethod
+        def get_capabilities(cls):
+            return ['mock', 'testing']
+    
+    class MockLoss(BaseComponent):
+        def __init__(self, config):
+            super().__init__(config)
+            self.loss_fn = nn.MSELoss()
+        
+        def forward(self, predictions, targets, **kwargs):
+            return self.loss_fn(predictions, targets)
+        
+        def get_output_dim(self):
+            return 1
+        
+        @classmethod
+        def get_capabilities(cls):
+            return ['mock', 'testing', 'mse']
+    
+    # Register fallback components
+    registry.register('backbone', 'mock_backbone', MockBackbone)
+    registry.register('processor', 'mock_processor', MockProcessor) 
+    registry.register('loss', 'mock_loss', MockLoss)

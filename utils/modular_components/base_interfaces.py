@@ -20,7 +20,7 @@ class BaseComponent(nn.Module, ABC):
     for compatibility across different model architectures.
     """
     
-    def __init__(self, config: 'ComponentConfig'):
+    def __init__(self, config: Any):
         super().__init__()
         self.config = config
         self._info = {}
@@ -49,6 +49,45 @@ class BaseComponent(nn.Module, ABC):
     def set_info(self, key: str, value: Any):
         """Set component-specific information"""
         self._info[key] = value
+    
+    @classmethod
+    def get_capabilities(cls) -> List[str]:
+        """
+        Return list of capabilities this component provides
+        
+        Examples: ['time_domain', 'frequency_domain', 'bayesian', 'quantile']
+        """
+        return []
+    
+    @classmethod  
+    def get_requirements(cls) -> Dict[str, str]:
+        """
+        Return requirements this component has for other components
+        
+        Returns:
+            Dict mapping component_type -> required_capability
+            Example: {'attention': 'frequency_domain_compatible'}
+        """
+        return {}
+    
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:
+        """
+        Return compatibility tags for this component
+        
+        Examples: ['transformer_compatible', 'seq2seq', 'autoregressive']
+        """
+        return []
+    
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:
+        """
+        Return configuration schema for this component
+        
+        Returns:
+            Dict describing expected configuration parameters
+        """
+        return {}
 
 
 class BaseBackbone(BaseComponent):

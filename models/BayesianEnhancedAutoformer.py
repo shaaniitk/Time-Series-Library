@@ -104,39 +104,6 @@ class BayesianEnhancedAutoformer(nn.Module):
             self._setup_dropout_layers()
 
         
-    def _bayesian_forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, detailed=False):
-        """
-        Performs forward pass with Bayesian sampling for uncertainty estimation.
-        This version fixes the gradient tracking issues of the original implementation.
-        """
-        logger.debug(f"Computing Bayesian uncertainty with {self.n_samples} samples")
-        
-        # Create a list to store predictions from each sample
-        predictions = []
-
-        # The context manager for gradients depends on whether we are training or evaluating.
-        # During training, we need gradients for all samples to properly train the distributions.
-        # During evaluation, we don't need any gradients.
-        grad_context = torch.enable_grad if self.training else torch.no_grad
-
-        with grad_context():
-            for _ in range(self.n_samples):
-                # Each call to _single_forward will produce a different result
-                # because the Bayesian layers will sample new weights.
-                pred = self._single_forward(x_enc, x_mark_enc, x_dec, x_mark_dec)
-                predictions.append(pred)
-
-        # Stack the predictions to compute statistics
-        # Shape: [n_samples, batch_size, pred_len, c_out]
-        pred_stack = torch.stack(predictions)
-        
-        # During evaluation, we detach the stack from the computation graph
-        # as we only need the final statistics.
-        if not self.training:
-            pred_stack = pred_stack.detach()
-
-        return self._compute_uncertainty_statistics(pred_stack, detailed)
-    
     def _single_forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         if self.uncertainty_method == 'dropout':
             x_enc = self.mc_dropout1(x_enc)

@@ -1,5 +1,69 @@
 # Time Series Library (TSLib)
-TSLib is an open-source library for deep learning researchers, especially for deep time series analysis.
+TSLib is an open-source library for deep learning res## Installation & Usage
+
+### 🚀 Quick Installation
+
+Choose your installation based on your needs:
+
+**Option 1: Full Installation (Recommended)**
+```bash
+# Install all features including ChronosX integration
+pip install -r requirements.txt
+```
+
+**Option 2: ChronosX Enhanced Installation**
+```bash
+# Install core + ChronosX for pre-trained models
+pip install -r requirements.txt
+pip install -r requirements_chronosx.txt
+```
+
+**Option 3: Development Installation**
+```bash
+# For contributors and advanced users
+pip install -r requirements.txt
+pip install -r requirements_dev.txt
+```
+
+**Option 4: Minimal Installation**
+```bash
+# Basic functionality only
+pip install torch numpy pandas matplotlib scikit-learn
+pip install einops reformer-pytorch local-attention
+```
+
+### 🔧 GPU Support (Optional)
+
+For faster training and inference:
+
+```bash
+# CUDA 11.8 (Recommended)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# CUDA 12.1
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+```
+
+### ✅ Verify Installation
+
+```bash
+# Test basic functionality
+python -c "import torch; print('✅ PyTorch ready')"
+
+# Test ChronosX (if installed)
+python -c "from chronos import ChronosPipeline; print('✅ ChronosX ready')"
+
+# Run quick demo
+python chronos_x_simple_demo.py
+```
+
+### 📚 Detailed Installation Guide
+
+For comprehensive installation instructions, troubleshooting, and system requirements, see **[INSTALLATION_GUIDE.md](./INSTALLATION_GUIDE.md)**.
+
+### 🎯 Getting Started
+
+1. **Prepare Data**: Download pre-processed datasets from [[Google Drive]](https://drive.google.com/drive/folders/13Cg1KYOlzM5C7K8gK8NfC-F3EYxkM3D2?usp=sharing) or [[Baidu Drive]](https://pan.baidu.com/s/1r3KhGd0Q9PJIUZdfEYoymg?pwd=i9iy) and place in `./dataset`. especially for deep time series analysis.
 
 We provide a neat code base to evaluate advanced deep time series models or develop your model, which covers five mainstream tasks: **long- and short-term forecasting, imputation, anomaly detection, and classification.**
 
