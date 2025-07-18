@@ -34,7 +34,7 @@ class SimpleConfig:
 
 def test_hf_bayesian_fixed():
     """Test HFBayesianAutoformer after corruption fix"""
-    print("🔍 Testing HFBayesianAutoformer After Corruption Fix")
+    print("SEARCH Testing HFBayesianAutoformer After Corruption Fix")
     print("=" * 50)
     
     config = SimpleConfig()
@@ -49,15 +49,15 @@ def test_hf_bayesian_fixed():
     try:
         # Import directly
         from models.HFBayesianAutoformer import HFBayesianAutoformer
-        print("✅ Import successful")
+        print("PASS Import successful")
         
         # Initialize model
         model = HFBayesianAutoformer(config)
         model.eval()
-        print("✅ Model initialization successful")
+        print("PASS Model initialization successful")
         
         # Check components
-        print(f"📊 Model components:")
+        print(f"CHART Model components:")
         print(f"   - Has temporal_embedding: {hasattr(model, 'temporal_embedding')}")
         print(f"   - Has uncertainty_head: {hasattr(model, 'uncertainty_head')}")
         print(f"   - Has base_model: {hasattr(model, 'base_model')}")
@@ -65,12 +65,12 @@ def test_hf_bayesian_fixed():
         print(f"   - Quantile mode: {model.is_quantile_mode}")
         
         # Test forward pass with covariates
-        print(f"\n🧪 Testing forward pass...")
+        print(f"\nTEST Testing forward pass...")
         with torch.no_grad():
             output_with_cov = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
             output_without_cov = model(x_enc, None, x_dec, None)
         
-        print(f"✅ Forward pass successful")
+        print(f"PASS Forward pass successful")
         print(f"   - Output with covariates shape: {output_with_cov.shape}")
         print(f"   - Output without covariates shape: {output_without_cov.shape}")
         
@@ -84,29 +84,29 @@ def test_hf_bayesian_fixed():
         print(f"   - Difference: {difference:.4f}")
         
         # Test temporal embedding directly
-        print(f"\n🎯 Testing temporal embedding...")
+        print(f"\nTARGET Testing temporal embedding...")
         temp_emb = model.temporal_embedding(x_mark_enc)
         print(f"   - Input covariates shape: {x_mark_enc.shape}")
         print(f"   - Temporal embedding shape: {temp_emb.shape}")
         print(f"   - Temporal embedding mean: {temp_emb.mean().item():.4f}")
         
         # Test uncertainty methods
-        print(f"\n🔍 Testing uncertainty methods...")
+        print(f"\nSEARCH Testing uncertainty methods...")
         uncertainty_result = model.get_uncertainty_result(x_enc, x_mark_enc, x_dec, x_mark_dec)
         print(f"   - Uncertainty result keys: {list(uncertainty_result.keys())}")
         print(f"   - Prediction shape: {uncertainty_result['prediction'].shape}")
         print(f"   - Uncertainty shape: {uncertainty_result['uncertainty'].shape}")
         
-        print(f"\n🎉 ALL TESTS PASSED!")
-        print(f"✅ HFBayesianAutoformer is working correctly after fix")
-        print(f"✅ Covariate integration is functional")
-        print(f"✅ Temporal embeddings are working")
-        print(f"✅ Uncertainty quantification is working")
+        print(f"\nPARTY ALL TESTS PASSED!")
+        print(f"PASS HFBayesianAutoformer is working correctly after fix")
+        print(f"PASS Covariate integration is functional")
+        print(f"PASS Temporal embeddings are working")
+        print(f"PASS Uncertainty quantification is working")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        print(f"FAIL Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
@@ -114,6 +114,6 @@ def test_hf_bayesian_fixed():
 if __name__ == "__main__":
     success = test_hf_bayesian_fixed()
     if success:
-        print("\n🎯 HFBayesianAutoformer fix verification: SUCCESS")
+        print("\nTARGET HFBayesianAutoformer fix verification: SUCCESS")
     else:
-        print("\n❌ HFBayesianAutoformer fix verification: FAILED")
+        print("\nFAIL HFBayesianAutoformer fix verification: FAILED")

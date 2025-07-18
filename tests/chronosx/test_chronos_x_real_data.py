@@ -186,11 +186,11 @@ class ChronosXRealDataTester:
                 'uncertainty': std_forecast if 'std_forecast' in locals() else None
             }
             
-            logger.info(f"✅ Direct ChronosX {model_size}: MAE={mae:.4f}, RMSE={rmse:.4f}, Load={load_time:.2f}s")
+            logger.info(f"PASS Direct ChronosX {model_size}: MAE={mae:.4f}, RMSE={rmse:.4f}, Load={load_time:.2f}s")
             return results
             
         except Exception as e:
-            logger.error(f"❌ Direct ChronosX {model_size} failed: {e}")
+            logger.error(f"FAIL Direct ChronosX {model_size} failed: {e}")
             return {
                 'model_size': model_size,
                 'success': False,
@@ -267,11 +267,11 @@ class ChronosXRealDataTester:
                 'prediction': prediction
             }
             
-            logger.info(f"✅ Modular {backbone_type}: shape={prediction.shape}, time={inference_time:.2f}s")
+            logger.info(f"PASS Modular {backbone_type}: shape={prediction.shape}, time={inference_time:.2f}s")
             return results
             
         except Exception as e:
-            logger.error(f"❌ Modular {backbone_type} failed: {e}")
+            logger.error(f"FAIL Modular {backbone_type} failed: {e}")
             return {
                 'backbone_type': backbone_type,
                 'success': False,
@@ -292,11 +292,11 @@ class ChronosXRealDataTester:
             comparison_results[model_size] = result
             
             if result['success']:
-                logger.info(f"  ✅ {model_size}: MAE={result['mae']:.4f}, "
+                logger.info(f"  PASS {model_size}: MAE={result['mae']:.4f}, "
                           f"Load={result['load_time']:.2f}s, "
                           f"Inference={result['inference_time']:.2f}s")
             else:
-                logger.info(f"  ❌ {model_size}: {result.get('error', 'Unknown error')}")
+                logger.info(f"  FAIL {model_size}: {result.get('error', 'Unknown error')}")
         
         return comparison_results
     
@@ -345,11 +345,11 @@ class ChronosXRealDataTester:
                 'num_samples': config.num_samples
             }
             
-            logger.info("✅ Uncertainty quantification successful")
+            logger.info("PASS Uncertainty quantification successful")
             return results
             
         except Exception as e:
-            logger.error(f"❌ Uncertainty quantification failed: {e}")
+            logger.error(f"FAIL Uncertainty quantification failed: {e}")
             return {
                 'success': False,
                 'error': str(e)
@@ -402,13 +402,13 @@ class ChronosXRealDataTester:
                     x_axis, 
                     pred_mean - pred_std, 
                     pred_mean + pred_std,
-                    alpha=0.3, color='red', label='±1σ'
+                    alpha=0.3, color='red', label='1'
                 )
                 axes[1, 0].fill_between(
                     x_axis,
                     pred_mean - 2*pred_std,
                     pred_mean + 2*pred_std,
-                    alpha=0.2, color='red', label='±2σ'
+                    alpha=0.2, color='red', label='2'
                 )
                 
                 axes[1, 0].set_title('Uncertainty Quantification')
@@ -450,7 +450,7 @@ class ChronosXRealDataTester:
             
             if save_plots:
                 plt.savefig('chronos_x_real_data_results.png', dpi=300, bbox_inches='tight')
-                logger.info("📊 Saved visualization to chronos_x_real_data_results.png")
+                logger.info("CHART Saved visualization to chronos_x_real_data_results.png")
             
             plt.show()
             
@@ -459,7 +459,7 @@ class ChronosXRealDataTester:
     
     def run_comprehensive_test(self):
         """Run comprehensive ChronosX testing with real data"""
-        logger.info("🚀 Starting comprehensive ChronosX real data testing...")
+        logger.info("ROCKET Starting comprehensive ChronosX real data testing...")
         
         # Load real data
         data_sources = self.load_real_data()
@@ -475,12 +475,12 @@ class ChronosXRealDataTester:
         all_results = {}
         
         # Test 1: Model size comparison
-        logger.info("\n📊 Testing different model sizes...")
+        logger.info("\nCHART Testing different model sizes...")
         model_comparison = self.compare_model_sizes(data)
         all_results['model_comparison'] = model_comparison
         
         # Test 2: Modular architecture testing
-        logger.info("\n🏗️ Testing modular architecture...")
+        logger.info("\n Testing modular architecture...")
         modular_results = {}
         for backbone_type in ['chronos_x_tiny', 'chronos_x_uncertainty']:
             result = self.test_modular_chronos_backbone(data, backbone_type)
@@ -488,7 +488,7 @@ class ChronosXRealDataTester:
         all_results['modular'] = modular_results
         
         # Test 3: Uncertainty quantification
-        logger.info("\n🔮 Testing uncertainty quantification...")
+        logger.info("\nCRYSTAL Testing uncertainty quantification...")
         uncertainty_result = self.test_uncertainty_quantification(data)
         all_results['uncertainty'] = uncertainty_result
         
@@ -503,54 +503,54 @@ class ChronosXRealDataTester:
     def generate_report(self, results: Dict):
         """Generate comprehensive test report"""
         print("\n" + "="*60)
-        print("🎯 CHRONOS-X REAL DATA TESTING REPORT")
+        print("TARGET CHRONOS-X REAL DATA TESTING REPORT")
         print("="*60)
         
         # Model comparison results
         if 'model_comparison' in results:
-            print("\n📊 MODEL SIZE COMPARISON:")
+            print("\nCHART MODEL SIZE COMPARISON:")
             print("-" * 40)
             for model_size, result in results['model_comparison'].items():
                 if result['success']:
-                    print(f"✅ {model_size.upper()}:")
+                    print(f"PASS {model_size.upper()}:")
                     print(f"   MAE: {result['mae']:.4f}")
                     print(f"   RMSE: {result['rmse']:.4f}")
                     print(f"   Load Time: {result['load_time']:.2f}s")
                     print(f"   Inference Time: {result['inference_time']:.2f}s")
                     print(f"   Uncertainty Mean: {result['uncertainty_mean']:.4f}")
                 else:
-                    print(f"❌ {model_size.upper()}: {result.get('error', 'Failed')}")
+                    print(f"FAIL {model_size.upper()}: {result.get('error', 'Failed')}")
                 print()
         
         # Modular architecture results
         if 'modular' in results:
-            print("🏗️ MODULAR ARCHITECTURE:")
+            print(" MODULAR ARCHITECTURE:")
             print("-" * 40)
             for backbone_type, result in results['modular'].items():
                 if result['success']:
-                    print(f"✅ {backbone_type}:")
+                    print(f"PASS {backbone_type}:")
                     print(f"   Output Shape: {result['output_shape']}")
                     print(f"   Inference Time: {result['inference_time']:.2f}s")
                     print(f"   Has Uncertainty: {result['has_uncertainty']}")
                 else:
-                    print(f"❌ {backbone_type}: {result.get('error', 'Failed')}")
+                    print(f"FAIL {backbone_type}: {result.get('error', 'Failed')}")
                 print()
         
         # Uncertainty quantification
         if 'uncertainty' in results:
-            print("🔮 UNCERTAINTY QUANTIFICATION:")
+            print("CRYSTAL UNCERTAINTY QUANTIFICATION:")
             print("-" * 40)
             if results['uncertainty']['success']:
                 unc = results['uncertainty']
-                print("✅ Uncertainty Analysis Complete:")
+                print("PASS Uncertainty Analysis Complete:")
                 print(f"   Prediction Shape: {unc['prediction_mean'].shape}")
                 print(f"   Uncertainty Shape: {unc['prediction_std'].shape}")
                 print(f"   Samples Used: {unc['num_samples']}")
                 print(f"   Confidence Intervals: {list(unc['confidence_intervals'].keys())}")
             else:
-                print(f"❌ Uncertainty: {results['uncertainty'].get('error', 'Failed')}")
+                print(f"FAIL Uncertainty: {results['uncertainty'].get('error', 'Failed')}")
         
-        print("\n🎉 TESTING COMPLETE!")
+        print("\nPARTY TESTING COMPLETE!")
         print("="*60)
 
 def main():

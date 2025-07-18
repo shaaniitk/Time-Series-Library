@@ -23,13 +23,13 @@ def test_parquet_date_index():
     print("\n1. Testing original Parquet file...")
     try:
         target_data = data_manager.load_target_data('nifty50_returns.parquet')
-        print(f"   ✓ Successfully loaded Parquet: {target_data.shape}")
-        print(f"   ✓ Date column: {'date' in target_data.columns}")
+        print(f"    Successfully loaded Parquet: {target_data.shape}")
+        print(f"    Date column: {'date' in target_data.columns}")
         if 'date' in target_data.columns:
-            print(f"   ✓ Date range: {target_data['date'].min()} to {target_data['date'].max()}")
-        print(f"   ✓ Target columns: {data_manager.target_columns}")
+            print(f"    Date range: {target_data['date'].min()} to {target_data['date'].max()}")
+        print(f"    Target columns: {data_manager.target_columns}")
     except Exception as e:
-        print(f"   ✗ Failed to load Parquet: {e}")
+        print(f"    Failed to load Parquet: {e}")
         return False
     
     # Test 2: Create a test Parquet file with date as index
@@ -43,30 +43,30 @@ def test_parquet_date_index():
     parquet_with_index = csv_data.set_index('Date')
     test_file = 'data/test_date_index.parquet'
     parquet_with_index.to_parquet(test_file)
-    print(f"   ✓ Created test file: {test_file}")
-    print(f"   ✓ Index type: {type(parquet_with_index.index)}")
-    print(f"   ✓ Index name: {parquet_with_index.index.name}")
+    print(f"    Created test file: {test_file}")
+    print(f"    Index type: {type(parquet_with_index.index)}")
+    print(f"    Index name: {parquet_with_index.index.name}")
     
     # Test 3: Load the test file with date index
     print("\n3. Testing Parquet file with date as index...")
     try:
         data_manager_test = FinancialDataManager(data_root='data')
         test_data = data_manager_test.load_target_data('test_date_index.parquet')
-        print(f"   ✓ Successfully loaded test Parquet: {test_data.shape}")
-        print(f"   ✓ Date column exists: {'date' in test_data.columns}")
+        print(f"    Successfully loaded test Parquet: {test_data.shape}")
+        print(f"    Date column exists: {'date' in test_data.columns}")
         if 'date' in test_data.columns:
-            print(f"   ✓ Date range: {test_data['date'].min()} to {test_data['date'].max()}")
-            print(f"   ✓ Date column type: {test_data['date'].dtype}")
-        print(f"   ✓ Target columns: {data_manager_test.target_columns}")
+            print(f"    Date range: {test_data['date'].min()} to {test_data['date'].max()}")
+            print(f"    Date column type: {test_data['date'].dtype}")
+        print(f"    Target columns: {data_manager_test.target_columns}")
         
         # Verify data integrity
         if len(test_data) == len(csv_data):
-            print(f"   ✓ Data integrity preserved: {len(test_data)} rows")
+            print(f"    Data integrity preserved: {len(test_data)} rows")
         else:
-            print(f"   ⚠ Data size mismatch: {len(test_data)} vs {len(csv_data)}")
+            print(f"    Data size mismatch: {len(test_data)} vs {len(csv_data)}")
             
     except Exception as e:
-        print(f"   ✗ Failed to load test Parquet: {e}")
+        print(f"    Failed to load test Parquet: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -81,16 +81,16 @@ def test_parquet_date_index():
             static_cov_file='india_static_features.csv',
             alignment_method='forward_fill'
         )
-        print(f"   ✓ Complete pipeline successful: {complete_data.shape}")
-        print(f"   ✓ Date column: {'date' in complete_data.columns}")
-        print(f"   ✓ Missing values: {complete_data.isnull().sum().sum()}")
+        print(f"    Complete pipeline successful: {complete_data.shape}")
+        print(f"    Date column: {'date' in complete_data.columns}")
+        print(f"    Missing values: {complete_data.isnull().sum().sum()}")
         
     except Exception as e:
-        print(f"   ✗ Pipeline failed: {e}")
+        print(f"    Pipeline failed: {e}")
         return False
     
     print("\n" + "="*60)
-    print("🎉 All Parquet date index tests passed!")
+    print("PARTY All Parquet date index tests passed!")
     print("The data manager correctly handles:")
     print("  - Parquet files with date as column")
     print("  - Parquet files with date as index")

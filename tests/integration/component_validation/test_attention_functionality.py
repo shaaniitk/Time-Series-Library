@@ -25,7 +25,7 @@ try:
     from utils.modular_components.implementations import get_integration_status
     COMPONENTS_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️ Could not import modular components: {e}")
+    print(f"WARN Could not import modular components: {e}")
     COMPONENTS_AVAILABLE = False
 
 class MockConfig:
@@ -59,14 +59,14 @@ def create_attention_inputs(batch_size=2, seq_len=100, d_model=512):
 
 def test_multi_head_attention_functionality():
     """Test multi-head attention actual functionality"""
-    print("🧪 Testing Multi-Head Attention Functionality...")
+    print("TEST Testing Multi-Head Attention Functionality...")
     
     try:
         config = MockConfig(d_model=512, num_heads=8)
         attention = create_component('attention', 'multi_head', config)
         
         if attention is None:
-            print("    ⚠️ Multi-head attention not available, skipping...")
+            print("    WARN Multi-head attention not available, skipping...")
             return True
         
         queries, keys, values, mask = create_attention_inputs()
@@ -82,7 +82,7 @@ def test_multi_head_attention_functionality():
         expected_attn_shape = (queries.size(0), queries.size(1), keys.size(1))
         if attn_weights is not None:
             assert len(attn_weights.shape) >= 3, "Attention weights should be at least 3D"
-            print(f"    📊 Attention weights shape: {attn_weights.shape}")
+            print(f"    CHART Attention weights shape: {attn_weights.shape}")
         
         # Test attention properties
         if attn_weights is not None:
@@ -125,16 +125,16 @@ def test_multi_head_attention_functionality():
         assert queries_grad.grad is not None, "Gradients should exist"
         assert not torch.isnan(queries_grad.grad).any(), "Gradients should not be NaN"
         
-        print("    ✅ Multi-head attention functionality validated")
+        print("    PASS Multi-head attention functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Multi-head attention test failed: {e}")
+        print(f"    FAIL Multi-head attention test failed: {e}")
         return False
 
 def test_optimized_autocorrelation_functionality():
     """Test optimized autocorrelation attention functionality"""
-    print("🧪 Testing Optimized AutoCorrelation Attention Functionality...")
+    print("TEST Testing Optimized AutoCorrelation Attention Functionality...")
     
     try:
         config = MockConfig(
@@ -148,7 +148,7 @@ def test_optimized_autocorrelation_functionality():
         attention = create_component('attention', 'optimized_autocorrelation', config)
         
         if attention is None:
-            print("    ⚠️ Optimized autocorrelation attention not available, skipping...")
+            print("    WARN Optimized autocorrelation attention not available, skipping...")
             return True
         
         queries, keys, values, mask = create_attention_inputs()
@@ -174,7 +174,7 @@ def test_optimized_autocorrelation_functionality():
         if attn_periodic is not None:
             # Check if attention pattern shows some structure
             attn_var = attn_periodic.var().item()
-            print(f"    📊 Attention variance on periodic signal: {attn_var:.6f}")
+            print(f"    CHART Attention variance on periodic signal: {attn_var:.6f}")
             assert attn_var > 1e-6, "Attention should show some variation on periodic signal"
         
         # Test memory efficiency with long sequences
@@ -183,24 +183,24 @@ def test_optimized_autocorrelation_functionality():
             with torch.no_grad():
                 out_long, _ = attention(long_queries, long_keys, long_values)
             assert out_long.shape == long_queries.shape, "Long sequence handling failed"
-            print("    ✅ Long sequence handling successful")
+            print("    PASS Long sequence handling successful")
         except Exception as e:
-            print(f"    ⚠️ Long sequence test failed: {e}")
+            print(f"    WARN Long sequence test failed: {e}")
         
         # Test chunked processing if available
         if hasattr(attention, 'chunk_size'):
-            print(f"    📊 Chunk size: {attention.chunk_size}")
+            print(f"    CHART Chunk size: {attention.chunk_size}")
         
-        print("    ✅ Optimized autocorrelation attention functionality validated")
+        print("    PASS Optimized autocorrelation attention functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Optimized autocorrelation attention test failed: {e}")
+        print(f"    FAIL Optimized autocorrelation attention test failed: {e}")
         return False
 
 def test_adaptive_autocorrelation_functionality():
     """Test adaptive autocorrelation attention functionality"""
-    print("🧪 Testing Adaptive AutoCorrelation Attention Functionality...")
+    print("TEST Testing Adaptive AutoCorrelation Attention Functionality...")
     
     try:
         config = MockConfig(
@@ -212,7 +212,7 @@ def test_adaptive_autocorrelation_functionality():
         attention = create_component('attention', 'adaptive_autocorrelation', config)
         
         if attention is None:
-            print("    ⚠️ Adaptive autocorrelation attention not available, skipping...")
+            print("    WARN Adaptive autocorrelation attention not available, skipping...")
             return True
         
         queries, keys, values, mask = create_attention_inputs()
@@ -242,7 +242,7 @@ def test_adaptive_autocorrelation_functionality():
                 out, attn = attention(signal, signal, signal)
                 outputs[name] = out
             
-            print(f"    📊 {name} frequency signal processed successfully")
+            print(f"    CHART {name} frequency signal processed successfully")
         
         # Adaptive attention should produce different outputs for different frequencies
         assert not torch.allclose(outputs["low"], outputs["high"], atol=1e-3), \
@@ -250,18 +250,18 @@ def test_adaptive_autocorrelation_functionality():
         
         # Test scale adaptation
         if hasattr(attention, 'scales'):
-            print(f"    📊 Attention scales: {attention.scales}")
+            print(f"    CHART Attention scales: {attention.scales}")
         
-        print("    ✅ Adaptive autocorrelation attention functionality validated")
+        print("    PASS Adaptive autocorrelation attention functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Adaptive autocorrelation attention test failed: {e}")
+        print(f"    FAIL Adaptive autocorrelation attention test failed: {e}")
         return False
 
 def test_hierarchical_attention_functionality():
     """Test hierarchical attention functionality"""
-    print("🧪 Testing Hierarchical Attention Functionality...")
+    print("TEST Testing Hierarchical Attention Functionality...")
     
     try:
         config = MockConfig(
@@ -273,7 +273,7 @@ def test_hierarchical_attention_functionality():
         attention = create_component('attention', 'hierarchical_attention', config)
         
         if attention is None:
-            print("    ⚠️ Hierarchical attention not available, skipping...")
+            print("    WARN Hierarchical attention not available, skipping...")
             return True
         
         queries, keys, values, mask = create_attention_inputs()
@@ -322,20 +322,20 @@ def test_hierarchical_attention_functionality():
                 if attn_test:
                     with torch.no_grad():
                         out_test, _ = attn_test(queries, keys, values)
-                    print(f"    📊 Hierarchy levels {levels}: ✅")
+                    print(f"    CHART Hierarchy levels {levels}: PASS")
             except Exception as e:
-                print(f"    ⚠️ Hierarchy levels {levels}: {e}")
+                print(f"    WARN Hierarchy levels {levels}: {e}")
         
-        print("    ✅ Hierarchical attention functionality validated")
+        print("    PASS Hierarchical attention functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Hierarchical attention test failed: {e}")
+        print(f"    FAIL Hierarchical attention test failed: {e}")
         return False
 
 def test_memory_efficient_attention():
     """Test memory efficient attention functionality"""
-    print("🧪 Testing Memory Efficient Attention Functionality...")
+    print("TEST Testing Memory Efficient Attention Functionality...")
     
     try:
         config = MockConfig(
@@ -348,7 +348,7 @@ def test_memory_efficient_attention():
         attention = create_component('attention', 'memory_efficient', config)
         
         if attention is None:
-            print("    ⚠️ Memory efficient attention not available, skipping...")
+            print("    WARN Memory efficient attention not available, skipping...")
             return True
         
         # Test with progressively larger sequences to check memory efficiency
@@ -371,10 +371,10 @@ def test_memory_efficient_attention():
                 assert output.shape == queries.shape, f"Shape mismatch for seq_len={seq_len}"
                 
                 memory_results.append((seq_len, memory_used))
-                print(f"    📊 Seq len {seq_len}: memory ~{memory_used / 1024**2:.1f} MB")
+                print(f"    CHART Seq len {seq_len}: memory ~{memory_used / 1024**2:.1f} MB")
                 
             except Exception as e:
-                print(f"    ⚠️ Seq len {seq_len} failed: {e}")
+                print(f"    WARN Seq len {seq_len} failed: {e}")
         
         # Test gradient checkpointing if available
         if hasattr(attention, 'use_checkpointing') and attention.use_checkpointing:
@@ -384,18 +384,18 @@ def test_memory_efficient_attention():
             loss.backward()
             
             assert queries_grad.grad is not None, "Checkpointing should still allow gradients"
-            print("    ✅ Gradient checkpointing working")
+            print("    PASS Gradient checkpointing working")
         
-        print("    ✅ Memory efficient attention functionality validated")
+        print("    PASS Memory efficient attention functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Memory efficient attention test failed: {e}")
+        print(f"    FAIL Memory efficient attention test failed: {e}")
         return False
 
 def test_attention_mathematical_properties():
     """Test mathematical properties of attention mechanisms"""
-    print("🧪 Testing Attention Mathematical Properties...")
+    print("TEST Testing Attention Mathematical Properties...")
     
     try:
         attention_types = ['multi_head']  # Start with most reliable
@@ -413,7 +413,7 @@ def test_attention_mathematical_properties():
         
         for attn_type in attention_types:
             try:
-                print(f"    🔍 Testing {attn_type} mathematical properties:")
+                print(f"    SEARCH Testing {attn_type} mathematical properties:")
                 
                 attention = create_component('attention', attn_type, MockConfig())
                 if attention is None:
@@ -432,7 +432,7 @@ def test_attention_mathematical_properties():
                 # After undoing permutation, outputs should be similar
                 out_perm_undone = out_perm[:, torch.argsort(perm_indices), :]
                 perm_diff = torch.abs(out_orig - out_perm_undone).mean()
-                print(f"      📊 Permutation invariance error: {perm_diff:.6f}")
+                print(f"      CHART Permutation invariance error: {perm_diff:.6f}")
                 
                 # Test 2: Scale sensitivity
                 scaled_queries = queries * 2.0
@@ -440,7 +440,7 @@ def test_attention_mathematical_properties():
                     out_scaled, _ = attention(scaled_queries, keys, values)
                 
                 scale_diff = torch.abs(out_orig - out_scaled).mean()
-                print(f"      📊 Scale sensitivity: {scale_diff:.6f}")
+                print(f"      CHART Scale sensitivity: {scale_diff:.6f}")
                 
                 # Test 3: Linearity in values (attention should be linear in V)
                 alpha = 0.7
@@ -455,7 +455,7 @@ def test_attention_mathematical_properties():
                 
                 expected_combined = alpha * out_v1 + beta * out_v2
                 linearity_error = torch.abs(out_combined - expected_combined).mean()
-                print(f"      📊 Value linearity error: {linearity_error:.6f}")
+                print(f"      CHART Value linearity error: {linearity_error:.6f}")
                 
                 # Test 4: Attention weight properties
                 with torch.no_grad():
@@ -469,24 +469,24 @@ def test_attention_mathematical_properties():
                     weight_sums = attn_weights.sum(dim=-1)
                     sum_error = torch.abs(weight_sums - 1.0).mean()
                     
-                    print(f"      📊 Non-negative weights: {non_negative}")
-                    print(f"      📊 Weight sum error: {sum_error:.6f}")
+                    print(f"      CHART Non-negative weights: {non_negative}")
+                    print(f"      CHART Weight sum error: {sum_error:.6f}")
                 
-                print(f"      ✅ {attn_type} mathematical properties checked")
+                print(f"      PASS {attn_type} mathematical properties checked")
                 
             except Exception as e:
-                print(f"      ❌ {attn_type} mathematical test failed: {e}")
+                print(f"      FAIL {attn_type} mathematical test failed: {e}")
         
-        print("    ✅ Attention mathematical properties validated")
+        print("    PASS Attention mathematical properties validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Attention mathematical properties test failed: {e}")
+        print(f"    FAIL Attention mathematical properties test failed: {e}")
         return False
 
 def test_attention_edge_cases():
     """Test attention mechanisms with edge cases"""
-    print("🧪 Testing Attention Edge Cases...")
+    print("TEST Testing Attention Edge Cases...")
     
     try:
         attention_types = ['multi_head']
@@ -509,7 +509,7 @@ def test_attention_edge_cases():
         
         for attn_type in attention_types:
             try:
-                print(f"    🔍 Testing {attn_type} edge cases:")
+                print(f"    SEARCH Testing {attn_type} edge cases:")
                 
                 attention = create_component('attention', attn_type, MockConfig())
                 if attention is None:
@@ -526,10 +526,10 @@ def test_attention_edge_cases():
                         assert not torch.isnan(output).any(), f"NaN output for {case_name}"
                         assert not torch.isinf(output).any(), f"Inf output for {case_name}"
                         
-                        print(f"      ✅ {case_name} (seq_len={seq_len})")
+                        print(f"      PASS {case_name} (seq_len={seq_len})")
                         
                     except Exception as e:
-                        print(f"      ❌ {case_name} failed: {e}")
+                        print(f"      FAIL {case_name} failed: {e}")
                 
                 # Test with extreme values
                 extreme_cases = [
@@ -546,31 +546,31 @@ def test_attention_edge_cases():
                         is_finite = torch.isfinite(output).all()
                         is_nan = torch.isnan(output).any()
                         
-                        status = "✅" if is_finite and not is_nan else "❌"
+                        status = "PASS" if is_finite and not is_nan else "FAIL"
                         print(f"      {status} {case_name}: finite={is_finite}, nan={is_nan}")
                         
                     except Exception as e:
-                        print(f"      ❌ {case_name}: {e}")
+                        print(f"      FAIL {case_name}: {e}")
                 
-                print(f"      ✅ {attn_type} edge cases handled")
+                print(f"      PASS {attn_type} edge cases handled")
                 
             except Exception as e:
-                print(f"      ❌ {attn_type} edge case testing failed: {e}")
+                print(f"      FAIL {attn_type} edge case testing failed: {e}")
         
-        print("    ✅ Attention edge cases validated")
+        print("    PASS Attention edge cases validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Attention edge cases test failed: {e}")
+        print(f"    FAIL Attention edge cases test failed: {e}")
         return False
 
 def run_attention_functionality_tests():
     """Run all attention mechanism functionality tests"""
-    print("🚀 Running Attention Mechanism Component Functionality Tests")
+    print("ROCKET Running Attention Mechanism Component Functionality Tests")
     print("=" * 80)
     
     if not COMPONENTS_AVAILABLE:
-        print("❌ Modular components not available - skipping tests")
+        print("FAIL Modular components not available - skipping tests")
         return False
     
     tests = [
@@ -587,28 +587,28 @@ def run_attention_functionality_tests():
     total = len(tests)
     
     for test_name, test_func in tests:
-        print(f"\n🎯 {test_name}")
+        print(f"\nTARGET {test_name}")
         print("-" * 60)
         
         try:
             if test_func():
                 passed += 1
-                print(f"✅ {test_name} PASSED")
+                print(f"PASS {test_name} PASSED")
             else:
-                print(f"❌ {test_name} FAILED")
+                print(f"FAIL {test_name} FAILED")
         except Exception as e:
-            print(f"❌ {test_name} ERROR: {e}")
+            print(f"FAIL {test_name} ERROR: {e}")
     
     print("\n" + "=" * 80)
-    print(f"📊 Attention Mechanism Functionality Test Results:")
+    print(f"CHART Attention Mechanism Functionality Test Results:")
     print(f"   Passed: {passed}/{total}")
     print(f"   Success Rate: {(passed/total)*100:.1f}%")
     
     if passed == total:
-        print("🎉 All attention mechanism functionality tests passed!")
+        print("PARTY All attention mechanism functionality tests passed!")
         return True
     else:
-        print("⚠️ Some attention mechanism functionality tests failed")
+        print("WARN Some attention mechanism functionality tests failed")
         return False
 
 if __name__ == "__main__":

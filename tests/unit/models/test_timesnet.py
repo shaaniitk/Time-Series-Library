@@ -52,7 +52,7 @@ class TestTimesNet(unittest.TestCase, SanityTestMixin):
         mse, y_pred, y_true = self.run_sanity_test(TimesNet)
         
         logger.info("="*50)
-        logger.info(f"✓ TimesNet Sanity Test MSE: {mse:.6f}")
+        logger.info(f" TimesNet Sanity Test MSE: {mse:.6f}")
         logger.info("="*50)
         
         # Relaxed threshold for sanity test

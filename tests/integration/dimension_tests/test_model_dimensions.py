@@ -43,14 +43,14 @@ class ModelDimensionTester:
         self.n_static_features = 1      # Static/time features
         self.total_features = self.n_targets + self.n_dynamic_covariates + self.n_static_features
         
-        print(f"🧪 MODEL DIMENSION TESTER")
+        print(f"TEST MODEL DIMENSION TESTER")
         print(f"=" * 60)
-        print(f"📊 Test Dataset Composition:")
+        print(f"CHART Test Dataset Composition:")
         print(f"   - Target variables: {self.n_targets} (Open, Close)")
         print(f"   - Dynamic covariates: {self.n_dynamic_covariates} (Volume, Market_Cap)")
         print(f"   - Static features: {self.n_static_features} (Time encoding)")
         print(f"   - Total input features: {self.total_features}")
-        print(f"📏 Sequence Configuration:")
+        print(f" Sequence Configuration:")
         print(f"   - Input sequence length: {self.seq_len}")
         print(f"   - Prediction length: {self.pred_len}")
         print(f"   - Label length: {self.label_len}")
@@ -70,7 +70,7 @@ class ModelDimensionTester:
         batch_x_mark = torch.randn(self.batch_size, self.seq_len, 3)  # 3 time features for business day
         batch_y_mark = torch.randn(self.batch_size, total_target_len, 3)
         
-        print(f"📦 Generated Test Data:")
+        print(f" Generated Test Data:")
         print(f"   - batch_x shape: {batch_x.shape} (input sequences)")
         print(f"   - batch_y shape: {batch_y.shape} (target sequences)")
         print(f"   - batch_x_mark shape: {batch_x_mark.shape} (input time features)")
@@ -118,7 +118,7 @@ class ModelDimensionTester:
         
         model = TimesNet(args)
         
-        print(f"🔧 Created TimesNet Model:")
+        print(f"TOOL Created TimesNet Model:")
         print(f"   - Features mode: '{features_mode}'")
         print(f"   - Input features (enc_in): {args.enc_in}")
         print(f"   - Output features (c_out): {args.c_out}")
@@ -129,7 +129,7 @@ class ModelDimensionTester:
     
     def test_model_forward(self, features_mode='M', c_out=None):
         """Test model forward pass and analyze dimensions"""
-        print(f"\n🚀 TESTING FEATURES MODE: '{features_mode}'")
+        print(f"\nROCKET TESTING FEATURES MODE: '{features_mode}'")
         print(f"=" * 40)
         
         # Create model and data
@@ -140,7 +140,7 @@ class ModelDimensionTester:
         dec_inp = torch.zeros_like(batch_y[:, -self.pred_len:, :]).float()
         dec_inp = torch.cat([batch_y[:, :self.label_len, :], dec_inp], dim=1).float()
         
-        print(f"🔄 Decoder input shape: {dec_inp.shape}")
+        print(f"REFRESH Decoder input shape: {dec_inp.shape}")
         
         # Forward pass
         model.eval()
@@ -148,28 +148,28 @@ class ModelDimensionTester:
             try:
                 outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                print(f"✅ Forward pass successful!")
-                print(f"📤 Model output shape: {outputs.shape}")
-                print(f"📊 Expected target shape: {batch_y[:, -self.pred_len:, :].shape}")
+                print(f"PASS Forward pass successful!")
+                print(f" Model output shape: {outputs.shape}")
+                print(f"CHART Expected target shape: {batch_y[:, -self.pred_len:, :].shape}")
                 
                 # Analyze output dimensions
                 batch_size_out, seq_len_out, features_out = outputs.shape
                 
-                print(f"\n📋 DIMENSION ANALYSIS:")
+                print(f"\nCLIPBOARD DIMENSION ANALYSIS:")
                 print(f"   - Output batch size: {batch_size_out} (expected: {self.batch_size})")
                 print(f"   - Output sequence length: {seq_len_out} (expected: {self.pred_len})")
                 print(f"   - Output features: {features_out}")
                 
                 # Analyze what the model is predicting
                 if features_mode == 'M':
-                    print(f"   ➜ Mode 'M': Model predicts ALL {features_out} features")
+                    print(f"    Mode 'M': Model predicts ALL {features_out} features")
                     print(f"     - Targets (first {self.n_targets}): {outputs[0, 0, :self.n_targets].detach().numpy()}")
                     print(f"     - Dynamic covariates (next {self.n_dynamic_covariates}): {outputs[0, 0, self.n_targets:self.n_targets+self.n_dynamic_covariates].detach().numpy()}")
                     if features_out > self.n_targets + self.n_dynamic_covariates:
                         print(f"     - Static features (remaining): {outputs[0, 0, self.n_targets+self.n_dynamic_covariates:].detach().numpy()}")
                 
                 elif features_mode in ['MS', 'S']:
-                    print(f"   ➜ Mode '{features_mode}': Model predicts {features_out} feature(s)")
+                    print(f"    Mode '{features_mode}': Model predicts {features_out} feature(s)")
                     print(f"     - Single output: {outputs[0, 0, 0].detach().numpy()}")
                     if features_out > 1:
                         print(f"     - Additional outputs: {outputs[0, 0, 1:].detach().numpy()}")
@@ -181,21 +181,21 @@ class ModelDimensionTester:
                     'features_expected': features_out == args.c_out
                 }
                 
-                print(f"\n✅ DIMENSION VALIDATION:")
+                print(f"\nPASS DIMENSION VALIDATION:")
                 for check, result in dimension_check.items():
-                    status = "✅ PASS" if result else "❌ FAIL"
+                    status = "PASS PASS" if result else "FAIL FAIL"
                     print(f"   - {check.replace('_', ' ').title()}: {status}")
                 
                 return outputs, dimension_check
                 
             except Exception as e:
-                print(f"❌ Forward pass failed!")
-                print(f"🚨 Error: {e}")
+                print(f"FAIL Forward pass failed!")
+                print(f" Error: {e}")
                 return None, {'error': str(e)}
 
     def test_ms_mode_multi_target_output(self):
         """Test 'MS' mode with c_out explicitly set to predict multiple targets."""
-        print(f"\n🚀 TESTING 'MS' MODE WITH EXPLICIT MULTI-TARGET OUTPUT (c_out = n_targets)")
+        print(f"\nROCKET TESTING 'MS' MODE WITH EXPLICIT MULTI-TARGET OUTPUT (c_out = n_targets)")
         print(f"=" * 70)
 
         features_mode = 'MS'
@@ -210,7 +210,7 @@ class ModelDimensionTester:
         dec_inp = torch.zeros_like(batch_y[:, -self.pred_len:, :]).float()
         dec_inp = torch.cat([batch_y[:, :self.label_len, :], dec_inp], dim=1).float()
 
-        print(f"🔄 Decoder input shape: {dec_inp.shape}")
+        print(f"REFRESH Decoder input shape: {dec_inp.shape}")
 
         # Forward pass
         model.eval()
@@ -218,13 +218,13 @@ class ModelDimensionTester:
             try:
                 outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
-                print(f"✅ Forward pass successful!")
-                print(f"📤 Model output shape: {outputs.shape}")
+                print(f"PASS Forward pass successful!")
+                print(f" Model output shape: {outputs.shape}")
                 
                 # Analyze output dimensions
                 batch_size_out, seq_len_out, features_out = outputs.shape
                 
-                print(f"\n📋 DIMENSION ANALYSIS:")
+                print(f"\nCLIPBOARD DIMENSION ANALYSIS:")
                 print(f"   - Output batch size: {batch_size_out} (expected: {self.batch_size})")
                 print(f"   - Output sequence length: {seq_len_out} (expected: {self.pred_len})")
                 print(f"   - Output features: {features_out} (expected: {explicit_c_out})")
@@ -232,31 +232,31 @@ class ModelDimensionTester:
                 if batch_size_out == self.batch_size and \
                    seq_len_out == self.pred_len and \
                    features_out == explicit_c_out:
-                    print(f"   ✅ PASS: Output dimensions are correct for 'MS' mode with c_out={explicit_c_out}.")
+                    print(f"   PASS PASS: Output dimensions are correct for 'MS' mode with c_out={explicit_c_out}.")
                 else:
-                    print(f"   ❌ FAIL: Output dimensions are INCORRECT.")
+                    print(f"   FAIL FAIL: Output dimensions are INCORRECT.")
             except Exception as e:
-                print(f"❌ Forward pass failed!")
-                print(f"🚨 Error: {e}")
+                print(f"FAIL Forward pass failed!")
+                print(f" Error: {e}")
                 return None, {'error': str(e)}
     
     def test_covariate_behavior(self):
         """Test how the model handles future covariates vs targets"""
-        print(f"\n🔍 TESTING COVARIATE BEHAVIOR")
+        print(f"\nSEARCH TESTING COVARIATE BEHAVIOR")
         print(f"=" * 50)
         
         # Test with different scenarios
         scenarios = [
             ('M', None, "Predict all features (targets + covariates)"),
-            ('MS', 1, "Multivariate input → Single target output"),
-            ('MS', 2, "Multivariate input → Multiple target output"),
+            ('MS', 1, "Multivariate input  Single target output"),
+            ('MS', 2, "Multivariate input  Multiple target output"),
             ('S', 1, "Univariate mode")
         ]
         
         results = {}
         
         for features_mode, c_out, description in scenarios:
-            print(f"\n📊 Scenario: {description}")
+            print(f"\nCHART Scenario: {description}")
             print(f"   Features mode: '{features_mode}', c_out: {c_out}")
             
             outputs, check = self.test_model_forward(features_mode, c_out)
@@ -270,7 +270,7 @@ class ModelDimensionTester:
     
     def analyze_covariate_predictions(self, results):
         """Analyze whether the model predicts future covariates correctly"""
-        print(f"\n🎯 COVARIATE PREDICTION ANALYSIS")
+        print(f"\nTARGET COVARIATE PREDICTION ANALYSIS")
         print(f"=" * 50)
         
         for scenario_key, result in results.items():
@@ -281,7 +281,7 @@ class ModelDimensionTester:
             if outputs is None:
                 continue
                 
-            print(f"\n📈 {result['description']}:")
+            print(f"\nGRAPH {result['description']}:")
             
             # Extract features from output
             if outputs.shape[-1] >= self.total_features:  # Full multivariate output
@@ -290,19 +290,19 @@ class ModelDimensionTester:
                 
                 print(f"   - Target predictions: {target_predictions.detach().numpy()}")
                 print(f"   - Covariate predictions: {covariate_predictions.detach().numpy()}")
-                print(f"   ⚠️  Model is predicting future covariates (this may not be desired!)")
+                print(f"   WARN  Model is predicting future covariates (this may not be desired!)")
                 
             elif outputs.shape[-1] == 1:  # Single output
                 print(f"   - Single prediction: {outputs[0, 0, 0].detach().numpy()}")
-                print(f"   ✅ Model outputs single value (targets only)")
+                print(f"   PASS Model outputs single value (targets only)")
                 
             else:  # Partial multivariate
                 print(f"   - Predictions: {outputs[0, 0, :].detach().numpy()}")
-                print(f"   🤔 Model outputs {outputs.shape[-1]} features")
+                print(f"    Model outputs {outputs.shape[-1]} features")
     
     def test_covariate_passthrough(self, features_mode='M'):
         """Test if model passes through future covariate values unchanged"""
-        print(f"\n🔍 TESTING COVARIATE PASSTHROUGH")
+        print(f"\nSEARCH TESTING COVARIATE PASSTHROUGH")
         print(f"=" * 50)
           # Create model
         model, args = self.create_model(features_mode)
@@ -340,7 +340,7 @@ class ModelDimensionTester:
         # Extract the input future covariate values for comparison
         input_future_covariates = batch_y[:, -self.pred_len:, self.n_targets:self.n_targets + self.n_dynamic_covariates].clone()
         
-        print(f"📊 Test Setup:")
+        print(f"CHART Test Setup:")
         print(f"   - Prediction length: {self.pred_len}")
         print(f"   - Future covariate pattern for Covariate 1: {input_future_covariates[0, :, 0].tolist()}")
         print(f"   - Future covariate pattern for Covariate 2: {input_future_covariates[0, :, 1].tolist()}")
@@ -357,7 +357,7 @@ class ModelDimensionTester:
                 # Extract output covariate values for the prediction period
                 output_future_covariates = outputs[:, -self.pred_len:, self.n_targets:self.n_targets + self.n_dynamic_covariates]
                 
-                print(f"\n📤 Model Output:")
+                print(f"\n Model Output:")
                 print(f"   - Output covariate 1: {output_future_covariates[0, :, 0].tolist()}")
                 print(f"   - Output covariate 2: {output_future_covariates[0, :, 1].tolist()}")
                 
@@ -366,7 +366,7 @@ class ModelDimensionTester:
                 max_diff = torch.max(covariate_diff).item()
                 mean_diff = torch.mean(covariate_diff).item()
                 
-                print(f"\n🔍 COVARIATE PASSTHROUGH ANALYSIS:")
+                print(f"\nSEARCH COVARIATE PASSTHROUGH ANALYSIS:")
                 print(f"   - Maximum difference: {max_diff:.6f}")
                 print(f"   - Mean difference: {mean_diff:.6f}")
                 
@@ -374,11 +374,11 @@ class ModelDimensionTester:
                 is_passthrough = max_diff < 1e-4
                 
                 if is_passthrough:
-                    print(f"   ✅ PASSTHROUGH: Model copies future covariate inputs to outputs")
-                    print(f"   ➜ This is GOOD for known future covariates!")
+                    print(f"   PASS PASSTHROUGH: Model copies future covariate inputs to outputs")
+                    print(f"    This is GOOD for known future covariates!")
                 else:
-                    print(f"   ❌ TRANSFORMATION: Model modifies future covariate values")
-                    print(f"   ➜ This may be problematic if covariates are known!")
+                    print(f"   FAIL TRANSFORMATION: Model modifies future covariate values")
+                    print(f"    This may be problematic if covariates are known!")
                 
                 return {
                     'is_passthrough': is_passthrough,
@@ -389,13 +389,13 @@ class ModelDimensionTester:
                 }
                 
         except Exception as e:
-            print(f"❌ Covariate passthrough test failed!")
-            print(f"🚨 Error: {str(e)}")
+            print(f"FAIL Covariate passthrough test failed!")
+            print(f" Error: {str(e)}")
             return None
 
     def test_scaling_behavior(self):
         """Test if model is applying scaling/normalization to covariate values"""
-        print(f"\n🔍 TESTING SCALING/NORMALIZATION BEHAVIOR")
+        print(f"\nSEARCH TESTING SCALING/NORMALIZATION BEHAVIOR")
         print(f"=" * 60)
         
         # Create model
@@ -411,7 +411,7 @@ class ModelDimensionTester:
         ]
         
         for scenario in scenarios:
-            print(f"\n📊 Scenario: {scenario['name']}")
+            print(f"\nCHART Scenario: {scenario['name']}")
             print(f"   Input cov1: {scenario['cov1']}")
             print(f"   Input cov2: {scenario['cov2']}")
             
@@ -467,15 +467,15 @@ class ModelDimensionTester:
                     print(f"   Output range: {output_range:.3f}")
                     
                     if output_range < 5.0:  # Typical for normalized data
-                        print(f"   🔍 Likely normalized/scaled output")
+                        print(f"   SEARCH Likely normalized/scaled output")
                     else:
-                        print(f"   🔍 Raw/unscaled output")
+                        print(f"   SEARCH Raw/unscaled output")
                         
             except Exception as e:
-                print(f"   ❌ Error: {str(e)}")
+                print(f"   FAIL Error: {str(e)}")
         
         # Test scaling hypotheses
-        print(f"\n🧮 SCALING HYPOTHESIS TESTING")
+        print(f"\n SCALING HYPOTHESIS TESTING")
         print(f"=" * 40)
         print(f"Common scaling methods:")
         print(f"1. Z-score: (x - mean) / std")
@@ -486,7 +486,7 @@ class ModelDimensionTester:
     
     def test_target_order_and_scaling(self):
         """Test the exact order and scaling of target outputs"""
-        print(f"\n🎯 TESTING TARGET ORDER AND SCALING")
+        print(f"\nTARGET TESTING TARGET ORDER AND SCALING")
         print(f"=" * 60)
         
         # Create model
@@ -509,7 +509,7 @@ class ModelDimensionTester:
             'Covariate_1 (Market_Cap)': [50.0, 60.0, 70.0, 80.0],
         }
         
-        print(f"📊 INPUT TEST PATTERNS:")
+        print(f"CHART INPUT TEST PATTERNS:")
         for name, pattern in target_patterns.items():
             print(f"   {name}: {pattern}")
         for name, pattern in covariate_patterns.items():
@@ -544,7 +544,7 @@ class ModelDimensionTester:
                 
                 outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                print(f"\n📤 MODEL OUTPUT ANALYSIS:")
+                print(f"\n MODEL OUTPUT ANALYSIS:")
                 print(f"Output shape: {outputs.shape}")
                 
                 # Extract outputs for each position
@@ -553,7 +553,7 @@ class ModelDimensionTester:
                     print(f"   Position {pos}: {[f'{x:.3f}' for x in output_values]}")
                 
                 # Compare with input patterns to identify which position corresponds to what
-                print(f"\n🔍 PATTERN MATCHING ANALYSIS:")
+                print(f"\nSEARCH PATTERN MATCHING ANALYSIS:")
                 
                 # Check if any output position correlates with input targets
                 for target_name, input_pattern in target_patterns.items():
@@ -570,7 +570,7 @@ class ModelDimensionTester:
                         print(f"     Position {pos}: trend correlation = {correlation:.3f}")
                 
                 # Test target scaling by checking if outputs preserve relative ratios
-                print(f"\n📏 SCALING ANALYSIS:")
+                print(f"\n SCALING ANALYSIS:")
                 target_0_out = outputs[0, -4:, 0].tolist()
                 target_1_out = outputs[0, -4:, 1].tolist()
                 
@@ -582,9 +582,9 @@ class ModelDimensionTester:
                 print(f"   Output ratio (pos_1/pos_0) for t=0: {output_ratio_01:.3f}")
                 
                 if abs(input_ratio_01 - output_ratio_01) < 1.0:
-                    print(f"   ✅ Ratios preserved - minimal scaling applied to targets")
+                    print(f"   PASS Ratios preserved - minimal scaling applied to targets")
                 else:
-                    print(f"   ⚠️  Ratios not preserved - targets are normalized/scaled")
+                    print(f"   WARN  Ratios not preserved - targets are normalized/scaled")
                 
                 # Check absolute scaling
                 input_target_0_range = max(target_patterns['Target_0 (Open)']) - min(target_patterns['Target_0 (Open)'])
@@ -597,22 +597,22 @@ class ModelDimensionTester:
                 print(f"   Approximate scaling factor: {scaling_factor:.1f}")
                 
         except Exception as e:
-            print(f"   ❌ Error: {str(e)}")
+            print(f"   FAIL Error: {str(e)}")
         
-        print(f"\n🎯 CONCLUSIONS:")
+        print(f"\nTARGET CONCLUSIONS:")
         print(f"1. Verify which output positions correspond to your OHLC targets")
         print(f"2. Check if targets are scaled (normalize back if needed)")
         print(f"3. Ensure loss calculation uses correct positions and scaling")
     
     def test_real_data_structure(self):
         """Test with actual financial data structure to verify feature ordering and scaling"""
-        print(f"\n🔍 TESTING REAL DATA STRUCTURE AND SCALING")
+        print(f"\nSEARCH TESTING REAL DATA STRUCTURE AND SCALING")
         print(f"=" * 60)
         
         # Check if prepared data exists
         data_path = './data/prepared_financial_data.csv'
         if not os.path.exists(data_path):
-            print(f"❌ Data file not found: {data_path}")
+            print(f"FAIL Data file not found: {data_path}")
             print(f"   Please run data preparation first")
             return None
             
@@ -620,7 +620,7 @@ class ModelDimensionTester:
             import pandas as pd
             
             # Load the actual prepared data
-            print(f"📊 Loading actual financial data...")
+            print(f"CHART Loading actual financial data...")
             df = pd.read_csv(data_path)
             
             print(f"   - Data shape: {df.shape}")
@@ -634,7 +634,7 @@ class ModelDimensionTester:
             print(f"   - Found target columns: {actual_targets}")
             
             if len(actual_targets) != 4:
-                print(f"⚠️  Warning: Found {len(actual_targets)} targets, expected 4")
+                print(f"WARN  Warning: Found {len(actual_targets)} targets, expected 4")
                 return None
                 
             # Check if targets are first 4 columns
@@ -642,11 +642,11 @@ class ModelDimensionTester:
             targets_are_first = actual_targets
             
             print(f"   - First 4 columns after 'date': {first_4_cols_after_date}")
-            print(f"   - Targets are first 4 (after date): {'✅ YES' if targets_are_first else '❌ NO'}")
+            print(f"   - Targets are first 4 (after date): {'PASS YES' if targets_are_first else 'FAIL NO'}")
             
             # Analyze scaling (check if data is already scaled)
             target_stats = df[actual_targets].describe()
-            print(f"\n📏 Target Statistics (should be scaled if data prep was applied):")
+            print(f"\n Target Statistics (should be scaled if data prep was applied):")
             for col in actual_targets:
                 mean_val = target_stats.loc['mean', col]
                 std_val = target_stats.loc['std', col]
@@ -656,10 +656,10 @@ class ModelDimensionTester:
                 
                 # Check if it looks scaled (near 0 mean, ~1 std)
                 is_scaled = abs(mean_val) < 0.1 and 0.8 < std_val < 1.2
-                print(f"     {'✅ Appears scaled' if is_scaled else '❌ Not scaled'}")
+                print(f"     {'PASS Appears scaled' if is_scaled else 'FAIL Not scaled'}")
             
             # Test with small sample of real data
-            print(f"\n🧪 Testing model with real data sample...")
+            print(f"\nTEST Testing model with real data sample...")
             
             # Create model
             model, args = self.create_model('M')
@@ -682,7 +682,7 @@ class ModelDimensionTester:
             pred_len = 24
             
             if sample_size < seq_len + pred_len:
-                print(f"❌ Not enough data for test (need {seq_len + pred_len}, have {sample_size})")
+                print(f"FAIL Not enough data for test (need {seq_len + pred_len}, have {sample_size})")
                 return None
                 
             # Extract sequences from real data
@@ -709,7 +709,7 @@ class ModelDimensionTester:
                     
                     outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                     
-                    print(f"   ✅ Forward pass successful!")
+                    print(f"   PASS Forward pass successful!")
                     print(f"   - Output shape: {outputs.shape}")
                     
                     # Check target consistency
@@ -734,7 +734,7 @@ class ModelDimensionTester:
                         'max': torch.max(target_y).item()
                     }
                     
-                    print(f"\n📊 SCALING CONSISTENCY CHECK:")
+                    print(f"\nCHART SCALING CONSISTENCY CHECK:")
                     print(f"   Target outputs - mean: {output_stats['mean']:.3f}, std: {output_stats['std']:.3f}")
                     print(f"   Target ground truth - mean: {target_stats['mean']:.3f}, std: {target_stats['std']:.3f}")
                     
@@ -743,12 +743,12 @@ class ModelDimensionTester:
                     std_diff = abs(output_stats['std'] - target_stats['std'])
                     
                     scaling_consistent = mean_diff < 0.5 and std_diff < 0.5
-                    print(f"   Scaling consistency: {'✅ GOOD' if scaling_consistent else '❌ POOR'}")
+                    print(f"   Scaling consistency: {'PASS GOOD' if scaling_consistent else 'FAIL POOR'}")
                     
                     if scaling_consistent:
-                        print(f"   ➜ Loss calculation should work correctly")
+                        print(f"    Loss calculation should work correctly")
                     else:
-                        print(f"   ➜ May need scaling adjustment in loss calculation")
+                        print(f"    May need scaling adjustment in loss calculation")
                         
                     return {
                         'targets_are_first': targets_are_first,
@@ -759,17 +759,17 @@ class ModelDimensionTester:
                     }
                     
             except Exception as e:
-                print(f"   ❌ Forward pass failed: {str(e)}")
+                print(f"   FAIL Forward pass failed: {str(e)}")
                 return None
                 
         except Exception as e:
-            print(f"❌ Error loading real data: {str(e)}")
+            print(f"FAIL Error loading real data: {str(e)}")
             return None
 
     # ...existing code...
 def main():
     """Run the comprehensive model dimension test"""
-    print("🧪 TIMESNET MODEL DIMENSION AND COVARIATE BEHAVIOR TEST")
+    print("TEST TIMESNET MODEL DIMENSION AND COVARIATE BEHAVIOR TEST")
     print("=" * 80)
     
     tester = ModelDimensionTester()
@@ -783,7 +783,7 @@ def main():
     # Analyze covariate behavior
     tester.analyze_covariate_predictions(results)
       # Test covariate passthrough behavior
-    print(f"\n🔍 COVARIATE PASSTHROUGH TEST")
+    print(f"\nSEARCH COVARIATE PASSTHROUGH TEST")
     print(f"=" * 80)
     print("Testing if model passes through future covariate inputs unchanged...")
     
@@ -791,32 +791,32 @@ def main():
     
     if passthrough_result:
         if passthrough_result['is_passthrough']:
-            print(f"\n✅ CONCLUSION: Model correctly passes through future covariates")
-            print(f"   ➜ This is ideal behavior for known future covariates!")
+            print(f"\nPASS CONCLUSION: Model correctly passes through future covariates")
+            print(f"    This is ideal behavior for known future covariates!")
         else:
-            print(f"\n⚠️  CONCLUSION: Model transforms future covariates")
-            print(f"   ➜ This may be problematic if covariates are known/planned values")
+            print(f"\nWARN  CONCLUSION: Model transforms future covariates")
+            print(f"    This may be problematic if covariates are known/planned values")
             
             # Run scaling test to understand the transformation
             tester.test_scaling_behavior()
     
     # Test with real financial data structure
-    print(f"\n🏦 REAL FINANCIAL DATA TEST")
+    print(f"\n REAL FINANCIAL DATA TEST")
     print(f"=" * 80)
     print("Testing with actual prepared financial data...")
     
     real_data_result = tester.test_real_data_structure()
     
     if real_data_result:
-        print(f"\n✅ REAL DATA ANALYSIS COMPLETE")
+        print(f"\nPASS REAL DATA ANALYSIS COMPLETE")
         if real_data_result['targets_are_first'] and real_data_result['scaling_consistent']:
-            print(f"   ➜ Your current training setup should work correctly!")
+            print(f"    Your current training setup should work correctly!")
         else:
-            print(f"   ⚠️  Issues found that may need fixing in training script")
+            print(f"   WARN  Issues found that may need fixing in training script")
     else:
-        print(f"\n❌ Could not test with real data - check data preparation")
+        print(f"\nFAIL Could not test with real data - check data preparation")
     
-    print(f"\n🎯 SUMMARY AND RECOMMENDATIONS")
+    print(f"\nTARGET SUMMARY AND RECOMMENDATIONS")
     print(f"=" * 50)
     print(f"1. Use 'M' mode if you want to predict ALL features (including covariates)")
     print(f"2. Use 'MS' mode if you want multivariate input but target-only output")
@@ -827,7 +827,7 @@ def main():
     print(f"   - Dynamic covariates should be provided externally for future periods")
     
     if passthrough_result and not passthrough_result['is_passthrough']:
-        print(f"5. ⚠️  IMPORTANT: Model modifies future covariates - consider this in your pipeline")
+        print(f"5. WARN  IMPORTANT: Model modifies future covariates - consider this in your pipeline")
 
 
 if __name__ == "__main__":

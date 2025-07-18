@@ -95,9 +95,9 @@ class ChronosXBenchmarkSuite:
                 'description': 'Real synthetic time series from project',
                 'characteristics': 'real_project_data'
             }
-            logger.info("✅ Loaded real synthetic data for benchmarking")
+            logger.info("PASS Loaded real synthetic data for benchmarking")
         except:
-            logger.info("ℹ️ Could not load real synthetic data, using generated only")
+            logger.info(" Could not load real synthetic data, using generated only")
         
         return datasets
     
@@ -148,7 +148,7 @@ class ChronosXBenchmarkSuite:
                                num_samples: int = 20) -> Dict:
         """Benchmark a specific ChronosX model"""
         
-        logger.info(f"🔬 Benchmarking {model_name} on {dataset_name}")
+        logger.info(f"MICROSCOPE Benchmarking {model_name} on {dataset_name}")
         
         try:
             # Load model
@@ -261,14 +261,14 @@ class ChronosXBenchmarkSuite:
                 'num_samples': num_samples
             }
             
-            logger.info(f"✅ {model_name} on {dataset_name}: "
-                      f"MAE={aggregated_metrics['mae_mean']:.3f}±{aggregated_metrics['mae_std']:.3f}, "
-                      f"Time={avg_inference_time:.2f}±{std_inference_time:.2f}s")
+            logger.info(f"PASS {model_name} on {dataset_name}: "
+                      f"MAE={aggregated_metrics['mae_mean']:.3f}{aggregated_metrics['mae_std']:.3f}, "
+                      f"Time={avg_inference_time:.2f}{std_inference_time:.2f}s")
             
             return result
             
         except Exception as e:
-            logger.error(f"❌ {model_name} on {dataset_name} failed: {e}")
+            logger.error(f"FAIL {model_name} on {dataset_name} failed: {e}")
             return {
                 'model_name': model_name,
                 'dataset_name': dataset_name,
@@ -281,7 +281,7 @@ class ChronosXBenchmarkSuite:
                                 forecast_length: int = 24) -> Dict:
         """Benchmark baseline model"""
         
-        logger.info(f"📊 Benchmarking baseline {model_name} on {dataset_name}")
+        logger.info(f"CHART Benchmarking baseline {model_name} on {dataset_name}")
         
         try:
             # Prepare test windows (same as ChronosX)
@@ -364,13 +364,13 @@ class ChronosXBenchmarkSuite:
                 'forecast_length': forecast_length
             }
             
-            logger.info(f"✅ {model_name} on {dataset_name}: "
-                      f"MAE={aggregated_metrics['mae_mean']:.3f}±{aggregated_metrics['mae_std']:.3f}")
+            logger.info(f"PASS {model_name} on {dataset_name}: "
+                      f"MAE={aggregated_metrics['mae_mean']:.3f}{aggregated_metrics['mae_std']:.3f}")
             
             return result
             
         except Exception as e:
-            logger.error(f"❌ Baseline {model_name} on {dataset_name} failed: {e}")
+            logger.error(f"FAIL Baseline {model_name} on {dataset_name} failed: {e}")
             return {
                 'model_name': model_name,
                 'dataset_name': dataset_name,
@@ -380,11 +380,11 @@ class ChronosXBenchmarkSuite:
     
     def run_comprehensive_benchmark(self):
         """Run comprehensive benchmark across all models and datasets"""
-        logger.info("🚀 Starting comprehensive ChronosX benchmark suite...")
+        logger.info("ROCKET Starting comprehensive ChronosX benchmark suite...")
         
         # Generate datasets
         datasets = self.generate_benchmark_datasets()
-        logger.info(f"📊 Generated {len(datasets)} benchmark datasets")
+        logger.info(f"CHART Generated {len(datasets)} benchmark datasets")
         
         # Determine which ChronosX models to test based on memory
         available_memory_gb = psutil.virtual_memory().available / (1024**3)
@@ -393,7 +393,7 @@ class ChronosXBenchmarkSuite:
         if available_memory_gb > 8:
             chronos_to_test.append('chronos_base')
         
-        logger.info(f"🧠 Testing ChronosX models: {chronos_to_test} (Memory: {available_memory_gb:.1f}GB)")
+        logger.info(f"BRAIN Testing ChronosX models: {chronos_to_test} (Memory: {available_memory_gb:.1f}GB)")
         
         all_results = {}
         
@@ -443,7 +443,7 @@ class ChronosXBenchmarkSuite:
     
     def perform_statistical_analysis(self):
         """Perform statistical significance tests"""
-        logger.info("📈 Performing statistical analysis...")
+        logger.info("GRAPH Performing statistical analysis...")
         
         successful_results = {k: v for k, v in self.benchmark_results.items() if v.get('success', False)}
         
@@ -509,17 +509,17 @@ class ChronosXBenchmarkSuite:
     def generate_benchmark_report(self):
         """Generate comprehensive benchmark report"""
         print("\n" + "="*80)
-        print("🏆 CHRONOSX COMPREHENSIVE BENCHMARK REPORT")
+        print("TROPHY CHRONOSX COMPREHENSIVE BENCHMARK REPORT")
         print("="*80)
         
         successful_results = {k: v for k, v in self.benchmark_results.items() if v.get('success', False)}
         
         if not successful_results:
-            print("❌ No successful benchmark results to report")
+            print("FAIL No successful benchmark results to report")
             return
         
         # Overall performance summary
-        print("\n📊 OVERALL PERFORMANCE SUMMARY:")
+        print("\nCHART OVERALL PERFORMANCE SUMMARY:")
         print("-" * 80)
         print(f"{'Model':<20} {'Dataset':<15} {'MAE':<8} {'RMSE':<8} {'MAPE':<8} {'Time(s)':<8}")
         print("-" * 80)
@@ -542,7 +542,7 @@ class ChronosXBenchmarkSuite:
         # Model ranking by dataset
         datasets = list(set([r['dataset_name'] for r in successful_results.values()]))
         
-        print(f"\n🥇 MODEL RANKINGS BY DATASET:")
+        print(f"\n MODEL RANKINGS BY DATASET:")
         print("-" * 50)
         
         for dataset in datasets:
@@ -557,7 +557,7 @@ class ChronosXBenchmarkSuite:
                 print(f"  {i}. {model:<20} MAE: {mae:.3f}")
         
         # Speed analysis
-        print(f"\n⚡ SPEED ANALYSIS:")
+        print(f"\nLIGHTNING SPEED ANALYSIS:")
         print("-" * 50)
         
         # Group by model type
@@ -569,7 +569,7 @@ class ChronosXBenchmarkSuite:
         if chronos_results:
             chronos_times = [r[1]['avg_inference_time'] for r in chronos_results]
             print(f"ChronosX Models:")
-            print(f"  Average Inference Time: {np.mean(chronos_times):.3f}±{np.std(chronos_times):.3f}s")
+            print(f"  Average Inference Time: {np.mean(chronos_times):.3f}{np.std(chronos_times):.3f}s")
             
             # Fastest ChronosX
             fastest_chronos = min(chronos_results, key=lambda x: x[1]['avg_inference_time'])
@@ -579,11 +579,11 @@ class ChronosXBenchmarkSuite:
         if baseline_results:
             baseline_times = [r[1]['avg_inference_time'] for r in baseline_results]
             print(f"\nBaseline Models:")
-            print(f"  Average Inference Time: {np.mean(baseline_times):.3f}±{np.std(baseline_times):.3f}s")
+            print(f"  Average Inference Time: {np.mean(baseline_times):.3f}{np.std(baseline_times):.3f}s")
         
         # Statistical significance
         if self.statistical_tests:
-            print(f"\n📈 STATISTICAL SIGNIFICANCE ANALYSIS:")
+            print(f"\nGRAPH STATISTICAL SIGNIFICANCE ANALYSIS:")
             print("-" * 50)
             
             for dataset, tests in self.statistical_tests.items():
@@ -597,19 +597,19 @@ class ChronosXBenchmarkSuite:
                         print(f"  {test_name}: {better_model} is significantly better (p={p_value:.4f})")
         
         # Overall recommendations
-        print(f"\n💡 RECOMMENDATIONS:")
+        print(f"\nIDEA RECOMMENDATIONS:")
         print("-" * 50)
         
         # Best overall model
         best_overall = min(successful_results.items(), 
                           key=lambda x: x[1]['aggregated_metrics']['mae_mean'])
-        print(f"🏆 Best Overall Accuracy: {best_overall[1]['model_name']}")
+        print(f"TROPHY Best Overall Accuracy: {best_overall[1]['model_name']}")
         print(f"   Average MAE: {best_overall[1]['aggregated_metrics']['mae_mean']:.3f}")
         
         # Best speed
         if chronos_results:
             fastest_model = min(chronos_results, key=lambda x: x[1]['avg_inference_time'])
-            print(f"🚀 Fastest ChronosX: {fastest_model[1]['model_name']}")
+            print(f"ROCKET Fastest ChronosX: {fastest_model[1]['model_name']}")
             print(f"   Inference Time: {fastest_model[1]['avg_inference_time']:.3f}s")
         
         # Best balanced
@@ -624,11 +624,11 @@ class ChronosXBenchmarkSuite:
         
         if balanced_scores:
             best_balanced = max(balanced_scores, key=lambda x: x[2])
-            print(f"⚖️ Best Balanced: {best_balanced[1]['model_name']}")
+            print(f" Best Balanced: {best_balanced[1]['model_name']}")
             print(f"   MAE: {best_balanced[1]['aggregated_metrics']['mae_mean']:.3f}, "
                   f"Time: {best_balanced[1]['avg_inference_time']:.3f}s")
         
-        print("\n🎉 Benchmark Complete!")
+        print("\nPARTY Benchmark Complete!")
         print("="*80)
     
     def create_benchmark_visualizations(self):
@@ -791,7 +791,7 @@ class ChronosXBenchmarkSuite:
         
         plt.tight_layout()
         plt.savefig('chronos_x_comprehensive_benchmark.png', dpi=300, bbox_inches='tight')
-        logger.info("📊 Saved comprehensive benchmark visualization")
+        logger.info("CHART Saved comprehensive benchmark visualization")
         plt.show()
     
     def save_benchmark_results(self):
@@ -822,7 +822,7 @@ class ChronosXBenchmarkSuite:
                 'summary': self.generate_summary_stats()
             }, f, indent=2)
         
-        logger.info(f"💾 Saved detailed results to {results_file}")
+        logger.info(f" Saved detailed results to {results_file}")
     
     def generate_summary_stats(self) -> Dict:
         """Generate summary statistics"""

@@ -7,9 +7,9 @@ sys.path.append('.')
 # Quick syntax check
 try:
     from data_provider.data_loader import Dataset_Custom
-    print("✅ Import successful - no syntax errors")
+    print("PASS Import successful - no syntax errors")
 except Exception as e:
-    print(f"❌ Import failed: {e}")
+    print(f"FAIL Import failed: {e}")
     exit(1)
 
 # Quick inverse transform test
@@ -35,22 +35,22 @@ try:
         freq='h'
     )
     
-    print("✅ Dataset initialization successful")
+    print("PASS Dataset initialization successful")
     print(f"Has target_scaler: {hasattr(dataset, 'target_scaler')}")
     print(f"Has covariate_scaler: {hasattr(dataset, 'covariate_scaler')}")
     
     # Test inverse transform on sample data
     sample_targets = np.array([[0.5, -0.3, 0.8, -0.1]])
     result = dataset.inverse_transform(sample_targets)
-    print(f"✅ Inverse transform successful: {result.shape}")
+    print(f"PASS Inverse transform successful: {result.shape}")
     
     # Test convenience method
     result2 = dataset.inverse_transform_targets(sample_targets)
-    print(f"✅ Target-specific inverse transform successful: {result2.shape}")
+    print(f"PASS Target-specific inverse transform successful: {result2.shape}")
     
-    print("🎉 All tests passed!")
+    print("PARTY All tests passed!")
     
 except Exception as e:
-    print(f"❌ Test failed: {e}")
+    print(f"FAIL Test failed: {e}")
     import traceback
     traceback.print_exc()

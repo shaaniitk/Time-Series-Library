@@ -17,7 +17,7 @@ def test_complete_framework():
     """
     Test the complete modular framework with all components
     """
-    print("🧪 Testing Complete Modular Framework")
+    print("TEST Testing Complete Modular Framework")
     print("=" * 80)
     
     try:
@@ -29,10 +29,10 @@ def test_complete_framework():
         from utils.modular_components.implementations.adapters import CovariateAdapter
         from utils.modular_components.implementations.processors import WaveletProcessor
         
-        print("✅ All imports successful")
+        print("PASS All imports successful")
         
         # Test 1: FeedForward Networks
-        print("\n🔧 Testing FeedForward Networks")
+        print("\nTOOL Testing FeedForward Networks")
         print("-" * 50)
         
         ffn_config = FFNConfig(d_model=256, d_ff=1024, dropout=0.1)
@@ -58,10 +58,10 @@ def test_complete_framework():
         
         assert ffn_output.shape == test_input.shape, "FFN should preserve input shape"
         assert gated_output.shape == test_input.shape, "Gated FFN should preserve input shape"
-        print("✅ FeedForward networks test passed")
+        print("PASS FeedForward networks test passed")
         
         # Test 2: Output Heads
-        print("\n📊 Testing Output Heads")
+        print("\nCHART Testing Output Heads")
         print("-" * 50)
         
         output_config = OutputConfig(d_model=256, output_dim=1, horizon=24)
@@ -89,10 +89,10 @@ def test_complete_framework():
         
         assert forecasts.shape == (4, 24, 1), f"Expected [4, 24, 1], got {forecasts.shape}"
         assert regression_output.shape == (4, 3), f"Expected [4, 3], got {regression_output.shape}"
-        print("✅ Output heads test passed")
+        print("PASS Output heads test passed")
         
         # Test 3: Loss Functions
-        print("\n📉 Testing Loss Functions")
+        print("\n Testing Loss Functions")
         print("-" * 50)
         
         loss_config = LossConfig(reduction='mean')
@@ -119,10 +119,10 @@ def test_complete_framework():
         
         assert isinstance(mse_value, torch.Tensor), "Loss should return tensor"
         assert mse_value.dim() == 0, "Loss should be scalar"
-        print("✅ Loss functions test passed")
+        print("PASS Loss functions test passed")
         
         # Test 4: Model Builder
-        print("\n🏗️ Testing Model Builder")
+        print("\n Testing Model Builder")
         print("-" * 50)
         
         builder = ModelBuilder()
@@ -184,15 +184,15 @@ def test_complete_framework():
             print(f"  - Expected output shape: [2, 12, 1]")
             
             assert output.shape == (2, 12, 1), f"Expected [2, 12, 1], got {output.shape}"
-            print("✅ Model builder test passed")
+            print("PASS Model builder test passed")
             
         except Exception as e:
-            print(f"❌ Model builder test failed: {e}")
+            print(f"FAIL Model builder test failed: {e}")
             # This might fail if some components are not properly registered
             print("Note: This may be expected if component registration is incomplete")
         
         # Test 5: Component Integration
-        print("\n🔄 Testing Component Integration")
+        print("\nREFRESH Testing Component Integration")
         print("-" * 50)
         
         # Test CovariateAdapter + WaveletProcessor integration
@@ -258,22 +258,22 @@ def test_complete_framework():
         
         assert adapter_output.shape[0] == x_ts.shape[0], "Batch size should be preserved"
         assert wavelet_result['processed'].shape == x_ts.shape, "Wavelet should preserve shape"
-        print("✅ Component integration test passed")
+        print("PASS Component integration test passed")
         
         # Summary
-        print("\n🎉 All Tests Summary")
+        print("\nPARTY All Tests Summary")
         print("=" * 80)
-        print("✅ FeedForward Networks: StandardFFN, GatedFFN")
-        print("✅ Output Heads: ForecastingHead, RegressionHead")
-        print("✅ Loss Functions: MSELoss, MAELoss")
-        print("✅ Model Builder: Configuration validation, model construction")
-        print("✅ Component Integration: CovariateAdapter, WaveletProcessor")
-        print("\n🚀 Modular Framework is Ready for Production!")
+        print("PASS FeedForward Networks: StandardFFN, GatedFFN")
+        print("PASS Output Heads: ForecastingHead, RegressionHead")
+        print("PASS Loss Functions: MSELoss, MAELoss")
+        print("PASS Model Builder: Configuration validation, model construction")
+        print("PASS Component Integration: CovariateAdapter, WaveletProcessor")
+        print("\nROCKET Modular Framework is Ready for Production!")
         
         return True
         
     except Exception as e:
-        print(f"\n❌ Framework test failed: {e}")
+        print(f"\nFAIL Framework test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -282,6 +282,6 @@ def test_complete_framework():
 if __name__ == "__main__":
     success = test_complete_framework()
     if success:
-        print("\n✅ All tests passed! Framework is complete and functional.")
+        print("\nPASS All tests passed! Framework is complete and functional.")
     else:
-        print("\n❌ Some tests failed. Check implementation.")
+        print("\nFAIL Some tests failed. Check implementation.")

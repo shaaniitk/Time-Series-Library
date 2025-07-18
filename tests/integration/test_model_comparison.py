@@ -329,7 +329,7 @@ class TestModelComparison:
             for i in range(1, len(seq_lengths)):
                 time_ratio = times[i] / times[0]
                 seq_ratio = seq_lengths[i] / seq_lengths[0]
-                print(f"  {seq_lengths[0]} → {seq_lengths[i]}: {time_ratio:.2f}x time, {seq_ratio:.2f}x length")
+                print(f"  {seq_lengths[0]}  {seq_lengths[i]}: {time_ratio:.2f}x time, {seq_ratio:.2f}x length")
                 
                 # Check if scaling is better than quadratic
                 if name == 'Autoformer':

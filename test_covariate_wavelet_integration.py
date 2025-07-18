@@ -29,7 +29,7 @@ def test_covariate_adapter_concept():
     Test the CovariateAdapter concept with a mock Chronos backbone
     """
     print("=" * 60)
-    print("🔧 Testing CovariateAdapter with Chronos")
+    print("TOOL Testing CovariateAdapter with Chronos")
     print("=" * 60)
     
     # Step 1: Create a mock Chronos backbone (since we may not have actual Chronos)
@@ -80,7 +80,7 @@ def test_covariate_adapter_concept():
     
     adapter = CovariateAdapter(backbone, covariate_config)
     
-    print(f"✅ CovariateAdapter created successfully")
+    print(f"PASS CovariateAdapter created successfully")
     print(f"   - Base backbone: {backbone.get_backbone_type()}")
     print(f"   - Covariate support: {adapter.get_capabilities()['supports_covariates']}")
     print(f"   - Fusion method: {adapter.fusion_method}")
@@ -94,24 +94,24 @@ def test_covariate_adapter_concept():
     # Covariate data (5 features: temp, humidity, day_of_week, hour, is_weekend)
     x_covariates = torch.randn(batch_size, seq_len, 5)
     
-    print(f"\n📊 Input Data:")
+    print(f"\nCHART Input Data:")
     print(f"   - Time series: {x_ts.shape}")
     print(f"   - Covariates: {x_covariates.shape}")
     
     # Step 4: Forward pass through adapter
     try:
         output = adapter.forward(x_ts, x_covariates)
-        print(f"\n✅ Forward pass successful!")
+        print(f"\nPASS Forward pass successful!")
         print(f"   - Output shape: {output.shape}")
         print(f"   - Expected: [{batch_size}, {seq_len}, 512]")
         
         # Verify output properties
         assert output.shape == (batch_size, seq_len, 512)
         assert not torch.isnan(output).any()
-        print(f"   ✓ Output validation passed")
+        print(f"    Output validation passed")
         
     except Exception as e:
-        print(f"❌ Forward pass failed: {e}")
+        print(f"FAIL Forward pass failed: {e}")
         return False
     
     return True
@@ -122,7 +122,7 @@ def test_wavelet_processor():
     Test the WaveletProcessor using existing DWT infrastructure
     """
     print("\n" + "=" * 60)
-    print("🌊 Testing WaveletProcessor with Existing DWT")
+    print("WAVE Testing WaveletProcessor with Existing DWT")
     print("=" * 60)
     
     # Configuration for wavelet processing
@@ -137,7 +137,7 @@ def test_wavelet_processor():
     try:
         # Create WaveletProcessor
         processor = WaveletProcessor(wavelet_config)
-        print(f"✅ WaveletProcessor created successfully")
+        print(f"PASS WaveletProcessor created successfully")
         print(f"   - Wavelet type: {processor.wavelet_type}")
         print(f"   - Decomposition levels: {processor.decomposition_levels}")
         print(f"   - Residual learning: {processor.residual_learning}")
@@ -146,14 +146,14 @@ def test_wavelet_processor():
         batch_size, seq_len, n_features = 4, 96, 1
         x = torch.randn(batch_size, seq_len, n_features) * 10 + 100  # Add some scale and offset
         
-        print(f"\n📊 Input Data:")
+        print(f"\nCHART Input Data:")
         print(f"   - Input shape: {x.shape}")
         print(f"   - Data range: [{x.min().item():.2f}, {x.max().item():.2f}]")
         
         # Forward pass through processor
         result = processor.forward(x)
         
-        print(f"\n✅ Wavelet processing successful!")
+        print(f"\nPASS Wavelet processing successful!")
         print(f"   - Processed shape: {result['processed'].shape}")
         
         if result['baseline'] is not None:
@@ -180,7 +180,7 @@ def test_wavelet_processor():
         return True
         
     except Exception as e:
-        print(f"❌ WaveletProcessor test failed: {e}")
+        print(f"FAIL WaveletProcessor test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -188,14 +188,14 @@ def test_wavelet_processor():
 
 def test_integrated_pipeline():
     """
-    Test the complete pipeline: WaveletProcessor → CovariateAdapter → MockBackbone
+    Test the complete pipeline: WaveletProcessor  CovariateAdapter  MockBackbone
     """
     print("\n" + "=" * 60)
-    print("🔄 Testing Integrated Pipeline")
+    print("REFRESH Testing Integrated Pipeline")
     print("=" * 60)
     
     # This demonstrates how the components work together
-    print("Pipeline: Input → WaveletProcessor → CovariateAdapter → Backbone → Output")
+    print("Pipeline: Input  WaveletProcessor  CovariateAdapter  Backbone  Output")
     
     # Create components
     try:
@@ -244,14 +244,14 @@ def test_integrated_pipeline():
         }
         adapter = CovariateAdapter(backbone, covariate_config)
         
-        print("✅ All components created successfully")
+        print("PASS All components created successfully")
         
         # Test data
         batch_size, seq_len = 2, 48
         x_ts = torch.sin(torch.linspace(0, 4*3.14159, seq_len)).unsqueeze(0).repeat(batch_size, 1).unsqueeze(-1)
         x_covariates = torch.randn(batch_size, seq_len, 3)
         
-        print(f"\n📊 Pipeline Input:")
+        print(f"\nCHART Pipeline Input:")
         print(f"   - Time series: {x_ts.shape}")
         print(f"   - Covariates: {x_covariates.shape}")
         
@@ -259,7 +259,7 @@ def test_integrated_pipeline():
         wavelet_result = wavelet_processor.forward(x_ts)
         processed_ts = wavelet_result['processed']
         
-        print(f"\n🌊 After Wavelet Processing:")
+        print(f"\nWAVE After Wavelet Processing:")
         print(f"   - Processed shape: {processed_ts.shape}")
         if wavelet_result['residuals'] is not None:
             print(f"   - Using residuals for learning")
@@ -268,7 +268,7 @@ def test_integrated_pipeline():
         # Step 2: Covariate adaptation
         adapter_output = adapter.forward(processed_ts, x_covariates)
         
-        print(f"\n🔧 After Covariate Adaptation:")
+        print(f"\nTOOL After Covariate Adaptation:")
         print(f"   - Output shape: {adapter_output.shape}")
         print(f"   - Expected: [{batch_size}, {seq_len}, 256]")
         
@@ -276,15 +276,15 @@ def test_integrated_pipeline():
         assert adapter_output.shape == (batch_size, seq_len, 256)
         assert not torch.isnan(adapter_output).any()
         
-        print(f"\n✅ Integrated pipeline test successful!")
-        print(f"   ✓ Data flows correctly through all components")
-        print(f"   ✓ Shapes are preserved and consistent")
-        print(f"   ✓ No NaN values in output")
+        print(f"\nPASS Integrated pipeline test successful!")
+        print(f"    Data flows correctly through all components")
+        print(f"    Shapes are preserved and consistent")
+        print(f"    No NaN values in output")
         
         return True
         
     except Exception as e:
-        print(f"❌ Integrated pipeline test failed: {e}")
+        print(f"FAIL Integrated pipeline test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -292,7 +292,7 @@ def test_integrated_pipeline():
 
 def main():
     """Run all tests"""
-    print("🧪 Testing Modular Components: CovariateAdapter + WaveletProcessor")
+    print("TEST Testing Modular Components: CovariateAdapter + WaveletProcessor")
     print("=" * 80)
     
     results = []
@@ -308,7 +308,7 @@ def main():
     
     # Summary
     print("\n" + "=" * 80)
-    print("📋 Test Summary:")
+    print("CLIPBOARD Test Summary:")
     print("=" * 80)
     
     test_names = [
@@ -318,15 +318,15 @@ def main():
     ]
     
     for i, (name, result) in enumerate(zip(test_names, results)):
-        status = "✅ PASSED" if result else "❌ FAILED"
+        status = "PASS PASSED" if result else "FAIL FAILED"
         print(f"{i+1}. {name}: {status}")
     
     all_passed = all(results)
-    overall_status = "✅ ALL TESTS PASSED" if all_passed else "❌ SOME TESTS FAILED"
+    overall_status = "PASS ALL TESTS PASSED" if all_passed else "FAIL SOME TESTS FAILED"
     print(f"\nOverall Status: {overall_status}")
     
     if all_passed:
-        print("\n🎉 Ready to implement in the modular framework!")
+        print("\nPARTY Ready to implement in the modular framework!")
         print("   - CovariateAdapter enables covariate support for any backbone")
         print("   - WaveletProcessor leverages existing DWT infrastructure")
         print("   - Components work together in modular pipeline")

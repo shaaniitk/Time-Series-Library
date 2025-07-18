@@ -40,12 +40,12 @@ def test_models():
         from models.Autoformer_Fixed import Model as AutoformerFixed
         
         model1 = AutoformerFixed(config)
-        print("   ✓ Model initialized successfully")
+        print("    Model initialized successfully")
         
         # Check critical components
         assert hasattr(model1, 'gradient_scale'), "Missing gradient_scale parameter"
         assert isinstance(model1.gradient_scale, nn.Parameter), "gradient_scale not a parameter"
-        print("   ✓ Gradient scaling parameter exists")
+        print("    Gradient scaling parameter exists")
         
         # Test forward pass
         batch_size = 2
@@ -62,8 +62,8 @@ def test_models():
         assert not torch.isnan(output1).any(), "Output contains NaN values"
         assert not torch.isinf(output1).any(), "Output contains Inf values"
         
-        print("   ✓ Forward pass successful")
-        print(f"   ✓ Output shape: {output1.shape}")
+        print("    Forward pass successful")
+        print(f"    Output shape: {output1.shape}")
         
         # Test gradient flow
         x_enc_grad = torch.randn(batch_size, config.seq_len, config.enc_in, requires_grad=True)
@@ -73,7 +73,7 @@ def test_models():
         
         assert x_enc_grad.grad is not None, "No gradients computed"
         assert not torch.allclose(x_enc_grad.grad, torch.zeros_like(x_enc_grad.grad)), "Zero gradients"
-        print("   ✓ Gradient flow working")
+        print("    Gradient flow working")
         
         print("2. Testing EnhancedAutoformer...")
         
@@ -81,13 +81,13 @@ def test_models():
         from models.EnhancedAutoformer_Fixed import EnhancedAutoformer
         
         model2 = EnhancedAutoformer(config)
-        print("   ✓ Model initialized successfully")
+        print("    Model initialized successfully")
         
         # Check enhanced components
         assert hasattr(model2.decomp, 'trend_weights'), "Missing learnable trend weights"
         assert isinstance(model2.decomp.trend_weights, nn.Parameter), "trend_weights not a parameter"
         assert model2.decomp.trend_weights.requires_grad, "Trend weights not trainable"
-        print("   ✓ Learnable decomposition working")
+        print("    Learnable decomposition working")
         
         with torch.no_grad():
             output2 = model2(x_enc, x_mark_enc, x_dec, x_mark_dec)
@@ -96,14 +96,14 @@ def test_models():
         assert not torch.isnan(output2).any(), "Output contains NaN values"
         assert not torch.isinf(output2).any(), "Output contains Inf values"
         
-        print("   ✓ Forward pass successful")
-        print(f"   ✓ Output shape: {output2.shape}")
+        print("    Forward pass successful")
+        print(f"    Output shape: {output2.shape}")
         
         # Test decomposition stability
         seasonal, trend = model2.decomp(x_dec)
         reconstructed = seasonal + trend
         assert torch.allclose(reconstructed, x_dec, atol=1e-5), "Decomposition not stable"
-        print("   ✓ Stable decomposition working")
+        print("    Stable decomposition working")
         
         print("3. Testing different tasks...")
         
@@ -112,14 +112,14 @@ def test_models():
         model_imp = AutoformerFixed(config)
         output_imp = model_imp(x_enc, x_mark_enc, None, None)
         assert output_imp.shape == (batch_size, config.seq_len, config.c_out)
-        print("   ✓ Imputation task working")
+        print("    Imputation task working")
         
         # Test anomaly detection
         config.task_name = 'anomaly_detection'
         model_anom = AutoformerFixed(config)
         output_anom = model_anom(x_enc, None, None, None)
         assert output_anom.shape == (batch_size, config.seq_len, config.c_out)
-        print("   ✓ Anomaly detection task working")
+        print("    Anomaly detection task working")
         
         # Test classification
         config.task_name = 'classification'
@@ -128,7 +128,7 @@ def test_models():
         x_mark_cls = torch.ones(batch_size, config.seq_len)
         output_cls = model_cls(x_enc, x_mark_cls, None, None)
         assert output_cls.shape == (batch_size, config.num_class)
-        print("   ✓ Classification task working")
+        print("    Classification task working")
         
         print("4. Testing numerical stability...")
         
@@ -147,7 +147,7 @@ def test_models():
             assert not torch.isnan(output_test).any(), f"Scale {scale} produces NaN"
             assert not torch.isinf(output_test).any(), f"Scale {scale} produces Inf"
         
-        print("   ✓ Numerical stability confirmed")
+        print("    Numerical stability confirmed")
         
         print("5. Testing quantile support in EnhancedAutoformer...")
         
@@ -163,23 +163,23 @@ def test_models():
             output_quant = model_quant(x_enc, x_mark_enc, x_dec, x_mark_dec)
         
         assert output_quant.shape == (batch_size, config.pred_len, config.c_out)
-        print("   ✓ Quantile support working")
+        print("    Quantile support working")
         
         print("\n" + "="*50)
-        print("🎉 ALL CRITICAL TESTS PASSED!")
+        print("PARTY ALL CRITICAL TESTS PASSED!")
         print("="*50)
-        print("✅ AutoformerFixed: All core functionality working")
-        print("✅ EnhancedAutoformer: All enhanced features working")
-        print("✅ All task types supported")
-        print("✅ Numerical stability confirmed")
-        print("✅ Gradient flow functional")
-        print("✅ Quantile support operational")
+        print("PASS AutoformerFixed: All core functionality working")
+        print("PASS EnhancedAutoformer: All enhanced features working")
+        print("PASS All task types supported")
+        print("PASS Numerical stability confirmed")
+        print("PASS Gradient flow functional")
+        print("PASS Quantile support operational")
         print("\nBoth models are ready for production use!")
         
         return True
         
     except Exception as e:
-        print(f"❌ Test failed: {e}")
+        print(f"FAIL Test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -187,7 +187,7 @@ def test_models():
 if __name__ == "__main__":
     success = test_models()
     if success:
-        print("\n🚀 SUCCESS: Both models are working perfectly!")
+        print("\nROCKET SUCCESS: Both models are working perfectly!")
     else:
-        print("\n💥 FAILED: Please check the errors above")
+        print("\n FAILED: Please check the errors above")
         exit(1)

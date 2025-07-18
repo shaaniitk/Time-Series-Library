@@ -16,7 +16,7 @@ sys.path.insert(0, str(project_root))
 def main():
     """Demonstrate working cross-functionality dependencies"""
     
-    print("🔧 DEMONSTRATING WORKING CROSS-FUNCTIONALITY DEPENDENCIES")
+    print("TOOL DEMONSTRATING WORKING CROSS-FUNCTIONALITY DEPENDENCIES")
     print("="*80)
     
     try:
@@ -27,13 +27,13 @@ def main():
         registry = create_global_registry()
         config_manager = ConfigurationManager(registry)
         
-        print("\n📋 Available Components:")
+        print("\nCLIPBOARD Available Components:")
         available = registry.list_components()
         for comp_type, components in available.items():
             if components:
                 print(f"  {comp_type}: {components}")
         
-        print("\n🎯 Testing Working Configuration:")
+        print("\nTARGET Testing Working Configuration:")
         print("-" * 50)
         
         # Create a simple working configuration using mock components
@@ -52,26 +52,26 @@ def main():
         # Validate the configuration
         fixed_config, errors, warnings = config_manager.validate_and_fix_configuration(working_config)
         
-        print(f"\n📊 Validation Results:")
+        print(f"\nCHART Validation Results:")
         print(f"  Errors: {len(errors)}")
         print(f"  Warnings: {len(warnings)}")
         
         if errors:
-            print("\n❌ Errors:")
+            print("\nFAIL Errors:")
             for error in errors:
-                print(f"    • {error}")
+                print(f"     {error}")
         
         if warnings:
-            print("\n⚠️ Warnings:")
+            print("\nWARN Warnings:")
             for warning in warnings:
-                print(f"    • {warning}")
+                print(f"     {warning}")
         
         if not errors:
-            print("\n✅ Configuration is valid!")
-            print("🎉 Cross-functionality dependency validation successful!")
+            print("\nPASS Configuration is valid!")
+            print("PARTY Cross-functionality dependency validation successful!")
             
             # Show component compatibility analysis
-            print("\n🔍 Component Compatibility Analysis:")
+            print("\nSEARCH Component Compatibility Analysis:")
             print("-" * 40)
             
             components = {
@@ -92,7 +92,7 @@ def main():
                 except Exception as e:
                     print(f"  {comp_type}: {comp_name} (metadata error: {e})")
         
-        print("\n🧪 Testing Capability Matching:")
+        print("\nTEST Testing Capability Matching:")
         print("-" * 40)
         
         # Test frequency domain compatibility
@@ -109,11 +109,11 @@ def main():
         print(f"   Errors: {len(freq_errors)} | Warnings: {len(freq_warnings)}")
         
         if not freq_errors:
-            print("   ✅ Frequency domain components are compatible!")
+            print("   PASS Frequency domain components are compatible!")
         else:
-            print("   ⚠️ Some compatibility issues found:")
+            print("   WARN Some compatibility issues found:")
             for error in freq_errors[:2]:  # Show first 2 errors
-                print(f"      • {error}")
+                print(f"       {error}")
         
         print("\n2. Time Domain Processor + Multi-Head Attention:")
         time_config = ModularConfig(
@@ -128,17 +128,17 @@ def main():
         print(f"   Errors: {len(time_errors)} | Warnings: {len(time_warnings)}")
         
         if not time_errors:
-            print("   ✅ Time domain components are compatible!")
+            print("   PASS Time domain components are compatible!")
         else:
-            print("   ⚠️ Some compatibility issues found")
+            print("   WARN Some compatibility issues found")
         
-        print("\n🔧 Testing Adapter Suggestions:")
+        print("\nTOOL Testing Adapter Suggestions:")
         print("-" * 40)
         
         # Test dimension compatibility scenarios
         test_cases = [
-            (512, 256, "Backbone output → Processor input"),
-            (768, 512, "Large model → Standard model"),
+            (512, 256, "Backbone output  Processor input"),
+            (768, 512, "Large model  Standard model"),
             (512, 512, "Same dimensions")
         ]
         
@@ -146,40 +146,40 @@ def main():
             adapter_suggestion = config_manager.validator.get_adapter_suggestions(
                 'backbone', 'processor', source_dim, target_dim
             )
-            print(f"\n   {description} ({source_dim}→{target_dim}):")
+            print(f"\n   {description} ({source_dim}{target_dim}):")
             if adapter_suggestion['needed']:
                 config = adapter_suggestion['suggested_config']
-                print(f"     🔧 Adapter needed: {adapter_suggestion['type']}")
+                print(f"     TOOL Adapter needed: {adapter_suggestion['type']}")
                 print(f"        Hidden layers: {config['hidden_layers']}")
                 print(f"        Activation: {config['activation']}")
                 print(f"        Dropout: {config['dropout']}")
             else:
-                print("     ✅ No adapter needed")
+                print("     PASS No adapter needed")
         
-        print("\n💡 Key Dependency Management Features Demonstrated:")
+        print("\nIDEA Key Dependency Management Features Demonstrated:")
         print("-" * 60)
-        print("✅ Component capability validation")
-        print("✅ Cross-component requirement checking")
-        print("✅ Dimensional compatibility analysis")
-        print("✅ Automatic adapter suggestions")
-        print("✅ Configuration fixing attempts")
-        print("✅ Detailed error reporting")
-        print("✅ Compatibility matrix generation")
+        print("PASS Component capability validation")
+        print("PASS Cross-component requirement checking")
+        print("PASS Dimensional compatibility analysis")
+        print("PASS Automatic adapter suggestions")
+        print("PASS Configuration fixing attempts")
+        print("PASS Detailed error reporting")
+        print("PASS Compatibility matrix generation")
         
-        print("\n🎯 Summary:")
+        print("\nTARGET Summary:")
         print("-" * 20)
         print("The cross-functionality dependency system successfully:")
-        print("• Validates component combinations before instantiation")
-        print("• Identifies compatibility issues early")
-        print("• Suggests fixes and alternatives")
-        print("• Provides detailed error messages")
-        print("• Enables safe component swapping")
-        print("• Supports adapter-based bridging")
+        print(" Validates component combinations before instantiation")
+        print(" Identifies compatibility issues early")
+        print(" Suggests fixes and alternatives")
+        print(" Provides detailed error messages")
+        print(" Enables safe component swapping")
+        print(" Supports adapter-based bridging")
         
-        print("\n🚀 System Ready for Different Component Combinations!")
+        print("\nROCKET System Ready for Different Component Combinations!")
         
     except Exception as e:
-        print(f"❌ Error demonstrating dependencies: {e}")
+        print(f"FAIL Error demonstrating dependencies: {e}")
         import traceback
         traceback.print_exc()
 

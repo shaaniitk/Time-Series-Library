@@ -54,10 +54,10 @@ def analyze_multiwavelet_interface():
         # This should work
         output, _ = test_cross(q, k, v)
         print(f"  Output shape: {output.shape}")
-        print("  ✅ MultiWaveletCross works with proper 4D format!")
+        print("  PASS MultiWaveletCross works with proper 4D format!")
         
     except Exception as e:
-        print(f"  ❌ Error: {e}")
+        print(f"  FAIL Error: {e}")
 
 def test_proper_integration():
     """Test how to properly integrate MultiWaveletCross."""
@@ -103,7 +103,7 @@ def test_proper_integration():
         output, _ = multiwavelet_cross(features_4d, features_4d, features_4d)
         output_3d = output.view(B, N, D)  # Reshape back to 3D
         
-        print(f"\n✅ Success!")
+        print(f"\nPASS Success!")
         print(f"  Input (4D): {features_4d.shape}")
         print(f"  Output (3D): {output_3d.shape}")
         print(f"  Shape preserved: {output_3d.shape == features_3d.shape}")
@@ -111,7 +111,7 @@ def test_proper_integration():
         return True
         
     except Exception as e:
-        print(f"❌ Failed: {e}")
+        print(f"FAIL Failed: {e}")
         return False
 
 if __name__ == "__main__":
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     success = test_proper_integration()
     
     if success:
-        print("\n🎯 CONCLUSION: MultiWaveletCross CAN be properly integrated!")
+        print("\nTARGET CONCLUSION: MultiWaveletCross CAN be properly integrated!")
         print("   The issue was incorrect parameter configuration, not fundamental incompatibility.")
     else:
-        print("\n⚠️  CONCLUSION: MultiWaveletCross integration needs more work.")
+        print("\nWARN  CONCLUSION: MultiWaveletCross integration needs more work.")

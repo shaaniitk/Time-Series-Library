@@ -14,7 +14,7 @@ from models.BayesianEnhancedAutoformer import BayesianEnhancedAutoformer
 def test_kl_loss_during_training():
     """Test KL loss behavior during training"""
     
-    print("🧪 Testing KL Loss During Training")
+    print("TEST Testing KL Loss During Training")
     print("=" * 50)
     
     # Create medium config
@@ -47,7 +47,7 @@ def test_kl_loss_during_training():
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     
-    print("📊 Training Progress (KL Loss Monitoring):")
+    print("CHART Training Progress (KL Loss Monitoring):")
     print("Epoch | Data Loss | KL Loss   | Total Loss | KL Contribution")
     print("-" * 60)
     
@@ -76,12 +76,12 @@ def test_kl_loss_during_training():
         
         print(f"{epoch+1:5d} | {data_loss:9.6f} | {kl_contribution:9.6f} | {total_loss_val:10.6f} | {kl_percentage:5.2f}%")
     
-    print("\n✅ Training completed!")
+    print("\nPASS Training completed!")
     print(f"Final KL contribution: {kl_contribution:.6f}")
     print(f"KL weight used: {model.kl_weight}")
     
     # Test the cleaner architecture integration
-    print(f"\n🔍 Architecture Verification:")
+    print(f"\nSEARCH Architecture Verification:")
     print(f"Model has compute_loss method: {hasattr(model, 'compute_loss')}")
     print(f"Model has get_loss_function method: {hasattr(model, 'get_loss_function')}")
     
@@ -98,8 +98,8 @@ def test_kl_loss_during_training():
 if __name__ == "__main__":
     try:
         test_kl_loss_during_training()
-        print("\n🎉 KL Loss training test completed successfully!")
+        print("\nPARTY KL Loss training test completed successfully!")
     except Exception as e:
-        print(f"\n💥 Test failed: {e}")
+        print(f"\n Test failed: {e}")
         import traceback
         traceback.print_exc()

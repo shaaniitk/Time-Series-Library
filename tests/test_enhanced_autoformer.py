@@ -60,7 +60,7 @@ class TestEnhancedAutoCorrelation(unittest.TestCase):
         # Check that output is different from input (model is doing something)
         self.assertFalse(torch.allclose(output, values, atol=1e-6))
         
-        logger.info("✓ AdaptiveAutoCorrelation forward pass test passed")
+        logger.info(" AdaptiveAutoCorrelation forward pass test passed")
     
     def test_adaptive_k_selection(self):
         """Test adaptive k selection mechanism."""
@@ -80,7 +80,7 @@ class TestEnhancedAutoCorrelation(unittest.TestCase):
             self.assertGreaterEqual(k, min_expected)
             self.assertLessEqual(k, max_expected)
             
-        logger.info("✓ Adaptive k selection test passed")
+        logger.info(" Adaptive k selection test passed")
     
     def test_multi_scale_correlation(self):
         """Test multi-scale correlation computation."""
@@ -107,7 +107,7 @@ class TestEnhancedAutoCorrelation(unittest.TestCase):
         self.assertFalse(torch.isnan(corr).any())
         self.assertFalse(torch.isinf(corr).any())
         
-        logger.info("✓ Multi-scale correlation test passed")
+        logger.info(" Multi-scale correlation test passed")
     
     def test_numerical_stability(self):
         """Test numerical stability with extreme inputs."""
@@ -128,7 +128,7 @@ class TestEnhancedAutoCorrelation(unittest.TestCase):
         self.assertFalse(torch.isnan(output).any())
         self.assertFalse(torch.isinf(output).any())
         
-        logger.info("✓ Numerical stability test passed")
+        logger.info(" Numerical stability test passed")
 
 
 class TestLearnableSeriesDecomp(unittest.TestCase):
@@ -155,12 +155,12 @@ class TestLearnableSeriesDecomp(unittest.TestCase):
         self.assertEqual(seasonal.shape, x.shape)
         self.assertEqual(trend.shape, x.shape)
         
-        # Check that seasonal + trend ≈ original (approximately)
+        # Check that seasonal + trend  original (approximately)
         reconstructed = seasonal + trend
         # Allow some small difference due to learnable parameters
         self.assertTrue(torch.allclose(reconstructed, x, atol=1.0))
         
-        logger.info("✓ LearnableSeriesDecomp forward pass test passed")
+        logger.info(" LearnableSeriesDecomp forward pass test passed")
     
     def test_adaptive_kernel_sizes(self):
         """Test that different inputs produce different kernel sizes."""
@@ -178,7 +178,7 @@ class TestLearnableSeriesDecomp(unittest.TestCase):
         _ = decomp(smooth_input)
         _ = decomp(noisy_input)
         
-        logger.info("✓ Adaptive kernel sizes test passed")
+        logger.info(" Adaptive kernel sizes test passed")
 
 
 class TestEnhancedLosses(unittest.TestCase):
@@ -211,7 +211,7 @@ class TestEnhancedLosses(unittest.TestCase):
         self.assertIn('trend_loss', components)
         self.assertIn('seasonal_loss', components)
         
-        logger.info("✓ AdaptiveAutoformerLoss test passed")
+        logger.info(" AdaptiveAutoformerLoss test passed")
     
     def test_frequency_aware_loss(self):
         """Test frequency-aware loss."""
@@ -229,7 +229,7 @@ class TestEnhancedLosses(unittest.TestCase):
         self.assertEqual(loss.dim(), 0)
         self.assertGreater(loss.item(), 0)
         
-        logger.info("✓ FrequencyAwareLoss test passed")
+        logger.info(" FrequencyAwareLoss test passed")
     
     def test_curriculum_scheduler(self):
         """Test curriculum learning scheduler."""
@@ -264,7 +264,7 @@ class TestEnhancedLosses(unittest.TestCase):
         expected_len = scheduler.get_current_seq_len(10)
         self.assertLessEqual(curr_x.size(1), expected_len)
         
-        logger.info("✓ CurriculumLossScheduler test passed")
+        logger.info(" CurriculumLossScheduler test passed")
 
 
 class TestPerformanceBenchmarks(unittest.TestCase):
@@ -392,16 +392,16 @@ def run_all_tests():
     logger.info("="*60)
     
     for class_name, result in results.items():
-        status = "✓ PASS" if result['failures'] == 0 and result['errors'] == 0 else "✗ FAIL"
+        status = " PASS" if result['failures'] == 0 and result['errors'] == 0 else " FAIL"
         logger.info(f"{class_name}: {result['tests_passed']}/{result['tests_run']} {status}")
     
     logger.info("-"*60)
     logger.info(f"TOTAL: {total_passed}/{total_tests} tests passed")
     
     if total_passed == total_tests:
-        logger.info("🎉 ALL TESTS PASSED!")
+        logger.info("PARTY ALL TESTS PASSED!")
     else:
-        logger.warning(f"⚠️  {total_tests - total_passed} tests failed")
+        logger.warning(f"WARN  {total_tests - total_passed} tests failed")
     
     return results
 

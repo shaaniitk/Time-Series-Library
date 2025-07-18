@@ -82,7 +82,7 @@ class TestEnhancedModels(unittest.TestCase, SanityTestMixin):
         
         self.assertEqual(out.shape, expected_shape, 
                         f"EnhancedAutoformer: Expected output shape {expected_shape}, got {out.shape}")
-        logger.info(f"✓ EnhancedAutoformer output shape: {out.shape}")
+        logger.info(f" EnhancedAutoformer output shape: {out.shape}")
         
     def test_bayesian_autoformer_shape(self):
         """Test BayesianEnhancedAutoformer forward pass and output shape"""
@@ -101,7 +101,7 @@ class TestEnhancedModels(unittest.TestCase, SanityTestMixin):
         
         self.assertEqual(out.shape, expected_shape, 
                         f"BayesianEnhancedAutoformer: Expected output shape {expected_shape}, got {out.shape}")
-        logger.info(f"✓ BayesianEnhancedAutoformer output shape: {out.shape}")
+        logger.info(f" BayesianEnhancedAutoformer output shape: {out.shape}")
         
     def test_hierarchical_autoformer_shape(self):
         """Test HierarchicalEnhancedAutoformer forward pass and output shape"""
@@ -120,7 +120,7 @@ class TestEnhancedModels(unittest.TestCase, SanityTestMixin):
         
         self.assertEqual(out.shape, expected_shape, 
                         f"HierarchicalEnhancedAutoformer: Expected output shape {expected_shape}, got {out.shape}")
-        logger.info(f"✓ HierarchicalEnhancedAutoformer output shape: {out.shape}")
+        logger.info(f" HierarchicalEnhancedAutoformer output shape: {out.shape}")
         
     def test_enhanced_autoformer_sanity(self):
         """Run sanity test for EnhancedAutoformer"""
@@ -144,7 +144,7 @@ class TestEnhancedModels(unittest.TestCase, SanityTestMixin):
         )
         
         logger.info("="*60)
-        logger.info(f"✓ EnhancedAutoformer Sanity Test MSE: {mse:.6f}")
+        logger.info(f" EnhancedAutoformer Sanity Test MSE: {mse:.6f}")
         logger.info("="*60)
         
         # Should achieve good performance
@@ -172,7 +172,7 @@ class TestEnhancedModels(unittest.TestCase, SanityTestMixin):
         )
         
         logger.info("="*60)
-        logger.info(f"✓ BayesianEnhancedAutoformer Sanity Test MSE: {mse:.6f}")
+        logger.info(f" BayesianEnhancedAutoformer Sanity Test MSE: {mse:.6f}")
         logger.info("="*60)
         
         # Bayesian models may have slightly higher MSE due to regularization
@@ -200,7 +200,7 @@ class TestEnhancedModels(unittest.TestCase, SanityTestMixin):
         )
         
         logger.info("="*60)
-        logger.info(f"✓ HierarchicalEnhancedAutoformer Sanity Test MSE: {mse:.6f}")
+        logger.info(f" HierarchicalEnhancedAutoformer Sanity Test MSE: {mse:.6f}")
         logger.info("="*60)
         
         # Should achieve good performance
@@ -276,7 +276,7 @@ class TestEnhancedModels(unittest.TestCase, SanityTestMixin):
         sorted_results = sorted(results.items(), key=lambda x: x[1])
         
         for i, (name, mse) in enumerate(sorted_results):
-            rank_emoji = ["🥇", "🥈", "🥉", "🏅"][i] if i < 4 else "📊"
+            rank_emoji = ["", "", "", ""][i] if i < 4 else "CHART"
             logger.info(f"{rank_emoji} {name:25}: MSE = {mse:.6f}")
             
         # Calculate improvements
@@ -288,10 +288,10 @@ class TestEnhancedModels(unittest.TestCase, SanityTestMixin):
             if name != 'Original Autoformer':
                 if mse < original_mse:
                     improvement = ((original_mse - mse) / original_mse) * 100
-                    logger.info(f"✅ {name:25}: {improvement:+6.2f}% improvement")
+                    logger.info(f"PASS {name:25}: {improvement:+6.2f}% improvement")
                 else:
                     degradation = ((mse - original_mse) / original_mse) * 100
-                    logger.info(f"❌ {name:25}: {degradation:+6.2f}% degradation")
+                    logger.info(f"FAIL {name:25}: {degradation:+6.2f}% degradation")
                     
         logger.info("="*70)
         
@@ -334,7 +334,7 @@ class TestEnhancedModels(unittest.TestCase, SanityTestMixin):
                 self.assertEqual(out.shape, expected_shape, 
                                f"{name} failed with batch_size={batch_size}")
                 
-            logger.info(f"✓ {name} robustness test passed")
+            logger.info(f" {name} robustness test passed")
 
 
 if __name__ == '__main__':

@@ -105,7 +105,7 @@ class MockHFAutoformer(nn.Module):
         self.c_out_model = self.dim_manager.c_out_model
         self.c_out_evaluation = self.dim_manager.c_out_evaluation
         
-        print(f"  🏗️ MockHFAutoformer initialized:")
+        print(f"   MockHFAutoformer initialized:")
         print(f"     Mode: {config['mode']}")
         print(f"     Input dims: {self.enc_in} (enc), {self.dec_in} (dec)")
         print(f"     Output dims: {self.c_out_model} (model), {self.c_out_evaluation} (eval)")
@@ -206,9 +206,9 @@ class TestEndToEndMultiTimeSeries:
             )
         }
         
-        print("🧪 End-to-End Multi-Time Series Test Suite")
+        print("TEST End-to-End Multi-Time Series Test Suite")
         print("=" * 70)
-        print("📊 Test Datasets:")
+        print("CHART Test Datasets:")
         for name, spec in self.datasets.items():
             print(f"  - {name}: {spec.n_targets} targets, {spec.n_covariates} covariates, {spec.n_series} series")
     
@@ -232,10 +232,10 @@ class TestEndToEndMultiTimeSeries:
     
     def test_single_dataset_dimension_flow(self):
         """Test dimension flow for individual datasets"""
-        print("\n🔄 Testing Single Dataset Dimension Flow")
+        print("\nREFRESH Testing Single Dataset Dimension Flow")
         
         for dataset_name, dataset_spec in self.datasets.items():
-            print(f"\n  📈 Testing {dataset_name} dataset:")
+            print(f"\n  GRAPH Testing {dataset_name} dataset:")
             
             for mode in ['S', 'MS', 'M']:
                 # Create model configuration
@@ -261,20 +261,20 @@ class TestEndToEndMultiTimeSeries:
                     expected_shape = (x_enc.shape[0], dataset_spec.pred_len, model.c_out_model)
                     assert output.shape == expected_shape, f"Output shape mismatch: got {output.shape}, expected {expected_shape}"
                     
-                    print(f"    ✅ {mode} mode: {model.enc_in}→{model.c_out_model} | Output: {output.shape}")
+                    print(f"    PASS {mode} mode: {model.enc_in}{model.c_out_model} | Output: {output.shape}")
                     
                 except Exception as e:
-                    print(f"    ❌ {mode} mode failed: {e}")
+                    print(f"    FAIL {mode} mode failed: {e}")
                     raise
     
     def test_multi_dataset_batch_processing(self):
         """Test batch processing across different datasets"""
-        print("\n🔄 Testing Multi-Dataset Batch Processing")
+        print("\nREFRESH Testing Multi-Dataset Batch Processing")
         
         mode = 'MS'  # Focus on multivariate-to-multivariate for complex scenarios
         
         for dataset_name, dataset_spec in self.datasets.items():
-            print(f"\n  🔢 Testing batch processing for {dataset_name}:")
+            print(f"\n   Testing batch processing for {dataset_name}:")
             
             config = {
                 'mode': mode,
@@ -300,15 +300,15 @@ class TestEndToEndMultiTimeSeries:
                     expected_shape = (batch_size, dataset_spec.pred_len, model.c_out_model)
                     assert output.shape == expected_shape
                     
-                    print(f"    ✅ Batch size {batch_size}: {output.shape}")
+                    print(f"    PASS Batch size {batch_size}: {output.shape}")
                     
                 except Exception as e:
-                    print(f"    ❌ Batch size {batch_size} failed: {e}")
+                    print(f"    FAIL Batch size {batch_size} failed: {e}")
                     raise
     
     def test_quantile_dimension_handling(self):
         """Test dimension handling with quantile losses"""
-        print("\n📊 Testing Quantile Dimension Handling")
+        print("\nCHART Testing Quantile Dimension Handling")
         
         quantile_configs = [
             ("3-quantile", [0.1, 0.5, 0.9]),
@@ -320,7 +320,7 @@ class TestEndToEndMultiTimeSeries:
         dataset_spec = self.datasets['financial']
         
         for quantile_name, quantiles in quantile_configs:
-            print(f"\n  📈 Testing {quantile_name} configuration:")
+            print(f"\n  GRAPH Testing {quantile_name} configuration:")
             
             for mode in ['S', 'MS', 'M']:
                 config = {
@@ -353,16 +353,16 @@ class TestEndToEndMultiTimeSeries:
                     
                     assert reshaped.shape == (batch_size, pred_len, base_output_dim, len(quantiles))
                     
-                    print(f"    ✅ {mode} mode: {base_output_dim}×{len(quantiles)}={expected_model_dim} | "
+                    print(f"    PASS {mode} mode: {base_output_dim}{len(quantiles)}={expected_model_dim} | "
                           f"Reshaped: {reshaped.shape}")
                     
                 except Exception as e:
-                    print(f"    ❌ {mode} mode with {quantile_name} failed: {e}")
+                    print(f"    FAIL {mode} mode with {quantile_name} failed: {e}")
                     raise
     
     def test_dynamic_dataset_switching(self):
         """Test switching between datasets with different dimensions"""
-        print("\n🔄 Testing Dynamic Dataset Switching")
+        print("\nREFRESH Testing Dynamic Dataset Switching")
         
         # Simulate scenario where model needs to handle different datasets
         dataset_sequence = ['minimal', 'weather', 'financial', 'energy', 'large_multivariate']
@@ -372,7 +372,7 @@ class TestEndToEndMultiTimeSeries:
         
         for dataset_name in dataset_sequence:
             dataset_spec = self.datasets[dataset_name]
-            print(f"\n  🔧 Configuring for {dataset_name} dataset:")
+            print(f"\n  TOOL Configuring for {dataset_name} dataset:")
             
             config = {
                 'mode': mode,
@@ -393,11 +393,11 @@ class TestEndToEndMultiTimeSeries:
                 output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
                 
                 dim_info = model.get_dimension_info()
-                print(f"    ✅ {dataset_name}: {dim_info['enc_in']}→{dim_info['c_out_model']} | "
+                print(f"    PASS {dataset_name}: {dim_info['enc_in']}{dim_info['c_out_model']} | "
                       f"Targets: {dim_info['targets']}, Features: {dim_info['all_features']}")
                 
             except Exception as e:
-                print(f"    ❌ {dataset_name} failed: {e}")
+                print(f"    FAIL {dataset_name} failed: {e}")
                 raise
         
         # Verify models have different dimensions
@@ -408,17 +408,17 @@ class TestEndToEndMultiTimeSeries:
         assert dim_infos['weather']['targets'] != dim_infos['energy']['targets']
         assert dim_infos['large_multivariate']['all_features'] > dim_infos['minimal']['all_features']
         
-        print("\n  ✅ All models properly configured with different dimensions")
+        print("\n  PASS All models properly configured with different dimensions")
     
     def test_memory_scaling_analysis(self):
         """Test memory scaling with different dataset sizes"""
-        print("\n💾 Testing Memory Scaling Analysis")
+        print("\n Testing Memory Scaling Analysis")
         
         mode = 'M'  # Most memory-intensive mode
         batch_size = 16
         
         for dataset_name, dataset_spec in self.datasets.items():
-            print(f"\n  📊 Memory analysis for {dataset_name}:")
+            print(f"\n  CHART Memory analysis for {dataset_name}:")
             
             config = {
                 'mode': mode,
@@ -445,28 +445,28 @@ class TestEndToEndMultiTimeSeries:
                 total_elements = input_elements + output_elements
                 memory_mb = total_elements * 4 / (1024 * 1024)  # 4 bytes per float32
                 
-                print(f"    📈 Input: {x_enc.shape}, Output: {output.shape}")
-                print(f"    💾 Memory: ~{memory_mb:.2f} MB")
-                print(f"    🔢 Features: {dataset_spec.n_total_features}, Targets: {dataset_spec.n_targets}")
+                print(f"    GRAPH Input: {x_enc.shape}, Output: {output.shape}")
+                print(f"     Memory: ~{memory_mb:.2f} MB")
+                print(f"     Features: {dataset_spec.n_total_features}, Targets: {dataset_spec.n_targets}")
                 
                 # Basic memory sanity checks
                 assert memory_mb < 1000, f"Memory usage too high: {memory_mb:.2f} MB"
                 assert output_elements > 0
                 
-                print(f"    ✅ Memory scaling acceptable")
+                print(f"    PASS Memory scaling acceptable")
                 
             except Exception as e:
-                print(f"    ❌ Memory test failed: {e}")
+                print(f"    FAIL Memory test failed: {e}")
                 raise
     
     def test_error_handling_and_recovery(self):
         """Test error handling for dimension mismatches and recovery"""
-        print("\n⚠️ Testing Error Handling and Recovery")
+        print("\nWARN Testing Error Handling and Recovery")
         
         dataset_spec = self.datasets['financial']
         
         # Test 1: Wrong input dimensions
-        print("\n  🔍 Testing wrong input dimensions:")
+        print("\n  SEARCH Testing wrong input dimensions:")
         
         config = {
             'mode': 'MS',
@@ -487,29 +487,29 @@ class TestEndToEndMultiTimeSeries:
         
         try:
             output = model(x_enc_wrong, x_mark_enc, x_dec_wrong, x_mark_dec)
-            print("    ❌ Should have failed with dimension mismatch")
+            print("    FAIL Should have failed with dimension mismatch")
             assert False, "Expected dimension mismatch error"
         except AssertionError as e:
             if "dim mismatch" in str(e):
-                print("    ✅ Correctly detected input dimension mismatch")
+                print("    PASS Correctly detected input dimension mismatch")
             else:
                 raise
         
         # Test 2: Recovery with correct dimensions
-        print("\n  🔧 Testing recovery with correct dimensions:")
+        print("\n  TOOL Testing recovery with correct dimensions:")
         
         x_enc, x_mark_enc, x_dec, x_mark_dec = self.generate_synthetic_data(dataset_spec)
         
         try:
             output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            print("    ✅ Successfully recovered with correct dimensions")
+            print("    PASS Successfully recovered with correct dimensions")
         except Exception as e:
-            print(f"    ❌ Recovery failed: {e}")
+            print(f"    FAIL Recovery failed: {e}")
             raise
     
     def test_cross_dataset_compatibility(self):
         """Test compatibility when models encounter data from different datasets"""
-        print("\n🔄 Testing Cross-Dataset Compatibility")
+        print("\nREFRESH Testing Cross-Dataset Compatibility")
         
         # Create model for financial dataset
         financial_spec = self.datasets['financial']
@@ -523,38 +523,38 @@ class TestEndToEndMultiTimeSeries:
         
         financial_model = MockHFAutoformer(config)
         
-        print(f"  🏦 Financial model: {financial_model.enc_in} features")
+        print(f"   Financial model: {financial_model.enc_in} features")
         
         # Test with compatible data (same feature count)
-        print("\n  ✅ Testing with compatible data:")
+        print("\n  PASS Testing with compatible data:")
         x_enc, x_mark_enc, x_dec, x_mark_dec = self.generate_synthetic_data(financial_spec)
         
         try:
             output = financial_model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            print(f"    ✅ Compatible data works: {output.shape}")
+            print(f"    PASS Compatible data works: {output.shape}")
         except Exception as e:
-            print(f"    ❌ Compatible data failed: {e}")
+            print(f"    FAIL Compatible data failed: {e}")
             raise
         
         # Test with incompatible data (different feature count)
-        print("\n  ❌ Testing with incompatible data:")
+        print("\n  FAIL Testing with incompatible data:")
         weather_spec = self.datasets['weather']
         x_enc_wrong, x_mark_enc, x_dec_wrong, x_mark_dec = self.generate_synthetic_data(weather_spec)
         
         try:
             output = financial_model(x_enc_wrong, x_mark_enc, x_dec_wrong, x_mark_dec)
-            print("    ❌ Should have failed with incompatible data")
+            print("    FAIL Should have failed with incompatible data")
             assert False, "Expected incompatibility error"
         except AssertionError as e:
             if "dim mismatch" in str(e):
-                print(f"    ✅ Correctly detected incompatible data: {weather_spec.n_total_features} vs {financial_spec.n_total_features} features")
+                print(f"    PASS Correctly detected incompatible data: {weather_spec.n_total_features} vs {financial_spec.n_total_features} features")
             else:
                 raise
 
 
 def run_end_to_end_tests():
     """Run all end-to-end multi-time series tests"""
-    print("🚀 Running End-to-End Multi-Time Series Test Suite")
+    print("ROCKET Running End-to-End Multi-Time Series Test Suite")
     print("=" * 80)
     
     test_instance = TestEndToEndMultiTimeSeries()
@@ -569,9 +569,9 @@ def run_end_to_end_tests():
         test_instance.test_error_handling_and_recovery()
         test_instance.test_cross_dataset_compatibility()
         
-        print("\n🎉 🎉 🎉 ALL END-TO-END TESTS PASSED! 🎉 🎉 🎉")
+        print("\nPARTY PARTY PARTY ALL END-TO-END TESTS PASSED! PARTY PARTY PARTY")
         print("=" * 80)
-        print("\n✅ Key Achievements:")
+        print("\nPASS Key Achievements:")
         print("  - Multi-dataset dimension handling validated")
         print("  - DimensionManager integration confirmed")
         print("  - Quantile scaling properly implemented")
@@ -580,7 +580,7 @@ def run_end_to_end_tests():
         print("  - Cross-dataset compatibility correctly enforced")
         
     except Exception as e:
-        print(f"\n❌ End-to-End Tests Failed: {e}")
+        print(f"\nFAIL End-to-End Tests Failed: {e}")
         raise
 
 

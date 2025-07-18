@@ -110,19 +110,19 @@ def generate_demo_data():
 
 def run_comprehensive_demo():
     """Run comprehensive demo"""
-    print("🚀 Comprehensive ChronosX + ModularAutoformer Demo")
+    print("ROCKET Comprehensive ChronosX + ModularAutoformer Demo")
     print("=" * 70)
     
     # Initialize components
-    print("🔧 Initializing component registry...")
+    print("TOOL Initializing component registry...")
     registry = create_global_registry()
     register_example_components(registry)
-    print("   ✅ Components registered")
+    print("   PASS Components registered")
     
     # Generate demo data
-    print("\n📊 Generating realistic demo data...")
+    print("\nCHART Generating realistic demo data...")
     data = generate_demo_data()
-    print(f"   ✅ Generated {len(data['full_series'])} data points")
+    print(f"   PASS Generated {len(data['full_series'])} data points")
     print(f"      Historical: {len(data['historical'])} points")
     print(f"      Forecasting: {data['pred_len']} points")
     
@@ -135,7 +135,7 @@ def run_comprehensive_demo():
     results = {}
     
     for backbone_type, model_size, description in models_to_test:
-        print(f"\n🔮 Testing {description}")
+        print(f"\nCRYSTAL Testing {description}")
         print("-" * 50)
         
         try:
@@ -147,7 +147,7 @@ def run_comprehensive_demo():
             model.eval()
             init_time = time.time() - start_time
             
-            print(f"   ✅ Model loaded in {init_time:.3f}s")
+            print(f"   PASS Model loaded in {init_time:.3f}s")
             
             # Get model info
             backbone_info = model.get_backbone_info()
@@ -164,7 +164,7 @@ def run_comprehensive_demo():
                 )
                 inference_time = time.time() - start_time
             
-            print(f"   ⚡ Inference completed in {inference_time:.3f}s")
+            print(f"   LIGHTNING Inference completed in {inference_time:.3f}s")
             print(f"      Prediction shape: {prediction.shape}")
             
             # Convert to numpy for analysis
@@ -174,7 +174,7 @@ def run_comprehensive_demo():
             mae = np.mean(np.abs(pred_numpy - data['true_future']))
             rmse = np.sqrt(np.mean((pred_numpy - data['true_future'])**2))
             
-            print(f"   📊 Forecast quality:")
+            print(f"   CHART Forecast quality:")
             print(f"      MAE: {mae:.4f}")
             print(f"      RMSE: {rmse:.4f}")
             
@@ -187,9 +187,9 @@ def run_comprehensive_demo():
                     uncertainty_info = f"Quantiles: {quantiles}"
                 elif 'std' in uncertainty_results:
                     avg_std = uncertainty_results['std'].mean().item()
-                    uncertainty_info = f"Std: ±{avg_std:.4f}"
+                    uncertainty_info = f"Std: {avg_std:.4f}"
             
-            print(f"   🎯 Uncertainty: {uncertainty_info}")
+            print(f"   TARGET Uncertainty: {uncertainty_info}")
             
             # Store results
             results[backbone_type] = {
@@ -203,11 +203,11 @@ def run_comprehensive_demo():
             }
             
         except Exception as e:
-            print(f"   ❌ Failed: {str(e)}")
+            print(f"   FAIL Failed: {str(e)}")
             results[backbone_type] = {'error': str(e)}
     
     # Create comparison visualization
-    print(f"\n📈 Creating visualization...")
+    print(f"\nGRAPH Creating visualization...")
     
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     fig.suptitle('ChronosX + ModularAutoformer Demo Results', fontsize=16, fontweight='bold')
@@ -333,37 +333,37 @@ def run_comprehensive_demo():
     
     plt.tight_layout()
     plt.savefig('chronosx_modular_autoformer_demo.png', dpi=300, bbox_inches='tight')
-    print(f"   ✅ Saved visualization: chronosx_modular_autoformer_demo.png")
+    print(f"   PASS Saved visualization: chronosx_modular_autoformer_demo.png")
     
     # Summary
-    print(f"\n🎉 Demo Complete!")
+    print(f"\nPARTY Demo Complete!")
     print("=" * 70)
-    print("✅ Key Achievements:")
-    print("   🔮 ChronosX backbone integrated with ModularAutoformer")
-    print("   ⚡ Zero-shot forecasting without training")
-    print("   🎯 Uncertainty quantification available")
-    print("   📊 Multiple model variants tested")
-    print("   📈 Comprehensive performance analysis")
+    print("PASS Key Achievements:")
+    print("   CRYSTAL ChronosX backbone integrated with ModularAutoformer")
+    print("   LIGHTNING Zero-shot forecasting without training")
+    print("   TARGET Uncertainty quantification available")
+    print("   CHART Multiple model variants tested")
+    print("   GRAPH Comprehensive performance analysis")
     
     successful_models = [name for name, result in results.items() if 'prediction' in result]
-    print(f"\n📋 Working Models: {len(successful_models)}/{len(models_to_test)}")
+    print(f"\nCLIPBOARD Working Models: {len(successful_models)}/{len(models_to_test)}")
     
     for model_name, result in results.items():
         if 'prediction' in result:
-            print(f"   ✅ {result['description']}")
+            print(f"   PASS {result['description']}")
             print(f"      MAE: {result['mae']:.4f}, Inference: {result['inference_time']:.3f}s")
     
     return len(successful_models) == len(models_to_test)
 
 
 if __name__ == "__main__":
-    print("🔬 Starting Comprehensive ChronosX + ModularAutoformer Demo...\n")
+    print("MICROSCOPE Starting Comprehensive ChronosX + ModularAutoformer Demo...\n")
     
     success = run_comprehensive_demo()
     
     if success:
-        print(f"\n🚀 DEMO SUCCESSFUL! Your integration is working perfectly!")
+        print(f"\nROCKET DEMO SUCCESSFUL! Your integration is working perfectly!")
     else:
-        print(f"\n⚠️ Some issues detected. Check the results above.")
+        print(f"\nWARN Some issues detected. Check the results above.")
     
     sys.exit(0 if success else 1)

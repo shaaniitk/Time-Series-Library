@@ -15,7 +15,7 @@ from utils.logger import logger
 def test_quantile_bayesian_model():
     """Test the combined quantile + Bayesian model"""
     
-    print("🚀 Testing QuantileBayesianAutoformer with Normalized Losses")
+    print("ROCKET Testing QuantileBayesianAutoformer with Normalized Losses")
     print("=" * 60)
     
     # Model configuration
@@ -30,7 +30,7 @@ def test_quantile_bayesian_model():
     # Create model with different loss weight combinations
     quantiles = [0.1, 0.5, 0.9]  # 10%, 50%, 90% quantiles
     
-    print(f"📊 Configuration:")
+    print(f"CHART Configuration:")
     print(f"  Original targets: {config.c_out}")
     print(f"  Quantiles: {quantiles}")
     print(f"  Expected output size: {config.c_out * len(quantiles)}")
@@ -45,7 +45,7 @@ def test_quantile_bayesian_model():
     results = {}
     
     for loss_config in loss_configs:
-        print(f"\n🧪 Testing {loss_config['name']} Configuration:")
+        print(f"\nTEST Testing {loss_config['name']} Configuration:")
         print(f"   KL Weight: {loss_config['kl_weight']:.1f}")
         print(f"   Quantile Weight: {1 - loss_config['kl_weight']:.1f}")
         
@@ -77,7 +77,7 @@ def test_quantile_bayesian_model():
         # Compute loss with breakdown
         loss_components = model.compute_loss(pred_slice, targets, return_components=True)
         
-        print(f"   📈 Loss Breakdown:")
+        print(f"   GRAPH Loss Breakdown:")
         print(f"      Quantile Loss: {loss_components['quantile_loss'].item():.6f}")
         print(f"      KL Loss: {loss_components['kl_loss'].item():.6f}")
         print(f"      Quantile Contribution: {loss_components['quantile_contribution']:.6f}")
@@ -89,12 +89,12 @@ def test_quantile_bayesian_model():
         quantile_results = model.predict_quantiles(x_enc, x_mark_enc, x_dec, x_mark_dec)
         pred_quantiles = quantile_results['predictions'][:, -config.pred_len:, :, :]  # [batch, pred_len, targets, quantiles]
         
-        print(f"   📊 Quantile Predictions Shape: {pred_quantiles.shape}")
+        print(f"   CHART Quantile Predictions Shape: {pred_quantiles.shape}")
         
         # Test uncertainty metrics
         uncertainty = model.get_uncertainty_metrics(x_enc, x_mark_enc, x_dec, x_mark_dec)
         if 'interval_width' in uncertainty:
-            print(f"   🎯 Uncertainty Metrics:")
+            print(f"   TARGET Uncertainty Metrics:")
             print(f"      Mean Interval Width: {uncertainty['mean_interval_width']:.4f}")
             print(f"      Per-target Uncertainty: {uncertainty['uncertainty_by_target']}")
         
@@ -106,7 +106,7 @@ def test_quantile_bayesian_model():
         }
     
     # Visualization
-    print(f"\n📈 Creating Comparison Visualization...")
+    print(f"\nGRAPH Creating Comparison Visualization...")
     
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     fig.suptitle('QuantileBayesianAutoformer: Loss Weight Comparison', fontsize=16, fontweight='bold')
@@ -176,17 +176,17 @@ def test_quantile_bayesian_model():
     plt.savefig('pic/quantile_bayesian_comparison.png', dpi=150, bbox_inches='tight')
     plt.show()
     
-    print(f"\n✅ Comparison plot saved to: pic/quantile_bayesian_comparison.png")
+    print(f"\nPASS Comparison plot saved to: pic/quantile_bayesian_comparison.png")
     
     return results
 
 if __name__ == "__main__":
     try:
         results = test_quantile_bayesian_model()
-        print(f"\n🎉 QuantileBayesianAutoformer test completed successfully!")
-        print(f"🔍 Key Finding: Loss contributions are properly normalized to sum to 1.0")
-        print(f"📊 Different weight configurations produce different uncertainty behaviors")
+        print(f"\nPARTY QuantileBayesianAutoformer test completed successfully!")
+        print(f"SEARCH Key Finding: Loss contributions are properly normalized to sum to 1.0")
+        print(f"CHART Different weight configurations produce different uncertainty behaviors")
     except Exception as e:
-        print(f"\n💥 Test failed: {e}")
+        print(f"\n Test failed: {e}")
         import traceback
         traceback.print_exc()

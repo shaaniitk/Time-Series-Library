@@ -54,15 +54,15 @@ def test_step2_bayesian_autoformer():
     try:
         # Import the model
         from models.HFBayesianAutoformer_Step2 import HFBayesianAutoformer
-        print("✅ Model import successful")
+        print("PASS Model import successful")
         
         # Initialize model
         model = HFBayesianAutoformer(config)
-        print("✅ Model initialization successful")
+        print("PASS Model initialization successful")
         
         # Get model info
         model_info = model.get_model_info()
-        print(f"✅ Model Info: {model_info['name']}")
+        print(f"PASS Model Info: {model_info['name']}")
         print(f"   Total Parameters: {model_info['total_params']:,}")
         print(f"   Trainable Parameters: {model_info['trainable_params']:,}")
         print(f"   Uncertainty Samples: {model_info['uncertainty_samples']}")
@@ -77,7 +77,7 @@ def test_step2_bayesian_autoformer():
         x_dec = torch.randn(batch_size, config.pred_len, config.c_out)
         x_mark_dec = torch.randn(batch_size, config.pred_len, 4)
         
-        print(f"✅ Test data prepared: batch_size={batch_size}, seq_len={config.seq_len}, pred_len={config.pred_len}")
+        print(f"PASS Test data prepared: batch_size={batch_size}, seq_len={config.seq_len}, pred_len={config.pred_len}")
         
         # Test 1: Basic forward pass (no uncertainty)
         print("\n" + "="*60)
@@ -91,7 +91,7 @@ def test_step2_bayesian_autoformer():
         assert output.shape == expected_shape, f"Expected {expected_shape}, got {output.shape}"
         assert torch.isfinite(output).all(), "Output contains non-finite values"
         
-        print(f"✅ Basic forward pass successful")
+        print(f"PASS Basic forward pass successful")
         print(f"   Output shape: {output.shape}")
         print(f"   Output range: [{output.min().item():.6f}, {output.max().item():.6f}]")
         print(f"   Output mean: {output.mean().item():.6f}")
@@ -114,27 +114,27 @@ def test_step2_bayesian_autoformer():
         assert hasattr(uncertainty_result, 'quantiles'), "Missing quantiles"
         assert hasattr(uncertainty_result, 'predictions_samples'), "Missing predictions_samples"
         
-        print(f"✅ UncertaintyResult structure validation passed")
+        print(f"PASS UncertaintyResult structure validation passed")
         
         # Validate shapes
         assert uncertainty_result.prediction.shape == expected_shape
         assert uncertainty_result.uncertainty.shape == expected_shape
         assert uncertainty_result.variance.shape == expected_shape
         
-        print(f"✅ Uncertainty output shapes validation passed")
+        print(f"PASS Uncertainty output shapes validation passed")
         
         # Validate finite values
         assert torch.isfinite(uncertainty_result.prediction).all(), "Prediction contains non-finite values"
         assert torch.isfinite(uncertainty_result.uncertainty).all(), "Uncertainty contains non-finite values"
         assert torch.isfinite(uncertainty_result.variance).all(), "Variance contains non-finite values"
         
-        print(f"✅ Finite values validation passed")
+        print(f"PASS Finite values validation passed")
         
         # Validate uncertainty properties
         assert (uncertainty_result.uncertainty >= 0).all(), "Uncertainty should be non-negative"
         assert (uncertainty_result.variance >= 0).all(), "Variance should be non-negative"
         
-        print(f"✅ Uncertainty properties validation passed")
+        print(f"PASS Uncertainty properties validation passed")
         
         # Test 3: Confidence intervals validation
         print("\n" + "="*60)
@@ -158,7 +158,7 @@ def test_step2_bayesian_autoformer():
             assert (upper >= lower).all(), f"Upper bound should be >= lower bound for {conf_level}"
             assert torch.allclose(width, upper - lower, atol=1e-6), f"Width mismatch for {conf_level}"
             
-            print(f"✅ {conf_level} confidence interval validation passed")
+            print(f"PASS {conf_level} confidence interval validation passed")
             print(f"   Lower range: [{lower.min().item():.6f}, {lower.max().item():.6f}]")
             print(f"   Upper range: [{upper.min().item():.6f}, {upper.max().item():.6f}]")
             print(f"   Width range: [{width.min().item():.6f}, {width.max().item():.6f}]")
@@ -177,7 +177,7 @@ def test_step2_bayesian_autoformer():
             assert q_pred.shape == expected_shape, f"Wrong shape for {q_name}"
             assert torch.isfinite(q_pred).all(), f"Non-finite values in {q_name}"
             
-            print(f"✅ Quantile {q_name} validation passed")
+            print(f"PASS Quantile {q_name} validation passed")
         
         # Test 5: Monte Carlo sampling validation
         print("\n" + "="*60)
@@ -195,7 +195,7 @@ def test_step2_bayesian_autoformer():
         sample_std = torch.std(samples, dim=0)
         assert (sample_std > 0).any(), "Samples should have some variation"
         
-        print(f"✅ Monte Carlo sampling validation passed")
+        print(f"PASS Monte Carlo sampling validation passed")
         print(f"   Samples shape: {samples.shape}")
         print(f"   Sample variation (std): [{sample_std.min().item():.6f}, {sample_std.max().item():.6f}]")
         
@@ -228,7 +228,7 @@ def test_step2_bayesian_autoformer():
         assert torch.isfinite(uncertainty_result_train.prediction).all()
         assert torch.isfinite(uncertainty_result_train.uncertainty).all()
         
-        print(f"✅ Gradient safety validation passed")
+        print(f"PASS Gradient safety validation passed")
         print(f"   Gradients during training: {grad_count} parameters")
         print(f"   Uncertainty computation safe: No gradient interference")
         
@@ -259,34 +259,34 @@ def test_step2_bayesian_autoformer():
                 'uncertainty_mean': test_output.uncertainty.mean().item()
             }
             
-            print(f"✅ Batch size {bs}: shapes OK, finite values OK")
+            print(f"PASS Batch size {bs}: shapes OK, finite values OK")
         
         # Summary
         print("\n" + "="*80)
         print("STEP 2 TESTING SUMMARY")
         print("="*80)
-        print("🎉 ALL TESTS PASSED! 🎉")
-        print(f"✅ Model: {model_info['name']}")
-        print(f"✅ Parameters: {model_info['total_params']:,}")
-        print(f"✅ Uncertainty Method: {model_info['uncertainty_method']}")
-        print(f"✅ Critical Bugs: ELIMINATED")
+        print("PARTY ALL TESTS PASSED! PARTY")
+        print(f"PASS Model: {model_info['name']}")
+        print(f"PASS Parameters: {model_info['total_params']:,}")
+        print(f"PASS Uncertainty Method: {model_info['uncertainty_method']}")
+        print(f"PASS Critical Bugs: ELIMINATED")
         print("   - Line 167 gradient tracking bug: FIXED")
         print("   - Unsafe layer modifications: PREVENTED")
         print("   - Config mutations: AVOIDED")
         print("   - Memory leaks: FIXED")
-        print(f"✅ Batch Consistency: {len(batch_sizes)} sizes tested")
-        print(f"✅ Uncertainty Quantification: Fully validated")
-        print(f"✅ Confidence Intervals: 68% and 95% validated")
-        print(f"✅ Quantile Support: {len(config.quantiles)} quantiles validated")
-        print(f"✅ Monte Carlo Sampling: {config.uncertainty_samples} samples validated")
+        print(f"PASS Batch Consistency: {len(batch_sizes)} sizes tested")
+        print(f"PASS Uncertainty Quantification: Fully validated")
+        print(f"PASS Confidence Intervals: 68% and 95% validated")
+        print(f"PASS Quantile Support: {len(config.quantiles)} quantiles validated")
+        print(f"PASS Monte Carlo Sampling: {config.uncertainty_samples} samples validated")
         
-        print("\n🚀 Step 2 HFBayesianAutoformer is PRODUCTION READY!")
+        print("\nROCKET Step 2 HFBayesianAutoformer is PRODUCTION READY!")
         print("Ready to proceed to Step 3: HFHierarchicalAutoformer")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error during testing: {e}")
+        print(f"FAIL Error during testing: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -294,7 +294,7 @@ def test_step2_bayesian_autoformer():
 if __name__ == "__main__":
     success = test_step2_bayesian_autoformer()
     if success:
-        print("\n✅ Step 2 testing completed successfully!")
+        print("\nPASS Step 2 testing completed successfully!")
     else:
-        print("\n❌ Step 2 testing failed!")
+        print("\nFAIL Step 2 testing failed!")
         sys.exit(1)

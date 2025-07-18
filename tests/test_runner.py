@@ -223,14 +223,14 @@ def validate_test_environment():
     if issues:
         print("ISSUES FOUND:")
         for issue in issues:
-            print(f"  ❌ {issue}")
+            print(f"  FAIL {issue}")
     else:
-        print("✅ All required components found")
+        print("PASS All required components found")
     
     if missing_optional:
         print("\nOPTIONAL PACKAGES MISSING:")
         for package in missing_optional:
-            print(f"  ⚠️  {package}")
+            print(f"  WARN  {package}")
         print("  (These packages provide additional functionality but are not required)")
     
     print(f"\nProject Root: {project_root}")
@@ -272,7 +272,7 @@ def main():
     
     # Validate environment first
     if not validate_test_environment():
-        print("\n❌ Environment validation failed. Please fix issues before running tests.")
+        print("\nFAIL Environment validation failed. Please fix issues before running tests.")
         return 1
     
     print("\n" + "=" * 60)

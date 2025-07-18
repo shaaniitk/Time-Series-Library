@@ -31,7 +31,7 @@ def load_hf_model(model_name):
         spec.loader.exec_module(module)
         return getattr(module, model_name.split('.')[0])
     except Exception as e:
-        print(f"⚠️ Could not load {model_name}: {e}")
+        print(f"WARN Could not load {model_name}: {e}")
         return None
 
 # Load models
@@ -185,7 +185,7 @@ def test_model_covariate_usage(model_class, model_name, config, x_enc, x_mark_en
         model = model_class(config)
         model.eval()
         
-        print(f"✓ Model created: {sum(p.numel() for p in model.parameters()):,} parameters")
+        print(f" Model created: {sum(p.numel() for p in model.parameters()):,} parameters")
         
         # Test with covariates
         with torch.no_grad():
@@ -196,7 +196,7 @@ def test_model_covariate_usage(model_class, model_name, config, x_enc, x_mark_en
             else:
                 output_with = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
         
-        print(f"✓ Forward with covariates: {output_with.shape}")
+        print(f" Forward with covariates: {output_with.shape}")
         mean_with = output_with.mean().item()
         
         # Test without covariates
@@ -208,7 +208,7 @@ def test_model_covariate_usage(model_class, model_name, config, x_enc, x_mark_en
             else:
                 output_without = model(x_enc, None, x_dec, None)
         
-        print(f"✓ Forward without covariates: {output_without.shape}")
+        print(f" Forward without covariates: {output_without.shape}")
         mean_without = output_without.mean().item()
         
         # Compare
@@ -216,21 +216,21 @@ def test_model_covariate_usage(model_class, model_name, config, x_enc, x_mark_en
         mean_diff = diff.mean().item()
         max_diff = diff.max().item()
         
-        print(f"✓ Mean prediction WITH covariates: {mean_with:.6f}")
-        print(f"✓ Mean prediction WITHOUT covariates: {mean_without:.6f}")
-        print(f"✓ Mean absolute difference: {mean_diff:.6f}")
-        print(f"✓ Max absolute difference: {max_diff:.6f}")
+        print(f" Mean prediction WITH covariates: {mean_with:.6f}")
+        print(f" Mean prediction WITHOUT covariates: {mean_without:.6f}")
+        print(f" Mean absolute difference: {mean_diff:.6f}")
+        print(f" Max absolute difference: {max_diff:.6f}")
         
         success = mean_diff > 1e-6
         if success:
-            print(f"✅ SUCCESS: {model_name} properly uses covariates!")
+            print(f"PASS SUCCESS: {model_name} properly uses covariates!")
         else:
-            print(f"❌ FAILURE: {model_name} ignores covariates")
+            print(f"FAIL FAILURE: {model_name} ignores covariates")
             
         return success
         
     except Exception as e:
-        print(f"❌ ERROR testing {model_name}: {e}")
+        print(f"FAIL ERROR testing {model_name}: {e}")
         return False
 
 
@@ -242,10 +242,10 @@ def test_special_features(model_class, model_name, config, x_enc, x_mark_enc, x_
             model = model_class(config, uncertainty_method='dropout', n_samples=10)
             with torch.no_grad():
                 uncertainty_result = model.get_uncertainty_result(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            print(f"✓ Uncertainty estimation: {uncertainty_result.uncertainty.mean().item():.6f}")
+            print(f" Uncertainty estimation: {uncertainty_result.uncertainty.mean().item():.6f}")
             return True
         except Exception as e:
-            print(f"⚠️ Uncertainty test failed: {e}")
+            print(f"WARN Uncertainty test failed: {e}")
             return False
             
     elif model_name == "HFHierarchicalAutoformer_Step3":
@@ -253,10 +253,10 @@ def test_special_features(model_class, model_name, config, x_enc, x_mark_enc, x_
             model = model_class(config)
             with torch.no_grad():
                 hierarchical_result = model(x_enc, x_mark_enc, x_dec, x_mark_dec, return_hierarchical=True)
-            print(f"✓ Hierarchical analysis: {len(hierarchical_result.scale_predictions)} scales")
+            print(f" Hierarchical analysis: {len(hierarchical_result.scale_predictions)} scales")
             return True
         except Exception as e:
-            print(f"⚠️ Hierarchical test failed: {e}")
+            print(f"WARN Hierarchical test failed: {e}")
             return False
             
     elif model_name == "HFQuantileAutoformer_Step4":
@@ -264,10 +264,10 @@ def test_special_features(model_class, model_name, config, x_enc, x_mark_enc, x_
             model = model_class(config)
             with torch.no_grad():
                 quantile_result = model(x_enc, x_mark_enc, x_dec, x_mark_dec, return_quantiles=True)
-            print(f"✓ Quantile regression: {len(quantile_result.quantiles)} quantiles")
+            print(f" Quantile regression: {len(quantile_result.quantiles)} quantiles")
             return True
         except Exception as e:
-            print(f"⚠️ Quantile test failed: {e}")
+            print(f"WARN Quantile test failed: {e}")
             return False
             
     return True
@@ -287,8 +287,8 @@ def main():
     data, data_stamp = prepare_data_with_covariates(df, config)
     x_enc, x_mark_enc, x_dec, x_mark_dec = create_sequences(data, data_stamp, config)
     
-    print(f"✓ Data prepared: {data.shape}, Time features: {data_stamp.shape}")
-    print(f"✓ Sequences: x_enc {x_enc.shape}, x_mark_enc {x_mark_enc.shape}")
+    print(f" Data prepared: {data.shape}, Time features: {data_stamp.shape}")
+    print(f" Sequences: x_enc {x_enc.shape}, x_mark_enc {x_mark_enc.shape}")
     
     # 2. Test models
     models_to_test = [
@@ -302,7 +302,7 @@ def main():
     
     for model_class, model_name in models_to_test:
         if model_class is None:
-            print(f"\n⚠️ Skipping {model_name} (not available)")
+            print(f"\nWARN Skipping {model_name} (not available)")
             results[model_name] = False
             continue
             
@@ -336,16 +336,16 @@ def main():
             total += 1
             if success:
                 passed += 1
-                print(f"✅ {model_name}")
+                print(f"PASS {model_name}")
             else:
-                print(f"❌ {model_name}")
+                print(f"FAIL {model_name}")
     
     print(f"\nOverall: {passed}/{total} models properly use covariates")
     
     if passed == total:
-        print("🎉 All HF models properly use covariates!")
+        print("PARTY All HF models properly use covariates!")
     else:
-        print("⚠️ Some models need attention")
+        print("WARN Some models need attention")
     
     return passed == total
 

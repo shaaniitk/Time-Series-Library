@@ -84,7 +84,7 @@ def load_real_data():
     
     try:
         df = pd.read_csv(data_path)
-        print(f"✓ Loaded real data: {df.shape}")
+        print(f" Loaded real data: {df.shape}")
         print(f"Columns: {list(df.columns)}")
         return df
     except Exception as e:
@@ -121,7 +121,7 @@ def create_synthetic_data():
     }
     
     df = pd.DataFrame(data)
-    print(f"✓ Created synthetic data: {df.shape}")
+    print(f" Created synthetic data: {df.shape}")
     print(f"Columns: {list(df.columns)}")
     
     return df
@@ -149,9 +149,9 @@ def prepare_data_with_covariates(df, config):
     cols_data = [col for col in df.columns if col != 'date']
     data = df[cols_data].values.astype(np.float32)
     
-    print(f"✓ Time series data shape: {data.shape}")
-    print(f"✓ Time features (covariates) shape: {data_stamp.shape}")
-    print(f"✓ Time features: {data_stamp.shape[1]} features (hour, day, month, etc.)")
+    print(f" Time series data shape: {data.shape}")
+    print(f" Time features (covariates) shape: {data_stamp.shape}")
+    print(f" Time features: {data_stamp.shape[1]} features (hour, day, month, etc.)")
     
     return data, data_stamp
 
@@ -188,7 +188,7 @@ def create_sequences(data, data_stamp, config):
     x_mark_enc = torch.FloatTensor(seq_x_mark).unsqueeze(0)  # (1, seq_len, time_features)
     x_mark_dec = torch.FloatTensor(seq_y_mark).unsqueeze(0)  # (1, label_len + pred_len, time_features)
     
-    print(f"✓ Created sequences:")
+    print(f" Created sequences:")
     print(f"  x_enc: {x_enc.shape} (encoder input)")
     print(f"  x_mark_enc: {x_mark_enc.shape} (encoder covariates)")
     print(f"  x_dec: {x_dec.shape} (decoder input)")
@@ -209,15 +209,15 @@ def test_covariate_usage(model, x_enc, x_mark_enc, x_dec, x_mark_dec):
     model.eval()
     with torch.no_grad():
         output_with_covariates = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-        print(f"✓ Output shape: {output_with_covariates.shape}")
-        print(f"✓ Mean prediction: {output_with_covariates.mean().item():.4f}")
+        print(f" Output shape: {output_with_covariates.shape}")
+        print(f" Mean prediction: {output_with_covariates.mean().item():.4f}")
     
     # Test 2: Forward pass without covariates (should be different)
     print("\nTest 2: Forward pass WITHOUT covariates")
     with torch.no_grad():
         output_without_covariates = model(x_enc, None, x_dec, None)
-        print(f"✓ Output shape: {output_without_covariates.shape}")
-        print(f"✓ Mean prediction: {output_without_covariates.mean().item():.4f}")
+        print(f" Output shape: {output_without_covariates.shape}")
+        print(f" Mean prediction: {output_without_covariates.mean().item():.4f}")
     
     # Test 3: Compare outputs (they should be different if covariates are used)
     print("\nTest 3: Comparing outputs")
@@ -225,13 +225,13 @@ def test_covariate_usage(model, x_enc, x_mark_enc, x_dec, x_mark_dec):
     mean_diff = diff.mean().item()
     max_diff = diff.max().item()
     
-    print(f"✓ Mean absolute difference: {mean_diff:.6f}")
-    print(f"✓ Max absolute difference: {max_diff:.6f}")
+    print(f" Mean absolute difference: {mean_diff:.6f}")
+    print(f" Max absolute difference: {max_diff:.6f}")
     
     if mean_diff > 1e-6:
-        print("✅ SUCCESS: Covariates are being used! (outputs are different)")
+        print("PASS SUCCESS: Covariates are being used! (outputs are different)")
     else:
-        print("❌ FAILURE: Covariates appear to be ignored (outputs are identical)")
+        print("FAIL FAILURE: Covariates appear to be ignored (outputs are identical)")
     
     return mean_diff > 1e-6
 
@@ -250,9 +250,9 @@ def test_temporal_embedding(model, x_mark_enc):
     # Get temporal embedding
     with torch.no_grad():
         temporal_emb = model.temporal_embedding(x_mark_enc)
-        print(f"✓ Temporal embedding shape: {temporal_emb.shape}")
-        print(f"✓ Temporal embedding mean: {temporal_emb.mean().item():.6f}")
-        print(f"✓ Temporal embedding std: {temporal_emb.std().item():.6f}")
+        print(f" Temporal embedding shape: {temporal_emb.shape}")
+        print(f" Temporal embedding mean: {temporal_emb.mean().item():.6f}")
+        print(f" Temporal embedding std: {temporal_emb.std().item():.6f}")
     
     # Check that different time features produce different embeddings
     # Create modified covariates (change hour feature)
@@ -263,12 +263,12 @@ def test_temporal_embedding(model, x_mark_enc):
         temporal_emb_modified = model.temporal_embedding(x_mark_modified)
     
     emb_diff = torch.abs(temporal_emb - temporal_emb_modified).mean().item()
-    print(f"✓ Embedding difference with modified time: {emb_diff:.6f}")
+    print(f" Embedding difference with modified time: {emb_diff:.6f}")
     
     if emb_diff > 1e-6:
-        print("✅ SUCCESS: Temporal embedding responds to time features!")
+        print("PASS SUCCESS: Temporal embedding responds to time features!")
     else:
-        print("❌ FAILURE: Temporal embedding may not be working properly")
+        print("FAIL FAILURE: Temporal embedding may not be working properly")
     
     return emb_diff > 1e-6
 
@@ -293,11 +293,11 @@ def test_training_step(model, x_enc, x_mark_enc, x_dec, x_mark_dec):
     
     # Forward pass
     output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-    print(f"✓ Forward pass successful: {output.shape}")
+    print(f" Forward pass successful: {output.shape}")
     
     # Compute loss
     loss = criterion(output, target)
-    print(f"✓ Loss computed: {loss.item():.6f}")
+    print(f" Loss computed: {loss.item():.6f}")
     
     # Backward pass
     optimizer.zero_grad()
@@ -312,14 +312,14 @@ def test_training_step(model, x_enc, x_mark_enc, x_dec, x_mark_dec):
             total_grad_norm += grad_norm
             param_count += 1
             if 'temporal_embedding' in name:
-                print(f"✓ Temporal embedding gradient norm: {grad_norm:.6f}")
+                print(f" Temporal embedding gradient norm: {grad_norm:.6f}")
     
-    print(f"✓ Total parameters with gradients: {param_count}")
-    print(f"✓ Average gradient norm: {total_grad_norm/param_count:.6f}")
+    print(f" Total parameters with gradients: {param_count}")
+    print(f" Average gradient norm: {total_grad_norm/param_count:.6f}")
     
     # Optimizer step
     optimizer.step()
-    print("✅ Training step completed successfully!")
+    print("PASS Training step completed successfully!")
     
     return True
 
@@ -334,7 +334,7 @@ def main():
     # 1. Create configuration
     print("\n1. Creating configuration...")
     config = create_test_config()
-    print(f"✓ Configuration created")
+    print(f" Configuration created")
     
     # 2. Load real data
     print("\n2. Loading real data...")
@@ -352,31 +352,31 @@ def main():
     print("\n5. Creating HFEnhancedAutoformer...")
     try:
         model = HFEnhancedAutoformer(config)
-        print(f"✓ Model created successfully")
-        print(f"✓ Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+        print(f" Model created successfully")
+        print(f" Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     except Exception as e:
-        print(f"❌ Model creation failed: {e}")
+        print(f"FAIL Model creation failed: {e}")
         return False
     
     # 6. Test covariate usage
     try:
         covariate_test_passed = test_covariate_usage(model, x_enc, x_mark_enc, x_dec, x_mark_dec)
     except Exception as e:
-        print(f"❌ Covariate test failed: {e}")
+        print(f"FAIL Covariate test failed: {e}")
         return False
     
     # 7. Test temporal embedding
     try:
         temporal_test_passed = test_temporal_embedding(model, x_mark_enc)
     except Exception as e:
-        print(f"❌ Temporal embedding test failed: {e}")
+        print(f"FAIL Temporal embedding test failed: {e}")
         return False
     
     # 8. Test training step
     try:
         training_test_passed = test_training_step(model, x_enc, x_mark_enc, x_dec, x_mark_dec)
     except Exception as e:
-        print(f"❌ Training test failed: {e}")
+        print(f"FAIL Training test failed: {e}")
         return False
     
     # Final results
@@ -394,15 +394,15 @@ def main():
     total_tests = len(tests)
     
     for test_name, passed in tests:
-        status = "✅ PASS" if passed else "❌ FAIL"
+        status = "PASS PASS" if passed else "FAIL FAIL"
         print(f"{status} {test_name}")
     
     print(f"\nOverall: {passed_tests}/{total_tests} tests passed")
     
     if passed_tests == total_tests:
-        print("🎉 All tests passed! HFEnhancedAutoformer properly uses covariates.")
+        print("PARTY All tests passed! HFEnhancedAutoformer properly uses covariates.")
     else:
-        print("⚠️ Some tests failed. Check the output above for details.")
+        print("WARN Some tests failed. Check the output above for details.")
     
     # 9. Visual test (if possible)
     try:
@@ -449,7 +449,7 @@ def create_prediction_plot(model, x_enc, x_mark_enc, x_dec, x_mark_dec, data, co
     
     # Save plot
     plt.savefig('hf_prediction_test.png', dpi=150, bbox_inches='tight')
-    print(f"✓ Prediction plot saved as 'hf_prediction_test.png'")
+    print(f" Prediction plot saved as 'hf_prediction_test.png'")
     plt.close()
 
 

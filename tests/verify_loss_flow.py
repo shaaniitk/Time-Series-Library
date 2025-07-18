@@ -12,7 +12,7 @@ from models.BayesianEnhancedAutoformer import BayesianEnhancedAutoformer
 def test_loss_flow():
     """Test the current loss implementation to verify it's clean and correct."""
     
-    print("🔍 Verifying Current Loss Implementation Flow")
+    print("SEARCH Verifying Current Loss Implementation Flow")
     print("=" * 60)
     
     # Create config
@@ -32,7 +32,7 @@ def test_loss_flow():
         kl_weight=1e-5
     )
     
-    print(f"📊 Configuration:")
+    print(f"CHART Configuration:")
     print(f"   Input features (enc_in): {config.enc_in}")
     print(f"   Target features (c_out): {config.c_out}")
     print(f"   Sequence length: {config.seq_len}")
@@ -48,21 +48,21 @@ def test_loss_flow():
     # Ground truth targets (full sequence, all features)
     batch_y = torch.randn(batch_size, config.label_len + config.pred_len, config.enc_in)
     
-    print(f"\n🔄 Step 1: Model Forward Pass")
+    print(f"\nREFRESH Step 1: Model Forward Pass")
     # Model outputs whatever it naturally produces
     model_outputs = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
     print(f"   Model natural output shape: {model_outputs.shape}")
     
-    print(f"\n✂️  Step 2: Slice for Target Features")
+    print(f"\n  Step 2: Slice for Target Features")
     # Extract predictions for target features only
     predictions = model_outputs[:, -config.pred_len:, :config.c_out]
     targets = batch_y[:, -config.pred_len:, :config.c_out]
     
     print(f"   Sliced predictions shape: {predictions.shape}")
     print(f"   Sliced targets shape: {targets.shape}")
-    print(f"   ✅ Shapes match: {predictions.shape == targets.shape}")
+    print(f"   PASS Shapes match: {predictions.shape == targets.shape}")
     
-    print(f"\n💯 Step 3: Loss Computation")
+    print(f"\n Step 3: Loss Computation")
     criterion = nn.MSELoss()
     
     # Test the clean loss computation
@@ -82,29 +82,29 @@ def test_loss_flow():
         # Verify the math
         expected_total = loss_components['data_loss'] + loss_components['kl_contribution']
         actual_total = loss_components['total_loss']
-        print(f"   ✅ Math check: {expected_total.item():.6f} ≈ {actual_total.item():.6f}")
+        print(f"   PASS Math check: {expected_total.item():.6f}  {actual_total.item():.6f}")
         
     else:
         print("   Using standard loss computation...")
         loss = criterion(predictions, targets)
         print(f"   Loss: {loss.item():.6f}")
     
-    print(f"\n🎯 Key Points:")
-    print(f"   • Model outputs full feature space: {model_outputs.shape}")
-    print(f"   • Loss computed only on targets: {predictions.shape}")
-    print(f"   • No architectural tampering needed")
-    print(f"   • Clean separation: model logic vs loss logic")
-    print(f"   • Bayesian regularization added transparently")
+    print(f"\nTARGET Key Points:")
+    print(f"    Model outputs full feature space: {model_outputs.shape}")
+    print(f"    Loss computed only on targets: {predictions.shape}")
+    print(f"    No architectural tampering needed")
+    print(f"    Clean separation: model logic vs loss logic")
+    print(f"    Bayesian regularization added transparently")
     
-    print(f"\n✅ Current implementation is clean and correct!")
+    print(f"\nPASS Current implementation is clean and correct!")
     
     return True
 
 if __name__ == "__main__":
     try:
         test_loss_flow()
-        print("\n🎉 Loss flow verification completed!")
+        print("\nPARTY Loss flow verification completed!")
     except Exception as e:
-        print(f"\n💥 Error: {e}")
+        print(f"\n Error: {e}")
         import traceback
         traceback.print_exc()

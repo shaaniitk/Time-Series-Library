@@ -41,12 +41,12 @@ class ModelComparison:
         logger.info("="*70)
         
         # Test TimesNet
-        logger.info("\n🔵 TESTING TIMESNET")
+        logger.info("\n TESTING TIMESNET")
         logger.info("-" * 40)
         timesnet_results = self._test_model('TimesNet')
         
         # Test Autoformer  
-        logger.info("\n🟢 TESTING AUTOFORMER")
+        logger.info("\n TESTING AUTOFORMER")
         logger.info("-" * 40)
         autoformer_results = self._test_model('Autoformer')
         
@@ -70,19 +70,19 @@ class ModelComparison:
             test_instance.setUp()
             
             # Test forward pass
-            logger.info(f"⚡ Testing {model_name} forward pass...")
+            logger.info(f"LIGHTNING Testing {model_name} forward pass...")
             start_time = time.time()
             test_instance.test_forward_shape()
             forward_time = time.time() - start_time
-            logger.info(f"✓ Forward pass completed in {forward_time:.3f}s")
+            logger.info(f" Forward pass completed in {forward_time:.3f}s")
             
             # Test parameter count
-            logger.info(f"📊 Counting {model_name} parameters...")
+            logger.info(f"CHART Counting {model_name} parameters...")
             test_instance.test_parameter_count()
             total_params = sum(p.numel() for p in test_instance.model.parameters())
             
             # Test sanity (main performance test)
-            logger.info(f"🧪 Running {model_name} sanity test...")
+            logger.info(f"TEST Running {model_name} sanity test...")
             start_time = time.time()
             test_instance.test_sanity()
             sanity_time = time.time() - start_time
@@ -99,11 +99,11 @@ class ModelComparison:
                 'success': True
             }
             
-            logger.info(f"✅ {model_name} testing completed successfully")
+            logger.info(f"PASS {model_name} testing completed successfully")
             return results
             
         except Exception as e:
-            logger.error(f"❌ {model_name} testing failed: {e}")
+            logger.error(f"FAIL {model_name} testing failed: {e}")
             import traceback
             traceback.print_exc()
             return {
@@ -115,11 +115,11 @@ class ModelComparison:
     def _compare_results(self, timesnet_results, autoformer_results):
         """Compare and display results"""
         logger.info("\n" + "="*70)
-        logger.info("📊 COMPARISON RESULTS")
+        logger.info("CHART COMPARISON RESULTS")
         logger.info("="*70)
         
         if not timesnet_results['success'] or not autoformer_results['success']:
-            logger.error("⚠️  Cannot compare - one or both tests failed")
+            logger.error("WARN  Cannot compare - one or both tests failed")
             if not timesnet_results['success']:
                 logger.error(f"TimesNet error: {timesnet_results.get('error', 'Unknown')}")
             if not autoformer_results['success']:
@@ -146,7 +146,7 @@ class ModelComparison:
         mse_diff = abs(tn_mse - af_mse) / max(tn_mse, af_mse) * 100
         time_diff = abs(tn_time - af_time) / max(tn_time, af_time) * 100
         
-        logger.info("\n📈 RELATIVE DIFFERENCES:")
+        logger.info("\nGRAPH RELATIVE DIFFERENCES:")
         logger.info(f"Parameters: {param_diff:.1f}% difference")
         logger.info(f"MSE: {mse_diff:.1f}% difference")
         logger.info(f"Training Time: {time_diff:.1f}% difference")
@@ -164,13 +164,13 @@ class ModelComparison:
         if tn_time < af_time: tn_wins += 1
         elif af_time < tn_time: af_wins += 1
         
-        logger.info("\n🏆 OVERALL ASSESSMENT:")
+        logger.info("\nTROPHY OVERALL ASSESSMENT:")
         if tn_wins > af_wins:
-            logger.info("🔵 TimesNet performs better overall")
+            logger.info(" TimesNet performs better overall")
         elif af_wins > tn_wins:
-            logger.info("🟢 Autoformer performs better overall")
+            logger.info(" Autoformer performs better overall")
         else:
-            logger.info("⚖️  Both models perform similarly")
+            logger.info("  Both models perform similarly")
             
         logger.info("="*70)
 

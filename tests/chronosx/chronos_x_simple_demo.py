@@ -15,11 +15,11 @@ import time
 def simple_chronos_demo():
     """Simple working ChronosX demonstration"""
     
-    print("🚀 ChronosX Real Data Forecasting Demo")
+    print("ROCKET ChronosX Real Data Forecasting Demo")
     print("=" * 45)
     
     # Load real data
-    print("📊 Loading real time series data...")
+    print("CHART Loading real time series data...")
     df = pd.read_csv('synthetic_timeseries.csv')
     data = df.iloc[:, 1].values  # Take second column (numeric)
     print(f"   Loaded {len(data)} data points")
@@ -29,12 +29,12 @@ def simple_chronos_demo():
     context_length = 96
     forecast_length = 24
     
-    print(f"\n🔮 Forecasting Setup:")
+    print(f"\nCRYSTAL Forecasting Setup:")
     print(f"   Context length: {context_length} points")
     print(f"   Forecast length: {forecast_length} points")
     
     # Load ChronosX
-    print(f"\n⚡ Loading ChronosX tiny model...")
+    print(f"\nLIGHTNING Loading ChronosX tiny model...")
     start_time = time.time()
     pipeline = ChronosPipeline.from_pretrained(
         "amazon/chronos-t5-tiny",
@@ -42,14 +42,14 @@ def simple_chronos_demo():
         torch_dtype=torch.float32,
     )
     load_time = time.time() - start_time
-    print(f"   ✅ Model loaded in {load_time:.2f} seconds")
+    print(f"   PASS Model loaded in {load_time:.2f} seconds")
     
     # Prepare context data
     context = torch.tensor(data[-context_length:], dtype=torch.float32).unsqueeze(0)
     print(f"   Context shape: {context.shape}")
     
     # Generate forecast
-    print(f"\n🎯 Generating forecast...")
+    print(f"\nTARGET Generating forecast...")
     start_time = time.time()
     forecast = pipeline.predict(
         context=context,
@@ -57,7 +57,7 @@ def simple_chronos_demo():
         num_samples=10  # Multiple samples for uncertainty
     )
     forecast_time = time.time() - start_time
-    print(f"   ✅ Forecast generated in {forecast_time:.2f} seconds")
+    print(f"   PASS Forecast generated in {forecast_time:.2f} seconds")
     
     # Process results
     forecast_np = forecast.cpu().numpy()
@@ -71,7 +71,7 @@ def simple_chronos_demo():
     print(f"   Average uncertainty: {np.mean(std_forecast):.3f}")
     
     # Create visualization
-    print(f"\n📈 Creating visualization...")
+    print(f"\nGRAPH Creating visualization...")
     
     plt.figure(figsize=(14, 8))
     
@@ -94,12 +94,12 @@ def simple_chronos_demo():
     plt.fill_between(forecast_x, 
                      mean_forecast - std_forecast,
                      mean_forecast + std_forecast,
-                     alpha=0.3, color='red', label='±1σ Uncertainty')
+                     alpha=0.3, color='red', label='1 Uncertainty')
     
     plt.fill_between(forecast_x,
                      mean_forecast - 2*std_forecast,
                      mean_forecast + 2*std_forecast,
-                     alpha=0.2, color='red', label='±2σ Uncertainty')
+                     alpha=0.2, color='red', label='2 Uncertainty')
     
     # Formatting
     plt.title('ChronosX Real Time Series Forecasting with Uncertainty', fontsize=16, fontweight='bold')
@@ -111,31 +111,31 @@ def simple_chronos_demo():
     # Add performance annotation
     plt.figtext(0.02, 0.02, 
                 f"Performance: Load {load_time:.1f}s | Forecast {forecast_time:.1f}s | "
-                f"Avg Uncertainty ±{np.mean(std_forecast):.3f}",
+                f"Avg Uncertainty {np.mean(std_forecast):.3f}",
                 fontsize=10, style='italic', 
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8))
     
     plt.tight_layout()
     plt.savefig('chronos_x_simple_demo.png', dpi=300, bbox_inches='tight')
-    print(f"   📊 Saved plot: chronos_x_simple_demo.png")
+    print(f"   CHART Saved plot: chronos_x_simple_demo.png")
     plt.show()
     
     # Performance summary
-    print(f"\n🎉 Demo Complete! Results Summary:")
-    print(f"   🔸 Model: ChronosX Tiny (amazon/chronos-t5-tiny)")
-    print(f"   🔸 Load Time: {load_time:.2f} seconds")
-    print(f"   🔸 Inference Time: {forecast_time:.2f} seconds")
-    print(f"   🔸 Forecast Points: {len(mean_forecast)}")
-    print(f"   🔸 Uncertainty Samples: {forecast_np.shape[0]}")
-    print(f"   🔸 Average Uncertainty: ±{np.mean(std_forecast):.3f}")
+    print(f"\nPARTY Demo Complete! Results Summary:")
+    print(f"    Model: ChronosX Tiny (amazon/chronos-t5-tiny)")
+    print(f"    Load Time: {load_time:.2f} seconds")
+    print(f"    Inference Time: {forecast_time:.2f} seconds")
+    print(f"    Forecast Points: {len(mean_forecast)}")
+    print(f"    Uncertainty Samples: {forecast_np.shape[0]}")
+    print(f"    Average Uncertainty: {np.mean(std_forecast):.3f}")
     
-    print(f"\n💡 Key Achievements:")
-    print(f"   ✅ ChronosX successfully installed and working")
-    print(f"   ✅ Real time series data loaded and processed")
-    print(f"   ✅ High-quality forecasts generated")
-    print(f"   ✅ Uncertainty quantification working")
-    print(f"   ✅ Fast inference (sub-second for 24 forecasts)")
-    print(f"   ✅ No training required - pretrained model")
+    print(f"\nIDEA Key Achievements:")
+    print(f"   PASS ChronosX successfully installed and working")
+    print(f"   PASS Real time series data loaded and processed")
+    print(f"   PASS High-quality forecasts generated")
+    print(f"   PASS Uncertainty quantification working")
+    print(f"   PASS Fast inference (sub-second for 24 forecasts)")
+    print(f"   PASS No training required - pretrained model")
     
     return {
         'mean_forecast': mean_forecast,

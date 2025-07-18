@@ -213,18 +213,18 @@ class ChronosXModelComparator:
                 'num_uncertainty_samples': 20
             }
             
-            logger.info(f"✅ {model_size} completed successfully")
+            logger.info(f"PASS {model_size} completed successfully")
             if quality_metrics:
                 logger.info(f"   Quality: MAE={quality_metrics['mae']:.3f}, "
                           f"RMSE={quality_metrics['rmse']:.3f}")
             logger.info(f"   Performance: Load={load_time:.1f}s, "
-                      f"Inference={avg_inference_time:.2f}±{std_inference_time:.2f}s")
+                      f"Inference={avg_inference_time:.2f}{std_inference_time:.2f}s")
             logger.info(f"   Resources: Memory+{memory_increase:.1f}%")
             
             return results
             
         except Exception as e:
-            logger.error(f"❌ {model_size} model failed: {e}")
+            logger.error(f"FAIL {model_size} model failed: {e}")
             return {
                 'model_size': model_size,
                 'success': False,
@@ -234,7 +234,7 @@ class ChronosXModelComparator:
     
     def run_comprehensive_comparison(self):
         """Run comprehensive comparison across all model sizes"""
-        logger.info("🚀 Starting comprehensive ChronosX model size comparison...")
+        logger.info("ROCKET Starting comprehensive ChronosX model size comparison...")
         
         # Load test datasets
         datasets = self.load_test_datasets()
@@ -258,7 +258,7 @@ class ChronosXModelComparator:
         comparison_results = {}
         
         for model_size in model_sizes:
-            logger.info(f"\n📊 Testing {model_size.upper()} model...")
+            logger.info(f"\nCHART Testing {model_size.upper()} model...")
             result = self.test_model_size(model_size, test_data)
             comparison_results[model_size] = result
             
@@ -267,7 +267,7 @@ class ChronosXModelComparator:
             
         # Test with multiple datasets if available
         if len(datasets) > 1:
-            logger.info(f"\n🔄 Testing best model on multiple datasets...")
+            logger.info(f"\nREFRESH Testing best model on multiple datasets...")
             
             # Find best performing model
             best_model = self.find_best_model(comparison_results)
@@ -319,18 +319,18 @@ class ChronosXModelComparator:
     def generate_comparison_report(self):
         """Generate comprehensive comparison report"""
         print("\n" + "="*70)
-        print("🎯 CHRONOS-X MODEL SIZE COMPARISON REPORT")
+        print("TARGET CHRONOS-X MODEL SIZE COMPARISON REPORT")
         print("="*70)
         
         successful_results = {k: v for k, v in self.results.items() 
                             if k != 'multi_dataset' and v.get('success', False)}
         
         if not successful_results:
-            print("❌ No successful model tests to report")
+            print("FAIL No successful model tests to report")
             return
         
         # Performance comparison table
-        print("\n📊 PERFORMANCE COMPARISON:")
+        print("\nCHART PERFORMANCE COMPARISON:")
         print("-" * 70)
         print(f"{'Model':<8} {'Load(s)':<8} {'Inference(s)':<12} {'Memory(+%)':<10} {'MAE':<8} {'RMSE':<8}")
         print("-" * 70)
@@ -347,7 +347,7 @@ class ChronosXModelComparator:
                   f"{memory_increase:<10.1f} {mae:<8.3f} {rmse:<8.3f}")
         
         # Resource usage comparison
-        print(f"\n💾 RESOURCE USAGE:")
+        print(f"\n RESOURCE USAGE:")
         print("-" * 40)
         for model_size, result in successful_results.items():
             print(f"{model_size.upper()}:")
@@ -357,7 +357,7 @@ class ChronosXModelComparator:
             print()
         
         # Speed comparison
-        print(f"⚡ SPEED ANALYSIS:")
+        print(f"LIGHTNING SPEED ANALYSIS:")
         print("-" * 40)
         fastest_model = min(successful_results.items(), 
                            key=lambda x: x[1]['avg_inference_time'])
@@ -375,7 +375,7 @@ class ChronosXModelComparator:
                          if v['quality_metrics']}
         
         if quality_results:
-            print(f"\n🎯 ACCURACY ANALYSIS:")
+            print(f"\nTARGET ACCURACY ANALYSIS:")
             print("-" * 40)
             best_mae_model = min(quality_results.items(),
                                key=lambda x: x[1]['quality_metrics']['mae'])
@@ -389,25 +389,25 @@ class ChronosXModelComparator:
                     print(f"{model_size.upper()}: {mae_ratio:.2f}x MAE of best")
         
         # Recommendations
-        print(f"\n💡 RECOMMENDATIONS:")
+        print(f"\nIDEA RECOMMENDATIONS:")
         print("-" * 40)
         
         best_overall = self.find_best_model(successful_results)
         if best_overall:
-            print(f"🏆 Best Overall: {best_overall.upper()}")
+            print(f"TROPHY Best Overall: {best_overall.upper()}")
             print(f"   {self.model_configs[best_overall]['description']}")
         
         if 'tiny' in successful_results:
-            print(f"🚀 For Speed: TINY")
+            print(f"ROCKET For Speed: TINY")
             print(f"   {self.model_configs['tiny']['description']}")
         
         if quality_results:
             best_accuracy = min(quality_results.items(),
                               key=lambda x: x[1]['quality_metrics']['mae'])[0]
-            print(f"🎯 For Accuracy: {best_accuracy.upper()}")
+            print(f"TARGET For Accuracy: {best_accuracy.upper()}")
             print(f"   {self.model_configs[best_accuracy]['description']}")
         
-        print("\n🎉 Comparison Complete!")
+        print("\nPARTY Comparison Complete!")
         print("="*70)
     
     def create_visualizations(self):
@@ -487,7 +487,7 @@ class ChronosXModelComparator:
         
         plt.tight_layout()
         plt.savefig('chronos_x_model_comparison.png', dpi=300, bbox_inches='tight')
-        logger.info("📊 Saved comparison visualization: chronos_x_model_comparison.png")
+        logger.info("CHART Saved comparison visualization: chronos_x_model_comparison.png")
         plt.show()
 
 def main():

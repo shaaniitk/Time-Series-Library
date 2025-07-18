@@ -85,7 +85,7 @@ class ChronosXProductionService:
         
     def initialize_model(self) -> bool:
         """Initialize the ChronosX model with error handling"""
-        logger.info(f"🚀 Initializing ChronosX model: {self.config.model_name}")
+        logger.info(f"ROCKET Initializing ChronosX model: {self.config.model_name}")
         
         try:
             start_time = time.time()
@@ -95,7 +95,7 @@ class ChronosXProductionService:
             logger.info(f"Available memory: {available_memory_gb:.1f}GB")
             
             if available_memory_gb < 2.0:
-                logger.warning("⚠️ Low memory detected, using CPU with reduced precision")
+                logger.warning("WARN Low memory detected, using CPU with reduced precision")
                 torch_dtype = torch.float32
             else:
                 torch_dtype = torch.float32
@@ -120,7 +120,7 @@ class ChronosXProductionService:
             
             test_time = time.time() - test_start
             
-            logger.info(f"✅ Model loaded successfully")
+            logger.info(f"PASS Model loaded successfully")
             logger.info(f"   Load time: {load_time:.2f}s")
             logger.info(f"   Test inference: {test_time:.2f}s")
             logger.info(f"   Test output shape: {test_forecast.shape}")
@@ -129,7 +129,7 @@ class ChronosXProductionService:
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to initialize model: {e}")
+            logger.error(f"FAIL Failed to initialize model: {e}")
             logger.error(traceback.format_exc())
             self.is_healthy = False
             return False
@@ -253,7 +253,7 @@ class ChronosXProductionService:
                 }
             }
             
-            logger.debug(f"✅ Prediction successful: {total_time:.3f}s")
+            logger.debug(f"PASS Prediction successful: {total_time:.3f}s")
             return result
             
         except Exception as e:
@@ -266,7 +266,7 @@ class ChronosXProductionService:
                 self.metrics.failed_requests += 1
                 self.metrics.error_types[error_type] = self.metrics.error_types.get(error_type, 0) + 1
             
-            logger.error(f"❌ Prediction failed: {e}")
+            logger.error(f"FAIL Prediction failed: {e}")
             logger.error(traceback.format_exc())
             
             return {
@@ -315,7 +315,7 @@ class ChronosXProductionService:
                     result = future.result(timeout=self.config.request_timeout_seconds)
                     results[index] = result
                 except concurrent.futures.TimeoutError:
-                    logger.error(f"❌ Batch prediction {index} timed out")
+                    logger.error(f"FAIL Batch prediction {index} timed out")
                     results[index] = {
                         'success': False,
                         'error': {
@@ -325,7 +325,7 @@ class ChronosXProductionService:
                         }
                     }
                 except Exception as e:
-                    logger.error(f"❌ Batch prediction {index} failed: {e}")
+                    logger.error(f"FAIL Batch prediction {index} failed: {e}")
                     results[index] = {
                         'success': False,
                         'error': {
@@ -338,13 +338,13 @@ class ChronosXProductionService:
         batch_time = time.time() - batch_start
         successful_predictions = sum(1 for r in results if r and r.get('success', False))
         
-        logger.info(f"📊 Batch prediction completed: {successful_predictions}/{len(time_series_batch)} successful in {batch_time:.2f}s")
+        logger.info(f"CHART Batch prediction completed: {successful_predictions}/{len(time_series_batch)} successful in {batch_time:.2f}s")
         
         return results
     
     def stress_test(self, num_requests: int = 100, concurrent_requests: int = 4) -> Dict[str, Any]:
         """Stress test the service with multiple concurrent requests"""
-        logger.info(f"🔥 Starting stress test: {num_requests} requests with {concurrent_requests} concurrent")
+        logger.info(f"FIRE Starting stress test: {num_requests} requests with {concurrent_requests} concurrent")
         
         # Generate test data
         np.random.seed(42)
@@ -447,7 +447,7 @@ class ChronosXProductionService:
             'timestamp': datetime.now().isoformat()
         }
         
-        logger.info(f"🎯 Stress test completed:")
+        logger.info(f"TARGET Stress test completed:")
         logger.info(f"   Success rate: {stress_results['results_summary']['success_rate']:.1f}%")
         logger.info(f"   Requests/sec: {stress_results['results_summary']['requests_per_second']:.1f}")
         if performance_stats:
@@ -458,7 +458,7 @@ class ChronosXProductionService:
     
     def monitor_resources(self, duration_seconds: int = 60) -> Dict[str, Any]:
         """Monitor resource usage over time"""
-        logger.info(f"📊 Starting resource monitoring for {duration_seconds}s")
+        logger.info(f"CHART Starting resource monitoring for {duration_seconds}s")
         
         monitoring_start = time.time()
         measurements = []
@@ -502,7 +502,7 @@ class ChronosXProductionService:
             }
         }
         
-        logger.info(f"📈 Resource monitoring completed:")
+        logger.info(f"GRAPH Resource monitoring completed:")
         logger.info(f"   Average memory usage: {monitoring_results['summary']['memory_usage']['mean']:.1f}%")
         logger.info(f"   Average CPU usage: {monitoring_results['summary']['cpu_usage']['mean']:.1f}%")
         
@@ -537,7 +537,7 @@ class ChronosXProductionTester:
     
     def test_configuration(self, config_name: str, config: ProductionConfig) -> Dict[str, Any]:
         """Test a specific production configuration"""
-        logger.info(f"🧪 Testing production configuration: {config_name}")
+        logger.info(f"TEST Testing production configuration: {config_name}")
         
         service = ChronosXProductionService(config)
         
@@ -549,7 +549,7 @@ class ChronosXProductionTester:
         
         try:
             # Test 1: Model initialization
-            logger.info("1️⃣ Testing model initialization...")
+            logger.info("1 Testing model initialization...")
             init_success = service.initialize_model()
             test_results['initialization'] = {
                 'success': init_success,
@@ -558,16 +558,16 @@ class ChronosXProductionTester:
             }
             
             if not init_success:
-                logger.error(f"❌ Configuration {config_name} failed initialization")
+                logger.error(f"FAIL Configuration {config_name} failed initialization")
                 return test_results
             
             # Test 2: Health check
-            logger.info("2️⃣ Testing health check...")
+            logger.info("2 Testing health check...")
             health_status = service.health_check()
             test_results['health_check'] = health_status
             
             # Test 3: Single prediction
-            logger.info("3️⃣ Testing single prediction...")
+            logger.info("3 Testing single prediction...")
             np.random.seed(42)
             test_data = 50 + np.cumsum(np.random.normal(0, 1, 200))
             
@@ -583,7 +583,7 @@ class ChronosXProductionTester:
             }
             
             # Test 4: Batch prediction
-            logger.info("4️⃣ Testing batch prediction...")
+            logger.info("4 Testing batch prediction...")
             batch_data = [50 + np.cumsum(np.random.normal(0, 1, 200)) for _ in range(4)]
             
             batch_start = time.time()
@@ -601,12 +601,12 @@ class ChronosXProductionTester:
             }
             
             # Test 5: Stress test
-            logger.info("5️⃣ Running stress test...")
+            logger.info("5 Running stress test...")
             stress_results = service.stress_test(num_requests=20, concurrent_requests=min(4, config.max_concurrent_requests))
             test_results['stress_test'] = stress_results
             
             # Test 6: Error handling
-            logger.info("6️⃣ Testing error handling...")
+            logger.info("6 Testing error handling...")
             error_tests = []
             
             # Test with invalid input
@@ -629,7 +629,7 @@ class ChronosXProductionTester:
             test_results['error_handling'] = error_tests
             
             # Test 7: Resource monitoring
-            logger.info("7️⃣ Testing resource monitoring...")
+            logger.info("7 Testing resource monitoring...")
             monitoring_results = service.monitor_resources(duration_seconds=30)
             test_results['resource_monitoring'] = monitoring_results
             
@@ -637,10 +637,10 @@ class ChronosXProductionTester:
             final_health = service.health_check()
             test_results['final_health_check'] = final_health
             
-            logger.info(f"✅ Configuration {config_name} testing completed successfully")
+            logger.info(f"PASS Configuration {config_name} testing completed successfully")
             
         except Exception as e:
-            logger.error(f"❌ Configuration {config_name} testing failed: {e}")
+            logger.error(f"FAIL Configuration {config_name} testing failed: {e}")
             test_results['error'] = {
                 'type': type(e).__name__,
                 'message': str(e),
@@ -658,7 +658,7 @@ class ChronosXProductionTester:
     
     def run_production_testing_suite(self):
         """Run comprehensive production testing across all configurations"""
-        logger.info("🚀 Starting ChronosX Production Testing Suite")
+        logger.info("ROCKET Starting ChronosX Production Testing Suite")
         logger.info("="*70)
         
         # Test configurations based on available memory
@@ -668,8 +668,8 @@ class ChronosXProductionTester:
         if available_memory_gb > 8:
             configs_to_test.append('base_accurate')
         
-        logger.info(f"🧠 Available memory: {available_memory_gb:.1f}GB")
-        logger.info(f"📋 Testing configurations: {configs_to_test}")
+        logger.info(f"BRAIN Available memory: {available_memory_gb:.1f}GB")
+        logger.info(f"CLIPBOARD Testing configurations: {configs_to_test}")
         
         suite_start = time.time()
         
@@ -677,7 +677,7 @@ class ChronosXProductionTester:
             config = self.test_configs[config_name]
             
             logger.info(f"\n" + "="*50)
-            logger.info(f"🔧 TESTING: {config_name.upper()}")
+            logger.info(f"TOOL TESTING: {config_name.upper()}")
             logger.info(f"   Model: {config.model_name}")
             logger.info(f"   Max Concurrent: {config.max_concurrent_requests}")
             logger.info(f"   Samples: {config.num_samples}")
@@ -686,7 +686,7 @@ class ChronosXProductionTester:
             test_result = self.test_configuration(config_name, config)
             self.test_results[config_name] = test_result
             
-            logger.info(f"✅ {config_name} testing completed\n")
+            logger.info(f"PASS {config_name} testing completed\n")
         
         suite_time = time.time() - suite_start
         
@@ -699,7 +699,7 @@ class ChronosXProductionTester:
         # Save detailed results
         self.save_production_results()
         
-        logger.info(f"🎉 Production testing suite completed in {suite_time:.1f}s")
+        logger.info(f"PARTY Production testing suite completed in {suite_time:.1f}s")
         logger.info("="*70)
         
         return self.test_results
@@ -707,55 +707,55 @@ class ChronosXProductionTester:
     def generate_production_report(self):
         """Generate comprehensive production testing report"""
         print("\n" + "="*80)
-        print("🏭 CHRONOSX PRODUCTION DEPLOYMENT TESTING REPORT")
+        print(" CHRONOSX PRODUCTION DEPLOYMENT TESTING REPORT")
         print("="*80)
         
         if not self.test_results:
-            print("❌ No production test results to report")
+            print("FAIL No production test results to report")
             return
         
         # Overall summary
-        print("\n📊 PRODUCTION READINESS SUMMARY:")
+        print("\nCHART PRODUCTION READINESS SUMMARY:")
         print("-" * 50)
         
         for config_name, results in self.test_results.items():
-            print(f"\n🔧 {config_name.upper()}:")
+            print(f"\nTOOL {config_name.upper()}:")
             
             # Initialization status
             init_success = results.get('initialization', {}).get('success', False)
-            print(f"   Initialization: {'✅ Pass' if init_success else '❌ Fail'}")
+            print(f"   Initialization: {'PASS Pass' if init_success else 'FAIL Fail'}")
             
             # Single prediction performance
             single_pred = results.get('single_prediction', {})
             if single_pred.get('success'):
                 response_time = single_pred.get('response_time', 0)
-                print(f"   Single Prediction: ✅ {response_time:.3f}s")
+                print(f"   Single Prediction: PASS {response_time:.3f}s")
             else:
-                print(f"   Single Prediction: ❌ Failed")
+                print(f"   Single Prediction: FAIL Failed")
             
             # Batch prediction performance
             batch_pred = results.get('batch_prediction', {})
             if batch_pred:
                 success_rate = batch_pred.get('success_rate', 0)
                 avg_time = batch_pred.get('avg_time_per_prediction', 0)
-                print(f"   Batch Prediction: ✅ {success_rate:.1f}% success, {avg_time:.3f}s/req")
+                print(f"   Batch Prediction: PASS {success_rate:.1f}% success, {avg_time:.3f}s/req")
             
             # Stress test results
             stress_test = results.get('stress_test', {})
             if stress_test:
                 stress_success_rate = stress_test.get('results_summary', {}).get('success_rate', 0)
                 rps = stress_test.get('results_summary', {}).get('requests_per_second', 0)
-                print(f"   Stress Test: ✅ {stress_success_rate:.1f}% success, {rps:.1f} req/s")
+                print(f"   Stress Test: PASS {stress_success_rate:.1f}% success, {rps:.1f} req/s")
             
             # Error handling
             error_handling = results.get('error_handling', [])
             handled_errors = sum(1 for e in error_handling if e.get('handled_gracefully', False))
             total_error_tests = len(error_handling)
             if total_error_tests > 0:
-                print(f"   Error Handling: ✅ {handled_errors}/{total_error_tests} handled gracefully")
+                print(f"   Error Handling: PASS {handled_errors}/{total_error_tests} handled gracefully")
         
         # Performance comparison
-        print(f"\n⚡ PERFORMANCE COMPARISON:")
+        print(f"\nLIGHTNING PERFORMANCE COMPARISON:")
         print("-" * 50)
         print(f"{'Config':<15} {'Response(s)':<12} {'Batch RPS':<10} {'Stress RPS':<10} {'Memory':<8}")
         print("-" * 50)
@@ -773,7 +773,7 @@ class ChronosXProductionTester:
             print(f"{config_name:<15} {single_time:<12.3f} {batch_rps:<10.1f} {stress_rps:<10.1f} {memory_usage:<8.1f}%")
         
         # Production recommendations
-        print(f"\n💡 PRODUCTION RECOMMENDATIONS:")
+        print(f"\nIDEA PRODUCTION RECOMMENDATIONS:")
         print("-" * 50)
         
         # Find best configurations for different use cases
@@ -808,18 +808,18 @@ class ChronosXProductionTester:
                     best_balanced = config_name
         
         if best_speed:
-            print(f"🚀 For Low Latency: {best_speed.upper()}")
+            print(f"ROCKET For Low Latency: {best_speed.upper()}")
             print(f"   Response time: {self.test_results[best_speed]['single_prediction']['response_time']:.3f}s")
         
         if best_throughput:
-            print(f"📈 For High Throughput: {best_throughput.upper()}")
+            print(f"GRAPH For High Throughput: {best_throughput.upper()}")
             print(f"   Requests/second: {self.test_results[best_throughput]['stress_test']['results_summary']['requests_per_second']:.1f}")
         
         if best_balanced:
-            print(f"⚖️ For Balanced Performance: {best_balanced.upper()}")
+            print(f" For Balanced Performance: {best_balanced.upper()}")
         
         # Deployment checklist
-        print(f"\n✅ DEPLOYMENT CHECKLIST:")
+        print(f"\nPASS DEPLOYMENT CHECKLIST:")
         print("-" * 30)
         
         checklist_items = [
@@ -833,9 +833,9 @@ class ChronosXProductionTester:
         ]
         
         for item in checklist_items:
-            print(f"   □ {item}")
+            print(f"    {item}")
         
-        print("\n🎯 Production testing complete!")
+        print("\nTARGET Production testing complete!")
         print("="*80)
     
     def create_production_visualizations(self):
@@ -931,7 +931,7 @@ class ChronosXProductionTester:
         
         plt.tight_layout()
         plt.savefig('chronos_x_production_testing.png', dpi=300, bbox_inches='tight')
-        logger.info("📊 Saved production testing visualization")
+        logger.info("CHART Saved production testing visualization")
         plt.show()
     
     def save_production_results(self):
@@ -943,7 +943,7 @@ class ChronosXProductionTester:
         with open(results_file, 'w') as f:
             json.dump(self.test_results, f, indent=2, default=str)
         
-        logger.info(f"💾 Saved production results to {results_file}")
+        logger.info(f" Saved production results to {results_file}")
         
         # Generate deployment guide
         self.generate_deployment_guide(timestamp)
@@ -1098,7 +1098,7 @@ For issues or questions about ChronosX production deployment, refer to:
         with open(guide_file, 'w') as f:
             f.write(guide_content)
         
-        logger.info(f"📖 Generated deployment guide: {guide_file}")
+        logger.info(f" Generated deployment guide: {guide_file}")
 
 def main():
     """Main production testing function"""

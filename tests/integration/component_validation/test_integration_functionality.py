@@ -23,7 +23,7 @@ try:
     from utils.modular_components.implementations import get_integration_status
     COMPONENTS_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️ Could not import modular components: {e}")
+    print(f"WARN Could not import modular components: {e}")
     COMPONENTS_AVAILABLE = False
 
 class MockConfig:
@@ -78,7 +78,7 @@ class MockModel(nn.Module):
 
 def test_processor_backbone_integration():
     """Test processor and backbone component integration"""
-    print("🧪 Testing Processor-Backbone Integration...")
+    print("TEST Testing Processor-Backbone Integration...")
     
     try:
         config = MockConfig()
@@ -88,7 +88,7 @@ def test_processor_backbone_integration():
         backbone_types = ['chronos', 'simple_transformer', 't5']
         
         if processor is None:
-            print("    ⚠️ Processor not available, skipping...")
+            print("    WARN Processor not available, skipping...")
             return True
         
         # Test data
@@ -101,7 +101,7 @@ def test_processor_backbone_integration():
                 backbone = create_component('backbone', backbone_type, config)
                 
                 if backbone is None:
-                    print(f"    ⚠️ {backbone_type} backbone not available")
+                    print(f"    WARN {backbone_type} backbone not available")
                     continue
                 
                 # Test integration
@@ -125,22 +125,22 @@ def test_processor_backbone_integration():
                 assert not torch.isnan(backbone_output).any(), f"NaN in {backbone_type} output"
                 assert not torch.isinf(backbone_output).any(), f"Inf in {backbone_type} output"
                 
-                print(f"    ✅ {backbone_type}: {processed_x.shape} → {backbone_output.shape}")
+                print(f"    PASS {backbone_type}: {processed_x.shape}  {backbone_output.shape}")
                 successful_integrations += 1
                 
             except Exception as e:
-                print(f"    ⚠️ {backbone_type}: {e}")
+                print(f"    WARN {backbone_type}: {e}")
         
-        print(f"    📊 Successful processor-backbone integrations: {successful_integrations}/{len(backbone_types)}")
+        print(f"    CHART Successful processor-backbone integrations: {successful_integrations}/{len(backbone_types)}")
         return successful_integrations > 0
         
     except Exception as e:
-        print(f"    ❌ Processor-backbone integration test failed: {e}")
+        print(f"    FAIL Processor-backbone integration test failed: {e}")
         return False
 
 def test_backbone_attention_integration():
     """Test backbone and attention component integration"""
-    print("🧪 Testing Backbone-Attention Integration...")
+    print("TEST Testing Backbone-Attention Integration...")
     
     try:
         config = MockConfig()
@@ -155,7 +155,7 @@ def test_backbone_attention_integration():
             backbone = create_component('backbone', backbone_type, config)
             
             if backbone is None:
-                print(f"    ⚠️ {backbone_type} backbone not available")
+                print(f"    WARN {backbone_type} backbone not available")
                 continue
             
             for attention_type in attention_types:
@@ -163,7 +163,7 @@ def test_backbone_attention_integration():
                     attention = create_component('attention', attention_type, config)
                     
                     if attention is None:
-                        print(f"    ⚠️ {attention_type} attention not available")
+                        print(f"    WARN {attention_type} attention not available")
                         continue
                     
                     # Test data
@@ -192,22 +192,22 @@ def test_backbone_attention_integration():
                     assert attention_output.shape == queries.shape, f"Attention output shape mismatch"
                     assert not torch.isnan(attention_output).any(), f"NaN in attention output"
                     
-                    print(f"    ✅ {backbone_type}-{attention_type}: integration successful")
+                    print(f"    PASS {backbone_type}-{attention_type}: integration successful")
                     successful_integrations += 1
                     
                 except Exception as e:
-                    print(f"    ⚠️ {backbone_type}-{attention_type}: {e}")
+                    print(f"    WARN {backbone_type}-{attention_type}: {e}")
         
-        print(f"    📊 Successful backbone-attention integrations: {successful_integrations}")
+        print(f"    CHART Successful backbone-attention integrations: {successful_integrations}")
         return successful_integrations > 0
         
     except Exception as e:
-        print(f"    ❌ Backbone-attention integration test failed: {e}")
+        print(f"    FAIL Backbone-attention integration test failed: {e}")
         return False
 
 def test_loss_optimization_integration():
     """Test loss function and optimization integration"""
-    print("🧪 Testing Loss-Optimization Integration...")
+    print("TEST Testing Loss-Optimization Integration...")
     
     try:
         config = MockConfig()
@@ -229,7 +229,7 @@ def test_loss_optimization_integration():
                 loss_fn = create_component('loss', loss_type, config)
                 
                 if loss_fn is None:
-                    print(f"    ⚠️ {loss_type} loss not available")
+                    print(f"    WARN {loss_type} loss not available")
                     continue
                 
                 # Test optimization loop
@@ -273,22 +273,22 @@ def test_loss_optimization_integration():
                 assert not torch.isinf(loss), f"Inf loss for {loss_type}"
                 assert final_loss <= initial_loss * 1.1, f"Loss didn't decrease for {loss_type}"
                 
-                print(f"    ✅ {loss_type}: loss {initial_loss:.6f} → {final_loss:.6f}")
+                print(f"    PASS {loss_type}: loss {initial_loss:.6f}  {final_loss:.6f}")
                 successful_integrations += 1
                 
             except Exception as e:
-                print(f"    ⚠️ {loss_type}: {e}")
+                print(f"    WARN {loss_type}: {e}")
         
-        print(f"    📊 Successful loss-optimization integrations: {successful_integrations}/{len(loss_types)}")
+        print(f"    CHART Successful loss-optimization integrations: {successful_integrations}/{len(loss_types)}")
         return successful_integrations > 0
         
     except Exception as e:
-        print(f"    ❌ Loss-optimization integration test failed: {e}")
+        print(f"    FAIL Loss-optimization integration test failed: {e}")
         return False
 
 def test_end_to_end_pipeline():
     """Test complete end-to-end pipeline integration"""
-    print("🧪 Testing End-to-End Pipeline Integration...")
+    print("TEST Testing End-to-End Pipeline Integration...")
     
     try:
         config = MockConfig()
@@ -299,7 +299,7 @@ def test_end_to_end_pipeline():
         loss_fn = create_component('loss', 'mse', config)
         
         if not all([processor, backbone, loss_fn]):
-            print("    ⚠️ Required components not available, skipping...")
+            print("    WARN Required components not available, skipping...")
             return True
         
         # Test data
@@ -329,8 +329,8 @@ def test_end_to_end_pipeline():
         assert not torch.isnan(final_prediction).any(), "NaN in final prediction"
         assert not torch.isnan(loss), "NaN in loss"
         
-        print(f"    📊 Pipeline: {x_enc.shape} → {processed_x.shape} → {prediction.shape} → {final_prediction.shape}")
-        print(f"    📊 Loss: {loss.item():.6f}")
+        print(f"    CHART Pipeline: {x_enc.shape}  {processed_x.shape}  {prediction.shape}  {final_prediction.shape}")
+        print(f"    CHART Loss: {loss.item():.6f}")
         
         # Test with different configurations
         configs_to_test = [
@@ -367,22 +367,22 @@ def test_end_to_end_pipeline():
                 assert not torch.isnan(test_loss_val), f"NaN loss in config test"
                 pipeline_success += 1
                 
-                print(f"    ✅ Config (seq={test_config.seq_len}, pred={test_config.pred_len}): success")
+                print(f"    PASS Config (seq={test_config.seq_len}, pred={test_config.pred_len}): success")
                 
             except Exception as e:
-                print(f"    ⚠️ Config test failed: {e}")
+                print(f"    WARN Config test failed: {e}")
         
-        print(f"    📊 Pipeline configuration tests: {pipeline_success}/{len(configs_to_test)}")
-        print("    ✅ End-to-end pipeline integration validated")
+        print(f"    CHART Pipeline configuration tests: {pipeline_success}/{len(configs_to_test)}")
+        print("    PASS End-to-end pipeline integration validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ End-to-end pipeline test failed: {e}")
+        print(f"    FAIL End-to-end pipeline test failed: {e}")
         return False
 
 def test_multi_scale_integration():
     """Test multi-scale component integration"""
-    print("🧪 Testing Multi-Scale Integration...")
+    print("TEST Testing Multi-Scale Integration...")
     
     try:
         config = MockConfig(scales=[1, 2, 4])
@@ -392,7 +392,7 @@ def test_multi_scale_integration():
         attention = create_component('attention', 'hierarchical', config)
         
         if not all([processor, attention]):
-            print("    ⚠️ Required multi-scale components not available, skipping...")
+            print("    WARN Required multi-scale components not available, skipping...")
             return True
         
         # Test data
@@ -426,7 +426,7 @@ def test_multi_scale_integration():
             scale = config.scales[i]
             assert isinstance(scale_out, torch.Tensor), f"Scale {scale} output not tensor"
             assert not torch.isnan(scale_out).any(), f"NaN in scale {scale} output"
-            print(f"    📊 Scale {scale}: {projected.shape} → {scale_out.shape}")
+            print(f"    CHART Scale {scale}: {projected.shape}  {scale_out.shape}")
         
         # Test scale fusion
         if len(scale_outputs) > 1:
@@ -437,22 +437,22 @@ def test_multi_scale_integration():
             weights = torch.softmax(torch.randn(len(scale_outputs)), dim=0)
             weighted_output = sum(w * out for w, out in zip(weights, scale_outputs))
             
-            print(f"    📊 Fused output: {fused_output.shape}")
-            print(f"    📊 Weighted output: {weighted_output.shape}")
+            print(f"    CHART Fused output: {fused_output.shape}")
+            print(f"    CHART Weighted output: {weighted_output.shape}")
             
             assert not torch.isnan(fused_output).any(), "NaN in fused output"
             assert not torch.isnan(weighted_output).any(), "NaN in weighted output"
         
-        print("    ✅ Multi-scale integration validated")
+        print("    PASS Multi-scale integration validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Multi-scale integration test failed: {e}")
+        print(f"    FAIL Multi-scale integration test failed: {e}")
         return False
 
 def test_quantile_integration():
     """Test quantile prediction integration"""
-    print("🧪 Testing Quantile Prediction Integration...")
+    print("TEST Testing Quantile Prediction Integration...")
     
     try:
         config = MockConfig(quantiles=[0.1, 0.5, 0.9])
@@ -462,7 +462,7 @@ def test_quantile_integration():
         backbone = create_component('backbone', 'simple_transformer', config)
         
         if not all([loss_fn, backbone]):
-            print("    ⚠️ Required quantile components not available, skipping...")
+            print("    WARN Required quantile components not available, skipping...")
             return True
         
         # Test data
@@ -496,8 +496,8 @@ def test_quantile_integration():
         assert not torch.isnan(quantile_predictions).any(), "NaN in quantile predictions"
         assert not torch.isnan(quantile_loss), "NaN in quantile loss"
         
-        print(f"    📊 Quantile predictions: {base_prediction.shape} → {quantile_predictions.shape}")
-        print(f"    📊 Quantile loss: {quantile_loss.item():.6f}")
+        print(f"    CHART Quantile predictions: {base_prediction.shape}  {quantile_predictions.shape}")
+        print(f"    CHART Quantile loss: {quantile_loss.item():.6f}")
         
         # Test quantile ordering
         # Lower quantiles should generally be <= higher quantiles
@@ -506,7 +506,7 @@ def test_quantile_integration():
         q_high = quantile_predictions[:, :, :, 2]  # 0.9 quantile
         
         ordering_violations = ((q_low > q_med) | (q_med > q_high)).float().mean()
-        print(f"    📊 Quantile ordering violations: {ordering_violations:.3f}")
+        print(f"    CHART Quantile ordering violations: {ordering_violations:.3f}")
         
         # Test different quantile configurations
         quantile_configs = [
@@ -531,22 +531,22 @@ def test_quantile_integration():
                 assert not torch.isnan(test_quantile_loss), f"NaN loss for quantiles {quantiles}"
                 quantile_success += 1
                 
-                print(f"    ✅ Quantiles {quantiles}: loss = {test_quantile_loss.item():.6f}")
+                print(f"    PASS Quantiles {quantiles}: loss = {test_quantile_loss.item():.6f}")
                 
             except Exception as e:
-                print(f"    ⚠️ Quantiles {quantiles}: {e}")
+                print(f"    WARN Quantiles {quantiles}: {e}")
         
-        print(f"    📊 Quantile configuration tests: {quantile_success}/{len(quantile_configs)}")
-        print("    ✅ Quantile prediction integration validated")
+        print(f"    CHART Quantile configuration tests: {quantile_success}/{len(quantile_configs)}")
+        print("    PASS Quantile prediction integration validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Quantile integration test failed: {e}")
+        print(f"    FAIL Quantile integration test failed: {e}")
         return False
 
 def test_bayesian_integration():
     """Test Bayesian component integration"""
-    print("🧪 Testing Bayesian Component Integration...")
+    print("TEST Testing Bayesian Component Integration...")
     
     try:
         config = MockConfig()
@@ -555,7 +555,7 @@ def test_bayesian_integration():
         loss_fn = create_component('loss', 'bayesian_mse', config)
         
         if loss_fn is None:
-            print("    ⚠️ Bayesian loss not available, skipping...")
+            print("    WARN Bayesian loss not available, skipping...")
             return True
         
         # Mock Bayesian model
@@ -594,9 +594,9 @@ def test_bayesian_integration():
         assert (var_pred > 0).all(), "Variance must be positive"
         assert not torch.isnan(bayesian_loss), "NaN in Bayesian loss"
         
-        print(f"    📊 Bayesian predictions: mean {mean_pred.shape}, var {var_pred.shape}")
-        print(f"    📊 Bayesian loss: {bayesian_loss.item():.6f}")
-        print(f"    📊 Mean variance: {var_pred.mean().item():.6f}")
+        print(f"    CHART Bayesian predictions: mean {mean_pred.shape}, var {var_pred.shape}")
+        print(f"    CHART Bayesian loss: {bayesian_loss.item():.6f}")
+        print(f"    CHART Mean variance: {var_pred.mean().item():.6f}")
         
         # Test uncertainty quantification
         # Higher uncertainty should lead to higher loss when predictions are wrong
@@ -608,8 +608,8 @@ def test_bayesian_integration():
         certain_loss = loss_fn(wrong_pred, certain_var, target)
         uncertain_loss = loss_fn(wrong_pred, uncertain_var, target)
         
-        print(f"    📊 Wrong prediction - certain loss: {certain_loss.item():.6f}")
-        print(f"    📊 Wrong prediction - uncertain loss: {uncertain_loss.item():.6f}")
+        print(f"    CHART Wrong prediction - certain loss: {certain_loss.item():.6f}")
+        print(f"    CHART Wrong prediction - uncertain loss: {uncertain_loss.item():.6f}")
         
         # Certain model should be penalized more for wrong predictions
         assert certain_loss > uncertain_loss, "Uncertainty quantification not working correctly"
@@ -635,19 +635,19 @@ def test_bayesian_integration():
             if step == 4:
                 final_loss = loss.item()
         
-        print(f"    📊 Bayesian optimization: {initial_loss:.6f} → {final_loss:.6f}")
+        print(f"    CHART Bayesian optimization: {initial_loss:.6f}  {final_loss:.6f}")
         assert final_loss <= initial_loss * 1.1, "Bayesian optimization not working"
         
-        print("    ✅ Bayesian component integration validated")
+        print("    PASS Bayesian component integration validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Bayesian integration test failed: {e}")
+        print(f"    FAIL Bayesian integration test failed: {e}")
         return False
 
 def test_component_interaction_matrix():
     """Test interactions between all available components"""
-    print("🧪 Testing Component Interaction Matrix...")
+    print("TEST Testing Component Interaction Matrix...")
     
     try:
         config = MockConfig()
@@ -672,7 +672,7 @@ def test_component_interaction_matrix():
                 except:
                     pass
         
-        print("    📊 Available components:")
+        print("    CHART Available components:")
         for comp_type, comp_list in available_components.items():
             print(f"      {comp_type}: {comp_list}")
         
@@ -704,7 +704,7 @@ def test_component_interaction_matrix():
                     successful_interactions += 1
                     
                 except Exception as e:
-                    print(f"      ⚠️ {processor_name}-{backbone_name}: {e}")
+                    print(f"      WARN {processor_name}-{backbone_name}: {e}")
         
         # Backbone-Loss interactions
         for backbone_name in available_components.get('backbone', []):
@@ -739,25 +739,25 @@ def test_component_interaction_matrix():
                     successful_interactions += 1
                     
                 except Exception as e:
-                    print(f"      ⚠️ {backbone_name}-{loss_name}: {e}")
+                    print(f"      WARN {backbone_name}-{loss_name}: {e}")
         
-        print(f"    📊 Component interactions tested: {interaction_tests}")
-        print(f"    📊 Successful interactions: {successful_interactions}")
-        print(f"    📊 Success rate: {(successful_interactions/interaction_tests)*100:.1f}%" if interaction_tests > 0 else "    📊 No interactions tested")
+        print(f"    CHART Component interactions tested: {interaction_tests}")
+        print(f"    CHART Successful interactions: {successful_interactions}")
+        print(f"    CHART Success rate: {(successful_interactions/interaction_tests)*100:.1f}%" if interaction_tests > 0 else "    CHART No interactions tested")
         
         return successful_interactions > 0 if interaction_tests > 0 else True
         
     except Exception as e:
-        print(f"    ❌ Component interaction matrix test failed: {e}")
+        print(f"    FAIL Component interaction matrix test failed: {e}")
         return False
 
 def run_integration_functionality_tests():
     """Run all integration functionality tests"""
-    print("🚀 Running Integration Component Functionality Tests")
+    print("ROCKET Running Integration Component Functionality Tests")
     print("=" * 80)
     
     if not COMPONENTS_AVAILABLE:
-        print("❌ Modular components not available - skipping tests")
+        print("FAIL Modular components not available - skipping tests")
         return False
     
     tests = [
@@ -775,28 +775,28 @@ def run_integration_functionality_tests():
     total = len(tests)
     
     for test_name, test_func in tests:
-        print(f"\n🎯 {test_name}")
+        print(f"\nTARGET {test_name}")
         print("-" * 60)
         
         try:
             if test_func():
                 passed += 1
-                print(f"✅ {test_name} PASSED")
+                print(f"PASS {test_name} PASSED")
             else:
-                print(f"❌ {test_name} FAILED")
+                print(f"FAIL {test_name} FAILED")
         except Exception as e:
-            print(f"❌ {test_name} ERROR: {e}")
+            print(f"FAIL {test_name} ERROR: {e}")
     
     print("\n" + "=" * 80)
-    print(f"📊 Integration Component Functionality Test Results:")
+    print(f"CHART Integration Component Functionality Test Results:")
     print(f"   Passed: {passed}/{total}")
     print(f"   Success Rate: {(passed/total)*100:.1f}%")
     
     if passed == total:
-        print("🎉 All integration functionality tests passed!")
+        print("PARTY All integration functionality tests passed!")
         return True
     else:
-        print("⚠️ Some integration functionality tests failed")
+        print("WARN Some integration functionality tests failed")
         return False
 
 if __name__ == "__main__":

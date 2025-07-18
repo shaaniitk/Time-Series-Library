@@ -37,7 +37,7 @@ def create_dummy_data(batch_size=4, seq_len=96, pred_len=24, enc_in=7, features=
 def test_dependency_validation():
     """Test the dependency validation system"""
     print("\n" + "="*80)
-    print("🧪 TESTING DEPENDENCY VALIDATION SYSTEM")
+    print("TEST TESTING DEPENDENCY VALIDATION SYSTEM")
     print("="*80)
     
     try:
@@ -48,7 +48,7 @@ def test_dependency_validation():
         registry = create_global_registry()
         config_manager = ConfigurationManager(registry)
         
-        print("\n📋 Available Components:")
+        print("\nCLIPBOARD Available Components:")
         all_components = registry.list_components()
         for comp_type, components in all_components.items():
             if components:  # Only show non-empty component types
@@ -67,14 +67,14 @@ def test_configuration_combinations(config_manager, registry):
         return
         
     print("\n" + "="*80)
-    print("🔄 TESTING CONFIGURATION COMBINATIONS")
+    print("REFRESH TESTING CONFIGURATION COMBINATIONS")
     print("="*80)
     
     # Test predefined configurations
     test_configs = config_manager.create_test_configurations()
     
     for i, (config, description) in enumerate(test_configs, 1):
-        print(f"\n📋 Test {i}: {description}")
+        print(f"\nCLIPBOARD Test {i}: {description}")
         print("-" * 60)
         
         # Validate configuration
@@ -82,30 +82,30 @@ def test_configuration_combinations(config_manager, registry):
             fixed_config, errors, warnings = config_manager.validate_and_fix_configuration(config)
             
             if not errors:
-                print("✅ Configuration valid")
+                print("PASS Configuration valid")
                 if warnings:
-                    print("⚠️ Warnings:")
+                    print("WARN Warnings:")
                     for warning in warnings:
-                        print(f"    • {warning}")
+                        print(f"     {warning}")
                 
                 # Test forward pass if possible
                 success = test_forward_pass(fixed_config, registry)
                 if success:
-                    print("✅ Forward pass successful")
+                    print("PASS Forward pass successful")
                 else:
-                    print("❌ Forward pass failed")
+                    print("FAIL Forward pass failed")
             else:
-                print("❌ Configuration validation failed")
+                print("FAIL Configuration validation failed")
                 print("Errors:")
                 for error in errors:
-                    print(f"    • {error}")
+                    print(f"     {error}")
                 if warnings:
                     print("Warnings:")
                     for warning in warnings:
-                        print(f"    • {warning}")
+                        print(f"     {warning}")
                         
         except Exception as e:
-            print(f"❌ Exception during validation: {e}")
+            print(f"FAIL Exception during validation: {e}")
 
 def test_custom_combinations(config_manager, registry):
     """Test custom component combinations"""
@@ -114,7 +114,7 @@ def test_custom_combinations(config_manager, registry):
         return
         
     print("\n" + "="*80) 
-    print("🎯 TESTING CUSTOM COMBINATIONS")
+    print("TARGET TESTING CUSTOM COMBINATIONS")
     print("="*80)
     
     # Get available components
@@ -155,7 +155,7 @@ def test_custom_combinations(config_manager, registry):
     ]
     
     for i, combination in enumerate(custom_combinations, 1):
-        print(f"\n🎯 Custom Test {i}: {combination['name']}")
+        print(f"\nTARGET Custom Test {i}: {combination['name']}")
         print("-" * 60)
         
         try:
@@ -166,34 +166,34 @@ def test_custom_combinations(config_manager, registry):
             fixed_config, errors, warnings = config_manager.validate_and_fix_configuration(config)
             
             if not errors:
-                print("✅ Configuration valid")
+                print("PASS Configuration valid")
                 if warnings:
-                    print("⚠️ Warnings:")
+                    print("WARN Warnings:")
                     for warning in warnings:
-                        print(f"    • {warning}")
+                        print(f"     {warning}")
                 
                 # Test component compatibility
                 test_component_compatibility(fixed_config, config_manager)
                 
             else:
-                print("❌ Configuration validation failed")
+                print("FAIL Configuration validation failed")
                 print("Errors:")
                 for error in errors:
-                    print(f"    • {error}")
+                    print(f"     {error}")
                 
                 # Show suggestions
                 suggestions = config_manager.suggest_configurations(config, max_suggestions=2)
                 if suggestions:
-                    print("\n💡 Suggested alternatives:")
+                    print("\nIDEA Suggested alternatives:")
                     for j, (suggested_config, description) in enumerate(suggestions, 1):
                         print(f"    {j}. {description}")
                         
         except Exception as e:
-            print(f"❌ Exception during custom combination test: {e}")
+            print(f"FAIL Exception during custom combination test: {e}")
 
 def test_component_compatibility(config, config_manager):
     """Test compatibility between specific components"""
-    print("🔍 Component Compatibility Analysis:")
+    print("SEARCH Component Compatibility Analysis:")
     
     # Check each component type for alternatives
     component_types = ['backbone', 'processor', 'attention', 'loss']
@@ -216,7 +216,7 @@ def test_forward_pass(config, registry):
     """Test if a configuration can actually perform a forward pass"""
     try:
         # This is a simplified test - in reality we'd instantiate the full model
-        print("🚀 Testing forward pass simulation...")
+        print("ROCKET Testing forward pass simulation...")
         
         # Create dummy data
         x_enc, x_mark_enc, x_dec, x_mark_dec, y = create_dummy_data(
@@ -243,19 +243,19 @@ def test_forward_pass(config, registry):
 def test_adapter_suggestions(config_manager):
     """Test adapter suggestion system"""
     print("\n" + "="*80)
-    print("🔧 TESTING ADAPTER SUGGESTIONS")
+    print("TOOL TESTING ADAPTER SUGGESTIONS")
     print("="*80)
     
     # Test dimension mismatch scenarios
     test_cases = [
-        {'source_dim': 512, 'target_dim': 256, 'desc': 'Backbone to Processor (512→256)'},
-        {'source_dim': 128, 'target_dim': 512, 'desc': 'Embedding to Backbone (128→512)'},
-        {'source_dim': 768, 'target_dim': 512, 'desc': 'Large Backbone to Standard (768→512)'},
-        {'source_dim': 512, 'target_dim': 512, 'desc': 'Same Dimensions (512→512)'},
+        {'source_dim': 512, 'target_dim': 256, 'desc': 'Backbone to Processor (512256)'},
+        {'source_dim': 128, 'target_dim': 512, 'desc': 'Embedding to Backbone (128512)'},
+        {'source_dim': 768, 'target_dim': 512, 'desc': 'Large Backbone to Standard (768512)'},
+        {'source_dim': 512, 'target_dim': 512, 'desc': 'Same Dimensions (512512)'},
     ]
     
     for i, case in enumerate(test_cases, 1):
-        print(f"\n🔧 Adapter Test {i}: {case['desc']}")
+        print(f"\nTOOL Adapter Test {i}: {case['desc']}")
         print("-" * 50)
         
         try:
@@ -264,21 +264,21 @@ def test_adapter_suggestions(config_manager):
             )
             
             if suggestions['needed']:
-                print("✅ Adapter needed")
+                print("PASS Adapter needed")
                 print(f"    Type: {suggestions['type']}")
                 print(f"    Input dim: {suggestions['input_dim']}")
                 print(f"    Output dim: {suggestions['output_dim']}")
                 print(f"    Config: {suggestions['suggested_config']}")
             else:
-                print("✅ No adapter needed - dimensions match")
+                print("PASS No adapter needed - dimensions match")
                 
         except Exception as e:
-            print(f"❌ Adapter suggestion failed: {e}")
+            print(f"FAIL Adapter suggestion failed: {e}")
 
 def test_configuration_export(config_manager):
     """Test configuration export and reporting"""
     print("\n" + "="*80)
-    print("📊 TESTING CONFIGURATION EXPORT")
+    print("CHART TESTING CONFIGURATION EXPORT")
     print("="*80)
     
     try:
@@ -295,14 +295,14 @@ def test_configuration_export(config_manager):
         output_path = project_root / 'test_config_report.json'
         config_manager.export_configuration_report(config, str(output_path))
         
-        print(f"✅ Configuration report exported to: {output_path}")
+        print(f"PASS Configuration report exported to: {output_path}")
         
         # Read and display summary
         import json
         with open(output_path, 'r') as f:
             report = json.load(f)
         
-        print("\n📋 Report Summary:")
+        print("\nCLIPBOARD Report Summary:")
         print(f"    Valid: {report['validation']['is_valid']}")
         print(f"    Errors: {len(report['validation']['errors'])}")
         print(f"    Warnings: {len(report['validation']['warnings'])}")
@@ -311,14 +311,14 @@ def test_configuration_export(config_manager):
         if report['validation']['errors']:
             print("\nTop errors:")
             for error in report['validation']['errors'][:2]:
-                print(f"    • {error}")
+                print(f"     {error}")
         
     except Exception as e:
-        print(f"❌ Configuration export failed: {e}")
+        print(f"FAIL Configuration export failed: {e}")
 
 def main():
     """Main test runner"""
-    print("🚀 Starting Advanced Modular Component Testing")
+    print("ROCKET Starting Advanced Modular Component Testing")
     print("="*80)
     
     # Initialize system
@@ -332,16 +332,16 @@ def main():
         test_configuration_export(config_manager)
         
         print("\n" + "="*80)
-        print("✅ ALL TESTS COMPLETED")
+        print("PASS ALL TESTS COMPLETED")
         print("="*80)
-        print("\n💡 Key Findings:")
+        print("\nIDEA Key Findings:")
         print("1. Dependency validation system working")
         print("2. Configuration combinations tested")
         print("3. Adapter suggestions functional")
         print("4. Export system operational")
         
     else:
-        print("\n❌ TESTS FAILED - Could not initialize system")
+        print("\nFAIL TESTS FAILED - Could not initialize system")
         print("Make sure the registry and component system is properly set up")
 
 if __name__ == "__main__":

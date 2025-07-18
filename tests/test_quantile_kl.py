@@ -15,7 +15,7 @@ from utils.losses import get_loss_function
 def test_quantile_kl_combination():
     """Test 5 quantiles + KL loss combination"""
     
-    print("🧪 Testing 5 Quantiles + KL Loss Combination")
+    print("TEST Testing 5 Quantiles + KL Loss Combination")
     print("=" * 60)
     
     # Create high config for financial forecasting
@@ -30,14 +30,14 @@ def test_quantile_kl_combination():
         quantiles=[0.1, 0.25, 0.5, 0.75, 0.9]  # 5 quantiles
     )
     
-    print(f"🏦 Financial Forecasting Configuration:")
+    print(f" Financial Forecasting Configuration:")
     print(f"  Sequence Length: {config.seq_len} days (~8.3 months history)")
     print(f"  Label Length: {config.label_len} days")
     print(f"  Prediction Length: {config.pred_len} days (~3 weeks ahead)")
     print(f"  Input Features: {config.enc_in}")
     print(f"  Target Features: {config.c_out}")
     print(f"  Quantiles: {config.quantiles}")
-    print(f"  Expected output features: {config.c_out * len(config.quantiles)} = {config.c_out} × {len(config.quantiles)}")
+    print(f"  Expected output features: {config.c_out * len(config.quantiles)} = {config.c_out}  {len(config.quantiles)}")
     print(f"  Model Size: d_model={config.d_model}, layers={config.e_layers}/{config.d_layers}")
     
     # Create Bayesian model with quantile support
@@ -68,7 +68,7 @@ def test_quantile_kl_combination():
     criterion = get_loss_function('pinball', quantiles=config.quantiles)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     
-    print("\n📊 Training Progress (Quantile + KL Loss):")
+    print("\nCHART Training Progress (Quantile + KL Loss):")
     print("Epoch | Quantile Loss | KL Loss   | Total Loss | KL %")
     print("-" * 60)
     
@@ -99,10 +99,10 @@ def test_quantile_kl_combination():
         
         print(f"{epoch+1:5d} | {quantile_loss:12.6f} | {kl_contribution:9.6f} | {total_loss_val:10.6f} | {kl_percentage:5.2f}%")
     
-    print("\n✅ Training completed!")
+    print("\nPASS Training completed!")
     
     # Test quantile predictions
-    print("\n🔍 Quantile Analysis:")
+    print("\nSEARCH Quantile Analysis:")
     model.eval()
     with torch.no_grad():
         pred = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
@@ -126,9 +126,9 @@ def test_quantile_kl_combination():
         for i, (q, val) in enumerate(zip(config.quantiles, sample_quantiles)):
             print(f"  Q{q*100:4.0f}: {val:8.4f}")
         
-        # Check if quantiles are ordered (should be: Q10 ≤ Q25 ≤ Q50 ≤ Q75 ≤ Q90)
+        # Check if quantiles are ordered (should be: Q10  Q25  Q50  Q75  Q90)
         is_ordered = np.all(sample_quantiles[:-1] <= sample_quantiles[1:])
-        print(f"\nQuantiles properly ordered: {'✅ Yes' if is_ordered else '❌ No'}")
+        print(f"\nQuantiles properly ordered: {'PASS Yes' if is_ordered else 'FAIL No'}")
         
         # Calculate prediction intervals
         q10, q25, q50, q75, q90 = sample_quantiles
@@ -140,19 +140,19 @@ def test_quantile_kl_combination():
         print(f"  80% interval: [{q10:.4f}, {q90:.4f}] (width: {interval_80:.4f})")
         print(f"  Median prediction: {q50:.4f}")
     
-    print(f"\n🎯 Test Results:")
-    print(f"✅ Model successfully trained with 5 quantiles + KL loss")
-    print(f"✅ Output dimensions correct: {pred.shape}")
-    print(f"✅ Quantile loss + KL regularization working")
-    print(f"✅ Prediction intervals generated")
+    print(f"\nTARGET Test Results:")
+    print(f"PASS Model successfully trained with 5 quantiles + KL loss")
+    print(f"PASS Output dimensions correct: {pred.shape}")
+    print(f"PASS Quantile loss + KL regularization working")
+    print(f"PASS Prediction intervals generated")
     
     return True
 
 if __name__ == "__main__":
     try:
         test_quantile_kl_combination()
-        print("\n🎉 Quantile + KL Loss test completed successfully!")
+        print("\nPARTY Quantile + KL Loss test completed successfully!")
     except Exception as e:
-        print(f"\n💥 Test failed: {e}")
+        print(f"\n Test failed: {e}")
         import traceback
         traceback.print_exc()

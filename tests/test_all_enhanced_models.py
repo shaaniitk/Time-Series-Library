@@ -31,17 +31,17 @@ def run_model_test(model_name, config_file):
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 min timeout
         
         if result.returncode == 0:
-            print(f"✅ {model_name} test PASSED")
+            print(f"PASS {model_name} test PASSED")
             print("STDOUT:", result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
         else:
-            print(f"❌ {model_name} test FAILED")
+            print(f"FAIL {model_name} test FAILED")
             print("STDERR:", result.stderr[-500:] if len(result.stderr) > 500 else result.stderr)
             print("STDOUT:", result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
             
     except subprocess.TimeoutExpired:
-        print(f"⏰ {model_name} test TIMEOUT")
+        print(f" {model_name} test TIMEOUT")
     except Exception as e:
-        print(f"💥 {model_name} test ERROR: {e}")
+        print(f" {model_name} test ERROR: {e}")
 
 def main():
     """Run tests for all three enhanced models."""
@@ -63,7 +63,7 @@ def main():
             missing_configs.append(config_file)
     
     if missing_configs:
-        print(f"❌ Missing config files: {missing_configs}")
+        print(f"FAIL Missing config files: {missing_configs}")
         print("Creating ultralight configs...")
         
         # Create missing configs if needed
@@ -102,26 +102,26 @@ def main():
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)  # 10 min timeout
             
             if result.returncode == 0:
-                print(f"✅ {model_name} test PASSED")
+                print(f"PASS {model_name} test PASSED")
                 results[model_name] = 'PASSED'
                 # Show last part of output for dimension info
                 output_lines = result.stdout.split('\n')
                 dimension_lines = [line for line in output_lines if 'shape' in line.lower() or 'dimension' in line.lower()]
                 if dimension_lines:
-                    print("📏 Dimension information:")
+                    print(" Dimension information:")
                     for line in dimension_lines[-5:]:  # Last 5 dimension-related lines
                         print(f"   {line}")
             else:
-                print(f"❌ {model_name} test FAILED (exit code: {result.returncode})")
+                print(f"FAIL {model_name} test FAILED (exit code: {result.returncode})")
                 results[model_name] = 'FAILED'
                 print("STDERR:")
                 print(result.stderr[-1000:] if len(result.stderr) > 1000 else result.stderr)
                 
         except subprocess.TimeoutExpired:
-            print(f"⏰ {model_name} test TIMEOUT")
+            print(f" {model_name} test TIMEOUT")
             results[model_name] = 'TIMEOUT'
         except Exception as e:
-            print(f"💥 {model_name} test ERROR: {e}")
+            print(f" {model_name} test ERROR: {e}")
             results[model_name] = 'ERROR'
     
     # Summary
@@ -129,7 +129,7 @@ def main():
     print("TEST SUMMARY")
     print(f"{'='*60}")
     for model_name, result in results.items():
-        status_emoji = {'PASSED': '✅', 'FAILED': '❌', 'TIMEOUT': '⏰', 'ERROR': '💥'}.get(result, '❓')
+        status_emoji = {'PASSED': 'PASS', 'FAILED': 'FAIL', 'TIMEOUT': '', 'ERROR': ''}.get(result, '')
         print(f"{status_emoji} {model_name}: {result}")
     
     print(f"\nTotal: {len(results)} models tested")
@@ -137,9 +137,9 @@ def main():
     print(f"Passed: {passed}/{len(results)}")
     
     if passed == len(results):
-        print("\n🎉 All tests passed! Enhanced models working correctly with future covariates.")
+        print("\nPARTY All tests passed! Enhanced models working correctly with future covariates.")
     else:
-        print(f"\n⚠️  {len(results) - passed} test(s) failed. Check logs above for details.")
+        print(f"\nWARN  {len(results) - passed} test(s) failed. Check logs above for details.")
 
 if __name__ == '__main__':
     main()

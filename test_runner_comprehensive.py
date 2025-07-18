@@ -90,7 +90,7 @@ class TestSuiteRunner:
     
     def run_test_file(self, test_file: Path) -> Tuple[bool, str, float]:
         """Run a single test file and return results"""
-        print(f"\n  🧪 Running: {test_file.relative_to(self.project_root)}")
+        print(f"\n  TEST Running: {test_file.relative_to(self.project_root)}")
         
         start_time = time.time()
         
@@ -107,21 +107,21 @@ class TestSuiteRunner:
             elapsed = time.time() - start_time
             
             if result.returncode == 0:
-                print(f"    ✅ PASSED ({elapsed:.2f}s)")
+                print(f"    PASS PASSED ({elapsed:.2f}s)")
                 return True, result.stdout, elapsed
             else:
-                print(f"    ❌ FAILED ({elapsed:.2f}s)")
+                print(f"    FAIL FAILED ({elapsed:.2f}s)")
                 print(f"    Error: {result.stderr[:200]}...")
                 return False, result.stderr, elapsed
                 
         except subprocess.TimeoutExpired:
             elapsed = time.time() - start_time
-            print(f"    ⏰ TIMEOUT ({elapsed:.2f}s)")
+            print(f"     TIMEOUT ({elapsed:.2f}s)")
             return False, "Test timed out", elapsed
             
         except Exception as e:
             elapsed = time.time() - start_time
-            print(f"    ❌ ERROR ({elapsed:.2f}s): {e}")
+            print(f"    FAIL ERROR ({elapsed:.2f}s): {e}")
             return False, str(e), elapsed
     
     def run_suite(self, suite_name: str) -> Dict:
@@ -130,7 +130,7 @@ class TestSuiteRunner:
             raise ValueError(f"Unknown test suite: {suite_name}")
         
         suite_config = self.test_suites[suite_name]
-        print(f"\n🎯 Running {suite_name.upper()} Test Suite")
+        print(f"\nTARGET Running {suite_name.upper()} Test Suite")
         print(f"   Description: {suite_config['description']}")
         print("=" * 70)
         
@@ -138,7 +138,7 @@ class TestSuiteRunner:
         test_files = self.discover_tests(suite_config['paths'])
         
         if not test_files:
-            print(f"⚠️  No test files found in {suite_name} suite")
+            print(f"WARN  No test files found in {suite_name} suite")
             return {
                 'suite': suite_name,
                 'total': 0,
@@ -147,7 +147,7 @@ class TestSuiteRunner:
                 'errors': []
             }
         
-        print(f"📁 Found {len(test_files)} test file(s)")
+        print(f" Found {len(test_files)} test file(s)")
         
         # Run tests
         results = {
@@ -177,19 +177,19 @@ class TestSuiteRunner:
     def print_summary(self, results: Dict):
         """Print a comprehensive summary of test results"""
         print("\n" + "=" * 70)
-        print("📊 TEST SUITE SUMMARY")
+        print("CHART TEST SUITE SUMMARY")
         print("=" * 70)
         
-        print(f"🎯 {results['suite'].upper()} Suite Results:")
+        print(f"TARGET {results['suite'].upper()} Suite Results:")
         print(f"   Total Tests: {results['total']}")
-        print(f"   Passed: {results['passed']} ✅")
-        print(f"   Failed: {results['failed']} ❌")
+        print(f"   Passed: {results['passed']} PASS")
+        print(f"   Failed: {results['failed']} FAIL")
         if results['total'] > 0:
             print(f"   Success Rate: {(results['passed']/results['total']*100):.1f}%")
         print(f"   Total Time: {results.get('total_time', 0):.2f}s")
         
         if results['errors']:
-            print(f"\n❌ Failed Tests:")
+            print(f"\nFAIL Failed Tests:")
             for error in results['errors']:
                 print(f"   - {error['file']}")
 
@@ -221,10 +221,10 @@ def main():
             sys.exit(1)
                 
     except KeyboardInterrupt:
-        print("\n⚠️  Test run interrupted by user")
+        print("\nWARN  Test run interrupted by user")
         sys.exit(130)
     except Exception as e:
-        print(f"\n❌ Test runner error: {e}")
+        print(f"\nFAIL Test runner error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

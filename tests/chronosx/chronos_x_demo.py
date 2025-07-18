@@ -132,12 +132,12 @@ def visualize_forecast(data, results, save_plot=True):
     plt.fill_between(forecast_timeline, 
                      forecast_mean - forecast_std,
                      forecast_mean + forecast_std,
-                     alpha=0.3, color='red', label='±1σ uncertainty')
+                     alpha=0.3, color='red', label='1 uncertainty')
     
     plt.fill_between(forecast_timeline,
                      forecast_mean - 2*forecast_std,
                      forecast_mean + 2*forecast_std,
-                     alpha=0.2, color='red', label='±2σ uncertainty')
+                     alpha=0.2, color='red', label='2 uncertainty')
     
     # Formatting
     plt.title(f'ChronosX {results["model_size"].upper()} Model - Time Series Forecasting', fontsize=16)
@@ -157,19 +157,19 @@ def visualize_forecast(data, results, save_plot=True):
     if save_plot:
         filename = f'chronos_x_{results["model_size"]}_forecast.png'
         plt.savefig(filename, dpi=300, bbox_inches='tight')
-        logger.info(f"📊 Saved plot to {filename}")
+        logger.info(f"CHART Saved plot to {filename}")
     
     plt.show()
 
 def compare_models(data):
     """Compare different ChronosX model sizes"""
-    logger.info("🔍 Comparing ChronosX model sizes...")
+    logger.info("SEARCH Comparing ChronosX model sizes...")
     
     models_to_test = ['tiny', 'small']
     results = {}
     
     for model_size in models_to_test:
-        logger.info(f"\n📊 Testing {model_size} model...")
+        logger.info(f"\nCHART Testing {model_size} model...")
         try:
             result = forecast_with_chronos(data, model_size=model_size)
             results[model_size] = result
@@ -184,59 +184,59 @@ def compare_models(data):
                 mae = np.mean(np.abs(val_result['forecast_mean'] - val_target))
                 results[model_size]['validation_mae'] = mae
                 
-                logger.info(f"✅ {model_size}: MAE={mae:.3f}, "
+                logger.info(f"PASS {model_size}: MAE={mae:.3f}, "
                           f"Load={result['load_time']:.1f}s, "
                           f"Forecast={result['forecast_time']:.1f}s")
             else:
-                logger.info(f"✅ {model_size}: "
+                logger.info(f"PASS {model_size}: "
                           f"Load={result['load_time']:.1f}s, "
                           f"Forecast={result['forecast_time']:.1f}s")
                 
         except Exception as e:
-            logger.error(f"❌ {model_size} failed: {e}")
+            logger.error(f"FAIL {model_size} failed: {e}")
             results[model_size] = {'error': str(e)}
     
     return results
 
 def main():
     """Main demonstration function"""
-    print("🚀 ChronosX Real Time Series Forecasting Demo")
+    print("ROCKET ChronosX Real Time Series Forecasting Demo")
     print("=" * 50)
     
     # Load data
     data = load_and_prepare_data()
     
     # Single model demonstration
-    print("\n📈 Single Model Forecasting Demo...")
+    print("\nGRAPH Single Model Forecasting Demo...")
     result = forecast_with_chronos(data, model_size="small")
     visualize_forecast(data, result)
     
     # Model comparison
-    print("\n🔍 Model Comparison...")
+    print("\nSEARCH Model Comparison...")
     comparison_results = compare_models(data)
     
     # Summary report
-    print("\n📊 FINAL RESULTS SUMMARY")
+    print("\nCHART FINAL RESULTS SUMMARY")
     print("-" * 30)
     
     for model_size, result in comparison_results.items():
         if 'error' not in result:
-            print(f"✅ {model_size.upper()}:")
+            print(f"PASS {model_size.upper()}:")
             print(f"   Load Time: {result['load_time']:.2f}s")
             print(f"   Forecast Time: {result['forecast_time']:.2f}s")
             print(f"   Mean Uncertainty: {np.mean(result['forecast_std']):.3f}")
             if 'validation_mae' in result:
                 print(f"   Validation MAE: {result['validation_mae']:.3f}")
         else:
-            print(f"❌ {model_size.upper()}: {result['error']}")
+            print(f"FAIL {model_size.upper()}: {result['error']}")
         print()
     
-    print("🎉 ChronosX demonstration complete!")
-    print("\n💡 Key Takeaways:")
-    print("• ChronosX provides high-quality forecasts out of the box")
-    print("• Uncertainty quantification helps assess prediction confidence")
-    print("• Different model sizes offer speed vs accuracy tradeoffs")
-    print("• No training required - pretrained models work immediately")
+    print("PARTY ChronosX demonstration complete!")
+    print("\nIDEA Key Takeaways:")
+    print(" ChronosX provides high-quality forecasts out of the box")
+    print(" Uncertainty quantification helps assess prediction confidence")
+    print(" Different model sizes offer speed vs accuracy tradeoffs")
+    print(" No training required - pretrained models work immediately")
 
 if __name__ == "__main__":
     main()

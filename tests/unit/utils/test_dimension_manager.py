@@ -361,7 +361,7 @@ class TestDimensionManagerUtils:
 def run_dimension_manager_utils_tests():
     """Run all DimensionManager utility tests"""
     
-    print("🧪 Running DimensionManager Utility Tests")
+    print("TEST Running DimensionManager Utility Tests")
     print("=" * 60)
     
     test_instance = TestDimensionManagerUtils()
@@ -393,29 +393,29 @@ def run_dimension_manager_utils_tests():
     
     for method_name in test_methods:
         try:
-            print(f"  🧪 Running {method_name}...")
+            print(f"  TEST Running {method_name}...")
             method = getattr(test_instance, method_name)
             method()
-            print(f"    ✅ {method_name} PASSED")
+            print(f"    PASS {method_name} PASSED")
             passed += 1
         except Exception as e:
-            print(f"    ❌ {method_name} FAILED: {e}")
+            print(f"    FAIL {method_name} FAILED: {e}")
             failed += 1
     
     total = passed + failed
     success_rate = (passed / total * 100) if total > 0 else 0
     
     print("\n" + "=" * 60)
-    print(f"📊 DimensionManager Utils Test Results:")
+    print(f"CHART DimensionManager Utils Test Results:")
     print(f"   Total Tests: {total}")
     print(f"   Passed: {passed}")
     print(f"   Failed: {failed}")
     print(f"   Success Rate: {success_rate:.1f}%")
     
     if failed == 0:
-        print("🎉 All DimensionManager utility tests passed!")
+        print("PARTY All DimensionManager utility tests passed!")
     else:
-        print("⚠️ Some tests failed. Check individual test output for details.")
+        print("WARN Some tests failed. Check individual test output for details.")
     
     return failed == 0
 

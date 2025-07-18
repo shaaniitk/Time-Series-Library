@@ -110,13 +110,13 @@ def main():
     x_dec = torch.zeros(1, config.pred_len + config.label_len, 6)  # Placeholder
     x_mark_dec = torch.FloatTensor(data_stamp[start_idx + seq_len - config.label_len:start_idx + seq_len + config.pred_len]).unsqueeze(0)
     
-    print(f"✓ Input shapes:")
+    print(f" Input shapes:")
     print(f"  Time series: {x_enc.shape}")
     print(f"  Time features: {x_mark_enc.shape}")
     print(f"  Time features have {x_mark_enc.shape[-1]} dimensions (hour, day, month, etc.)")
     
     # Test HF model
-    print(f"\n✓ Testing HFEnhancedAutoformer...")
+    print(f"\n Testing HFEnhancedAutoformer...")
     model = HFEnhancedAutoformer(config)
     model.eval()
     
@@ -134,18 +134,18 @@ def main():
         print(f"  Absolute difference: {diff:.6f}")
         
         if diff > 1e-6:
-            print(f"  ✅ SUCCESS: Covariates make a meaningful difference!")
+            print(f"  PASS SUCCESS: Covariates make a meaningful difference!")
         else:
-            print(f"  ❌ FAILURE: Covariates are being ignored")
+            print(f"  FAIL FAILURE: Covariates are being ignored")
     
     print(f"\n{'='*80}")
     print("CONCLUSION: HF Models vs Standard Models Flexibility")
     print(f"{'='*80}")
     
     print("""
-📊 FLEXIBILITY COMPARISON:
+CHART FLEXIBILITY COMPARISON:
 
-🔴 LIMITATIONS of HF Models:
+ LIMITATIONS of HF Models:
 1. Foundation Model Constraints:
    - Limited to transformer architectures (T5, GPT, etc.)
    - Fixed embedding dimensions from pre-trained models
@@ -161,7 +161,7 @@ def main():
    - Fixed tokenization/embedding strategies
    - Dependency on HF model availability
 
-🟢 ADVANTAGES of HF Models:
+ ADVANTAGES of HF Models:
 1. Pre-trained Knowledge:
    - Leverage massive pre-training on temporal data
    - Better generalization to new domains
@@ -177,23 +177,23 @@ def main():
    - Easy model switching and experimentation
    - Consistent API across different models
 
-⚖️ FLEXIBILITY VERDICT:
+ FLEXIBILITY VERDICT:
 
 Standard Models (Autoformer, TimesNet, etc.):
-✅ Full architectural flexibility
-✅ Lightweight and fast
-✅ Easy to modify and extend
-❌ Require training from scratch
-❌ Limited pre-trained knowledge
+PASS Full architectural flexibility
+PASS Lightweight and fast
+PASS Easy to modify and extend
+FAIL Require training from scratch
+FAIL Limited pre-trained knowledge
 
 HF Enhanced Models:
-✅ Leverage pre-trained knowledge
-✅ Better out-of-box performance
-✅ Advanced temporal understanding
-❌ Limited architectural flexibility
-❌ Higher computational requirements
+PASS Leverage pre-trained knowledge
+PASS Better out-of-box performance
+PASS Advanced temporal understanding
+FAIL Limited architectural flexibility
+FAIL Higher computational requirements
 
-🎯 RECOMMENDATION:
+TARGET RECOMMENDATION:
 - Use HF models when you need strong baseline performance and have computational resources
 - Use standard models when you need full control and lightweight deployment
 - The covariate fix makes HF models as capable as standard models for time feature integration

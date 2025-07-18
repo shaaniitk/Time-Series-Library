@@ -277,7 +277,7 @@ def run_single_model_test(model_type: str, config: dict) -> dict:
             'status': 'SUCCESS'
         }
         
-        logger.info(f"✅ {model_type.upper()} test completed successfully")
+        logger.info(f"PASS {model_type.upper()} test completed successfully")
         logger.info(f"   Final validation loss: {final_val_loss:.6f}")
         logger.info(f"   Best validation loss: {min_val_loss:.6f}")
         logger.info(f"   Improvement: {val_improvement:.6f}")
@@ -286,7 +286,7 @@ def run_single_model_test(model_type: str, config: dict) -> dict:
         return results
         
     except Exception as e:
-        logger.error(f"❌ {model_type.upper()} test failed: {e}")
+        logger.error(f"FAIL {model_type.upper()} test failed: {e}")
         import traceback
         traceback.print_exc()
         
@@ -367,20 +367,20 @@ def plot_results(results: List[dict]):
     plt.savefig('sanity_test_results.png', dpi=300, bbox_inches='tight')
     plt.show()
     
-    logger.info("📊 Results plot saved as 'sanity_test_results.png'")
+    logger.info("CHART Results plot saved as 'sanity_test_results.png'")
 
 
 def main():
     """Run sanity tests for all three enhanced models."""
     
-    logger.info("🧪 Enhanced Autoformer Models Sanity Test")
+    logger.info("TEST Enhanced Autoformer Models Sanity Test")
     logger.info("=" * 60)
     
     # Generate synthetic data
     synthetic_data = generate_synthetic_data(n_points=1500, freq='h')
     data_file = 'synthetic_sanity_data.csv'
     synthetic_data.to_csv(data_file, index=False)
-    logger.info(f"💾 Synthetic data saved to {data_file}")
+    logger.info(f" Synthetic data saved to {data_file}")
     
     # Test all three models
     models_to_test = ['enhanced', 'bayesian', 'hierarchical']
@@ -400,13 +400,13 @@ def main():
     for result in results:
         if result['status'] == 'SUCCESS':
             success_count += 1
-            logger.info(f"✅ {result['model_type'].upper()}:")
+            logger.info(f"PASS {result['model_type'].upper()}:")
             logger.info(f"   Parameters: {result['trainable_params']:,}")
             logger.info(f"   Final Val Loss: {result['final_val_loss']:.6f}")
             logger.info(f"   Best Val Loss: {result['min_val_loss']:.6f}")
             logger.info(f"   Convergence: Epoch {result['convergence_epoch']}")
         else:
-            logger.info(f"❌ {result['model_type'].upper()}: FAILED")
+            logger.info(f"FAIL {result['model_type'].upper()}: FAILED")
             logger.info(f"   Error: {result.get('error', 'Unknown error')}")
     
     logger.info(f"\nOverall: {success_count}/{len(models_to_test)} models passed sanity test")
@@ -421,9 +421,9 @@ def main():
         os.remove(data_file)
     
     if success_count == len(models_to_test):
-        logger.info("\n🎉 All models passed sanity tests! Ready for production use.")
+        logger.info("\nPARTY All models passed sanity tests! Ready for production use.")
     else:
-        logger.info(f"\n⚠️  {len(models_to_test) - success_count} model(s) failed. Check implementation.")
+        logger.info(f"\nWARN  {len(models_to_test) - success_count} model(s) failed. Check implementation.")
     
     return results
 

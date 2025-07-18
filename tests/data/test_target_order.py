@@ -11,7 +11,7 @@ import argparse
 
 def test_target_order_and_scaling():
     """Test the exact order and scaling of target outputs"""
-    print("🎯 TESTING TARGET ORDER AND SCALING")
+    print("TARGET TESTING TARGET ORDER AND SCALING")
     print("=" * 60)
     
     # Model configuration
@@ -60,7 +60,7 @@ def test_target_order_and_scaling():
         'Position_3 (Expected: Market_Cap)': [50.0, 60.0, 70.0, 80.0],
     }
     
-    print("📊 INPUT TEST PATTERNS:")
+    print("CHART INPUT TEST PATTERNS:")
     for name, pattern in target_patterns.items():
         print(f"   {name}: {pattern}")
     for name, pattern in covariate_patterns.items():
@@ -95,7 +95,7 @@ def test_target_order_and_scaling():
             
             outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             
-            print(f"\n📤 MODEL OUTPUT ANALYSIS:")
+            print(f"\n MODEL OUTPUT ANALYSIS:")
             print(f"Output shape: {outputs.shape}")
             
             # Extract outputs for each position in the future period
@@ -105,7 +105,7 @@ def test_target_order_and_scaling():
                 print(f"   Position {pos}: {[f'{x:.3f}' for x in output_values]}")
             
             # Check scaling preservation
-            print(f"\n📏 SCALING ANALYSIS:")
+            print(f"\n SCALING ANALYSIS:")
             
             # Check if position 0 and 1 preserve the 10x ratio from inputs
             out_pos_0 = outputs[0, -4:, 0].tolist()
@@ -122,7 +122,7 @@ def test_target_order_and_scaling():
                 print(f"   Time {t}: Input ratio (1000+t*1000)/(100+t*300) = {input_ratio:.2f}, Output ratio = {output_ratio:.2f}")
             
             # Check if trends are preserved
-            print(f"\n📈 TREND ANALYSIS:")
+            print(f"\nGRAPH TREND ANALYSIS:")
             input_trend_0 = [target_patterns['Position_0 (Expected: Open)'][i+1] - target_patterns['Position_0 (Expected: Open)'][i] for i in range(3)]
             output_trend_0 = [out_pos_0[i+1] - out_pos_0[i] for i in range(3)]
             
@@ -140,30 +140,30 @@ def test_target_order_and_scaling():
             print(f"   Position 0 trend correlation: {correlation_0:.3f}")
             print(f"   Position 1 trend correlation: {correlation_1:.3f}")
             
-            print(f"\n🎯 CONCLUSIONS:")
+            print(f"\nTARGET CONCLUSIONS:")
             if correlation_0 > 1000 and correlation_1 > 1000000:  # Strong positive correlation
-                print(f"✅ Position 0 and 1 appear to be targets (preserve trends)")
+                print(f"PASS Position 0 and 1 appear to be targets (preserve trends)")
             else:
-                print(f"⚠️  Position 0 and 1 may not be targets (trends not preserved)")
+                print(f"WARN  Position 0 and 1 may not be targets (trends not preserved)")
                 
             # Check scaling factor
             if abs(output_ratios[0] - input_ratios[0]) < 1.0:
-                print(f"✅ Ratios preserved - targets maintain relative scale")
+                print(f"PASS Ratios preserved - targets maintain relative scale")
             else:
-                print(f"⚠️  Ratios not preserved - targets are normalized")
+                print(f"WARN  Ratios not preserved - targets are normalized")
                 
             # Check if outputs are in normalized range
             all_outputs = [val for pos in range(5) for val in outputs[0, -4:, pos].tolist()]
             output_range = max(all_outputs) - min(all_outputs)
-            print(f"📊 Output range across all positions: {output_range:.3f}")
+            print(f"CHART Output range across all positions: {output_range:.3f}")
             
             if output_range < 5.0:
-                print(f"⚠️  All outputs are normalized (range < 5)")
+                print(f"WARN  All outputs are normalized (range < 5)")
             else:
-                print(f"✅ Outputs preserve original scale (range > 5)")
+                print(f"PASS Outputs preserve original scale (range > 5)")
                 
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        print(f"FAIL Error: {str(e)}")
         import traceback
         traceback.print_exc()
 

@@ -148,7 +148,7 @@ class ComprehensiveTestRunner:
         if not os.path.exists(test_file):
             return False, f"Test file not found: {test_file}", 0.0
         
-        print(f"    🧪 Running: {os.path.basename(test_file)}")
+        print(f"    TEST Running: {os.path.basename(test_file)}")
         
         start_time = time.time()
         
@@ -205,11 +205,11 @@ class ComprehensiveTestRunner:
             
             if success:
                 results['passed'] += 1
-                status = "✅"
+                status = "PASS"
             else:
                 results['failed'] += 1
                 results['errors'].append(f"{test_file}: {message}")
-                status = "❌"
+                status = "FAIL"
             
             results['details'].append({
                 'file': test_file,
@@ -227,7 +227,7 @@ class ComprehensiveTestRunner:
             return {'passed': 0, 'failed': 1, 'errors': [f"Unknown category: {category_name}"]}
         
         category = self.categories[category_name]
-        print(f"\n📁 Running {category.name} Tests")
+        print(f"\n Running {category.name} Tests")
         print(f"   {category.description}")
         print("   " + "="*60)
         
@@ -242,11 +242,11 @@ class ComprehensiveTestRunner:
                 
                 if success:
                     total_results['passed'] += 1
-                    status = "✅"
+                    status = "PASS"
                 else:
                     total_results['failed'] += 1
                     total_results['errors'].append(f"{path}: {message}")
-                    status = "❌"
+                    status = "FAIL"
                 
                 total_results['details'].append({
                     'file': path,
@@ -264,7 +264,7 @@ class ComprehensiveTestRunner:
                 total_results['details'].extend(dir_results.get('details', []))
             
             else:
-                print(f"    ⚠️ Path not found: {path}")
+                print(f"    WARN Path not found: {path}")
                 total_results['failed'] += 1
                 total_results['errors'].append(f"Path not found: {path}")
         
@@ -272,14 +272,14 @@ class ComprehensiveTestRunner:
         total_tests = total_results['passed'] + total_results['failed']
         if total_tests > 0:
             success_rate = (total_results['passed'] / total_tests) * 100
-            print(f"\n   📊 {category.name} Summary: {total_results['passed']}/{total_tests} passed ({success_rate:.1f}%)")
+            print(f"\n   CHART {category.name} Summary: {total_results['passed']}/{total_tests} passed ({success_rate:.1f}%)")
         
         return total_results
     
     def run_quick_tests(self) -> Dict:
         """Run essential tests only"""
         
-        print(f"\n⚡ Running Quick Test Suite")
+        print(f"\nLIGHTNING Running Quick Test Suite")
         print(f"   Essential tests for rapid validation")
         print("   " + "="*60)
         
@@ -293,11 +293,11 @@ class ComprehensiveTestRunner:
                 
                 if success:
                     results['passed'] += 1
-                    status = "✅"
+                    status = "PASS"
                 else:
                     results['failed'] += 1
                     results['errors'].append(f"{test_file}: {message}")
-                    status = "❌"
+                    status = "FAIL"
                 
                 results['details'].append({
                     'file': test_file,
@@ -306,7 +306,7 @@ class ComprehensiveTestRunner:
                     'duration': duration
                 })
             else:
-                print(f"    ⚠️ Quick test not found: {test_file}")
+                print(f"    WARN Quick test not found: {test_file}")
                 results['failed'] += 1
                 results['errors'].append(f"Test not found: {test_file}")
         
@@ -315,7 +315,7 @@ class ComprehensiveTestRunner:
     def run_all_tests(self) -> Dict:
         """Run all test categories"""
         
-        print(f"\n🚀 Running All Test Categories")
+        print(f"\nROCKET Running All Test Categories")
         print("="*80)
         
         all_results = {'passed': 0, 'failed': 0, 'errors': [], 'categories': {}}
@@ -343,48 +343,48 @@ class ComprehensiveTestRunner:
         total_tests = results['passed'] + results['failed']
         success_rate = (results['passed'] / total_tests * 100) if total_tests > 0 else 0
         
-        print(f"\n🎯 {test_type} Report")
+        print(f"\nTARGET {test_type} Report")
         print("="*80)
-        print(f"⏱️  Total Duration: {total_duration:.2f} seconds")
-        print(f"🧪 Total Tests: {total_tests}")
-        print(f"✅ Passed: {results['passed']}")
-        print(f"❌ Failed: {results['failed']}")
-        print(f"📊 Success Rate: {success_rate:.1f}%")
+        print(f"TIMER  Total Duration: {total_duration:.2f} seconds")
+        print(f"TEST Total Tests: {total_tests}")
+        print(f"PASS Passed: {results['passed']}")
+        print(f"FAIL Failed: {results['failed']}")
+        print(f"CHART Success Rate: {success_rate:.1f}%")
         
         if results['failed'] > 0:
-            print(f"\n🚨 Failed Tests/Errors:")
+            print(f"\n Failed Tests/Errors:")
             for error in results['errors'][:10]:  # Show first 10 errors
-                print(f"   • {error}")
+                print(f"    {error}")
             
             if len(results['errors']) > 10:
                 print(f"   ... and {len(results['errors']) - 10} more errors")
         
         # Category breakdown for all tests
         if 'categories' in results:
-            print(f"\n📋 Category Breakdown:")
+            print(f"\nCLIPBOARD Category Breakdown:")
             for cat_name, cat_results in results['categories'].items():
                 cat_total = cat_results['passed'] + cat_results['failed']
                 cat_rate = (cat_results['passed'] / cat_total * 100) if cat_total > 0 else 0
                 priority = self.categories[cat_name].priority
-                priority_icon = "🔴" if priority == 1 else "🟡" if priority == 2 else "🟢"
+                priority_icon = "" if priority == 1 else "" if priority == 2 else ""
                 
                 print(f"   {priority_icon} {cat_name}: {cat_results['passed']}/{cat_total} ({cat_rate:.1f}%)")
         
         # Recommendations
-        print(f"\n💡 Recommendations:")
+        print(f"\nIDEA Recommendations:")
         if success_rate >= 95:
-            print("   🎉 Excellent! Test suite is in great shape.")
+            print("   PARTY Excellent! Test suite is in great shape.")
         elif success_rate >= 80:
-            print("   ✨ Good test coverage. Address failing tests for improvement.")
+            print("    Good test coverage. Address failing tests for improvement.")
         elif success_rate >= 60:
-            print("   ⚠️ Moderate issues. Focus on critical test failures first.")
+            print("   WARN Moderate issues. Focus on critical test failures first.")
         else:
-            print("   🚨 Significant issues detected. Immediate attention required.")
+            print("    Significant issues detected. Immediate attention required.")
         
         if results['failed'] > 0:
-            print("   🔧 Focus on fixing dimension management tests first (highest priority)")
-            print("   📚 Check test logs for detailed error information")
-            print("   🏃‍♂️ Run 'python tests/test_runner_comprehensive.py quick' for rapid iteration")
+            print("   TOOL Focus on fixing dimension management tests first (highest priority)")
+            print("    Check test logs for detailed error information")
+            print("    Run 'python tests/test_runner_comprehensive.py quick' for rapid iteration")
         
         print("="*80)
     
@@ -393,10 +393,10 @@ class ComprehensiveTestRunner:
         
         self.start_time = time.time()
         
-        print("🧪 Time Series Library - Comprehensive Test Suite")
+        print("TEST Time Series Library - Comprehensive Test Suite")
         print("="*80)
-        print("🎯 Focus: Dimension Management & Multi-Time Series Support")
-        print("🏗️  Architecture: Modular HFAutoformer Framework")
+        print("TARGET Focus: Dimension Management & Multi-Time Series Support")
+        print("  Architecture: Modular HFAutoformer Framework")
         print("="*80)
         
         if test_target == 'all':
@@ -412,7 +412,7 @@ class ComprehensiveTestRunner:
             self.generate_report(results, f"{self.categories[test_target].name} Tests")
             
         else:
-            print(f"❌ Unknown test target: {test_target}")
+            print(f"FAIL Unknown test target: {test_target}")
             print(f"Available targets: all, quick, {', '.join(self.categories.keys())}")
             return False
         
@@ -450,44 +450,44 @@ def main():
     runner = ComprehensiveTestRunner()
     
     if args.list_categories:
-        print("📋 Available Test Categories:")
+        print("CLIPBOARD Available Test Categories:")
         print("="*50)
         for name, category in runner.categories.items():
-            priority_icon = "🔴" if category.priority == 1 else "🟡" if category.priority == 2 else "🟢"
+            priority_icon = "" if category.priority == 1 else "" if category.priority == 2 else ""
             print(f"{priority_icon} {name}: {category.description}")
-        print("\n⚡ Special targets:")
-        print("🚀 all: Run all categories")
-        print("⚡ quick: Run essential tests only")
+        print("\nLIGHTNING Special targets:")
+        print("ROCKET all: Run all categories")
+        print("LIGHTNING quick: Run essential tests only")
         return
     
     if args.dry_run:
-        print("🔍 Dry Run - Tests that would be executed:")
+        print("SEARCH Dry Run - Tests that would be executed:")
         print("="*50)
         
         if args.target == 'all':
             for name, category in runner.categories.items():
-                print(f"\n📁 {name}:")
+                print(f"\n {name}:")
                 for path in category.paths:
-                    print(f"   • {path}")
+                    print(f"    {path}")
         elif args.target == 'quick':
-            print(f"\n⚡ Quick Tests:")
+            print(f"\nLIGHTNING Quick Tests:")
             for test in runner.quick_tests:
-                print(f"   • {test}")
+                print(f"    {test}")
         elif args.target in runner.categories:
             category = runner.categories[args.target]
-            print(f"\n📁 {category.name}:")
+            print(f"\n {category.name}:")
             for path in category.paths:
-                print(f"   • {path}")
+                print(f"    {path}")
         return
     
     # Run tests
     success = runner.run(args.target)
     
     if success:
-        print("\n🎉 All tests passed successfully!")
+        print("\nPARTY All tests passed successfully!")
         sys.exit(0)
     else:
-        print("\n❌ Some tests failed. Check the report above for details.")
+        print("\nFAIL Some tests failed. Check the report above for details.")
         sys.exit(1)
 
 

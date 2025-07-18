@@ -81,7 +81,7 @@ def test_data_structure():
         print(f"Covariates after scaling (validation): mean = {scaled_data[border2s[0]:border2s[0]+10, covariate_cols].mean(axis=0)[:5]}")
         print(f"Covariates after scaling (full): mean = {scaled_data[:, covariate_cols].mean(axis=0)[:5]}")  # Should be ~0
     
-    print("\n✓ Selective scaling test completed successfully!")
+    print("\n Selective scaling test completed successfully!")
 
 if __name__ == "__main__":
     test_data_structure()

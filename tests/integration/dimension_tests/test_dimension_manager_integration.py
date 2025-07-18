@@ -58,12 +58,12 @@ class TestDimensionManagerIntegration:
         self.standard_quantiles = [0.1, 0.5, 0.9]
         self.comprehensive_quantiles = [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
         
-        print("🧪 DimensionManager Integration Test Suite")
+        print("TEST DimensionManager Integration Test Suite")
         print("=" * 60)
     
     def test_single_dataset_dimension_consistency(self):
         """Test dimension consistency across modes for a single dataset"""
-        print("\n📊 Testing Single Dataset Dimension Consistency")
+        print("\nCHART Testing Single Dataset Dimension Consistency")
         
         for mode in ['S', 'MS', 'M']:
             for loss_function in ['mse', 'mae', 'quantile']:
@@ -103,11 +103,11 @@ class TestDimensionManagerIntegration:
                 else:
                     assert dm.c_out_model == dm.c_out_evaluation
                 
-                print(f"  ✅ {mode} mode with {loss_function} loss: {dm.enc_in}→{dm.c_out_model}")
+                print(f"  PASS {mode} mode with {loss_function} loss: {dm.enc_in}{dm.c_out_model}")
     
     def test_multi_dataset_dimension_handling(self):
         """Test dimension handling across multiple diverse datasets"""
-        print("\n🌐 Testing Multi-Dataset Dimension Handling")
+        print("\n Testing Multi-Dataset Dimension Handling")
         
         datasets_config = [
             ("Financial", self.financial_targets, self.financial_all),
@@ -134,12 +134,12 @@ class TestDimensionManagerIntegration:
                 # Validate mode-specific behavior
                 self._validate_mode_dimensions(dm, mode, expected_targets, len(all_features))
                 
-                print(f"  ✅ {name} dataset in {mode} mode: "
+                print(f"  PASS {name} dataset in {mode} mode: "
                       f"{expected_targets} targets, {expected_covariates} covariates")
     
     def test_quantile_dimension_scaling(self):
         """Test proper dimension scaling with different quantile configurations"""
-        print("\n📈 Testing Quantile Dimension Scaling")
+        print("\nGRAPH Testing Quantile Dimension Scaling")
         
         quantile_configs = [
             ("Standard", self.standard_quantiles),
@@ -164,12 +164,12 @@ class TestDimensionManagerIntegration:
                 
                 assert dm.c_out_model == expected_model_output
                 
-                print(f"  ✅ {config_name} quantiles ({len(quantiles)}) in {mode} mode: "
-                      f"{base_output}→{expected_model_output}")
+                print(f"  PASS {config_name} quantiles ({len(quantiles)}) in {mode} mode: "
+                      f"{base_output}{expected_model_output}")
     
     def test_dynamic_dimension_updates(self):
         """Test dimension manager behavior with dynamic feature changes"""
-        print("\n🔄 Testing Dynamic Dimension Updates")
+        print("\nREFRESH Testing Dynamic Dimension Updates")
         
         # Start with basic configuration
         initial_targets = ['close']
@@ -200,12 +200,12 @@ class TestDimensionManagerIntegration:
         assert dm_extended.enc_in > initial_enc_in
         assert dm_extended.c_out_evaluation > initial_c_out
         
-        print(f"  ✅ Feature expansion: {initial_enc_in}→{dm_extended.enc_in} input, "
-              f"{initial_c_out}→{dm_extended.c_out_evaluation} output")
+        print(f"  PASS Feature expansion: {initial_enc_in}{dm_extended.enc_in} input, "
+              f"{initial_c_out}{dm_extended.c_out_evaluation} output")
     
     def test_edge_case_configurations(self):
         """Test edge cases and boundary conditions"""
-        print("\n⚠️  Testing Edge Case Configurations")
+        print("\nWARN  Testing Edge Case Configurations")
         
         # Single target, no covariates
         dm_minimal = DimensionManager(
@@ -217,7 +217,7 @@ class TestDimensionManagerIntegration:
         assert dm_minimal.num_covariates == 0
         assert dm_minimal.enc_in == 1
         assert dm_minimal.c_out_evaluation == 1
-        print("  ✅ Minimal configuration (single target, no covariates)")
+        print("  PASS Minimal configuration (single target, no covariates)")
         
         # Many targets, few covariates
         many_targets = [f'target_{i}' for i in range(20)]
@@ -231,7 +231,7 @@ class TestDimensionManagerIntegration:
         )
         assert dm_many_targets.num_targets == 20
         assert dm_many_targets.num_covariates == 2
-        print("  ✅ Many targets, few covariates")
+        print("  PASS Many targets, few covariates")
         
         # Few targets, many covariates
         few_targets = ['main_target']
@@ -245,7 +245,7 @@ class TestDimensionManagerIntegration:
         )
         assert dm_many_covariates.num_targets == 1
         assert dm_many_covariates.num_covariates == 50
-        print("  ✅ Few targets, many covariates")
+        print("  PASS Few targets, many covariates")
         
         # Large quantile set
         large_quantiles = [i/100 for i in range(1, 100)]  # 99 quantiles
@@ -258,11 +258,11 @@ class TestDimensionManagerIntegration:
         )
         expected_output = len(self.financial_targets) * len(large_quantiles)
         assert dm_large_quantiles.c_out_model == expected_output
-        print(f"  ✅ Large quantile set: {len(large_quantiles)} quantiles")
+        print(f"  PASS Large quantile set: {len(large_quantiles)} quantiles")
     
     def test_memory_efficiency_estimation(self):
         """Test dimension calculations for memory efficiency estimation"""
-        print("\n💾 Testing Memory Efficiency Estimation")
+        print("\n Testing Memory Efficiency Estimation")
         
         # Simulate very large feature sets
         large_configs = [
@@ -291,7 +291,7 @@ class TestDimensionManagerIntegration:
             total_elements = input_size + output_size
             memory_mb = total_elements * 4 / (1024 * 1024)  # 4 bytes per float32
             
-            print(f"  📊 {config_name} config: {dm.enc_in} features → "
+            print(f"  CHART {config_name} config: {dm.enc_in} features  "
                   f"{dm.c_out_model} outputs (~{memory_mb:.1f} MB)")
             
             # Basic memory sanity checks
@@ -301,7 +301,7 @@ class TestDimensionManagerIntegration:
     
     def test_invalid_configurations(self):
         """Test proper error handling for invalid configurations"""
-        print("\n❌ Testing Invalid Configuration Handling")
+        print("\nFAIL Testing Invalid Configuration Handling")
         
         # Invalid mode
         with pytest.raises(ValueError, match="Unknown feature mode"):
@@ -311,7 +311,7 @@ class TestDimensionManagerIntegration:
                 all_features=['target', 'cov'],
                 loss_function='mse'
             )
-        print("  ✅ Invalid mode detection")
+        print("  PASS Invalid mode detection")
         
         # Target features not in all features - this actually works in the current implementation
         # The DimensionManager handles this gracefully by treating missing targets as separate
@@ -323,7 +323,7 @@ class TestDimensionManagerIntegration:
         )
         # This works - covariate_features will be ['other_feature'] since missing_target not found
         assert dm.covariate_features == ['other_feature']
-        print("  ✅ Missing target feature handling (graceful)")
+        print("  PASS Missing target feature handling (graceful)")
         
         # Empty quantiles with quantile loss
         dm_empty_quantiles = DimensionManager(
@@ -335,7 +335,7 @@ class TestDimensionManagerIntegration:
         )
         # Should not scale output dimensions if no quantiles
         assert dm_empty_quantiles.c_out_model == dm_empty_quantiles.c_out_evaluation
-        print("  ✅ Empty quantiles handling")
+        print("  PASS Empty quantiles handling")
     
     def _validate_mode_dimensions(self, dm: DimensionManager, mode: str, 
                                  n_targets: int, n_total: int):
@@ -355,7 +355,7 @@ class TestDimensionManagerIntegration:
     
     def test_dimension_manager_repr(self):
         """Test the string representation for debugging"""
-        print("\n🔤 Testing DimensionManager String Representation")
+        print("\n Testing DimensionManager String Representation")
         
         dm = DimensionManager(
             mode='MS',
@@ -373,7 +373,7 @@ class TestDimensionManagerIntegration:
         assert str(len(self.financial_targets)) in repr_str
         assert str(len(self.financial_covariates)) in repr_str
         
-        print(f"  ✅ Representation: {repr_str}")
+        print(f"  PASS Representation: {repr_str}")
 
 
 class TestDimensionManagerModelIntegration:
@@ -390,7 +390,7 @@ class TestDimensionManagerModelIntegration:
     
     def test_mock_model_integration(self):
         """Test dimension flow through a mock model architecture"""
-        print("\n🏗️ Testing Mock Model Integration")
+        print("\n Testing Mock Model Integration")
         
         # Create dimension manager
         targets = ['price', 'volume']
@@ -422,11 +422,11 @@ class TestDimensionManagerModelIntegration:
             assert batch_y.shape[-1] == dm.dec_in
             assert final_output.shape[-1] == dm.c_out_model
             
-            print(f"  ✅ {mode} mode: {dm.enc_in}→512→{dm.c_out_model}")
+            print(f"  PASS {mode} mode: {dm.enc_in}512{dm.c_out_model}")
     
     def test_quantile_output_reshaping(self):
         """Test proper reshaping of quantile outputs for evaluation"""
-        print("\n📈 Testing Quantile Output Reshaping")
+        print("\nGRAPH Testing Quantile Output Reshaping")
         
         targets = ['price']
         quantiles = [0.1, 0.5, 0.9]
@@ -458,13 +458,13 @@ class TestDimensionManagerModelIntegration:
         
         assert median_pred.shape == (self.batch_size, self.pred_len, n_targets)
         
-        print(f"  ✅ Quantile reshaping: {model_output.shape} → {reshaped.shape}")
-        print(f"  ✅ Median extraction: {median_pred.shape}")
+        print(f"  PASS Quantile reshaping: {model_output.shape}  {reshaped.shape}")
+        print(f"  PASS Median extraction: {median_pred.shape}")
 
 
 def run_dimension_integration_tests():
     """Run all dimension manager integration tests"""
-    print("🚀 Running DimensionManager Integration Test Suite")
+    print("ROCKET Running DimensionManager Integration Test Suite")
     print("=" * 80)
     
     # Unit tests
@@ -481,10 +481,10 @@ def run_dimension_integration_tests():
         test_instance.test_invalid_configurations()
         test_instance.test_dimension_manager_repr()
         
-        print("\n✅ Unit Tests: ALL PASSED")
+        print("\nPASS Unit Tests: ALL PASSED")
         
     except Exception as e:
-        print(f"\n❌ Unit Tests Failed: {e}")
+        print(f"\nFAIL Unit Tests Failed: {e}")
         raise
     
     # Integration tests
@@ -495,13 +495,13 @@ def run_dimension_integration_tests():
         integration_instance.test_mock_model_integration()
         integration_instance.test_quantile_output_reshaping()
         
-        print("\n✅ Integration Tests: ALL PASSED")
+        print("\nPASS Integration Tests: ALL PASSED")
         
     except Exception as e:
-        print(f"\n❌ Integration Tests Failed: {e}")
+        print(f"\nFAIL Integration Tests Failed: {e}")
         raise
     
-    print("\n🎉 🎉 🎉 ALL DIMENSION MANAGER TESTS PASSED! 🎉 🎉 🎉")
+    print("\nPARTY PARTY PARTY ALL DIMENSION MANAGER TESTS PASSED! PARTY PARTY PARTY")
     print("=" * 80)
 
 

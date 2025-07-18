@@ -81,16 +81,16 @@ def debug_output_dimensions():
             
         # Check if the issue is in the final slicing
         if output.shape[1] != configs.pred_len:
-            print(f"\n❌ Length mismatch: got {output.shape[1]}, expected {configs.pred_len}")
+            print(f"\nFAIL Length mismatch: got {output.shape[1]}, expected {configs.pred_len}")
             print("This suggests an issue in:")
             print("  1. Fusion target_length parameter")
             print("  2. Final slicing logic") 
             print("  3. Multi-resolution length handling")
         else:
-            print(f"\n✅ Output length correct!")
+            print(f"\nPASS Output length correct!")
             
     except Exception as e:
-        print(f"\n❌ Error during forward pass: {e}")
+        print(f"\nFAIL Error during forward pass: {e}")
         import traceback
         traceback.print_exc()
 

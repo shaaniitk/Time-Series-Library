@@ -23,7 +23,7 @@ from utils.modular_components.example_components import register_example_compone
 
 def generate_test_data(seq_len=96, pred_len=24, num_features=1, batch_size=2):
     """Generate synthetic time series data for testing"""
-    print("📊 Generating synthetic test data...")
+    print("CHART Generating synthetic test data...")
     
     # Generate realistic time series with trends and seasonality
     t = np.linspace(0, 4*np.pi, seq_len + pred_len)
@@ -65,7 +65,7 @@ def generate_test_data(seq_len=96, pred_len=24, num_features=1, batch_size=2):
         'true_future': torch.FloatTensor(data[:, seq_len:, :])
     }
     
-    print(f"   ✅ Generated data shapes:")
+    print(f"   PASS Generated data shapes:")
     print(f"      x_enc: {test_data['x_enc'].shape}")
     print(f"      x_dec: {test_data['x_dec'].shape}")
     print(f"      true_future: {test_data['true_future'].shape}")
@@ -125,48 +125,48 @@ def create_chronosx_config():
 
 def test_chronosx_integration():
     """Test ChronosX integration with ModularAutoformer"""
-    print("🚀 Testing ChronosX Integration with ModularAutoformer")
+    print("ROCKET Testing ChronosX Integration with ModularAutoformer")
     print("=" * 60)
     
     try:
         # Initialize global registry and register components
-        print("🔧 Initializing component registry...")
+        print("TOOL Initializing component registry...")
         registry = create_global_registry()
         register_example_components(registry)
-        print("   ✅ Components registered successfully")
+        print("   PASS Components registered successfully")
         
         # Generate test data
         test_data = generate_test_data()
         
         # Create ChronosX configuration
-        print("\n⚙️ Creating ChronosX configuration...")
+        print("\n Creating ChronosX configuration...")
         config = create_chronosx_config()
-        print(f"   ✅ Configuration created:")
+        print(f"   PASS Configuration created:")
         print(f"      Backbone: {config.backbone_type}")
         print(f"      Model size: {config.backbone_params['model_size']}")
         print(f"      Uncertainty: {config.backbone_params['use_uncertainty']}")
         
         # Create model with ChronosX backbone
-        print("\n🔮 Creating ModularAutoformer with ChronosX backbone...")
+        print("\nCRYSTAL Creating ModularAutoformer with ChronosX backbone...")
         start_time = time.time()
         model = ModularAutoformer(config)
         model.eval()
         init_time = time.time() - start_time
         
-        print(f"   ✅ Model created in {init_time:.3f}s")
+        print(f"   PASS Model created in {init_time:.3f}s")
         
         # Get model information
         component_info = model.get_component_info()
         backbone_info = model.get_backbone_info()
         
-        print(f"   📋 Model Information:")
+        print(f"   CLIPBOARD Model Information:")
         print(f"      Architecture: {component_info['architecture']}")
         print(f"      Backbone type: {backbone_info['backbone_type']}")
         print(f"      Backbone class: {backbone_info['backbone_class']}")
         print(f"      Supports uncertainty: {backbone_info['supports_uncertainty']}")
         
         # Test forward pass
-        print("\n⚡ Testing forward pass...")
+        print("\nLIGHTNING Testing forward pass...")
         with torch.no_grad():
             start_time = time.time()
             output = model(
@@ -177,37 +177,37 @@ def test_chronosx_integration():
             )
             inference_time = time.time() - start_time
         
-        print(f"   ✅ Forward pass successful!")
+        print(f"   PASS Forward pass successful!")
         print(f"      Output shape: {output.shape}")
         print(f"      Expected shape: {test_data['true_future'].shape}")
         print(f"      Inference time: {inference_time:.3f}s")
         print(f"      Output range: [{output.min().item():.3f}, {output.max().item():.3f}]")
         
         # Test uncertainty quantification
-        print("\n🎯 Testing uncertainty quantification...")
+        print("\nTARGET Testing uncertainty quantification...")
         uncertainty_results = model.get_uncertainty_results()
         if uncertainty_results:
-            print(f"   ✅ Uncertainty results available:")
+            print(f"   PASS Uncertainty results available:")
             print(f"      Prediction shape: {uncertainty_results['prediction'].shape}")
             if 'std' in uncertainty_results:
                 std_values = uncertainty_results['std']
                 print(f"      Std shape: {std_values.shape}")
-                print(f"      Avg uncertainty: ±{std_values.mean().item():.6f}")
-                print(f"      Uncertainty range: [±{std_values.min().item():.6f}, ±{std_values.max().item():.6f}]")
+                print(f"      Avg uncertainty: {std_values.mean().item():.6f}")
+                print(f"      Uncertainty range: [{std_values.min().item():.6f}, {std_values.max().item():.6f}]")
             
             if 'quantiles' in uncertainty_results:
                 quantiles = uncertainty_results['quantiles']
                 print(f"      Quantiles available: {list(quantiles.keys())}")
         else:
-            print(f"   ⚠️ No uncertainty results available")
+            print(f"   WARN No uncertainty results available")
         
         # Calculate performance metrics
-        print("\n📊 Performance Evaluation...")
+        print("\nCHART Performance Evaluation...")
         if output.shape == test_data['true_future'].shape:
             mse = torch.nn.functional.mse_loss(output, test_data['true_future'])
             mae = torch.nn.functional.l1_loss(output, test_data['true_future'])
             
-            print(f"   📈 Forecasting Metrics:")
+            print(f"   GRAPH Forecasting Metrics:")
             print(f"      MSE: {mse.item():.6f}")
             print(f"      MAE: {mae.item():.6f}")
             print(f"      RMSE: {torch.sqrt(mse).item():.6f}")
@@ -218,11 +218,11 @@ def test_chronosx_integration():
             print(f"      Relative MAE: {relative_mae:.3f} (lower is better)")
             
         else:
-            print(f"   ⚠️ Shape mismatch - cannot calculate metrics")
+            print(f"   WARN Shape mismatch - cannot calculate metrics")
             print(f"      Output: {output.shape}, Expected: {test_data['true_future'].shape}")
         
         # Test different model configurations
-        print("\n🔄 Testing different ChronosX configurations...")
+        print("\nREFRESH Testing different ChronosX configurations...")
         
         configs_to_test = [
             ('chronos_x_tiny', 'Tiny model variant'),
@@ -249,45 +249,45 @@ def test_chronosx_integration():
                         test_data['x_mark_dec']
                     )
                 
-                print(f"      ✅ {description} working")
+                print(f"      PASS {description} working")
                 print(f"         Output shape: {variant_output.shape}")
                 
                 # Check for uncertainty
                 variant_uncertainty = variant_model.get_uncertainty_results()
                 if variant_uncertainty and 'std' in variant_uncertainty:
                     avg_uncertainty = variant_uncertainty['std'].mean().item()
-                    print(f"         🎯 Avg uncertainty: ±{avg_uncertainty:.6f}")
+                    print(f"         TARGET Avg uncertainty: {avg_uncertainty:.6f}")
                 
             except Exception as e:
-                print(f"      ❌ {description} failed: {str(e)}")
+                print(f"      FAIL {description} failed: {str(e)}")
         
-        print(f"\n🎉 ChronosX Integration Test SUCCESSFUL!")
+        print(f"\nPARTY ChronosX Integration Test SUCCESSFUL!")
         print("=" * 60)
-        print("✅ Key Achievements:")
-        print("   🔮 ChronosX backbone successfully integrated")
-        print("   ⚡ Fast inference without training")
-        print("   🎯 Uncertainty quantification working")
-        print("   📊 Multiple model variants functional")
-        print("   🔧 Modular architecture flexible and extensible")
+        print("PASS Key Achievements:")
+        print("   CRYSTAL ChronosX backbone successfully integrated")
+        print("   LIGHTNING Fast inference without training")
+        print("   TARGET Uncertainty quantification working")
+        print("   CHART Multiple model variants functional")
+        print("   TOOL Modular architecture flexible and extensible")
         
         return True
         
     except Exception as e:
-        print(f"\n❌ ChronosX Integration Test FAILED!")
+        print(f"\nFAIL ChronosX Integration Test FAILED!")
         print(f"Error: {str(e)}")
         print(f"Traceback: {traceback.format_exc()}")
         return False
 
 
 if __name__ == "__main__":
-    print("🔬 Starting ChronosX Integration Test for ModularAutoformer...\n")
+    print("MICROSCOPE Starting ChronosX Integration Test for ModularAutoformer...\n")
     
     success = test_chronosx_integration()
     
     if success:
-        print(f"\n🚀 SUCCESS! Your ChronosX + ModularAutoformer integration is working perfectly!")
-        print(f"💡 You can now use ChronosX backbones for zero-shot forecasting with uncertainty.")
+        print(f"\nROCKET SUCCESS! Your ChronosX + ModularAutoformer integration is working perfectly!")
+        print(f"IDEA You can now use ChronosX backbones for zero-shot forecasting with uncertainty.")
     else:
-        print(f"\n🔧 Integration test failed. Check the error details above.")
+        print(f"\nTOOL Integration test failed. Check the error details above.")
     
     sys.exit(0 if success else 1)

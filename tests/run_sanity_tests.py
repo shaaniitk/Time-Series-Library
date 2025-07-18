@@ -128,10 +128,10 @@ def run_model_sanity_test(model_type, config_file, expected_behaviors):
         test_results = parse_training_output(stdout, stderr, model_type, expected_behaviors)
         
         if result.returncode == 0:
-            logger.info(f"✅ {model_type} training completed successfully")
+            logger.info(f"PASS {model_type} training completed successfully")
             test_results['status'] = 'PASSED'
         else:
-            logger.error(f"❌ {model_type} training failed with exit code {result.returncode}")
+            logger.error(f"FAIL {model_type} training failed with exit code {result.returncode}")
             logger.error(f"STDERR: {stderr[-500:]}")
             test_results['status'] = 'FAILED'
             test_results['error'] = stderr[-500:]
@@ -139,10 +139,10 @@ def run_model_sanity_test(model_type, config_file, expected_behaviors):
         return test_results
         
     except subprocess.TimeoutExpired:
-        logger.error(f"⏰ {model_type} test timed out")
+        logger.error(f" {model_type} test timed out")
         return {'status': 'TIMEOUT', 'error': 'Test timed out after 5 minutes'}
     except Exception as e:
-        logger.error(f"💥 {model_type} test error: {e}")
+        logger.error(f" {model_type} test error: {e}")
         return {'status': 'ERROR', 'error': str(e)}
 
 def parse_training_output(stdout, stderr, model_type, expected_behaviors):
@@ -223,26 +223,26 @@ def parse_training_output(stdout, stderr, model_type, expected_behaviors):
         
         # Check if loss is decreasing (basic sanity)
         if last_loss < first_loss:
-            results['validation_errors'].append("✅ Loss is decreasing")
+            results['validation_errors'].append("PASS Loss is decreasing")
         else:
-            results['validation_errors'].append("❌ Loss is not decreasing")
+            results['validation_errors'].append("FAIL Loss is not decreasing")
         
         # Check loss magnitude
         if last_loss < 10.0:  # Reasonable final loss
-            results['validation_errors'].append("✅ Final loss is reasonable")
+            results['validation_errors'].append("PASS Final loss is reasonable")
         else:
-            results['validation_errors'].append("❌ Final loss is too high")
+            results['validation_errors'].append("FAIL Final loss is too high")
     
     # Model-specific validations
     if model_type == 'bayesian':
         if 'kl_loss' in results['special_features']:
             kl_loss = results['special_features']['kl_loss']
             if 0 < kl_loss < 1.0:  # KL loss should be small but positive
-                results['validation_errors'].append("✅ KL loss is in expected range")
+                results['validation_errors'].append("PASS KL loss is in expected range")
             else:
-                results['validation_errors'].append(f"❌ KL loss {kl_loss} is outside expected range")
+                results['validation_errors'].append(f"FAIL KL loss {kl_loss} is outside expected range")
         else:
-            results['validation_errors'].append("❌ No KL loss found in Bayesian model")
+            results['validation_errors'].append("FAIL No KL loss found in Bayesian model")
     
     return results
 
@@ -254,14 +254,14 @@ def compare_models(all_results):
     logger.info(f"{'='*60}")
     
     # Status summary
-    logger.info("\n📊 Status Summary:")
+    logger.info("\nCHART Status Summary:")
     for model, results in all_results.items():
         status = results.get('status', 'UNKNOWN')
-        status_emoji = {'PASSED': '✅', 'FAILED': '❌', 'TIMEOUT': '⏰', 'ERROR': '💥'}
-        logger.info(f"  {status_emoji.get(status, '❓')} {model}: {status}")
+        status_emoji = {'PASSED': 'PASS', 'FAILED': 'FAIL', 'TIMEOUT': '', 'ERROR': ''}
+        logger.info(f"  {status_emoji.get(status, '')} {model}: {status}")
     
     # Loss comparison
-    logger.info("\n📈 Loss Progression:")
+    logger.info("\nGRAPH Loss Progression:")
     for model, results in all_results.items():
         if results.get('status') == 'PASSED' and results.get('loss_progression'):
             losses = results['loss_progression']
@@ -272,18 +272,18 @@ def compare_models(all_results):
                 last_vali = losses[-1]['vali']
                 
                 logger.info(f"  {model}:")
-                logger.info(f"    Train: {first_train:.6f} → {last_train:.6f} (Δ: {last_train-first_train:.6f})")
-                logger.info(f"    Valid: {first_vali:.6f} → {last_vali:.6f} (Δ: {last_vali-first_vali:.6f})")
+                logger.info(f"    Train: {first_train:.6f}  {last_train:.6f} (: {last_train-first_train:.6f})")
+                logger.info(f"    Valid: {first_vali:.6f}  {last_vali:.6f} (: {last_vali-first_vali:.6f})")
     
     # Special features
-    logger.info("\n🔬 Special Features:")
+    logger.info("\nMICROSCOPE Special Features:")
     for model, results in all_results.items():
         special = results.get('special_features', {})
         if special:
             logger.info(f"  {model}: {special}")
     
     # Validation summary
-    logger.info("\n✅ Validation Results:")
+    logger.info("\nPASS Validation Results:")
     for model, results in all_results.items():
         validations = results.get('validation_errors', [])
         if validations:
@@ -294,13 +294,13 @@ def compare_models(all_results):
 def main():
     """Run comprehensive sanity tests."""
     
-    logger.info("🧪 Enhanced Autoformer Models - Comprehensive Sanity Test")
+    logger.info("TEST Enhanced Autoformer Models - Comprehensive Sanity Test")
     logger.info("=" * 70)
     
     # Check if ETT data exists
     ett_path = os.path.join('data', 'ETTh1.csv')
     if not os.path.exists(ett_path):
-        logger.error(f"❌ ETT dataset not found: {ett_path}")
+        logger.error(f"FAIL ETT dataset not found: {ett_path}")
         logger.info("Please ensure ETTh1.csv is in the data/ directory")
         return
     
@@ -344,17 +344,17 @@ def main():
     passed_count = sum(1 for r in all_results.values() if r.get('status') == 'PASSED')
     total_count = len(all_results)
     
-    logger.info(f"\n🎯 FINAL ASSESSMENT")
+    logger.info(f"\nTARGET FINAL ASSESSMENT")
     logger.info(f"={'='*40}")
     logger.info(f"Tests passed: {passed_count}/{total_count}")
     
     if passed_count == total_count:
-        logger.info("🎉 All models passed sanity tests!")
-        logger.info("✅ Loss computation is working correctly")
-        logger.info("✅ Bayesian regularization is properly implemented")
-        logger.info("✅ All models are converging as expected")
+        logger.info("PARTY All models passed sanity tests!")
+        logger.info("PASS Loss computation is working correctly")
+        logger.info("PASS Bayesian regularization is properly implemented")
+        logger.info("PASS All models are converging as expected")
     else:
-        logger.warning(f"⚠️  {total_count - passed_count} model(s) failed sanity tests")
+        logger.warning(f"WARN  {total_count - passed_count} model(s) failed sanity tests")
         logger.info("Please check the detailed logs above for issues")
     
     # Cleanup

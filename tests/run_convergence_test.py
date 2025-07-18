@@ -19,7 +19,7 @@ class ConvergenceTest(SanityTestMixin):
     def test_bayesian_convergence(self):
         """Test convergence of BayesianEnhancedAutoformer on synthetic function"""
         
-        print("🧪 Testing BayesianEnhancedAutoformer Convergence")
+        print("TEST Testing BayesianEnhancedAutoformer Convergence")
         print("=" * 60)
         print("Function: Synthetic sinusoidal patterns")
         print("Target: t1 = sin(X - X1), t2 = sin(X1 - X2), t3 = sin(X2 - X)")
@@ -48,21 +48,21 @@ class ConvergenceTest(SanityTestMixin):
                 model_config=model_config
             )
             
-            print("\n🎯 Convergence Test Results:")
+            print("\nTARGET Convergence Test Results:")
             print(f"Final MSE: {mse_result:.6f}")
             
             # Evaluate convergence quality
             if mse_result < 0.01:
-                print("✅ EXCELLENT: Model converged very well (MSE < 0.01)")
+                print("PASS EXCELLENT: Model converged very well (MSE < 0.01)")
                 convergence_status = "EXCELLENT"
             elif mse_result < 0.1:
-                print("✅ GOOD: Model converged reasonably (MSE < 0.1)")
+                print("PASS GOOD: Model converged reasonably (MSE < 0.1)")
                 convergence_status = "GOOD"
             elif mse_result < 1.0:
-                print("⚠️  MODERATE: Model shows some learning (MSE < 1.0)")
+                print("WARN  MODERATE: Model shows some learning (MSE < 1.0)")
                 convergence_status = "MODERATE"
             else:
-                print("❌ POOR: Model did not converge well (MSE >= 1.0)")
+                print("FAIL POOR: Model did not converge well (MSE >= 1.0)")
                 convergence_status = "POOR"
             
             print(f"\nConvergence Status: {convergence_status}")
@@ -70,25 +70,25 @@ class ConvergenceTest(SanityTestMixin):
             print(f"Actual shape: {actual.shape}")
             
             # Additional analysis
-            print("\n📊 Detailed Analysis:")
+            print("\nCHART Detailed Analysis:")
             for i in range(min(3, forecast.shape[-1])):
                 target_mse = ((forecast[:, i] - actual[:, i]) ** 2).mean()
                 print(f"Target {i+1} MSE: {target_mse:.6f}")
                 
                 # Check if this target converged
                 if target_mse < 0.01:
-                    print(f"  ✅ Target {i+1}: Excellent convergence")
+                    print(f"  PASS Target {i+1}: Excellent convergence")
                 elif target_mse < 0.1:
-                    print(f"  ✅ Target {i+1}: Good convergence")
+                    print(f"  PASS Target {i+1}: Good convergence")
                 else:
-                    print(f"  ⚠️  Target {i+1}: Poor convergence")
+                    print(f"  WARN  Target {i+1}: Poor convergence")
             
-            print(f"\n📈 Plot saved to: pic/true_forecasting_evaluation.png")
+            print(f"\nGRAPH Plot saved to: pic/true_forecasting_evaluation.png")
             
             return mse_result, convergence_status
             
         except Exception as e:
-            print(f"\n💥 Convergence test failed: {e}")
+            print(f"\n Convergence test failed: {e}")
             import traceback
             traceback.print_exc()
             return None, "FAILED"
@@ -100,18 +100,18 @@ def main():
     
     print("\n" + "="*60)
     if status == "FAILED":
-        print("❌ CONVERGENCE TEST FAILED")
+        print("FAIL CONVERGENCE TEST FAILED")
         return False
     else:
-        print(f"✅ CONVERGENCE TEST COMPLETED")
+        print(f"PASS CONVERGENCE TEST COMPLETED")
         print(f"Final Result: {status} (MSE: {mse:.6f})")
         
         # Overall assessment
         if status in ["EXCELLENT", "GOOD"]:
-            print("🎉 Model demonstrates good learning capability!")
+            print("PARTY Model demonstrates good learning capability!")
             return True
         else:
-            print("⚠️  Model may need hyperparameter tuning or more epochs")
+            print("WARN  Model may need hyperparameter tuning or more epochs")
             return False
 
 if __name__ == "__main__":

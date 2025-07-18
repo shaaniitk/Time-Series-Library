@@ -66,7 +66,7 @@ def create_test_config():
 
 def test_enhanced_model():
     """Test the enhanced model capabilities"""
-    logger.info("🧪 TESTING ENHANCED HFBayesianAutoformerProduction")
+    logger.info("TEST TESTING ENHANCED HFBayesianAutoformerProduction")
     
     try:
         # Import the enhanced model
@@ -74,15 +74,15 @@ def test_enhanced_model():
         
         # Create test configuration
         config = create_test_config()
-        logger.info("✅ Test configuration created")
+        logger.info("PASS Test configuration created")
         
         # Initialize enhanced model
-        logger.info("🚀 Initializing Enhanced Model...")
+        logger.info("ROCKET Initializing Enhanced Model...")
         model = HFBayesianAutoformerProduction(config)
-        logger.info("✅ Enhanced model initialized successfully")
+        logger.info("PASS Enhanced model initialized successfully")
         
         # Test 1: Model Information
-        logger.info("\n📊 TEST 1: Model Information")
+        logger.info("\nCHART TEST 1: Model Information")
         model_info = model.get_model_info()
         logger.info(f"   Model: {model_info['name']} v{model_info.get('version', 'N/A')}")
         logger.info(f"   True Bayesian: {model_info.get('true_bayesian_layers', False)}")
@@ -90,7 +90,7 @@ def test_enhanced_model():
         logger.info(f"   Bayesian Parameters: {model_info.get('bayesian_params', 0):,}")
         
         # Test 2: Enhanced Capabilities Summary
-        logger.info("\n🎯 TEST 2: Enhanced Capabilities")
+        logger.info("\nTARGET TEST 2: Enhanced Capabilities")
         capabilities = model.get_enhanced_capabilities_summary()
         improvements = capabilities["enhancement_summary"]["critical_improvements_implemented"]
         logger.info("   Implemented Enhancements:")
@@ -98,23 +98,23 @@ def test_enhanced_model():
             logger.info(f"     {imp}")
         
         # Test 3: KL Divergence Collection
-        logger.info("\n🧠 TEST 3: KL Divergence Collection")
+        logger.info("\nBRAIN TEST 3: KL Divergence Collection")
         if model.use_bayesian_layers:
             kl_div = model.collect_kl_divergence()
             logger.info(f"   KL Divergence: {kl_div.item():.6f}")
-            logger.info("   ✅ KL divergence collection working")
+            logger.info("   PASS KL divergence collection working")
         else:
-            logger.info("   ⚠️ Bayesian layers disabled")
+            logger.info("   WARN Bayesian layers disabled")
         
         # Test 4: Loss Ecosystem
-        logger.info("\n📊 TEST 4: Loss Ecosystem")
+        logger.info("\nCHART TEST 4: Loss Ecosystem")
         logger.info(f"   Primary Loss: {type(model.primary_loss_fn).__name__}")
         logger.info(f"   Loss Type: {model.loss_type}")
         logger.info(f"   Covariate Mode: {model.covariate_loss_mode}")
         logger.info(f"   Multi-component: {model.multi_component_loss}")
         
         # Test 5: Sample Forward Pass (Mock Data)
-        logger.info("\n🔄 TEST 5: Sample Forward Pass")
+        logger.info("\nREFRESH TEST 5: Sample Forward Pass")
         
         # Create mock input data
         batch_size = 2
@@ -141,14 +141,14 @@ def test_enhanced_model():
             
             # Check enhanced fields
             if uncertainty_result.epistemic_uncertainty is not None:
-                logger.info(f"   ✅ Epistemic uncertainty: {uncertainty_result.epistemic_uncertainty.shape}")
+                logger.info(f"   PASS Epistemic uncertainty: {uncertainty_result.epistemic_uncertainty.shape}")
             if uncertainty_result.aleatoric_uncertainty is not None:
-                logger.info(f"   ✅ Aleatoric uncertainty: {uncertainty_result.aleatoric_uncertainty.shape}")
+                logger.info(f"   PASS Aleatoric uncertainty: {uncertainty_result.aleatoric_uncertainty.shape}")
             if uncertainty_result.kl_divergence is not None:
-                logger.info(f"   ✅ KL divergence: {uncertainty_result.kl_divergence.item():.6f}")
+                logger.info(f"   PASS KL divergence: {uncertainty_result.kl_divergence.item():.6f}")
                 
         # Test 6: Loss Computation (Mock)
-        logger.info("\n💰 TEST 6: Loss Computation")
+        logger.info("\n TEST 6: Loss Computation")
         try:
             # Create mock prediction result
             pred_result = {
@@ -170,36 +170,36 @@ def test_enhanced_model():
             logger.info(f"   Base loss: {loss_result.get('base_loss', 'N/A')}")
             logger.info(f"   KL loss: {loss_result.get('kl_loss', 'N/A')}")
             logger.info(f"   Uncertainty loss: {loss_result.get('uncertainty_loss', 'N/A')}")
-            logger.info("   ✅ Comprehensive loss computation working")
+            logger.info("   PASS Comprehensive loss computation working")
             
         except Exception as e:
-            logger.warning(f"   ⚠️ Loss computation test failed: {e}")
+            logger.warning(f"   WARN Loss computation test failed: {e}")
         
         # Test 7: Demonstration
-        logger.info("\n🎬 TEST 7: Capability Demonstration")
+        logger.info("\n TEST 7: Capability Demonstration")
         model.demonstrate_enhanced_capabilities()
         
-        logger.info("\n🎉 ALL TESTS COMPLETED SUCCESSFULLY!")
-        logger.info("✅ Enhanced HFBayesianAutoformerProduction is ready for production use")
+        logger.info("\nPARTY ALL TESTS COMPLETED SUCCESSFULLY!")
+        logger.info("PASS Enhanced HFBayesianAutoformerProduction is ready for production use")
         
         return True
         
     except ImportError as e:
-        logger.error(f"❌ Import failed: {e}")
+        logger.error(f"FAIL Import failed: {e}")
         logger.error("   Make sure all dependencies are available")
         return False
         
     except Exception as e:
-        logger.error(f"❌ Test failed: {e}")
+        logger.error(f"FAIL Test failed: {e}")
         logger.error(f"   Error type: {type(e).__name__}")
         return False
 
 if __name__ == "__main__":
-    logger.info("🚀 Starting Enhanced HFBayesianAutoformerProduction Test Suite")
+    logger.info("ROCKET Starting Enhanced HFBayesianAutoformerProduction Test Suite")
     success = test_enhanced_model()
     
     if success:
-        logger.info("🎉 TEST SUITE PASSED - Model is ready for production!")
+        logger.info("PARTY TEST SUITE PASSED - Model is ready for production!")
     else:
-        logger.error("❌ TEST SUITE FAILED - Check dependencies and implementation")
+        logger.error("FAIL TEST SUITE FAILED - Check dependencies and implementation")
         exit(1)

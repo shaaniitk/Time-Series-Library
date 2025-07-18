@@ -21,7 +21,7 @@ from utils.enhanced_losses import (
 def test_mode_aware_losses():
     """Test all mode-aware loss functions"""
     
-    print("🔍 Testing Mode-Aware Loss Functions")
+    print("SEARCH Testing Mode-Aware Loss Functions")
     print("=" * 50)
     
     # Test data shapes
@@ -37,7 +37,7 @@ def test_mode_aware_losses():
     modes = ['M', 'MS', 'S']
     
     for mode in modes:
-        print(f"\n🎯 Testing {mode} Mode")
+        print(f"\nTARGET Testing {mode} Mode")
         print("-" * 30)
         
         if mode == 'M':
@@ -65,10 +65,10 @@ def test_mode_aware_losses():
         try:
             loss_fn = ModeAwareLoss(mode=mode, target_features=target_features)
             loss, components = loss_fn(predictions, targets, return_components=True)
-            print(f"   ✅ ModeAwareLoss: {loss.item():.6f}")
+            print(f"   PASS ModeAwareLoss: {loss.item():.6f}")
             print(f"      Components: {components}")
         except Exception as e:
-            print(f"   ❌ ModeAwareLoss failed: {e}")
+            print(f"   FAIL ModeAwareLoss failed: {e}")
         
         # Test HierarchicalModeAwareLoss
         print(f"   Testing HierarchicalModeAwareLoss...")
@@ -86,10 +86,10 @@ def test_mode_aware_losses():
                 resolution_outputs=resolution_outputs, 
                 return_components=True
             )
-            print(f"   ✅ HierarchicalModeAwareLoss: {hier_loss.item():.6f}")
+            print(f"   PASS HierarchicalModeAwareLoss: {hier_loss.item():.6f}")
             print(f"      Resolution losses: {hier_components['resolution_losses']}")
         except Exception as e:
-            print(f"   ❌ HierarchicalModeAwareLoss failed: {e}")
+            print(f"   FAIL HierarchicalModeAwareLoss failed: {e}")
         
         # Test BayesianModeAwareLoss
         print(f"   Testing BayesianModeAwareLoss...")
@@ -106,11 +106,11 @@ def test_mode_aware_losses():
                 kl_divergence=kl_divergence,
                 return_components=True
             )
-            print(f"   ✅ BayesianModeAwareLoss: {bayes_loss.item():.6f}")
+            print(f"   PASS BayesianModeAwareLoss: {bayes_loss.item():.6f}")
             print(f"      Uncertainty loss: {bayes_components['uncertainty_loss']:.6f}")
             print(f"      KL loss: {bayes_components['kl_loss']:.6f}")
         except Exception as e:
-            print(f"   ❌ BayesianModeAwareLoss failed: {e}")
+            print(f"   FAIL BayesianModeAwareLoss failed: {e}")
         
         # Test create_enhanced_loss convenience function
         print(f"   Testing create_enhanced_loss convenience function...")
@@ -122,15 +122,15 @@ def test_mode_aware_losses():
                     target_features=target_features
                 )
                 conv_loss = conv_loss_fn(predictions, targets)
-                print(f"   ✅ {model_type}: {conv_loss.item():.6f}")
+                print(f"   PASS {model_type}: {conv_loss.item():.6f}")
         except Exception as e:
-            print(f"   ❌ create_enhanced_loss failed: {e}")
+            print(f"   FAIL create_enhanced_loss failed: {e}")
 
 
 def test_loss_backward():
     """Test that losses work with backpropagation"""
     
-    print(f"\n🔧 Testing Backpropagation")
+    print(f"\nTOOL Testing Backpropagation")
     print("=" * 30)
     
     # Simple test case
@@ -150,18 +150,18 @@ def test_loss_backward():
             
             # Check gradients
             if predictions.grad is not None:
-                print(f"   ✅ {mode} mode: Loss {loss.item():.6f}, Grad norm: {predictions.grad.norm().item():.6f}")
+                print(f"   PASS {mode} mode: Loss {loss.item():.6f}, Grad norm: {predictions.grad.norm().item():.6f}")
             else:
-                print(f"   ⚠️ {mode} mode: No gradients computed")
+                print(f"   WARN {mode} mode: No gradients computed")
                 
         except Exception as e:
-            print(f"   ❌ {mode} mode backprop failed: {e}")
+            print(f"   FAIL {mode} mode backprop failed: {e}")
 
 
 def test_feature_slicing():
     """Test that feature slicing works correctly for different modes"""
     
-    print(f"\n✂️ Testing Feature Slicing")
+    print(f"\n Testing Feature Slicing")
     print("=" * 30)
     
     batch_size, seq_len = 2, 3
@@ -194,14 +194,14 @@ def test_feature_slicing():
     targets_targets = targets_full[:, :, :target_features]
     loss_fn_S = ModeAwareLoss(mode='S', target_features=target_features, total_features=all_features)
     loss_S = loss_fn_S(predictions_targets, targets_targets)
-    print(f"   S mode loss (targets→targets): {loss_S.item():.2f}")
+    print(f"   S mode loss (targetstargets): {loss_S.item():.2f}")
     
     # Verify that MS and S handle slicing correctly
-    print(f"   ✅ Feature slicing test completed")
+    print(f"   PASS Feature slicing test completed")
 
 
 if __name__ == '__main__':
-    print("🚀 Mode-Aware Loss Function Test Suite")
+    print("ROCKET Mode-Aware Loss Function Test Suite")
     print("=" * 60)
     
     try:
@@ -209,12 +209,12 @@ if __name__ == '__main__':
         test_loss_backward()
         test_feature_slicing()
         
-        print(f"\n🎉 All tests completed successfully!")
+        print(f"\nPARTY All tests completed successfully!")
         print("=" * 60)
-        print("✅ Mode-aware loss functions are working correctly")
-        print("✅ Ready for training with M, MS, and S modes")
+        print("PASS Mode-aware loss functions are working correctly")
+        print("PASS Ready for training with M, MS, and S modes")
         
     except Exception as e:
-        print(f"\n❌ Test suite failed with error: {e}")
+        print(f"\nFAIL Test suite failed with error: {e}")
         import traceback
         traceback.print_exc()

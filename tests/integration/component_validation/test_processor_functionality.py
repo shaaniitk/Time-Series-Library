@@ -23,7 +23,7 @@ try:
     from utils.modular_components.implementations import get_integration_status
     COMPONENTS_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️ Could not import modular components: {e}")
+    print(f"WARN Could not import modular components: {e}")
     COMPONENTS_AVAILABLE = False
 
 class MockConfig:
@@ -87,14 +87,14 @@ def create_sample_time_series(batch_size=2, seq_len=96, features=7, signal_type=
 
 def test_frequency_domain_processor():
     """Test frequency domain processor functionality"""
-    print("🧪 Testing Frequency Domain Processor Functionality...")
+    print("TEST Testing Frequency Domain Processor Functionality...")
     
     try:
         config = MockConfig(freq_threshold=0.1)
         processor = create_component('processor', 'frequency_domain', config)
         
         if processor is None:
-            print("    ⚠️ Frequency domain processor not available, skipping...")
+            print("    WARN Frequency domain processor not available, skipping...")
             return True
         
         # Test with different signal types
@@ -112,7 +112,7 @@ def test_frequency_domain_processor():
             assert not torch.isnan(processed).any(), f"Output contains NaN for {signal_type}"
             assert not torch.isinf(processed).any(), f"Output contains Inf for {signal_type}"
             
-            print(f"    📊 {signal_type}: input shape {data.shape} → output shape {processed.shape}")
+            print(f"    CHART {signal_type}: input shape {data.shape}  output shape {processed.shape}")
         
         # Test frequency domain properties
         # Create a known frequency signal
@@ -129,32 +129,32 @@ def test_frequency_domain_processor():
         # Test feature extraction capabilities
         if hasattr(processor, 'extract_features'):
             features = processor.extract_features(pure_sine)
-            print(f"    📊 Extracted {features.shape[-1] if hasattr(features, 'shape') else 'N/A'} frequency features")
+            print(f"    CHART Extracted {features.shape[-1] if hasattr(features, 'shape') else 'N/A'} frequency features")
         
         # Test different sequence lengths
         for seq_len in [48, 96, 192]:
             test_data = create_sample_time_series(seq_len=seq_len)
             with torch.no_grad():
                 test_output = processor(test_data)
-            print(f"    ✅ Seq len {seq_len}: processed successfully")
+            print(f"    PASS Seq len {seq_len}: processed successfully")
         
-        print("    ✅ Frequency domain processor functionality validated")
+        print("    PASS Frequency domain processor functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Frequency domain processor test failed: {e}")
+        print(f"    FAIL Frequency domain processor test failed: {e}")
         return False
 
 def test_dtw_alignment_processor():
     """Test DTW alignment processor functionality"""
-    print("🧪 Testing DTW Alignment Processor Functionality...")
+    print("TEST Testing DTW Alignment Processor Functionality...")
     
     try:
         config = MockConfig(window_size=16)
         processor = create_component('processor', 'dtw_alignment', config)
         
         if processor is None:
-            print("    ⚠️ DTW alignment processor not available, skipping...")
+            print("    WARN DTW alignment processor not available, skipping...")
             return True
         
         # Create sequences that need alignment
@@ -189,7 +189,7 @@ def test_dtw_alignment_processor():
             
             # Measure alignment quality (distance to reference)
             alignment_error = torch.mean(torch.abs(aligned - reference))
-            print(f"    📊 {case_name}: alignment error = {alignment_error:.6f}")
+            print(f"    CHART {case_name}: alignment error = {alignment_error:.6f}")
         
         # Test DTW properties
         # DTW should be symmetric for identical sequences
@@ -204,27 +204,27 @@ def test_dtw_alignment_processor():
             short_ref = reference[:, :48, :]
             with torch.no_grad():
                 aligned_diff_len = processor(reference, short_ref)
-            print("    ✅ Different sequence lengths handled")
+            print("    PASS Different sequence lengths handled")
         except Exception as e:
-            print(f"    ⚠️ Different sequence lengths failed: {e}")
+            print(f"    WARN Different sequence lengths failed: {e}")
         
-        print("    ✅ DTW alignment processor functionality validated")
+        print("    PASS DTW alignment processor functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ DTW alignment processor test failed: {e}")
+        print(f"    FAIL DTW alignment processor test failed: {e}")
         return False
 
 def test_trend_processor():
     """Test trend analysis processor functionality"""
-    print("🧪 Testing Trend Analysis Processor Functionality...")
+    print("TEST Testing Trend Analysis Processor Functionality...")
     
     try:
         config = MockConfig(scales=[1, 4, 16])
         processor = create_component('processor', 'trend_analysis', config)
         
         if processor is None:
-            print("    ⚠️ Trend analysis processor not available, skipping...")
+            print("    WARN Trend analysis processor not available, skipping...")
             return True
         
         # Test trend decomposition
@@ -253,13 +253,13 @@ def test_trend_processor():
             with torch.no_grad():
                 trend, seasonal = processor.decompose(signal_data)
             
-            print(f"    📊 Trend shape: {trend.shape}")
-            print(f"    📊 Seasonal shape: {seasonal.shape}")
+            print(f"    CHART Trend shape: {trend.shape}")
+            print(f"    CHART Seasonal shape: {seasonal.shape}")
             
             # Trend should be smoother than original signal
             trend_variance = trend.var().item()
             original_variance = signal_data.var().item()
-            print(f"    📊 Trend variance: {trend_variance:.6f}, Original variance: {original_variance:.6f}")
+            print(f"    CHART Trend variance: {trend_variance:.6f}, Original variance: {original_variance:.6f}")
         
         # Test multi-scale analysis
         for scale in [1, 2, 4, 8]:
@@ -269,9 +269,9 @@ def test_trend_processor():
                 if scale_processor:
                     with torch.no_grad():
                         scale_output = scale_processor(signal_data)
-                    print(f"    ✅ Scale {scale}: processed successfully")
+                    print(f"    PASS Scale {scale}: processed successfully")
             except Exception as e:
-                print(f"    ⚠️ Scale {scale}: {e}")
+                print(f"    WARN Scale {scale}: {e}")
         
         # Test trend extraction with different signal types
         signal_types = ['trend', 'seasonal', 'mixed', 'random']
@@ -284,25 +284,25 @@ def test_trend_processor():
             trend_smoothness = torch.diff(trend_output, dim=1).abs().mean()
             original_smoothness = torch.diff(test_data, dim=1).abs().mean()
             
-            print(f"    📊 {signal_type}: trend smoothness ratio = {(trend_smoothness/original_smoothness):.3f}")
+            print(f"    CHART {signal_type}: trend smoothness ratio = {(trend_smoothness/original_smoothness):.3f}")
         
-        print("    ✅ Trend analysis processor functionality validated")
+        print("    PASS Trend analysis processor functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Trend analysis processor test failed: {e}")
+        print(f"    FAIL Trend analysis processor test failed: {e}")
         return False
 
 def test_integrated_signal_processor():
     """Test integrated signal processor functionality"""
-    print("🧪 Testing Integrated Signal Processor Functionality...")
+    print("TEST Testing Integrated Signal Processor Functionality...")
     
     try:
         config = MockConfig()
         processor = create_component('processor', 'integrated_signal', config)
         
         if processor is None:
-            print("    ⚠️ Integrated signal processor not available, skipping...")
+            print("    WARN Integrated signal processor not available, skipping...")
             return True
         
         # Test comprehensive signal processing
@@ -325,7 +325,7 @@ def test_integrated_signal_processor():
             assert not torch.isnan(processed).any(), f"NaN in {signal_name} processing"
             assert not torch.isinf(processed).any(), f"Inf in {signal_name} processing"
             
-            print(f"    📊 {signal_name}: {signal_data.shape} → {processed.shape}")
+            print(f"    CHART {signal_name}: {signal_data.shape}  {processed.shape}")
         
         # Test preprocessing for HF backbone
         if hasattr(processor, 'preprocess_for_hf_backbone'):
@@ -333,7 +333,7 @@ def test_integrated_signal_processor():
             with torch.no_grad():
                 hf_input = processor.preprocess_for_hf_backbone(test_data)
             
-            print(f"    📊 HF preprocessing: {test_data.shape} → {hf_input.shape}")
+            print(f"    CHART HF preprocessing: {test_data.shape}  {hf_input.shape}")
             assert hf_input.shape[0] == test_data.shape[0], "Batch dimension preserved"
             assert hf_input.shape[1] == test_data.shape[1], "Sequence dimension preserved"
         
@@ -346,7 +346,7 @@ def test_integrated_signal_processor():
             with torch.no_grad():
                 final_output = processor.postprocess_hf_output(backbone_output, original_input)
             
-            print(f"    📊 HF postprocessing: {backbone_output.shape} → {final_output.shape}")
+            print(f"    CHART HF postprocessing: {backbone_output.shape}  {final_output.shape}")
             assert final_output.shape == backbone_output.shape, "Output shape preserved"
         
         # Test integration capabilities
@@ -360,9 +360,9 @@ def test_integrated_signal_processor():
         
         for test_name in comprehensive_tests:
             if hasattr(processor, test_name.replace('_', '')):
-                print(f"    ✅ {test_name} capability available")
+                print(f"    PASS {test_name} capability available")
             else:
-                print(f"    ⚠️ {test_name} capability not found")
+                print(f"    WARN {test_name} capability not found")
         
         # Test robustness with edge cases
         edge_cases = [
@@ -378,28 +378,28 @@ def test_integrated_signal_processor():
                     edge_output = processor(edge_data)
                 
                 is_finite = torch.isfinite(edge_output).all()
-                print(f"    📊 {case_name}: finite output = {is_finite}")
+                print(f"    CHART {case_name}: finite output = {is_finite}")
                 
             except Exception as e:
-                print(f"    ⚠️ {case_name}: {e}")
+                print(f"    WARN {case_name}: {e}")
         
-        print("    ✅ Integrated signal processor functionality validated")
+        print("    PASS Integrated signal processor functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Integrated signal processor test failed: {e}")
+        print(f"    FAIL Integrated signal processor test failed: {e}")
         return False
 
 def test_wavelet_processor():
     """Test wavelet processor functionality"""
-    print("🧪 Testing Wavelet Processor Functionality...")
+    print("TEST Testing Wavelet Processor Functionality...")
     
     try:
         config = MockConfig(wavelet='db4', levels=3)
         processor = create_component('processor', 'wavelet', config)
         
         if processor is None:
-            print("    ⚠️ Wavelet processor not available, skipping...")
+            print("    WARN Wavelet processor not available, skipping...")
             return True
         
         # Test wavelet decomposition and reconstruction
@@ -423,7 +423,7 @@ def test_wavelet_processor():
         assert not torch.isnan(processed).any(), "Wavelet output contains NaN"
         assert not torch.isinf(processed).any(), "Wavelet output contains Inf"
         
-        print(f"    📊 Wavelet processing: {signal_data.shape} → {processed.shape}")
+        print(f"    CHART Wavelet processing: {signal_data.shape}  {processed.shape}")
         
         # Test different wavelet types
         wavelet_types = ['db4', 'db8', 'haar', 'bior2.2']
@@ -436,10 +436,10 @@ def test_wavelet_processor():
                 if wavelet_proc:
                     with torch.no_grad():
                         wavelet_output = wavelet_proc(signal_data)
-                    print(f"    ✅ Wavelet {wavelet_type}: processed successfully")
+                    print(f"    PASS Wavelet {wavelet_type}: processed successfully")
                     
             except Exception as e:
-                print(f"    ⚠️ Wavelet {wavelet_type}: {e}")
+                print(f"    WARN Wavelet {wavelet_type}: {e}")
         
         # Test different decomposition levels
         for levels in [2, 3, 4, 5]:
@@ -450,10 +450,10 @@ def test_wavelet_processor():
                 if level_proc:
                     with torch.no_grad():
                         level_output = level_proc(signal_data)
-                    print(f"    ✅ Levels {levels}: processed successfully")
+                    print(f"    PASS Levels {levels}: processed successfully")
                     
             except Exception as e:
-                print(f"    ⚠️ Levels {levels}: {e}")
+                print(f"    WARN Levels {levels}: {e}")
         
         # Test reconstruction quality
         if hasattr(processor, 'decompose') and hasattr(processor, 'reconstruct'):
@@ -462,7 +462,7 @@ def test_wavelet_processor():
                 reconstructed = processor.reconstruct(coeffs)
             
             reconstruction_error = torch.mean(torch.abs(signal_data - reconstructed))
-            print(f"    📊 Reconstruction error: {reconstruction_error:.6f}")
+            print(f"    CHART Reconstruction error: {reconstruction_error:.6f}")
             
             # Good wavelets should have low reconstruction error
             assert reconstruction_error < 0.1, "Reconstruction error too high"
@@ -478,25 +478,25 @@ def test_wavelet_processor():
         
         # The processor should handle different frequency components differently
         processing_diff = torch.mean(torch.abs(processed_low - processed_high))
-        print(f"    📊 Frequency discrimination: {processing_diff:.6f}")
+        print(f"    CHART Frequency discrimination: {processing_diff:.6f}")
         
-        print("    ✅ Wavelet processor functionality validated")
+        print("    PASS Wavelet processor functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Wavelet processor test failed: {e}")
+        print(f"    FAIL Wavelet processor test failed: {e}")
         return False
 
 def test_multi_scale_processor():
     """Test multi-scale processor functionality"""
-    print("🧪 Testing Multi-Scale Processor Functionality...")
+    print("TEST Testing Multi-Scale Processor Functionality...")
     
     try:
         config = MockConfig(scales=[1, 2, 4, 8])
         processor = create_component('processor', 'multi_scale', config)
         
         if processor is None:
-            print("    ⚠️ Multi-scale processor not available, skipping...")
+            print("    WARN Multi-scale processor not available, skipping...")
             return True
         
         # Create signal with multi-scale patterns
@@ -526,7 +526,7 @@ def test_multi_scale_processor():
         assert not torch.isnan(processed).any(), "Multi-scale output contains NaN"
         assert not torch.isinf(processed).any(), "Multi-scale output contains Inf"
         
-        print(f"    📊 Multi-scale processing: {signal_data.shape} → {processed.shape}")
+        print(f"    CHART Multi-scale processing: {signal_data.shape}  {processed.shape}")
         
         # Test different scale configurations
         scale_configs = [
@@ -544,10 +544,10 @@ def test_multi_scale_processor():
                 if scale_proc:
                     with torch.no_grad():
                         scale_output = scale_proc(signal_data)
-                    print(f"    ✅ Scales {scales}: processed successfully")
+                    print(f"    PASS Scales {scales}: processed successfully")
                     
             except Exception as e:
-                print(f"    ⚠️ Scales {scales}: {e}")
+                print(f"    WARN Scales {scales}: {e}")
         
         # Test scale extraction if available
         if hasattr(processor, 'extract_scales'):
@@ -555,11 +555,11 @@ def test_multi_scale_processor():
                 scale_features = processor.extract_scales(signal_data)
             
             if isinstance(scale_features, (list, tuple)):
-                print(f"    📊 Extracted {len(scale_features)} scale features")
+                print(f"    CHART Extracted {len(scale_features)} scale features")
                 for i, scale_feat in enumerate(scale_features):
                     print(f"      Scale {i}: shape {scale_feat.shape}")
             else:
-                print(f"    📊 Scale features shape: {scale_features.shape}")
+                print(f"    CHART Scale features shape: {scale_features.shape}")
         
         # Test fusion methods if available
         fusion_methods = ['concatenate', 'weighted', 'attention']
@@ -572,10 +572,10 @@ def test_multi_scale_processor():
                 if fusion_proc:
                     with torch.no_grad():
                         fusion_output = fusion_proc(signal_data)
-                    print(f"    ✅ Fusion {fusion_method}: processed successfully")
+                    print(f"    PASS Fusion {fusion_method}: processed successfully")
                     
             except Exception as e:
-                print(f"    ⚠️ Fusion {fusion_method}: {e}")
+                print(f"    WARN Fusion {fusion_method}: {e}")
         
         # Test scale invariance properties
         # Scaling the input should affect different scales differently
@@ -586,18 +586,18 @@ def test_multi_scale_processor():
             scaled_output = processor(scaled_signal)
         
         scale_sensitivity = torch.mean(torch.abs(scaled_output - 2.0 * original_output))
-        print(f"    📊 Scale sensitivity: {scale_sensitivity:.6f}")
+        print(f"    CHART Scale sensitivity: {scale_sensitivity:.6f}")
         
-        print("    ✅ Multi-scale processor functionality validated")
+        print("    PASS Multi-scale processor functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Multi-scale processor test failed: {e}")
+        print(f"    FAIL Multi-scale processor test failed: {e}")
         return False
 
 def test_processor_consistency():
     """Test consistency across different processors"""
-    print("🧪 Testing Processor Consistency...")
+    print("TEST Testing Processor Consistency...")
     
     try:
         # Get available processors
@@ -611,7 +611,7 @@ def test_processor_consistency():
                 pass
         
         if not processor_types:
-            print("    ⚠️ No processors available for consistency testing")
+            print("    WARN No processors available for consistency testing")
             return True
         
         # Test with common input
@@ -631,15 +631,15 @@ def test_processor_consistency():
                     assert not torch.isnan(output).any(), f"{proc_type}: contains NaN"
                     assert not torch.isinf(output).any(), f"{proc_type}: contains Inf"
                     
-                    print(f"    📊 {proc_type}: {test_data.shape} → {output.shape}")
+                    print(f"    CHART {proc_type}: {test_data.shape}  {output.shape}")
                     
             except Exception as e:
-                print(f"    ⚠️ {proc_type}: {e}")
+                print(f"    WARN {proc_type}: {e}")
         
         # Test output magnitude consistency
         for proc_type, output in outputs.items():
             magnitude = output.abs().mean().item()
-            print(f"    📊 {proc_type}: output magnitude = {magnitude:.6f}")
+            print(f"    CHART {proc_type}: output magnitude = {magnitude:.6f}")
             
             # Reasonable magnitude range
             assert 0.001 < magnitude < 1000, f"{proc_type}: unreasonable output magnitude"
@@ -656,25 +656,25 @@ def test_processor_consistency():
                     
                     deterministic_error = torch.mean(torch.abs(output1 - output2))
                     assert deterministic_error < 1e-6, f"{proc_type}: not deterministic"
-                    print(f"    ✅ {proc_type}: deterministic behavior verified")
+                    print(f"    PASS {proc_type}: deterministic behavior verified")
                     
             except Exception as e:
-                print(f"    ⚠️ {proc_type} deterministic test: {e}")
+                print(f"    WARN {proc_type} deterministic test: {e}")
         
-        print(f"    ✅ Consistency validated across {len(outputs)} processors")
+        print(f"    PASS Consistency validated across {len(outputs)} processors")
         return True
         
     except Exception as e:
-        print(f"    ❌ Processor consistency test failed: {e}")
+        print(f"    FAIL Processor consistency test failed: {e}")
         return False
 
 def run_processor_functionality_tests():
     """Run all processor functionality tests"""
-    print("🚀 Running Processor Component Functionality Tests")
+    print("ROCKET Running Processor Component Functionality Tests")
     print("=" * 80)
     
     if not COMPONENTS_AVAILABLE:
-        print("❌ Modular components not available - skipping tests")
+        print("FAIL Modular components not available - skipping tests")
         return False
     
     tests = [
@@ -691,28 +691,28 @@ def run_processor_functionality_tests():
     total = len(tests)
     
     for test_name, test_func in tests:
-        print(f"\n🎯 {test_name}")
+        print(f"\nTARGET {test_name}")
         print("-" * 60)
         
         try:
             if test_func():
                 passed += 1
-                print(f"✅ {test_name} PASSED")
+                print(f"PASS {test_name} PASSED")
             else:
-                print(f"❌ {test_name} FAILED")
+                print(f"FAIL {test_name} FAILED")
         except Exception as e:
-            print(f"❌ {test_name} ERROR: {e}")
+            print(f"FAIL {test_name} ERROR: {e}")
     
     print("\n" + "=" * 80)
-    print(f"📊 Processor Component Functionality Test Results:")
+    print(f"CHART Processor Component Functionality Test Results:")
     print(f"   Passed: {passed}/{total}")
     print(f"   Success Rate: {(passed/total)*100:.1f}%")
     
     if passed == total:
-        print("🎉 All processor functionality tests passed!")
+        print("PARTY All processor functionality tests passed!")
         return True
     else:
-        print("⚠️ Some processor functionality tests failed")
+        print("WARN Some processor functionality tests failed")
         return False
 
 if __name__ == "__main__":

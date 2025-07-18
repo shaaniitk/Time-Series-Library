@@ -30,7 +30,7 @@ class ModularAutoformerTester:
         
     def generate_test_data(self, seq_len=96, pred_len=24, num_features=1, batch_size=2):
         """Generate synthetic time series data for testing"""
-        print("📊 Generating synthetic test data...")
+        print("CHART Generating synthetic test data...")
         
         # Generate more realistic time series with trends and seasonality
         t = np.linspace(0, 4*np.pi, seq_len + pred_len)
@@ -72,7 +72,7 @@ class ModularAutoformerTester:
             'true_future': torch.FloatTensor(data[:, seq_len:, :])
         }
         
-        print(f"   ✅ Generated data shapes:")
+        print(f"   PASS Generated data shapes:")
         print(f"      x_enc: {self.test_data['x_enc'].shape}")
         print(f"      x_dec: {self.test_data['x_dec'].shape}")
         print(f"      true_future: {self.test_data['true_future'].shape}")
@@ -176,7 +176,7 @@ class ModularAutoformerTester:
     
     def test_traditional_autoformer(self):
         """Test traditional autoformer functionality"""
-        print("\n🔧 Testing Traditional Autoformer...")
+        print("\nTOOL Testing Traditional Autoformer...")
         
         try:
             # Create traditional config
@@ -190,7 +190,7 @@ class ModularAutoformerTester:
             model = ModularAutoformer(config)
             model.eval()
             
-            print(f"   ✅ Model created successfully")
+            print(f"   PASS Model created successfully")
             print(f"      Architecture: {model.get_component_info()['architecture']}")
             
             # Test forward pass
@@ -204,7 +204,7 @@ class ModularAutoformerTester:
                 )
                 inference_time = time.time() - start_time
             
-            print(f"   ✅ Forward pass successful")
+            print(f"   PASS Forward pass successful")
             print(f"      Output shape: {output.shape}")
             print(f"      Inference time: {inference_time:.3f}s")
             print(f"      Output range: [{output.min().item():.3f}, {output.max().item():.3f}]")
@@ -226,14 +226,14 @@ class ModularAutoformerTester:
             return True
             
         except Exception as e:
-            print(f"   ❌ Traditional autoformer test failed: {str(e)}")
+            print(f"   FAIL Traditional autoformer test failed: {str(e)}")
             print(f"      Traceback: {traceback.format_exc()}")
             self.results['traditional'] = {'success': False, 'error': str(e)}
             return False
     
     def test_chronosx_backbone(self):
         """Test ChronosX backbone integration"""
-        print("\n🔮 Testing ChronosX Backbone Integration...")
+        print("\nCRYSTAL Testing ChronosX Backbone Integration...")
         
         try:
             # Create ChronosX config
@@ -247,7 +247,7 @@ class ModularAutoformerTester:
             model = ModularAutoformer(config)
             model.eval()
             
-            print(f"   ✅ Model with ChronosX backbone created successfully")
+            print(f"   PASS Model with ChronosX backbone created successfully")
             
             # Get backbone info
             backbone_info = model.get_backbone_info()
@@ -265,7 +265,7 @@ class ModularAutoformerTester:
                 )
                 inference_time = time.time() - start_time
             
-            print(f"   ✅ Forward pass with ChronosX successful")
+            print(f"   PASS Forward pass with ChronosX successful")
             print(f"      Output shape: {output.shape}")
             print(f"      Inference time: {inference_time:.3f}s")
             print(f"      Output range: [{output.min().item():.3f}, {output.max().item():.3f}]")
@@ -273,7 +273,7 @@ class ModularAutoformerTester:
             # Test uncertainty if available
             uncertainty_results = model.get_uncertainty_results()
             if uncertainty_results:
-                print(f"   🎯 Uncertainty quantification available:")
+                print(f"   TARGET Uncertainty quantification available:")
                 print(f"      Prediction shape: {uncertainty_results['prediction'].shape}")
                 if 'std' in uncertainty_results:
                     print(f"      Std shape: {uncertainty_results['std'].shape}")
@@ -298,14 +298,14 @@ class ModularAutoformerTester:
             return True
             
         except Exception as e:
-            print(f"   ❌ ChronosX backbone test failed: {str(e)}")
+            print(f"   FAIL ChronosX backbone test failed: {str(e)}")
             print(f"      Traceback: {traceback.format_exc()}")
             self.results['chronosx'] = {'success': False, 'error': str(e)}
             return False
     
     def test_uncertainty_variants(self):
         """Test different ChronosX uncertainty configurations"""
-        print("\n🎲 Testing ChronosX Uncertainty Variants...")
+        print("\nDICE Testing ChronosX Uncertainty Variants...")
         
         variants = [
             ('chronos_x_tiny', 'Tiny model with uncertainty'),
@@ -338,17 +338,17 @@ class ModularAutoformerTester:
                     )
                     inference_time = time.time() - start_time
                 
-                print(f"      ✅ {description} successful")
+                print(f"      PASS {description} successful")
                 print(f"         Output shape: {output.shape}")
                 print(f"         Inference time: {inference_time:.3f}s")
                 
                 # Check uncertainty
                 uncertainty_results = model.get_uncertainty_results()
                 if uncertainty_results:
-                    print(f"         🎯 Uncertainty available")
+                    print(f"         TARGET Uncertainty available")
                     if 'std' in uncertainty_results:
                         avg_uncertainty = uncertainty_results['std'].mean().item()
-                        print(f"         📊 Avg uncertainty: ±{avg_uncertainty:.6f}")
+                        print(f"         CHART Avg uncertainty: {avg_uncertainty:.6f}")
                 
                 self.results[f'variant_{variant_type}'] = {
                     'success': True,
@@ -358,18 +358,18 @@ class ModularAutoformerTester:
                 }
                 
             except Exception as e:
-                print(f"      ❌ {description} failed: {str(e)}")
+                print(f"      FAIL {description} failed: {str(e)}")
                 self.results[f'variant_{variant_type}'] = {'success': False, 'error': str(e)}
     
     def test_performance_comparison(self):
         """Compare performance between traditional and ChronosX approaches"""
-        print("\n⚡ Performance Comparison...")
+        print("\nLIGHTNING Performance Comparison...")
         
         if 'traditional' in self.results and 'chronosx' in self.results:
             trad_time = self.results['traditional'].get('inference_time', 0)
             chronos_time = self.results['chronosx'].get('inference_time', 0)
             
-            print(f"   📊 Inference Time Comparison:")
+            print(f"   CHART Inference Time Comparison:")
             print(f"      Traditional: {trad_time:.3f}s")
             print(f"      ChronosX: {chronos_time:.3f}s")
             
@@ -377,17 +377,17 @@ class ModularAutoformerTester:
                 speedup = trad_time / chronos_time
                 print(f"      Speedup: {speedup:.2f}x {'(ChronosX faster)' if speedup > 1 else '(Traditional faster)'}")
         
-        print(f"\n   🧠 Model Capabilities:")
+        print(f"\n   BRAIN Model Capabilities:")
         for test_name, result in self.results.items():
             if result.get('success'):
                 uncertainty = result.get('uncertainty_available', False)
-                print(f"      {test_name}: ✅ {'+ Uncertainty' if uncertainty else 'Basic'}")
+                print(f"      {test_name}: PASS {'+ Uncertainty' if uncertainty else 'Basic'}")
             else:
-                print(f"      {test_name}: ❌ Failed")
+                print(f"      {test_name}: FAIL Failed")
     
     def run_all_tests(self):
         """Run comprehensive test suite"""
-        print("🚀 ModularAutoformer + ChronosX Integration Test Suite")
+        print("ROCKET ModularAutoformer + ChronosX Integration Test Suite")
         print("=" * 70)
         
         # Generate test data
@@ -411,43 +411,43 @@ class ModularAutoformerTester:
                     success_count += 1
                 total_tests += 1
             except Exception as e:
-                print(f"❌ Test {test_name} crashed: {str(e)}")
+                print(f"FAIL Test {test_name} crashed: {str(e)}")
                 total_tests += 1
         
         # Performance comparison
         self.test_performance_comparison()
         
         # Final summary
-        print(f"\n🎉 TEST SUITE COMPLETE!")
+        print(f"\nPARTY TEST SUITE COMPLETE!")
         print("=" * 70)
-        print(f"📊 Results: {success_count}/{total_tests} tests passed")
+        print(f"CHART Results: {success_count}/{total_tests} tests passed")
         
         if success_count == total_tests:
-            print("✅ ALL TESTS PASSED! ModularAutoformer + ChronosX integration is working perfectly!")
+            print("PASS ALL TESTS PASSED! ModularAutoformer + ChronosX integration is working perfectly!")
         elif success_count > 0:
-            print("⚠️ PARTIAL SUCCESS: Some tests passed, check failed tests above")
+            print("WARN PARTIAL SUCCESS: Some tests passed, check failed tests above")
         else:
-            print("❌ ALL TESTS FAILED: Check installation and dependencies")
+            print("FAIL ALL TESTS FAILED: Check installation and dependencies")
         
-        print(f"\n💡 Key Achievements:")
+        print(f"\nIDEA Key Achievements:")
         for test_name, result in self.results.items():
             if result.get('success'):
-                print(f"   ✅ {test_name}: Working")
+                print(f"   PASS {test_name}: Working")
                 if result.get('uncertainty_available'):
-                    print(f"      🎯 Uncertainty quantification available")
+                    print(f"      TARGET Uncertainty quantification available")
         
         return success_count == total_tests
 
 
 if __name__ == "__main__":
-    print("🔬 Starting ModularAutoformer + ChronosX Integration Tests...\n")
+    print("MICROSCOPE Starting ModularAutoformer + ChronosX Integration Tests...\n")
     
     tester = ModularAutoformerTester()
     success = tester.run_all_tests()
     
     if success:
-        print(f"\n🚀 Ready for production! Your modular architecture with ChronosX is fully functional.")
+        print(f"\nROCKET Ready for production! Your modular architecture with ChronosX is fully functional.")
     else:
-        print(f"\n🔧 Some issues found. Check the test results above for details.")
+        print(f"\nTOOL Some issues found. Check the test results above for details.")
     
     sys.exit(0 if success else 1)

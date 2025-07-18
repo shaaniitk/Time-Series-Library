@@ -52,15 +52,15 @@ def test_step4_quantile_autoformer():
     try:
         # Import the model
         from models.HFQuantileAutoformer_Step4 import HFQuantileAutoformer
-        print("✅ Model import successful")
+        print("PASS Model import successful")
         
         # Initialize model
         model = HFQuantileAutoformer(config)
-        print("✅ Model initialization successful")
+        print("PASS Model initialization successful")
         
         # Get model info
         model_info = model.get_model_info()
-        print(f"✅ Model Info: {model_info['name']}")
+        print(f"PASS Model Info: {model_info['name']}")
         print(f"   Total Parameters: {model_info['total_params']:,}")
         print(f"   Trainable Parameters: {model_info['trainable_params']:,}")
         print(f"   Quantiles: {model_info['quantiles']}")
@@ -75,7 +75,7 @@ def test_step4_quantile_autoformer():
         x_dec = torch.randn(batch_size, config.pred_len, config.c_out)
         x_mark_dec = torch.randn(batch_size, config.pred_len, 4)
         
-        print(f"✅ Test data prepared: batch_size={batch_size}, seq_len={config.seq_len}, pred_len={config.pred_len}")
+        print(f"PASS Test data prepared: batch_size={batch_size}, seq_len={config.seq_len}, pred_len={config.pred_len}")
         
         # Test 1: Basic forward pass (median prediction)
         print("\n" + "="*60)
@@ -89,7 +89,7 @@ def test_step4_quantile_autoformer():
         assert output.shape == expected_shape, f"Expected {expected_shape}, got {output.shape}"
         assert torch.isfinite(output).all(), "Output contains non-finite values"
         
-        print(f"✅ Basic forward pass successful")
+        print(f"PASS Basic forward pass successful")
         print(f"   Output shape: {output.shape}")
         print(f"   Output range: [{output.min().item():.6f}, {output.max().item():.6f}]")
         print(f"   Output mean: {output.mean().item():.6f}")
@@ -111,13 +111,13 @@ def test_step4_quantile_autoformer():
         assert hasattr(quantile_result, 'coverage_analysis'), "Missing coverage_analysis"
         assert hasattr(quantile_result, 'pinball_losses'), "Missing pinball_losses"
         
-        print(f"✅ QuantileResult structure validation passed")
+        print(f"PASS QuantileResult structure validation passed")
         
         # Validate main prediction (median)
         assert quantile_result.prediction.shape == expected_shape
         assert torch.isfinite(quantile_result.prediction).all()
         
-        print(f"✅ Main prediction validation passed")
+        print(f"PASS Main prediction validation passed")
         print(f"   Prediction shape: {quantile_result.prediction.shape}")
         print(f"   Prediction range: [{quantile_result.prediction.min().item():.6f}, {quantile_result.prediction.max().item():.6f}]")
         
@@ -135,7 +135,7 @@ def test_step4_quantile_autoformer():
             assert q_pred.shape == expected_shape, f"Wrong shape for {q_name}"
             assert torch.isfinite(q_pred).all(), f"Non-finite values in {q_name}"
             
-            print(f"✅ Quantile {q_name} validation passed")
+            print(f"PASS Quantile {q_name} validation passed")
             print(f"   Shape: {q_pred.shape}")
             print(f"   Range: [{q_pred.min().item():.6f}, {q_pred.max().item():.6f}]")
         
@@ -165,9 +165,9 @@ def test_step4_quantile_autoformer():
             violations = (q_low > q_high).float().mean()
             assert violations < 0.01, f"Quantile crossing detected between q{int(quantile_levels[i]*100)} and q{int(quantile_levels[i+1]*100)}: {violations:.4f} violations"
             
-            print(f"✅ No crossing between q{int(quantile_levels[i]*100)} and q{int(quantile_levels[i+1]*100)}: {violations:.6f} violation rate")
+            print(f"PASS No crossing between q{int(quantile_levels[i]*100)} and q{int(quantile_levels[i+1]*100)}: {violations:.6f} violation rate")
         
-        print(f"✅ Quantile ordering constraints satisfied")
+        print(f"PASS Quantile ordering constraints satisfied")
         
         # Test 5: Quantile loss computation
         print("\n" + "="*60)
@@ -191,7 +191,7 @@ def test_step4_quantile_autoformer():
         assert torch.isfinite(quantile_loss), "Quantile loss should be finite"
         assert quantile_loss >= 0, "Quantile loss should be non-negative"
         
-        print(f"✅ Quantile loss computation validation passed")
+        print(f"PASS Quantile loss computation validation passed")
         print(f"   Total quantile loss: {quantile_loss.item():.6f}")
         
         # Validate individual pinball losses
@@ -208,7 +208,7 @@ def test_step4_quantile_autoformer():
         coverage_analysis = quantile_result_with_loss.coverage_analysis
         assert coverage_analysis is not None, "Coverage analysis should be available with detailed_analysis=True and targets"
         
-        print(f"✅ Coverage analysis computed: {len(coverage_analysis)} intervals")
+        print(f"PASS Coverage analysis computed: {len(coverage_analysis)} intervals")
         
         for interval_name, analysis in coverage_analysis.items():
             assert 'empirical_coverage' in analysis, f"Missing empirical_coverage for {interval_name}"
@@ -259,7 +259,7 @@ def test_step4_quantile_autoformer():
             assert (upper >= lower).all(), f"Upper bound should be >= lower bound for {conf_level}"
             assert torch.allclose(width, upper - lower, atol=1e-6), f"Width mismatch for {conf_level}"
             
-            print(f"✅ {conf_level} confidence interval validation passed")
+            print(f"PASS {conf_level} confidence interval validation passed")
             print(f"   Lower range: [{lower.min().item():.6f}, {lower.max().item():.6f}]")
             print(f"   Upper range: [{upper.min().item():.6f}, {upper.max().item():.6f}]")
             print(f"   Width range: [{width.min().item():.6f}, {width.max().item():.6f}]")
@@ -292,7 +292,7 @@ def test_step4_quantile_autoformer():
         # Verify quantile computation didn't corrupt the model
         assert torch.isfinite(quantile_result_train.prediction).all()
         
-        print(f"✅ Gradient safety validation passed")
+        print(f"PASS Gradient safety validation passed")
         print(f"   Gradients during training: {grad_count} parameters")
         print(f"   Quantile computation safe: No gradient interference")
         
@@ -326,43 +326,43 @@ def test_step4_quantile_autoformer():
                 'num_quantiles': len(test_output.quantiles)
             }
             
-            print(f"✅ Batch size {bs}: shapes OK, finite values OK, {results[bs]['num_quantiles']} quantiles")
+            print(f"PASS Batch size {bs}: shapes OK, finite values OK, {results[bs]['num_quantiles']} quantiles")
         
         # Summary
         print("\n" + "="*80)
         print("STEP 4 TESTING SUMMARY")
         print("="*80)
-        print("🎉 ALL TESTS PASSED! 🎉")
-        print(f"✅ Model: {model_info['name']}")
-        print(f"✅ Parameters: {model_info['total_params']:,}")
-        print(f"✅ Quantiles: {model_info['quantiles']}")
-        print(f"✅ Critical Bugs: ELIMINATED")
+        print("PARTY ALL TESTS PASSED! PARTY")
+        print(f"PASS Model: {model_info['name']}")
+        print(f"PASS Parameters: {model_info['total_params']:,}")
+        print(f"PASS Quantiles: {model_info['quantiles']}")
+        print(f"PASS Critical Bugs: ELIMINATED")
         print("   - Quantile crossing violations: FIXED")
         print("   - Numerical instability: PREVENTED")
         print("   - Memory inefficient quantile heads: OPTIMIZED")
         print("   - Loss function inconsistencies: FIXED")
-        print(f"✅ Batch Consistency: {len(batch_sizes)} sizes tested")
-        print(f"✅ Quantile Regression: {len(config.quantiles)} quantiles validated")
-        print(f"✅ Ordering Constraints: No quantile crossing detected")
-        print(f"✅ Pinball Loss: Numerical stable implementation")
-        print(f"✅ Coverage Analysis: {len(coverage_analysis)} intervals validated")
-        print(f"✅ Uncertainty Interface: Complete prediction interface")
+        print(f"PASS Batch Consistency: {len(batch_sizes)} sizes tested")
+        print(f"PASS Quantile Regression: {len(config.quantiles)} quantiles validated")
+        print(f"PASS Ordering Constraints: No quantile crossing detected")
+        print(f"PASS Pinball Loss: Numerical stable implementation")
+        print(f"PASS Coverage Analysis: {len(coverage_analysis)} intervals validated")
+        print(f"PASS Uncertainty Interface: Complete prediction interface")
         
-        print("\n🚀 Step 4 HFQuantileAutoformer is PRODUCTION READY!")
-        print("🎉 ALL 4 STEPS COMPLETED SUCCESSFULLY!")
+        print("\nROCKET Step 4 HFQuantileAutoformer is PRODUCTION READY!")
+        print("PARTY ALL 4 STEPS COMPLETED SUCCESSFULLY!")
         print("\n" + "="*80)
         print("COMPLETE HUGGING FACE AUTOFORMER SUITE READY FOR PRODUCTION")
         print("="*80)
-        print("✅ Step 1: HFEnhancedAutoformer - Basic HF backbone")
-        print("✅ Step 2: HFBayesianAutoformer - Uncertainty quantification")
-        print("✅ Step 3: HFHierarchicalAutoformer - Multi-scale processing")
-        print("✅ Step 4: HFQuantileAutoformer - Quantile regression")
-        print("\n🚀 Ready for integration into your trading system!")
+        print("PASS Step 1: HFEnhancedAutoformer - Basic HF backbone")
+        print("PASS Step 2: HFBayesianAutoformer - Uncertainty quantification")
+        print("PASS Step 3: HFHierarchicalAutoformer - Multi-scale processing")
+        print("PASS Step 4: HFQuantileAutoformer - Quantile regression")
+        print("\nROCKET Ready for integration into your trading system!")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error during testing: {e}")
+        print(f"FAIL Error during testing: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -370,8 +370,8 @@ def test_step4_quantile_autoformer():
 if __name__ == "__main__":
     success = test_step4_quantile_autoformer()
     if success:
-        print("\n✅ Step 4 testing completed successfully!")
-        print("🎉 ALL STEPS (1-4) COMPLETED SUCCESSFULLY!")
+        print("\nPASS Step 4 testing completed successfully!")
+        print("PARTY ALL STEPS (1-4) COMPLETED SUCCESSFULLY!")
     else:
-        print("\n❌ Step 4 testing failed!")
+        print("\nFAIL Step 4 testing failed!")
         sys.exit(1)

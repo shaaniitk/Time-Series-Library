@@ -15,7 +15,7 @@ from models.HFEnhancedAutoformer import HFEnhancedAutoformer
 from argparse import Namespace
 
 def test_step1_enhanced():
-    print("🧪 Step 1: Testing HFEnhancedAutoformer (Basic Enhanced)")
+    print("TEST Step 1: Testing HFEnhancedAutoformer (Basic Enhanced)")
     print("=" * 70)
     
     # Create test configurations
@@ -28,7 +28,7 @@ def test_step1_enhanced():
         d_model=64
     )
     
-    print(f"📋 Test Configuration:")
+    print(f"CLIPBOARD Test Configuration:")
     print(f"   enc_in: {configs.enc_in} (input features)")
     print(f"   c_out: {configs.c_out} (output features)")
     print(f"   seq_len: {configs.seq_len} (input sequence length)")
@@ -37,12 +37,12 @@ def test_step1_enhanced():
     print()
     
     # Create model
-    print("🔧 Creating HFEnhancedAutoformer...")
+    print("TOOL Creating HFEnhancedAutoformer...")
     try:
         model = HFEnhancedAutoformer(configs)
-        print("✅ Model created successfully")
+        print("PASS Model created successfully")
     except Exception as e:
-        print(f"❌ Model creation failed: {e}")
+        print(f"FAIL Model creation failed: {e}")
         return False
     
     # Create test data
@@ -52,7 +52,7 @@ def test_step1_enhanced():
     x_dec = torch.randn(batch_size, configs.pred_len, configs.dec_in)
     x_mark_dec = torch.randn(batch_size, configs.pred_len, 4)
     
-    print(f"📊 Test Data Shapes:")
+    print(f"CHART Test Data Shapes:")
     print(f"   x_enc: {x_enc.shape} (encoder input)")
     print(f"   x_mark_enc: {x_mark_enc.shape} (encoder time features)")
     print(f"   x_dec: {x_dec.shape} (decoder input)")
@@ -60,42 +60,42 @@ def test_step1_enhanced():
     print()
     
     # Test forward pass
-    print("🔄 Testing forward pass...")
+    print("REFRESH Testing forward pass...")
     try:
         with torch.no_grad():  # No gradients needed for testing
             output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
         
-        print(f"✅ Forward pass successful!")
-        print(f"✅ Output shape: {output.shape}")
+        print(f"PASS Forward pass successful!")
+        print(f"PASS Output shape: {output.shape}")
         
         expected_shape = (batch_size, configs.pred_len, configs.c_out)
-        print(f"✅ Expected shape: {expected_shape}")
+        print(f"PASS Expected shape: {expected_shape}")
         
         # Verify output shape
         if output.shape == expected_shape:
-            print("✅ Shape validation: PASSED")
+            print("PASS Shape validation: PASSED")
         else:
-            print(f"❌ Shape mismatch! Got {output.shape}, expected {expected_shape}")
+            print(f"FAIL Shape mismatch! Got {output.shape}, expected {expected_shape}")
             return False
             
     except Exception as e:
-        print(f"❌ Forward pass failed: {e}")
+        print(f"FAIL Forward pass failed: {e}")
         import traceback
         traceback.print_exc()
         return False
     
     # Test output properties
-    print("\n🔍 Testing output properties...")
+    print("\nSEARCH Testing output properties...")
     
     # Check for NaN or infinite values
     if torch.isnan(output).any():
-        print("❌ Output contains NaN values!")
+        print("FAIL Output contains NaN values!")
         return False
     elif torch.isinf(output).any():
-        print("❌ Output contains infinite values!")
+        print("FAIL Output contains infinite values!")
         return False
     else:
-        print("✅ Output values are finite and valid")
+        print("PASS Output values are finite and valid")
     
     # Check output statistics
     output_mean = output.mean().item()
@@ -103,14 +103,14 @@ def test_step1_enhanced():
     output_min = output.min().item()
     output_max = output.max().item()
     
-    print(f"✅ Output statistics:")
+    print(f"PASS Output statistics:")
     print(f"   Mean: {output_mean:.6f}")
     print(f"   Std:  {output_std:.6f}")
     print(f"   Min:  {output_min:.6f}")
     print(f"   Max:  {output_max:.6f}")
     
     # Test with different batch sizes
-    print("\n🔄 Testing different batch sizes...")
+    print("\nREFRESH Testing different batch sizes...")
     for test_batch_size in [1, 2, 8]:
         try:
             test_x_enc = torch.randn(test_batch_size, configs.seq_len, configs.enc_in)
@@ -123,36 +123,36 @@ def test_step1_enhanced():
             
             expected_test_shape = (test_batch_size, configs.pred_len, configs.c_out)
             if test_output.shape == expected_test_shape:
-                print(f"✅ Batch size {test_batch_size}: {test_output.shape} ✓")
+                print(f"PASS Batch size {test_batch_size}: {test_output.shape} ")
             else:
-                print(f"❌ Batch size {test_batch_size}: Got {test_output.shape}, expected {expected_test_shape}")
+                print(f"FAIL Batch size {test_batch_size}: Got {test_output.shape}, expected {expected_test_shape}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Batch size {test_batch_size} failed: {e}")
+            print(f"FAIL Batch size {test_batch_size} failed: {e}")
             return False
     
     # Test model parameters
-    print("\n📊 Model Analysis:")
+    print("\nCHART Model Analysis:")
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     
-    print(f"✅ Total parameters: {total_params:,}")
-    print(f"✅ Trainable parameters: {trainable_params:,}")
-    print(f"✅ Backbone type: {model.backbone_type}")
-    print(f"✅ Backbone d_model: {model.d_model}")
+    print(f"PASS Total parameters: {total_params:,}")
+    print(f"PASS Trainable parameters: {trainable_params:,}")
+    print(f"PASS Backbone type: {model.backbone_type}")
+    print(f"PASS Backbone d_model: {model.d_model}")
     
     # Compare with original model complexity
-    print("\n📈 Complexity Comparison:")
-    print("✅ HF Enhanced vs Custom Enhanced:")
-    print("   - Eliminates custom transformer bugs ✓")
-    print("   - Uses production-grade HF backbone ✓") 
-    print("   - Simplified architecture (no complex layers) ✓")
-    print("   - Standard debugging tools available ✓")
-    print("   - Memory safety guaranteed ✓")
+    print("\nGRAPH Complexity Comparison:")
+    print("PASS HF Enhanced vs Custom Enhanced:")
+    print("   - Eliminates custom transformer bugs ")
+    print("   - Uses production-grade HF backbone ") 
+    print("   - Simplified architecture (no complex layers) ")
+    print("   - Standard debugging tools available ")
+    print("   - Memory safety guaranteed ")
     
-    print("\n🎉 Step 1: HFEnhancedAutoformer - ALL TESTS PASSED!")
-    print("✅ Ready to proceed to Step 2: HFBayesianAutoformer")
+    print("\nPARTY Step 1: HFEnhancedAutoformer - ALL TESTS PASSED!")
+    print("PASS Ready to proceed to Step 2: HFBayesianAutoformer")
     
     return True
 
@@ -161,12 +161,12 @@ if __name__ == "__main__":
     
     if success:
         print("\n" + "="*70)
-        print("🚀 STEP 1 COMPLETE - ENHANCED MODEL READY!")
+        print("ROCKET STEP 1 COMPLETE - ENHANCED MODEL READY!")
         print("="*70)
-        print("✅ HFEnhancedAutoformer is production-ready")
-        print("✅ All shape validations passed")
-        print("✅ Multi-batch testing successful")
-        print("✅ Output quality validated")
-        print("\n➡️  Next: Run Step 2 for HFBayesianAutoformer")
+        print("PASS HFEnhancedAutoformer is production-ready")
+        print("PASS All shape validations passed")
+        print("PASS Multi-batch testing successful")
+        print("PASS Output quality validated")
+        print("\n  Next: Run Step 2 for HFBayesianAutoformer")
     else:
-        print("\n❌ Step 1 failed. Please fix issues before proceeding.")
+        print("\nFAIL Step 1 failed. Please fix issues before proceeding.")

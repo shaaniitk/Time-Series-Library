@@ -62,16 +62,16 @@ class MockConfig:
 
 def test_hf_modular_configuration(config_name, config_dict):
     """Test a specific HFAutoformer configuration"""
-    print(f"\n🧪 Testing {config_name}")
+    print(f"\nTEST Testing {config_name}")
     print("-" * 60)
     
     try:
         # Try to import HFAutoformer
         try:
             from models.HFAutoformer import HFAutoformer
-            print("✅ HFAutoformer imported successfully")
+            print("PASS HFAutoformer imported successfully")
         except ImportError as e:
-            print(f"⚠️ Could not import HFAutoformer: {e}")
+            print(f"WARN Could not import HFAutoformer: {e}")
             print("   Falling back to modular component testing...")
             return test_modular_components(config_dict)
         
@@ -80,7 +80,7 @@ def test_hf_modular_configuration(config_name, config_dict):
         
         # Create model
         model = HFAutoformer(config)
-        print(f"✅ Model created with config: {config_name}")
+        print(f"PASS Model created with config: {config_name}")
         
         # Create dummy data
         x_enc, x_mark_enc, x_dec, x_mark_dec, y = create_dummy_data()
@@ -89,7 +89,7 @@ def test_hf_modular_configuration(config_name, config_dict):
         model.eval()
         with torch.no_grad():
             output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            print(f"✅ Forward pass: {x_enc.shape} → {output.shape}")
+            print(f"PASS Forward pass: {x_enc.shape}  {output.shape}")
         
         # Test training step
         model.train()
@@ -110,19 +110,19 @@ def test_hf_modular_configuration(config_name, config_dict):
             print(f"   Step {step+1}: Loss = {loss.item():.6f}")
         
         avg_loss = total_loss / 3
-        print(f"✅ Training successful - Average Loss: {avg_loss:.6f}")
+        print(f"PASS Training successful - Average Loss: {avg_loss:.6f}")
         
         return True
         
     except Exception as e:
-        print(f"❌ {config_name} failed: {e}")
+        print(f"FAIL {config_name} failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def test_modular_components(config_dict):
     """Test individual modular components if HFAutoformer not available"""
-    print("🔧 Testing modular components individually...")
+    print("TOOL Testing modular components individually...")
     
     try:
         from utils.modular_components.registry import create_component
@@ -136,13 +136,13 @@ def test_modular_components(config_dict):
             try:
                 backbone = create_component('backbone', config_dict['backbone_type'], MockConfig())
                 if backbone is not None:
-                    print(f"✅ Backbone '{config_dict['backbone_type']}' created")
+                    print(f"PASS Backbone '{config_dict['backbone_type']}' created")
                     components_success += 1
                 else:
-                    print(f"⚠️ Backbone '{config_dict['backbone_type']}' returned None")
+                    print(f"WARN Backbone '{config_dict['backbone_type']}' returned None")
                 components_tested += 1
             except Exception as e:
-                print(f"❌ Backbone '{config_dict['backbone_type']}' failed: {e}")
+                print(f"FAIL Backbone '{config_dict['backbone_type']}' failed: {e}")
                 components_tested += 1
         
         # Test loss
@@ -150,13 +150,13 @@ def test_modular_components(config_dict):
             try:
                 loss_fn = create_component('loss', config_dict['loss_type'], MockConfig())
                 if loss_fn is not None:
-                    print(f"✅ Loss '{config_dict['loss_type']}' created")
+                    print(f"PASS Loss '{config_dict['loss_type']}' created")
                     components_success += 1
                 else:
-                    print(f"⚠️ Loss '{config_dict['loss_type']}' returned None")
+                    print(f"WARN Loss '{config_dict['loss_type']}' returned None")
                 components_tested += 1
             except Exception as e:
-                print(f"❌ Loss '{config_dict['loss_type']}' failed: {e}")
+                print(f"FAIL Loss '{config_dict['loss_type']}' failed: {e}")
                 components_tested += 1
         
         # Test attention
@@ -164,13 +164,13 @@ def test_modular_components(config_dict):
             try:
                 attention = create_component('attention', config_dict['attention_type'], MockConfig())
                 if attention is not None:
-                    print(f"✅ Attention '{config_dict['attention_type']}' created")
+                    print(f"PASS Attention '{config_dict['attention_type']}' created")
                     components_success += 1
                 else:
-                    print(f"⚠️ Attention '{config_dict['attention_type']}' returned None")
+                    print(f"WARN Attention '{config_dict['attention_type']}' returned None")
                 components_tested += 1
             except Exception as e:
-                print(f"❌ Attention '{config_dict['attention_type']}' failed: {e}")
+                print(f"FAIL Attention '{config_dict['attention_type']}' failed: {e}")
                 components_tested += 1
         
         # Test processor
@@ -178,25 +178,25 @@ def test_modular_components(config_dict):
             try:
                 processor = create_component('processor', config_dict['processor_type'], MockConfig())
                 if processor is not None:
-                    print(f"✅ Processor '{config_dict['processor_type']}' created")
+                    print(f"PASS Processor '{config_dict['processor_type']}' created")
                     components_success += 1
                 else:
-                    print(f"⚠️ Processor '{config_dict['processor_type']}' returned None")
+                    print(f"WARN Processor '{config_dict['processor_type']}' returned None")
                 components_tested += 1
             except Exception as e:
-                print(f"❌ Processor '{config_dict['processor_type']}' failed: {e}")
+                print(f"FAIL Processor '{config_dict['processor_type']}' failed: {e}")
                 components_tested += 1
         
-        print(f"📊 Component test results: {components_success}/{components_tested} successful")
+        print(f"CHART Component test results: {components_success}/{components_tested} successful")
         return components_success > 0
         
     except ImportError as e:
-        print(f"❌ Could not import modular components: {e}")
+        print(f"FAIL Could not import modular components: {e}")
         return False
 
 def run_hf_modular_tests():
     """Run comprehensive HF Modular Architecture tests"""
-    print("🚀 HF Modular Architecture Training Tests")
+    print("ROCKET HF Modular Architecture Training Tests")
     print("=" * 80)
     
     # Test configurations from the architecture guide
@@ -263,25 +263,25 @@ def run_hf_modular_tests():
     
     # Print summary
     print("\n" + "=" * 80)
-    print("📊 HF Modular Architecture Test Results")
+    print("CHART HF Modular Architecture Test Results")
     print("=" * 80)
     
     for config_name, success in results.items():
-        status = "✅ PASSED" if success else "❌ FAILED"
+        status = "PASS PASSED" if success else "FAIL FAILED"
         print(f"   {status} - {config_name}")
     
-    print(f"\n📊 Overall Results:")
+    print(f"\nCHART Overall Results:")
     print(f"   Tests Passed: {passed}/{total}")
     print(f"   Success Rate: {(passed/total)*100:.1f}%")
     
     if passed == total:
-        print("\n🎉 All HF Modular Architecture tests passed!")
-        print("✨ The unified modular system is working correctly!")
+        print("\nPARTY All HF Modular Architecture tests passed!")
+        print(" The unified modular system is working correctly!")
     elif passed > 0:
-        print(f"\n⚠️ {total-passed} configurations failed - some components may not be implemented yet")
-        print("✨ Basic modular functionality is working!")
+        print(f"\nWARN {total-passed} configurations failed - some components may not be implemented yet")
+        print(" Basic modular functionality is working!")
     else:
-        print("\n❌ All tests failed - check HFAutoformer implementation")
+        print("\nFAIL All tests failed - check HFAutoformer implementation")
     
     return passed > 0
 

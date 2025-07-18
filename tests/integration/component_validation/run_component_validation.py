@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root))
 
 def run_test_module(module_path, test_name):
     """Run a specific test module and return results"""
-    print(f"\n🎯 Running {test_name}")
+    print(f"\nTARGET Running {test_name}")
     print("=" * 80)
     
     start_time = time.time()
@@ -40,29 +40,29 @@ def run_test_module(module_path, test_name):
             from tests.integration.component_validation.test_integration_functionality import run_integration_functionality_tests
             success = run_integration_functionality_tests()
         else:
-            print(f"❌ Unknown test module: {module_path}")
+            print(f"FAIL Unknown test module: {module_path}")
             return False, 0
             
         end_time = time.time()
         duration = end_time - start_time
         
         if success:
-            print(f"✅ {test_name} completed successfully in {duration:.2f}s")
+            print(f"PASS {test_name} completed successfully in {duration:.2f}s")
         else:
-            print(f"❌ {test_name} failed after {duration:.2f}s")
+            print(f"FAIL {test_name} failed after {duration:.2f}s")
             
         return success, duration
         
     except ImportError as e:
-        print(f"❌ Could not import {test_name}: {e}")
+        print(f"FAIL Could not import {test_name}: {e}")
         return False, 0
     except Exception as e:
-        print(f"❌ Error running {test_name}: {e}")
+        print(f"FAIL Error running {test_name}: {e}")
         return False, 0
 
 def run_quick_validation():
     """Run a quick validation of all components"""
-    print("🚀 Running Quick Component Validation")
+    print("ROCKET Running Quick Component Validation")
     print("=" * 80)
     
     # Quick tests for each component type
@@ -82,7 +82,7 @@ def run_quick_validation():
             passed += 1
         total_time += duration
     
-    print(f"\n📊 Quick Validation Results:")
+    print(f"\nCHART Quick Validation Results:")
     print(f"   Passed: {passed}/{total}")
     print(f"   Success Rate: {(passed/total)*100:.1f}%")
     print(f"   Total Time: {total_time:.2f}s")
@@ -91,7 +91,7 @@ def run_quick_validation():
 
 def run_comprehensive_validation():
     """Run comprehensive validation of all components"""
-    print("🚀 Running Comprehensive Component Validation")
+    print("ROCKET Running Comprehensive Component Validation")
     print("=" * 80)
     
     # All validation tests
@@ -117,32 +117,32 @@ def run_comprehensive_validation():
     
     # Print detailed results
     print("\n" + "=" * 80)
-    print("📊 Comprehensive Component Validation Results")
+    print("CHART Comprehensive Component Validation Results")
     print("=" * 80)
     
-    print("\n📋 Test Results Summary:")
+    print("\nCLIPBOARD Test Results Summary:")
     for test_name, success, duration in results:
-        status = "✅ PASSED" if success else "❌ FAILED"
+        status = "PASS PASSED" if success else "FAIL FAILED"
         print(f"   {status} - {test_name} ({duration:.2f}s)")
     
-    print(f"\n📊 Overall Statistics:")
+    print(f"\nCHART Overall Statistics:")
     print(f"   Tests Passed: {passed}/{total}")
     print(f"   Success Rate: {(passed/total)*100:.1f}%")
     print(f"   Total Time: {total_time:.2f}s")
     print(f"   Average Time per Test: {total_time/total:.2f}s")
     
     if passed == total:
-        print("\n🎉 All component validation tests passed!")
-        print("✨ Components are working correctly with expected mathematical behaviors")
+        print("\nPARTY All component validation tests passed!")
+        print(" Components are working correctly with expected mathematical behaviors")
     else:
-        print("\n⚠️ Some component validation tests failed")
-        print("🔍 Review failed tests for component issues")
+        print("\nWARN Some component validation tests failed")
+        print("SEARCH Review failed tests for component issues")
     
     return passed == total
 
 def run_focused_validation(component_type):
     """Run validation for a specific component type"""
-    print(f"🚀 Running Focused Validation: {component_type.title()}")
+    print(f"ROCKET Running Focused Validation: {component_type.title()}")
     print("=" * 80)
     
     # Map component types to test modules
@@ -155,16 +155,16 @@ def run_focused_validation(component_type):
     }
     
     if component_type not in component_map:
-        print(f"❌ Unknown component type: {component_type}")
+        print(f"FAIL Unknown component type: {component_type}")
         print(f"Available types: {list(component_map.keys())}")
         return False
     
     test_name, module_path = component_map[component_type]
     success, duration = run_test_module(module_path, test_name)
     
-    print(f"\n📊 Focused Validation Results:")
+    print(f"\nCHART Focused Validation Results:")
     print(f"   Component: {component_type.title()}")
-    print(f"   Status: {'✅ PASSED' if success else '❌ FAILED'}")
+    print(f"   Status: {'PASS PASSED' if success else 'FAIL FAILED'}")
     print(f"   Duration: {duration:.2f}s")
     
     return success
@@ -206,7 +206,7 @@ def main():
         success = run_comprehensive_validation()
     elif args[0] == "focused":
         if len(args) < 2:
-            print("❌ Focused mode requires component type")
+            print("FAIL Focused mode requires component type")
             print_usage()
             sys.exit(1)
         success = run_focused_validation(args[1])
@@ -214,7 +214,7 @@ def main():
         print_usage()
         sys.exit(0)
     else:
-        print(f"❌ Unknown mode: {args[0]}")
+        print(f"FAIL Unknown mode: {args[0]}")
         print_usage()
         sys.exit(1)
     

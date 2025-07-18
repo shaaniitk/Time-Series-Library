@@ -63,7 +63,7 @@ class TestAutoformer(unittest.TestCase, SanityTestMixin):
         mse, y_pred, y_true = self.run_sanity_test(Autoformer)
         
         logger.info("="*50)
-        logger.info(f"✓ Autoformer Sanity Test MSE: {mse:.6f}")
+        logger.info(f" Autoformer Sanity Test MSE: {mse:.6f}")
         logger.info("="*50)
         
         # Relaxed threshold for sanity test
@@ -122,10 +122,10 @@ class TestAutoformer(unittest.TestCase, SanityTestMixin):
         
         if autoformer_mse < timesnet_mse:
             improvement = ((timesnet_mse - autoformer_mse) / timesnet_mse) * 100
-            logger.info(f"🏆 Autoformer wins by {improvement:.2f}% improvement")
+            logger.info(f"TROPHY Autoformer wins by {improvement:.2f}% improvement")
         else:
             improvement = ((autoformer_mse - timesnet_mse) / autoformer_mse) * 100
-            logger.info(f"🏆 TimesNet wins by {improvement:.2f}% improvement")
+            logger.info(f"TROPHY TimesNet wins by {improvement:.2f}% improvement")
         
         logger.info("="*60)
         

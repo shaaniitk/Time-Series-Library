@@ -97,7 +97,7 @@ def test_inverse_transform():
     else:
         print("No covariate scaler found - skipping full data test")
     
-    print("\n✅ All inverse transform tests completed successfully!")
+    print("\nPASS All inverse transform tests completed successfully!")
 
 if __name__ == "__main__":
     test_inverse_transform()

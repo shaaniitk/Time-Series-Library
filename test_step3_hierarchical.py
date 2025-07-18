@@ -53,15 +53,15 @@ def test_step3_hierarchical_autoformer():
     try:
         # Import the model
         from models.HFHierarchicalAutoformer_Step3 import HFHierarchicalAutoformer
-        print("✅ Model import successful")
+        print("PASS Model import successful")
         
         # Initialize model
         model = HFHierarchicalAutoformer(config)
-        print("✅ Model initialization successful")
+        print("PASS Model initialization successful")
         
         # Get model info
         model_info = model.get_model_info()
-        print(f"✅ Model Info: {model_info['name']}")
+        print(f"PASS Model Info: {model_info['name']}")
         print(f"   Total Parameters: {model_info['total_params']:,}")
         print(f"   Trainable Parameters: {model_info['trainable_params']:,}")
         print(f"   Hierarchical Scales: {model_info['hierarchical_scales']}")
@@ -75,7 +75,7 @@ def test_step3_hierarchical_autoformer():
         x_dec = torch.randn(batch_size, config.pred_len, config.c_out)
         x_mark_dec = torch.randn(batch_size, config.pred_len, 4)
         
-        print(f"✅ Test data prepared: batch_size={batch_size}, seq_len={config.seq_len}, pred_len={config.pred_len}")
+        print(f"PASS Test data prepared: batch_size={batch_size}, seq_len={config.seq_len}, pred_len={config.pred_len}")
         
         # Test 1: Basic forward pass (no hierarchical analysis)
         print("\n" + "="*60)
@@ -89,7 +89,7 @@ def test_step3_hierarchical_autoformer():
         assert output.shape == expected_shape, f"Expected {expected_shape}, got {output.shape}"
         assert torch.isfinite(output).all(), "Output contains non-finite values"
         
-        print(f"✅ Basic forward pass successful")
+        print(f"PASS Basic forward pass successful")
         print(f"   Output shape: {output.shape}")
         print(f"   Output range: [{output.min().item():.6f}, {output.max().item():.6f}]")
         print(f"   Output mean: {output.mean().item():.6f}")
@@ -111,13 +111,13 @@ def test_step3_hierarchical_autoformer():
         assert hasattr(hierarchical_result, 'attention_weights'), "Missing attention_weights"
         assert hasattr(hierarchical_result, 'fusion_weights'), "Missing fusion_weights"
         
-        print(f"✅ HierarchicalResult structure validation passed")
+        print(f"PASS HierarchicalResult structure validation passed")
         
         # Validate main prediction
         assert hierarchical_result.prediction.shape == expected_shape
         assert torch.isfinite(hierarchical_result.prediction).all()
         
-        print(f"✅ Main prediction validation passed")
+        print(f"PASS Main prediction validation passed")
         print(f"   Prediction shape: {hierarchical_result.prediction.shape}")
         print(f"   Prediction range: [{hierarchical_result.prediction.min().item():.6f}, {hierarchical_result.prediction.max().item():.6f}]")
         
@@ -135,7 +135,7 @@ def test_step3_hierarchical_autoformer():
             assert scale_pred.shape == expected_shape, f"Wrong shape for {scale_name}"
             assert torch.isfinite(scale_pred).all(), f"Non-finite values in {scale_name}"
             
-            print(f"✅ Scale {scale_name} validation passed")
+            print(f"PASS Scale {scale_name} validation passed")
             print(f"   Shape: {scale_pred.shape}")
             print(f"   Range: [{scale_pred.min().item():.6f}, {scale_pred.max().item():.6f}]")
         
@@ -155,7 +155,7 @@ def test_step3_hierarchical_autoformer():
             assert scale_feat.shape == expected_feat_shape, f"Wrong feature shape for {scale_name}"
             assert torch.isfinite(scale_feat).all(), f"Non-finite values in feature {scale_name}"
             
-            print(f"✅ Scale feature {scale_name} validation passed")
+            print(f"PASS Scale feature {scale_name} validation passed")
             print(f"   Feature shape: {scale_feat.shape}")
             print(f"   Feature norm: {torch.norm(scale_feat, dim=-1).mean().item():.6f}")
         
@@ -171,7 +171,7 @@ def test_step3_hierarchical_autoformer():
         num_scales = len(config.hierarchical_scales)
         expected_attention_pairs = num_scales * (num_scales - 1)  # All pairs except self
         
-        print(f"✅ Attention weights computed: {len(attention_weights)} pairs")
+        print(f"PASS Attention weights computed: {len(attention_weights)} pairs")
         print(f"   Expected pairs: {expected_attention_pairs}")
         
         for att_name, att_weight in attention_weights.items():
@@ -196,7 +196,7 @@ def test_step3_hierarchical_autoformer():
         weight_sums = torch.sum(fusion_weights, dim=-1)
         assert torch.allclose(weight_sums, torch.ones_like(weight_sums), atol=1e-6), "Fusion weights should sum to 1"
         
-        print(f"✅ Fusion weights validation passed")
+        print(f"PASS Fusion weights validation passed")
         print(f"   Fusion weights shape: {fusion_weights.shape}")
         print(f"   Weight sums: {weight_sums}")
         print(f"   Weight distribution: {fusion_weights.mean(dim=0)}")
@@ -226,7 +226,7 @@ def test_step3_hierarchical_autoformer():
             assert scale_outputs[scale_key].shape == test_features.shape, f"Scale output shape mismatch for {scale_key}"
             assert torch.isfinite(scale_outputs[scale_key]).all(), f"Non-finite scale output for {scale_key}"
         
-        print(f"✅ Multi-scale processor validation passed")
+        print(f"PASS Multi-scale processor validation passed")
         print(f"   Processed scales: {list(scale_outputs.keys())}")
         print(f"   Fused output shape: {fused_output.shape}")
         
@@ -258,7 +258,7 @@ def test_step3_hierarchical_autoformer():
         # Verify hierarchical computation didn't corrupt the model
         assert torch.isfinite(hierarchical_result_train.prediction).all()
         
-        print(f"✅ Gradient safety validation passed")
+        print(f"PASS Gradient safety validation passed")
         print(f"   Gradients during training: {grad_count} parameters")
         print(f"   Hierarchical computation safe: No gradient interference")
         
@@ -292,34 +292,34 @@ def test_step3_hierarchical_autoformer():
                 'num_scales': len(test_output.scale_predictions)
             }
             
-            print(f"✅ Batch size {bs}: shapes OK, finite values OK, {results[bs]['num_scales']} scales")
+            print(f"PASS Batch size {bs}: shapes OK, finite values OK, {results[bs]['num_scales']} scales")
         
         # Summary
         print("\n" + "="*80)
         print("STEP 3 TESTING SUMMARY")
         print("="*80)
-        print("🎉 ALL TESTS PASSED! 🎉")
-        print(f"✅ Model: {model_info['name']}")
-        print(f"✅ Parameters: {model_info['total_params']:,}")
-        print(f"✅ Hierarchical Scales: {model_info['hierarchical_scales']}")
-        print(f"✅ Critical Bugs: ELIMINATED")
+        print("PARTY ALL TESTS PASSED! PARTY")
+        print(f"PASS Model: {model_info['name']}")
+        print(f"PASS Parameters: {model_info['total_params']:,}")
+        print(f"PASS Hierarchical Scales: {model_info['hierarchical_scales']}")
+        print(f"PASS Critical Bugs: ELIMINATED")
         print("   - Complex hierarchical layer coupling: FIXED")
         print("   - Memory allocation errors: PREVENTED")
         print("   - Scale confusion bugs: AVOIDED")
         print("   - Gradient flow issues: FIXED")
-        print(f"✅ Batch Consistency: {len(batch_sizes)} sizes tested")
-        print(f"✅ Multi-Scale Processing: {len(config.hierarchical_scales)} scales validated")
-        print(f"✅ Cross-Scale Attention: Fully validated")
-        print(f"✅ Feature Fusion: Softmax weights validated")
-        print(f"✅ Hierarchical Analysis: Complete structure validated")
+        print(f"PASS Batch Consistency: {len(batch_sizes)} sizes tested")
+        print(f"PASS Multi-Scale Processing: {len(config.hierarchical_scales)} scales validated")
+        print(f"PASS Cross-Scale Attention: Fully validated")
+        print(f"PASS Feature Fusion: Softmax weights validated")
+        print(f"PASS Hierarchical Analysis: Complete structure validated")
         
-        print("\n🚀 Step 3 HFHierarchicalAutoformer is PRODUCTION READY!")
+        print("\nROCKET Step 3 HFHierarchicalAutoformer is PRODUCTION READY!")
         print("Ready to proceed to Step 4: HFQuantileAutoformer")
         
         return True
         
     except Exception as e:
-        print(f"❌ Error during testing: {e}")
+        print(f"FAIL Error during testing: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -327,7 +327,7 @@ def test_step3_hierarchical_autoformer():
 if __name__ == "__main__":
     success = test_step3_hierarchical_autoformer()
     if success:
-        print("\n✅ Step 3 testing completed successfully!")
+        print("\nPASS Step 3 testing completed successfully!")
     else:
-        print("\n❌ Step 3 testing failed!")
+        print("\nFAIL Step 3 testing failed!")
         sys.exit(1)

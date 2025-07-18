@@ -22,7 +22,7 @@ try:
     from utils.modular_components.implementations import get_integration_status
     COMPONENTS_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️ Could not import modular components: {e}")
+    print(f"WARN Could not import modular components: {e}")
     COMPONENTS_AVAILABLE = False
 
 class MockBayesianModel(nn.Module):
@@ -79,12 +79,12 @@ def create_sample_predictions_and_targets(batch_size=4, seq_len=24, features=7):
 
 def test_mse_loss_functionality():
     """Test MSE loss actual functionality"""
-    print("🧪 Testing MSE Loss Functionality...")
+    print("TEST Testing MSE Loss Functionality...")
     
     try:
         loss_fn = create_component('loss', 'mse', {'reduction': 'mean'})
         if loss_fn is None:
-            print("    ⚠️ MSE loss not available, skipping...")
+            print("    WARN MSE loss not available, skipping...")
             return True
         
         pred, target = create_sample_predictions_and_targets()
@@ -116,7 +116,7 @@ def test_mse_loss_functionality():
                     assert loss_red.dim() == 0, f"'{reduction}' reduction should be scalar"
                     
             except Exception as e:
-                print(f"    ⚠️ Reduction mode '{reduction}' failed: {e}")
+                print(f"    WARN Reduction mode '{reduction}' failed: {e}")
         
         # Test gradient flow
         pred_grad = pred.clone().requires_grad_(True)
@@ -126,21 +126,21 @@ def test_mse_loss_functionality():
         assert pred_grad.grad is not None, "Gradients should exist"
         assert not torch.isnan(pred_grad.grad).any(), "Gradients should not be NaN"
         
-        print("    ✅ MSE loss functionality validated")
+        print("    PASS MSE loss functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ MSE loss test failed: {e}")
+        print(f"    FAIL MSE loss test failed: {e}")
         return False
 
 def test_mae_loss_functionality():
     """Test MAE loss actual functionality"""
-    print("🧪 Testing MAE Loss Functionality...")
+    print("TEST Testing MAE Loss Functionality...")
     
     try:
         loss_fn = create_component('loss', 'mae', {'reduction': 'mean'})
         if loss_fn is None:
-            print("    ⚠️ MAE loss not available, skipping...")
+            print("    WARN MAE loss not available, skipping...")
             return True
         
         pred, target = create_sample_predictions_and_targets()
@@ -167,19 +167,19 @@ def test_mae_loss_functionality():
             mae_ratio = mae_loss / loss_fn(pred, target)
             mse_ratio = mse_loss / mse_fn(pred, target)
             
-            print(f"    📊 Outlier sensitivity - MAE ratio: {mae_ratio:.2f}, MSE ratio: {mse_ratio:.2f}")
+            print(f"    CHART Outlier sensitivity - MAE ratio: {mae_ratio:.2f}, MSE ratio: {mse_ratio:.2f}")
             assert mse_ratio > mae_ratio, "MSE should be more sensitive to outliers than MAE"
         
-        print("    ✅ MAE loss functionality validated")
+        print("    PASS MAE loss functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ MAE loss test failed: {e}")
+        print(f"    FAIL MAE loss test failed: {e}")
         return False
 
 def test_bayesian_mse_loss_functionality():
     """Test Bayesian MSE loss with KL divergence functionality"""
-    print("🧪 Testing Bayesian MSE Loss Functionality...")
+    print("TEST Testing Bayesian MSE Loss Functionality...")
     
     try:
         loss_fn = create_component('loss', 'bayesian_mse', {
@@ -189,7 +189,7 @@ def test_bayesian_mse_loss_functionality():
         })
         
         if loss_fn is None:
-            print("    ⚠️ Bayesian MSE loss not available, skipping...")
+            print("    WARN Bayesian MSE loss not available, skipping...")
             return True
         
         pred, target = create_sample_predictions_and_targets()
@@ -206,26 +206,26 @@ def test_bayesian_mse_loss_functionality():
             
             # KL divergence should make loss slightly larger
             if loss_with_model.item() > loss_no_model.item():
-                print("    ✅ KL divergence contribution detected")
+                print("    PASS KL divergence contribution detected")
             else:
-                print("    ⚠️ KL divergence contribution not clearly visible")
+                print("    WARN KL divergence contribution not clearly visible")
         
         # Test uncertainty quantification
         if hasattr(loss_fn, 'uncertainty_weight'):
             assert hasattr(loss_fn, 'uncertainty_weight'), "Should have uncertainty weight parameter"
-            print(f"    📊 KL weight: {getattr(loss_fn, 'kl_weight', 'N/A')}")
-            print(f"    📊 Uncertainty weight: {getattr(loss_fn, 'uncertainty_weight', 'N/A')}")
+            print(f"    CHART KL weight: {getattr(loss_fn, 'kl_weight', 'N/A')}")
+            print(f"    CHART Uncertainty weight: {getattr(loss_fn, 'uncertainty_weight', 'N/A')}")
         
-        print("    ✅ Bayesian MSE loss functionality validated")
+        print("    PASS Bayesian MSE loss functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Bayesian MSE loss test failed: {e}")
+        print(f"    FAIL Bayesian MSE loss test failed: {e}")
         return False
 
 def test_quantile_loss_functionality():
     """Test quantile loss functionality"""
-    print("🧪 Testing Quantile Loss Functionality...")
+    print("TEST Testing Quantile Loss Functionality...")
     
     try:
         quantiles = [0.1, 0.5, 0.9]
@@ -235,7 +235,7 @@ def test_quantile_loss_functionality():
         })
         
         if loss_fn is None:
-            print("    ⚠️ Quantile loss not available, skipping...")
+            print("    WARN Quantile loss not available, skipping...")
             return True
         
         # Create quantile predictions (batch, seq, features, quantiles)
@@ -253,7 +253,7 @@ def test_quantile_loss_functionality():
         loss_ordered = loss_fn(pred_ordered, target)
         
         # Ordered quantiles should generally have lower or similar loss
-        print(f"    📊 Unordered loss: {loss.item():.6f}, Ordered loss: {loss_ordered.item():.6f}")
+        print(f"    CHART Unordered loss: {loss.item():.6f}, Ordered loss: {loss_ordered.item():.6f}")
         
         # Test pinball loss property
         # For quantile q, loss should be asymmetric
@@ -269,7 +269,7 @@ def test_quantile_loss_functionality():
             )
             pinball_losses.append(pinball_loss.item())
         
-        print(f"    📊 Pinball loss pattern for q=0.1: {pinball_losses}")
+        print(f"    CHART Pinball loss pattern for q=0.1: {pinball_losses}")
         
         # Test different quantile sets
         for test_quantiles in [[0.5], [0.25, 0.75], [0.1, 0.3, 0.5, 0.7, 0.9]]:
@@ -282,21 +282,21 @@ def test_quantile_loss_functionality():
                 if test_loss_fn:
                     test_pred = torch.randn(batch_size, seq_len, features, len(test_quantiles))
                     test_loss = test_loss_fn(test_pred, target)
-                    print(f"    📊 {len(test_quantiles)} quantiles loss: {test_loss.item():.6f}")
+                    print(f"    CHART {len(test_quantiles)} quantiles loss: {test_loss.item():.6f}")
                     
             except Exception as e:
-                print(f"    ⚠️ Quantile set {test_quantiles} failed: {e}")
+                print(f"    WARN Quantile set {test_quantiles} failed: {e}")
         
-        print("    ✅ Quantile loss functionality validated")
+        print("    PASS Quantile loss functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Quantile loss test failed: {e}")
+        print(f"    FAIL Quantile loss test failed: {e}")
         return False
 
 def test_frequency_aware_loss():
     """Test frequency-aware loss functionality"""
-    print("🧪 Testing Frequency-Aware Loss Functionality...")
+    print("TEST Testing Frequency-Aware Loss Functionality...")
     
     try:
         loss_fn = create_component('loss', 'frequency_aware', {
@@ -305,7 +305,7 @@ def test_frequency_aware_loss():
         })
         
         if loss_fn is None:
-            print("    ⚠️ Frequency-aware loss not available, skipping...")
+            print("    WARN Frequency-aware loss not available, skipping...")
             return True
         
         pred, target = create_sample_predictions_and_targets()
@@ -328,23 +328,23 @@ def test_frequency_aware_loss():
         loss_low_freq = loss_fn(pred_low_freq, target_low_freq)
         loss_high_freq = loss_fn(pred_high_freq, target_high_freq)
         
-        print(f"    📊 Low frequency loss: {loss_low_freq.item():.6f}")
-        print(f"    📊 High frequency loss: {loss_high_freq.item():.6f}")
+        print(f"    CHART Low frequency loss: {loss_low_freq.item():.6f}")
+        print(f"    CHART High frequency loss: {loss_high_freq.item():.6f}")
         
         # Test frequency domain properties
         if hasattr(loss_fn, 'compute_frequency_loss'):
-            print("    ✅ Frequency domain computation available")
+            print("    PASS Frequency domain computation available")
         
-        print("    ✅ Frequency-aware loss functionality validated")
+        print("    PASS Frequency-aware loss functionality validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Frequency-aware loss test failed: {e}")
+        print(f"    FAIL Frequency-aware loss test failed: {e}")
         return False
 
 def test_loss_mathematical_properties():
     """Test mathematical properties of loss functions"""
-    print("🧪 Testing Loss Mathematical Properties...")
+    print("TEST Testing Loss Mathematical Properties...")
     
     try:
         # Test common loss functions
@@ -380,12 +380,12 @@ def test_loss_mathematical_properties():
                     'final_loss': losses[-1]
                 }
                 
-                print(f"    📊 {loss_type.upper()}: converges={results[loss_type]['converges']}, "
+                print(f"    CHART {loss_type.upper()}: converges={results[loss_type]['converges']}, "
                       f"monotonic={results[loss_type]['monotonic_decrease']}, "
                       f"final_loss={results[loss_type]['final_loss']:.6f}")
                 
             except Exception as e:
-                print(f"    ⚠️ {loss_type} mathematical test failed: {e}")
+                print(f"    WARN {loss_type} mathematical test failed: {e}")
         
         # Test loss function symmetries and properties
         for loss_type in loss_types:
@@ -403,22 +403,22 @@ def test_loss_mathematical_properties():
                 loss_ac = loss_fn(pred, third_point)
                 loss_bc = loss_fn(target, third_point)
                 
-                print(f"    📊 {loss_type.upper()} triangle: {loss_ab.item():.4f}, "
+                print(f"    CHART {loss_type.upper()} triangle: {loss_ab.item():.4f}, "
                       f"{loss_ac.item():.4f}, {loss_bc.item():.4f}")
                 
             except Exception as e:
-                print(f"    ⚠️ {loss_type} symmetry test failed: {e}")
+                print(f"    WARN {loss_type} symmetry test failed: {e}")
         
-        print("    ✅ Loss mathematical properties validated")
+        print("    PASS Loss mathematical properties validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Loss mathematical properties test failed: {e}")
+        print(f"    FAIL Loss mathematical properties test failed: {e}")
         return False
 
 def test_loss_numerical_stability():
     """Test numerical stability of loss functions"""
-    print("🧪 Testing Loss Numerical Stability...")
+    print("TEST Testing Loss Numerical Stability...")
     
     try:
         loss_types = ['mse', 'mae', 'quantile_loss']
@@ -444,7 +444,7 @@ def test_loss_numerical_stability():
                 if loss_fn is None:
                     continue
                 
-                print(f"    🔍 Testing {loss_type.upper()} stability:")
+                print(f"    SEARCH Testing {loss_type.upper()} stability:")
                 
                 for case_name, pred, target in extreme_cases:
                     try:
@@ -457,30 +457,30 @@ def test_loss_numerical_stability():
                         is_nan = torch.isnan(loss).any()
                         is_inf = torch.isinf(loss).any()
                         
-                        status = "✅" if is_finite and not is_nan and not is_inf else "❌"
+                        status = "PASS" if is_finite and not is_nan and not is_inf else "FAIL"
                         print(f"      {status} {case_name}: loss={loss.item():.2e}, "
                               f"finite={is_finite}, nan={is_nan}, inf={is_inf}")
                         
                     except Exception as e:
-                        print(f"      ❌ {case_name}: {e}")
+                        print(f"      FAIL {case_name}: {e}")
                         
             except Exception as e:
-                print(f"    ⚠️ {loss_type} stability test setup failed: {e}")
+                print(f"    WARN {loss_type} stability test setup failed: {e}")
         
-        print("    ✅ Loss numerical stability validated")
+        print("    PASS Loss numerical stability validated")
         return True
         
     except Exception as e:
-        print(f"    ❌ Loss numerical stability test failed: {e}")
+        print(f"    FAIL Loss numerical stability test failed: {e}")
         return False
 
 def run_loss_functionality_tests():
     """Run all loss function functionality tests"""
-    print("🚀 Running Loss Function Component Functionality Tests")
+    print("ROCKET Running Loss Function Component Functionality Tests")
     print("=" * 80)
     
     if not COMPONENTS_AVAILABLE:
-        print("❌ Modular components not available - skipping tests")
+        print("FAIL Modular components not available - skipping tests")
         return False
     
     tests = [
@@ -497,28 +497,28 @@ def run_loss_functionality_tests():
     total = len(tests)
     
     for test_name, test_func in tests:
-        print(f"\n🎯 {test_name}")
+        print(f"\nTARGET {test_name}")
         print("-" * 60)
         
         try:
             if test_func():
                 passed += 1
-                print(f"✅ {test_name} PASSED")
+                print(f"PASS {test_name} PASSED")
             else:
-                print(f"❌ {test_name} FAILED")
+                print(f"FAIL {test_name} FAILED")
         except Exception as e:
-            print(f"❌ {test_name} ERROR: {e}")
+            print(f"FAIL {test_name} ERROR: {e}")
     
     print("\n" + "=" * 80)
-    print(f"📊 Loss Function Functionality Test Results:")
+    print(f"CHART Loss Function Functionality Test Results:")
     print(f"   Passed: {passed}/{total}")
     print(f"   Success Rate: {(passed/total)*100:.1f}%")
     
     if passed == total:
-        print("🎉 All loss function functionality tests passed!")
+        print("PARTY All loss function functionality tests passed!")
         return True
     else:
-        print("⚠️ Some loss function functionality tests failed")
+        print("WARN Some loss function functionality tests failed")
         return False
 
 if __name__ == "__main__":

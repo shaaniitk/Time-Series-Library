@@ -8,51 +8,51 @@ import os
 
 def quick_system_check():
     """Quick check of system capabilities"""
-    print("🔍 QUICK SYSTEM CHECK")
+    print("SEARCH QUICK SYSTEM CHECK")
     print("="*30)
     
     # Python version
-    print(f"🐍 Python: {sys.version.split()[0]}")
+    print(f" Python: {sys.version.split()[0]}")
     
     # PyTorch version and CUDA
-    print(f"🔥 PyTorch: {torch.__version__}")
+    print(f"FIRE PyTorch: {torch.__version__}")
     
     # CUDA availability
     if torch.cuda.is_available():
-        print(f"🚀 CUDA: ✅ Available (GPU: {torch.cuda.get_device_name(0)})")
-        print(f"💾 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        print(f"ROCKET CUDA: PASS Available (GPU: {torch.cuda.get_device_name(0)})")
+        print(f" GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
     else:
-        print("🚀 CUDA: ❌ Not available (CPU only)")
+        print("ROCKET CUDA: FAIL Not available (CPU only)")
     
     # Memory test
-    print("\n💾 Memory Test:")
+    print("\n Memory Test:")
     try:
         # Create a small tensor
         test_tensor = torch.randn(1000, 1000)
         if torch.cuda.is_available():
             test_tensor = test_tensor.cuda()
-        print("   ✅ Basic tensor operations work")
+        print("   PASS Basic tensor operations work")
         del test_tensor
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     except Exception as e:
-        print(f"   ❌ Memory issue: {e}")
+        print(f"   FAIL Memory issue: {e}")
     
     # Data file check
-    print("\n📊 Data File Check:")
+    print("\nCHART Data File Check:")
     data_path = "./data/prepared_financial_data.csv"
     if os.path.exists(data_path):
         file_size = os.path.getsize(data_path) / 1024**2  # MB
-        print(f"   ✅ Data file found: {file_size:.1f} MB")
+        print(f"   PASS Data file found: {file_size:.1f} MB")
     else:
-        print(f"   ❌ Data file not found: {data_path}")
-        print(f"   💡 Run the data preparation notebook first")
+        print(f"   FAIL Data file not found: {data_path}")
+        print(f"   IDEA Run the data preparation notebook first")
     
     return torch.cuda.is_available()
 
 def quick_model_test():
     """Quick test of TimesNet model creation"""
-    print("\n🧠 QUICK MODEL TEST")
+    print("\nBRAIN QUICK MODEL TEST")
     print("="*30)
     
     try:
@@ -116,8 +116,8 @@ def quick_model_test():
         # Count parameters
         total_params = sum(p.numel() for p in model.parameters())
         
-        print(f"   ✅ Model created in {model_time:.3f}s")
-        print(f"   🔢 Parameters: {total_params:,}")        # Test forward pass
+        print(f"   PASS Model created in {model_time:.3f}s")
+        print(f"    Parameters: {total_params:,}")        # Test forward pass
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = model.to(device)
         
@@ -147,7 +147,7 @@ def quick_model_test():
             
         except Exception as e:
             if "cannot be multiplied" in str(e):
-                print(f"   🔧 Trying with different time feature dimensions...")
+                print(f"   TOOL Trying with different time feature dimensions...")
                 # Try with 5 time features (business day specific)
                 time_features_dim = 5
                 batch_x_mark = torch.randn(batch_size, config.seq_len, time_features_dim).to(device)
@@ -165,24 +165,24 @@ def quick_model_test():
             else:
                 raise e
         
-        print(f"   ✅ Forward pass in {forward_time:.3f}s")
-        print(f"   📊 Output shape: {outputs.shape}")
+        print(f"   PASS Forward pass in {forward_time:.3f}s")
+        print(f"   CHART Output shape: {outputs.shape}")
         
         if forward_time < 1.0:
-            print("   🚀 Model performance looks good!")
+            print("   ROCKET Model performance looks good!")
             return True
         else:
-            print("   ⚠️ Model is slower than expected")
+            print("   WARN Model is slower than expected")
             return False
         
     except Exception as e:
-        print(f"   ❌ Model test failed: {e}")
+        print(f"   FAIL Model test failed: {e}")
         return False
 
 def main():
     """Run complete quick test"""
-    print("🧪 TIMESNET QUICK DIAGNOSTIC TEST")
-    print("🎯 This will quickly identify major issues")
+    print("TEST TIMESNET QUICK DIAGNOSTIC TEST")
+    print("TARGET This will quickly identify major issues")
     print("="*50)
     
     # System check
@@ -192,22 +192,22 @@ def main():
     model_works = quick_model_test()
     
     # Summary
-    print(f"\n📋 QUICK TEST SUMMARY")
+    print(f"\nCLIPBOARD QUICK TEST SUMMARY")
     print("="*30)
     
     if model_works:
-        print("✅ SYSTEM LOOKS GOOD!")
-        print("💡 If training is still slow, use the diagnostic cells in the notebook")
+        print("PASS SYSTEM LOOKS GOOD!")
+        print("IDEA If training is still slow, use the diagnostic cells in the notebook")
         if cuda_available:
-            print("🚀 GPU is available - training should be fast")
+            print("ROCKET GPU is available - training should be fast")
         else:
-            print("⚠️ CPU only - training will be slower but should work")
+            print("WARN CPU only - training will be slower but should work")
     else:
-        print("❌ ISSUES DETECTED!")
-        print("💡 Check the error messages above")
-        print("🔧 Try running the emergency debug mode in the notebook")
+        print("FAIL ISSUES DETECTED!")
+        print("IDEA Check the error messages above")
+        print("TOOL Try running the emergency debug mode in the notebook")
     
-    print(f"\n🎯 NEXT STEPS:")
+    print(f"\nTARGET NEXT STEPS:")
     print(f"1. Open TimesNet_Light_Config.ipynb")
     if not model_works:
         print(f"2. Run: emergency_debug_mode()")

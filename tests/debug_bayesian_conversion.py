@@ -13,7 +13,7 @@ from layers.BayesianLayers import BayesianLinear
 def debug_bayesian_conversion():
     """Debug the Bayesian layer conversion process"""
     
-    print("🔍 Debugging Bayesian Layer Conversion")
+    print("SEARCH Debugging Bayesian Layer Conversion")
     print("=" * 50)
     
     # Create config
@@ -26,7 +26,7 @@ def debug_bayesian_conversion():
     )
     
     # Create Bayesian model
-    print("1️⃣ Creating BayesianEnhancedAutoformer...")
+    print("1 Creating BayesianEnhancedAutoformer...")
     model = BayesianEnhancedAutoformer(
         config, 
         uncertainty_method='bayesian',
@@ -34,7 +34,7 @@ def debug_bayesian_conversion():
         kl_weight=1e-3
     )
     
-    print("\n2️⃣ Checking model structure...")
+    print("\n2 Checking model structure...")
     print(f"Base model type: {type(model.base_model)}")
     print(f"Has projection layer: {hasattr(model.base_model, 'projection')}")
     
@@ -48,7 +48,7 @@ def debug_bayesian_conversion():
         else:
             print(f"Projection shape: {proj.in_features} -> {proj.out_features}")
     
-    print("\n3️⃣ Scanning for all Bayesian layers...")
+    print("\n3 Scanning for all Bayesian layers...")
     bayesian_layers = []
     for name, module in model.named_modules():
         if isinstance(module, BayesianLinear):
@@ -57,7 +57,7 @@ def debug_bayesian_conversion():
     
     print(f"Total Bayesian layers found: {len(bayesian_layers)}")
     
-    print("\n4️⃣ Testing KL divergence computation...")
+    print("\n4 Testing KL divergence computation...")
     total_kl = model.get_kl_loss()
     print(f"Total KL loss: {total_kl}")
     
@@ -68,15 +68,15 @@ def debug_bayesian_conversion():
             layer_kl = layer.kl_divergence()
             print(f"   {name} KL: {layer_kl.item():.6f}")
     else:
-        print("❌ No Bayesian layers found! Conversion failed.")
+        print("FAIL No Bayesian layers found! Conversion failed.")
         
         # Let's manually check what layers exist
-        print("\n🔍 Manual inspection of model layers:")
+        print("\nSEARCH Manual inspection of model layers:")
         for name, module in model.base_model.named_modules():
             if isinstance(module, nn.Linear):
                 print(f"   Linear layer: {name} - {module.in_features}->{module.out_features}")
     
-    print("\n5️⃣ Testing with manual Bayesian layer...")
+    print("\n5 Testing with manual Bayesian layer...")
     # Create a standalone Bayesian layer to verify KL computation works
     manual_bayesian = BayesianLinear(32, 4, prior_std=1.0)
     manual_kl = manual_bayesian.kl_divergence()
@@ -85,7 +85,7 @@ def debug_bayesian_conversion():
     # Force some parameters to be non-zero
     with torch.no_grad():
         manual_bayesian.weight_mean.data.fill_(0.5)  # Set means to 0.5
-        manual_bayesian.weight_logvar.data.fill_(-2.0)  # Set logvar to -2 (std ≈ 0.37)
+        manual_bayesian.weight_logvar.data.fill_(-2.0)  # Set logvar to -2 (std  0.37)
     
     manual_kl_after = manual_bayesian.kl_divergence()
     print(f"Manual BayesianLinear KL (after setting params): {manual_kl_after.item():.6f}")
@@ -95,6 +95,6 @@ def debug_bayesian_conversion():
 if __name__ == "__main__":
     success = debug_bayesian_conversion()
     if success:
-        print("\n✅ Bayesian conversion working!")
+        print("\nPASS Bayesian conversion working!")
     else:
-        print("\n❌ Bayesian conversion failed!")
+        print("\nFAIL Bayesian conversion failed!")

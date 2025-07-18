@@ -114,25 +114,25 @@ def test_standard_hf_model():
     
     try:
         model = HFEnhancedAutoformer(config)
-        print(f"✓ Model created: {sum(p.numel() for p in model.parameters()):,} parameters")
+        print(f" Model created: {sum(p.numel() for p in model.parameters()):,} parameters")
         
         # Forward pass
         output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-        print(f"✓ Forward pass: {output.shape}")
+        print(f" Forward pass: {output.shape}")
         
         # Loss computation
         loss_fn = get_loss_function('mse', config)
         loss = loss_fn(output, targets)
-        print(f"✓ Loss computation: {loss.item():.6f}")
+        print(f" Loss computation: {loss.item():.6f}")
         
         # Backward pass
         loss.backward()
-        print("✓ Backward pass successful")
+        print(" Backward pass successful")
         
         return True
         
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f" Error: {e}")
         return False
 
 
@@ -147,7 +147,7 @@ def test_bayesian_hf_model():
     try:
         model = create_hf_bayesian_model(config)
         info = model.get_model_info()
-        print(f"✓ Model created: {info['parameters']['total']:,} parameters")
+        print(f" Model created: {info['parameters']['total']:,} parameters")
         print(f"  - Backbone: {info['parameters']['backbone']:,}")
         print(f"  - Extensions: {info['parameters']['extensions']:,}")
         print(f"  - Capabilities: {list(info['capabilities'].keys())}")
@@ -156,22 +156,22 @@ def test_bayesian_hf_model():
         output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
         
         if isinstance(output, dict):
-            print(f"✓ Uncertainty forward: prediction {output['prediction'].shape}")
+            print(f" Uncertainty forward: prediction {output['prediction'].shape}")
             print(f"  - Uncertainty: {output['uncertainty'].shape}")
             print(f"  - Confidence intervals: {list(output['confidence_intervals'].keys())}")
             
             # Test loss computation
             total_loss, components = model.compute_loss(output, targets, x_enc)
-            print(f"✓ Loss computation: total={total_loss.item():.6f}")
+            print(f" Loss computation: total={total_loss.item():.6f}")
             print(f"  - Components: {list(components.keys())}")
             
         else:
-            print(f"✓ Standard forward: {output.shape}")
+            print(f" Standard forward: {output.shape}")
             
         return True
         
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f" Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -189,21 +189,21 @@ def test_hierarchical_hf_model():
     try:
         model = create_hf_hierarchical_model(config)
         info = model.get_model_info()
-        print(f"✓ Model created: {info['parameters']['total']:,} parameters")
+        print(f" Model created: {info['parameters']['total']:,} parameters")
         print(f"  - Extensions: {info['extensions']}")
         
         # Forward pass
         output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-        print(f"✓ Forward pass: {output.shape}")
+        print(f" Forward pass: {output.shape}")
         
         # Loss computation
         total_loss, components = model.compute_loss(output, targets, x_enc)
-        print(f"✓ Loss computation: {total_loss.item():.6f}")
+        print(f" Loss computation: {total_loss.item():.6f}")
         
         return True
         
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f" Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -225,21 +225,21 @@ def test_quantile_hf_model():
     try:
         model = create_hf_quantile_model(config)
         info = model.get_model_info()
-        print(f"✓ Model created: {info['parameters']['total']:,} parameters")
+        print(f" Model created: {info['parameters']['total']:,} parameters")
         
         # Forward pass
         output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
         expected_shape = (targets.shape[0], targets.shape[1], targets.shape[2] * n_quantiles)
-        print(f"✓ Quantile forward: {output.shape} (expected: {expected_shape})")
+        print(f" Quantile forward: {output.shape} (expected: {expected_shape})")
         
         # Loss computation with quantile targets
         total_loss, components = model.compute_loss(output, quantile_targets, x_enc)
-        print(f"✓ Pinball loss computation: {total_loss.item():.6f}")
+        print(f" Pinball loss computation: {total_loss.item():.6f}")
         
         return True
         
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f" Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -264,7 +264,7 @@ def test_full_hf_model():
     try:
         model = create_hf_full_model(config)
         info = model.get_model_info()
-        print(f"✓ Model created: {info['parameters']['total']:,} parameters")
+        print(f" Model created: {info['parameters']['total']:,} parameters")
         print(f"  - Extensions: {info['extensions']}")
         print(f"  - All capabilities: {info['capabilities']}")
         
@@ -273,21 +273,21 @@ def test_full_hf_model():
         
         if isinstance(output, dict) and 'prediction' in output:
             expected_shape = (targets.shape[0], targets.shape[1], targets.shape[2] * n_quantiles)
-            print(f"✓ Full forward: prediction {output['prediction'].shape} (expected: {expected_shape})")
+            print(f" Full forward: prediction {output['prediction'].shape} (expected: {expected_shape})")
             print(f"  - With uncertainty: {output['uncertainty'].shape}")
             
             # Loss computation
             total_loss, components = model.compute_loss(output, quantile_targets, x_enc)
-            print(f"✓ Full loss computation: {total_loss.item():.6f}")
+            print(f" Full loss computation: {total_loss.item():.6f}")
             print(f"  - Components: {list(components.keys())}")
             
         else:
-            print(f"✓ Output shape: {output.shape}")
+            print(f" Output shape: {output.shape}")
             
         return True
         
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f" Error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -322,10 +322,10 @@ def test_loss_functions():
             output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
             
             total_loss, components = model.compute_loss(output, test_targets, x_enc)
-            print(f"    ✓ {loss_name}: {total_loss.item():.6f}")
+            print(f"     {loss_name}: {total_loss.item():.6f}")
             
         except Exception as e:
-            print(f"    ✗ {loss_name}: {e}")
+            print(f"     {loss_name}: {e}")
 
 
 def test_auto_model_creation():
@@ -349,10 +349,10 @@ def test_auto_model_creation():
                 setattr(config, key, value)
                 
             model = create_hf_model_from_config(config, model_type='auto')
-            print(f"    ✓ Created: {type(model).__name__}")
+            print(f"     Created: {type(model).__name__}")
             
         except Exception as e:
-            print(f"    ✗ {case['name']}: {e}")
+            print(f"     {case['name']}: {e}")
 
 
 def main():
@@ -377,7 +377,7 @@ def main():
             result = test()
             results.append(result)
         except Exception as e:
-            print(f"✗ Test failed with exception: {e}")
+            print(f" Test failed with exception: {e}")
             results.append(False)
             
     print("\n" + "=" * 60)
@@ -388,15 +388,15 @@ def main():
     total = len(results)
     
     for i, (test, result) in enumerate(zip(tests, results)):
-        status = "✓ PASS" if result else "✗ FAIL"
+        status = " PASS" if result else " FAIL"
         print(f"{status} {test.__name__}")
         
     print(f"\nOverall: {passed}/{total} tests passed")
     
     if passed == total:
-        print("🎉 All tests passed! HF Enhanced Models are ready to use.")
+        print("PARTY All tests passed! HF Enhanced Models are ready to use.")
     else:
-        print("⚠️  Some tests failed. Check the output above for details.")
+        print("WARN  Some tests failed. Check the output above for details.")
         
     return passed == total
 

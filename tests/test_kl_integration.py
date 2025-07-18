@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 def test_kl_tuning_integration():
     """Test KL tuning with actual BayesianEnhancedAutoformer"""
     
-    print("🧪 Testing KL Tuning with BayesianEnhancedAutoformer")
+    print("TEST Testing KL Tuning with BayesianEnhancedAutoformer")
     print("=" * 60)
     
     # Create model configuration
@@ -48,7 +48,7 @@ def test_kl_tuning_integration():
         # Import and create model
         from models.BayesianEnhancedAutoformer import BayesianEnhancedAutoformer
         model = BayesianEnhancedAutoformer(configs)
-        print("✅ Model created successfully")
+        print("PASS Model created successfully")
         
         # Create synthetic data
         batch_size = 16
@@ -63,7 +63,7 @@ def test_kl_tuning_integration():
         y_mark = torch.randn(batch_size, configs.label_len + pred_len, 4)
         targets = torch.randn(batch_size, pred_len, c_out)
         
-        print(f"📊 Data shapes:")
+        print(f"CHART Data shapes:")
         print(f"   Input: {x_data.shape}")
         print(f"   Target: {targets.shape}")
         
@@ -88,7 +88,7 @@ def test_kl_tuning_integration():
             # Get KL loss
             kl_loss = model.kl_loss()
         
-        print(f"🔍 Initial losses:")
+        print(f"SEARCH Initial losses:")
         print(f"   Data loss: {data_loss.item():.4f}")
         print(f"   KL loss: {kl_loss.item():.4f}")
         print(f"   Output shape: {outputs.shape}")
@@ -96,7 +96,7 @@ def test_kl_tuning_integration():
         # Suggest KL weight
         suggested_weight = suggest_kl_weight(data_loss.item(), target_percentage=0.1)
         model.kl_weight = suggested_weight
-        print(f"🎯 Suggested KL weight: {suggested_weight:.2e}")
+        print(f"TARGET Suggested KL weight: {suggested_weight:.2e}")
         
         # Setup KL tuner
         kl_tuner = KLTuner(
@@ -105,10 +105,10 @@ def test_kl_tuning_integration():
             min_weight=1e-6,
             max_weight=1e-2
         )
-        print("✅ KL tuner setup complete")
+        print("PASS KL tuner setup complete")
         
         # Simulate training epochs with KL tuning
-        print(f"\n🏃 Simulating training with KL tuning:")
+        print(f"\n Simulating training with KL tuning:")
         print("-" * 50)
         print("Epoch | Data Loss | KL Loss | Weight | KL% | Total")
         print("-" * 50)
@@ -149,26 +149,26 @@ def test_kl_tuning_integration():
         # Plot results
         try:
             kl_tuner.plot_kl_tuning_history('test_kl_tuning.png')
-            print("\n📈 KL tuning plot saved as 'test_kl_tuning.png'")
+            print("\nGRAPH KL tuning plot saved as 'test_kl_tuning.png'")
         except Exception as e:
-            print(f"\n⚠️  Could not save plot: {e}")
+            print(f"\nWARN  Could not save plot: {e}")
         
         # Final analysis
         final_kl_pct = kl_tuner.kl_percentage_history[-1] * 100
-        print(f"\n📊 Final Analysis:")
+        print(f"\nCHART Final Analysis:")
         print(f"   Final KL weight: {model.kl_weight:.2e}")
         print(f"   Final KL contribution: {final_kl_pct:.1f}%")
         print(f"   Target KL contribution: {kl_tuner.target_kl_percentage*100:.0f}%")
         
         if abs(final_kl_pct - kl_tuner.target_kl_percentage*100) < 3:
-            print("✅ Successfully maintained target KL contribution!")
+            print("PASS Successfully maintained target KL contribution!")
         else:
-            print("⚠️  KL contribution deviated from target (normal for short test)")
+            print("WARN  KL contribution deviated from target (normal for short test)")
         
         return True
         
     except Exception as e:
-        print(f"❌ Test failed: {e}")
+        print(f"FAIL Test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -176,7 +176,7 @@ def test_kl_tuning_integration():
 def test_different_kl_methods():
     """Test different KL tuning methods"""
     
-    print(f"\n\n🔬 Testing Different KL Tuning Methods")
+    print(f"\n\nMICROSCOPE Testing Different KL Tuning Methods")
     print("=" * 60)
     
     # Mock model for quick testing
@@ -221,18 +221,18 @@ if __name__ == "__main__":
     if success:
         test_different_kl_methods()
         
-        print(f"\n🎯 KL Tuning Test Summary:")
+        print(f"\nTARGET KL Tuning Test Summary:")
         print("=" * 50)
-        print("✅ BayesianEnhancedAutoformer integration works")
-        print("✅ KL weight suggestion works")
-        print("✅ Adaptive KL tuning works")
-        print("✅ Different tuning methods available")
-        print("✅ Visualization and monitoring ready")
+        print("PASS BayesianEnhancedAutoformer integration works")
+        print("PASS KL weight suggestion works")
+        print("PASS Adaptive KL tuning works")
+        print("PASS Different tuning methods available")
+        print("PASS Visualization and monitoring ready")
         
-        print(f"\n📚 Next steps:")
+        print(f"\n Next steps:")
         print("1. Use ../scripts/train/train_bayesian_with_kl_tuning.py for full training")
         print("2. Refer to KL_TUNING_GUIDE.md for detailed documentation")
         print("3. Experiment with different target KL percentages")
         print("4. Monitor KL tuning plots during training")
     else:
-        print(f"\n❌ KL Tuning test failed - check error messages above")
+        print(f"\nFAIL KL Tuning test failed - check error messages above")

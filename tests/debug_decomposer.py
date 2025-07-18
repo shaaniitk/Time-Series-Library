@@ -54,7 +54,7 @@ def debug_decomposer_lengths():
                 mode='linear',
                 align_corners=False
             ).transpose(1, 2)
-            print(f"  Level {i}: {features.shape} → {resized.shape}")
+            print(f"  Level {i}: {features.shape}  {resized.shape}")
         else:
             print(f"  Level {i}: {features.shape} (no resize needed)")
 

@@ -45,7 +45,7 @@ def create_test_data(configs, batch_size=4):
 
 def test_enhanced_autoformer():
     """Test HFEnhancedAutoformer (Basic Enhanced)"""
-    print("🧪 Testing HFEnhancedAutoformer (Basic Enhanced)")
+    print("TEST Testing HFEnhancedAutoformer (Basic Enhanced)")
     print("=" * 60)
     
     configs = create_test_configs()
@@ -55,20 +55,20 @@ def test_enhanced_autoformer():
     try:
         output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
         
-        print(f"✅ Input shape: {x_enc.shape}")
-        print(f"✅ Output shape: {output.shape}")
-        print(f"✅ Expected shape: ({x_enc.shape[0]}, {configs.pred_len}, {configs.c_out})")
+        print(f"PASS Input shape: {x_enc.shape}")
+        print(f"PASS Output shape: {output.shape}")
+        print(f"PASS Expected shape: ({x_enc.shape[0]}, {configs.pred_len}, {configs.c_out})")
         
         expected_shape = (x_enc.shape[0], configs.pred_len, configs.c_out)
         if output.shape == expected_shape:
-            print("✅ Shape validation: PASSED")
-            print("✅ HFEnhancedAutoformer: SUCCESS")
+            print("PASS Shape validation: PASSED")
+            print("PASS HFEnhancedAutoformer: SUCCESS")
         else:
-            print(f"❌ Shape mismatch! Got {output.shape}, expected {expected_shape}")
+            print(f"FAIL Shape mismatch! Got {output.shape}, expected {expected_shape}")
             return False
             
     except Exception as e:
-        print(f"❌ HFEnhancedAutoformer failed: {e}")
+        print(f"FAIL HFEnhancedAutoformer failed: {e}")
         return False
     
     print()
@@ -76,7 +76,7 @@ def test_enhanced_autoformer():
 
 def test_bayesian_autoformer():
     """Test HFBayesianAutoformer (Bayesian Uncertainty)"""
-    print("🎯 Testing HFBayesianAutoformer (Bayesian Uncertainty)")
+    print("TARGET Testing HFBayesianAutoformer (Bayesian Uncertainty)")
     print("=" * 60)
     
     configs = create_test_configs()
@@ -88,29 +88,29 @@ def test_bayesian_autoformer():
         # Test standard forward pass
         print("Testing standard forward pass...")
         output = model(x_enc, x_mark_enc, x_dec, x_mark_dec, return_uncertainty=False)
-        print(f"✅ Standard output shape: {output.shape}")
+        print(f"PASS Standard output shape: {output.shape}")
         
         # Test uncertainty quantification
         print("Testing uncertainty quantification...")
         uncertainty_result = model(x_enc, x_mark_enc, x_dec, x_mark_dec, 
                                  return_uncertainty=True, detailed_uncertainty=True)
         
-        print(f"✅ Prediction shape: {uncertainty_result['prediction'].shape}")
-        print(f"✅ Uncertainty shape: {uncertainty_result['uncertainty'].shape}")
-        print(f"✅ Confidence intervals: {list(uncertainty_result['confidence_intervals'].keys())}")
+        print(f"PASS Prediction shape: {uncertainty_result['prediction'].shape}")
+        print(f"PASS Uncertainty shape: {uncertainty_result['uncertainty'].shape}")
+        print(f"PASS Confidence intervals: {list(uncertainty_result['confidence_intervals'].keys())}")
         
         if 'quantiles' in uncertainty_result:
-            print(f"✅ Quantiles: {list(uncertainty_result['quantiles'].keys())}")
+            print(f"PASS Quantiles: {list(uncertainty_result['quantiles'].keys())}")
         
         # Validate uncertainty properties
         uncertainty_values = uncertainty_result['uncertainty']
         if torch.all(uncertainty_values >= 0):
-            print("✅ Uncertainty values are non-negative")
+            print("PASS Uncertainty values are non-negative")
         
-        print("✅ HFBayesianAutoformer: SUCCESS")
+        print("PASS HFBayesianAutoformer: SUCCESS")
         
     except Exception as e:
-        print(f"❌ HFBayesianAutoformer failed: {e}")
+        print(f"FAIL HFBayesianAutoformer failed: {e}")
         return False
     
     print()
@@ -118,7 +118,7 @@ def test_bayesian_autoformer():
 
 def test_hierarchical_autoformer():
     """Test HFHierarchicalAutoformer (Multi-resolution)"""
-    print("🏗️ Testing HFHierarchicalAutoformer (Multi-resolution)")
+    print(" Testing HFHierarchicalAutoformer (Multi-resolution)")
     print("=" * 60)
     
     configs = create_test_configs()
@@ -129,21 +129,21 @@ def test_hierarchical_autoformer():
     try:
         output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
         
-        print(f"✅ Input shape: {x_enc.shape}")
-        print(f"✅ Output shape: {output.shape}")
-        print(f"✅ Hierarchy levels: {hierarchy_levels}")
-        print(f"✅ Fusion weights: {model.fusion_weights.data}")
+        print(f"PASS Input shape: {x_enc.shape}")
+        print(f"PASS Output shape: {output.shape}")
+        print(f"PASS Hierarchy levels: {hierarchy_levels}")
+        print(f"PASS Fusion weights: {model.fusion_weights.data}")
         
         expected_shape = (x_enc.shape[0], configs.pred_len, configs.c_out)
         if output.shape == expected_shape:
-            print("✅ Multi-resolution processing: SUCCESS")
-            print("✅ HFHierarchicalAutoformer: SUCCESS")
+            print("PASS Multi-resolution processing: SUCCESS")
+            print("PASS HFHierarchicalAutoformer: SUCCESS")
         else:
-            print(f"❌ Shape mismatch! Got {output.shape}, expected {expected_shape}")
+            print(f"FAIL Shape mismatch! Got {output.shape}, expected {expected_shape}")
             return False
             
     except Exception as e:
-        print(f"❌ HFHierarchicalAutoformer failed: {e}")
+        print(f"FAIL HFHierarchicalAutoformer failed: {e}")
         return False
     
     print()
@@ -151,7 +151,7 @@ def test_hierarchical_autoformer():
 
 def test_quantile_autoformer():
     """Test HFQuantileAutoformer (Quantile Regression)"""
-    print("📊 Testing HFQuantileAutoformer (Quantile Regression)")
+    print("CHART Testing HFQuantileAutoformer (Quantile Regression)")
     print("=" * 60)
     
     configs = create_test_configs()
@@ -165,29 +165,29 @@ def test_quantile_autoformer():
         output = model(x_enc, x_mark_enc, x_dec, x_mark_dec, return_uncertainty=False)
         
         expected_quantile_features = configs.c_out * len(quantiles)
-        print(f"✅ Quantile output shape: {output.shape}")
-        print(f"✅ Expected features: {expected_quantile_features}")
+        print(f"PASS Quantile output shape: {output.shape}")
+        print(f"PASS Expected features: {expected_quantile_features}")
         
         # Test uncertainty quantification with quantile outputs
         print("Testing quantile-specific uncertainty...")
         uncertainty_result = model(x_enc, x_mark_enc, x_dec, x_mark_dec, 
                                  return_uncertainty=True)
         
-        print(f"✅ Prediction shape: {uncertainty_result['prediction'].shape}")
+        print(f"PASS Prediction shape: {uncertainty_result['prediction'].shape}")
         
         if 'quantile_outputs' in uncertainty_result:
             quantile_outputs = uncertainty_result['quantile_outputs']
-            print(f"✅ Quantile outputs: {list(quantile_outputs.keys())}")
+            print(f"PASS Quantile outputs: {list(quantile_outputs.keys())}")
             
             for q_name, q_output in quantile_outputs.items():
                 print(f"  - {q_name}: {q_output.shape}")
         
-        print(f"✅ Quantile levels: {quantiles}")
-        print(f"✅ KL weight: {model.kl_weight}, Quantile weight: {model.quantile_weight}")
-        print("✅ HFQuantileAutoformer: SUCCESS")
+        print(f"PASS Quantile levels: {quantiles}")
+        print(f"PASS KL weight: {model.kl_weight}, Quantile weight: {model.quantile_weight}")
+        print("PASS HFQuantileAutoformer: SUCCESS")
         
     except Exception as e:
-        print(f"❌ HFQuantileAutoformer failed: {e}")
+        print(f"FAIL HFQuantileAutoformer failed: {e}")
         return False
     
     print()
@@ -195,7 +195,7 @@ def test_quantile_autoformer():
 
 def compare_models():
     """Compare all models with same input"""
-    print("🔄 Model Comparison Summary")
+    print("REFRESH Model Comparison Summary")
     print("=" * 60)
     
     configs = create_test_configs()
@@ -217,24 +217,24 @@ def compare_models():
                 if name == 'Quantile':
                     # Quantile model outputs more features
                     output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-                    print(f"✅ {name:12}: {output.shape} (quantile expanded)")
+                    print(f"PASS {name:12}: {output.shape} (quantile expanded)")
                 else:
                     output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
-                    print(f"✅ {name:12}: {output.shape}")
+                    print(f"PASS {name:12}: {output.shape}")
                     
             except Exception as e:
-                print(f"❌ {name:12}: Failed - {e}")
+                print(f"FAIL {name:12}: Failed - {e}")
     
     print()
-    print("📈 Benefits Summary:")
-    print("✅ Enhanced:     Standard time series forecasting (baseline)")
-    print("✅ Bayesian:     + Uncertainty quantification + Confidence intervals")  
-    print("✅ Hierarchical: + Multi-resolution processing + Temporal hierarchies")
-    print("✅ Quantile:     + Quantile regression + Risk assessment")
+    print("GRAPH Benefits Summary:")
+    print("PASS Enhanced:     Standard time series forecasting (baseline)")
+    print("PASS Bayesian:     + Uncertainty quantification + Confidence intervals")  
+    print("PASS Hierarchical: + Multi-resolution processing + Temporal hierarchies")
+    print("PASS Quantile:     + Quantile regression + Risk assessment")
     
 def migration_recommendation():
     """Provide migration recommendations"""
-    print("🚀 Migration Recommendations")
+    print("ROCKET Migration Recommendations")
     print("=" * 60)
     
     recommendations = {
@@ -261,12 +261,12 @@ def migration_recommendation():
     }
     
     for original, info in recommendations.items():
-        print(f"\n📋 {original}")
-        print(f"   ➡️  Replace with: {info['replacement']}")
-        print(f"   📈 Benefits: {', '.join(info['benefits'])}")
-        print(f"   ⏱️  Effort: {info['effort']}")
+        print(f"\nCLIPBOARD {original}")
+        print(f"     Replace with: {info['replacement']}")
+        print(f"   GRAPH Benefits: {', '.join(info['benefits'])}")
+        print(f"   TIMER  Effort: {info['effort']}")
     
-    print(f"\n🎯 Overall Strategy:")
+    print(f"\nTARGET Overall Strategy:")
     print(f"   1. Start with HFEnhancedAutoformer (easiest)")
     print(f"   2. Migrate to HFBayesianAutoformer (most critical bugs)")
     print(f"   3. Add HFHierarchicalAutoformer for multi-resolution")
@@ -274,7 +274,7 @@ def migration_recommendation():
 
 def main():
     """Run all tests"""
-    print("🚀 Complete HF Autoformer Suite Test")
+    print("ROCKET Complete HF Autoformer Suite Test")
     print("=" * 80)
     print()
     
@@ -292,16 +292,16 @@ def main():
             success = test_func()
             results.append((name, success))
         except Exception as e:
-            print(f"❌ {name} test failed with exception: {e}")
+            print(f"FAIL {name} test failed with exception: {e}")
             results.append((name, False))
     
     # Summary
-    print("📊 Test Results Summary")
+    print("CHART Test Results Summary")
     print("=" * 40)
     
     passed = 0
     for name, success in results:
-        status = "✅ PASSED" if success else "❌ FAILED"
+        status = "PASS PASSED" if success else "FAIL FAILED"
         print(f"{name:12}: {status}")
         if success:
             passed += 1
@@ -309,18 +309,18 @@ def main():
     print(f"\nOverall: {passed}/{len(results)} tests passed")
     
     if passed == len(results):
-        print("\n🎉 ALL TESTS PASSED!")
+        print("\nPARTY ALL TESTS PASSED!")
         print("Your complete HF Autoformer suite is ready for deployment!")
         
         compare_models()
         migration_recommendation()
         
         print("\n" + "=" * 80)
-        print("🚀 READY FOR PRODUCTION MIGRATION!")
+        print("ROCKET READY FOR PRODUCTION MIGRATION!")
         print("=" * 80)
         
     else:
-        print(f"\n⚠️  {len(results) - passed} test(s) failed. Please check the errors above.")
+        print(f"\nWARN  {len(results) - passed} test(s) failed. Please check the errors above.")
 
 if __name__ == "__main__":
     main()

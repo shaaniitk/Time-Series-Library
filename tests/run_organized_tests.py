@@ -90,7 +90,7 @@ class TestRunner:
     
     def run_test_file(self, test_file: Path, timeout: int = 300) -> Tuple[bool, str, float]:
         """Run a single test file"""
-        print(f"    🧪 Running {test_file.name}...")
+        print(f"    TEST Running {test_file.name}...")
         
         start_time = time.time()
         
@@ -104,16 +104,16 @@ class TestRunner:
             duration = time.time() - start_time
             
             if result['success']:
-                print(f"      ✅ {test_file.name} PASSED ({duration:.2f}s)")
+                print(f"      PASS {test_file.name} PASSED ({duration:.2f}s)")
                 return True, result['output'], duration
             else:
-                print(f"      ❌ {test_file.name} FAILED ({duration:.2f}s)")
+                print(f"      FAIL {test_file.name} FAILED ({duration:.2f}s)")
                 return False, result['output'], duration
                 
         except Exception as e:
             duration = time.time() - start_time
             error_msg = f"Exception running {test_file.name}: {e}"
-            print(f"      ❌ {test_file.name} ERROR ({duration:.2f}s)")
+            print(f"      FAIL {test_file.name} ERROR ({duration:.2f}s)")
             return False, error_msg, duration
     
     def _has_main_function(self, test_file: Path) -> bool:
@@ -175,13 +175,13 @@ class TestRunner:
     def run_category(self, category: str) -> Dict:
         """Run all tests in a category"""
         category_info = self.test_categories[category]
-        print(f"\n📁 Running {category} tests: {category_info['description']}")
+        print(f"\n Running {category} tests: {category_info['description']}")
         print("=" * 70)
         
         test_files = self.discover_tests(category)
         
         if not test_files:
-            print(f"  ⚠️ No test files found in {category_info['path']}")
+            print(f"  WARN No test files found in {category_info['path']}")
             return {
                 'category': category,
                 'total': 0,
@@ -191,7 +191,7 @@ class TestRunner:
                 'details': []
             }
         
-        print(f"  📊 Found {len(test_files)} test file(s)")
+        print(f"  CHART Found {len(test_files)} test file(s)")
         
         passed = 0
         failed = 0
@@ -216,10 +216,10 @@ class TestRunner:
                 })
                 
             except KeyboardInterrupt:
-                print(f"\n  ⚠️ Tests interrupted by user")
+                print(f"\n  WARN Tests interrupted by user")
                 break
             except Exception as e:
-                print(f"  ❌ Error running {test_file.name}: {e}")
+                print(f"  FAIL Error running {test_file.name}: {e}")
                 failed += 1
                 details.append({
                     'file': test_file.name,
@@ -231,7 +231,7 @@ class TestRunner:
         total = passed + failed
         success_rate = (passed / total * 100) if total > 0 else 0
         
-        print(f"\n  📊 {category} Results:")
+        print(f"\n  CHART {category} Results:")
         print(f"     Total: {total}, Passed: {passed}, Failed: {failed}")
         print(f"     Success Rate: {success_rate:.1f}%, Duration: {total_duration:.2f}s")
         
@@ -247,10 +247,10 @@ class TestRunner:
     
     def run_all(self, categories: Optional[List[str]] = None) -> Dict:
         """Run all test categories"""
-        print("🚀 Running Comprehensive Test Suite")
+        print("ROCKET Running Comprehensive Test Suite")
         print("=" * 80)
-        print(f"📍 Project Root: {self.project_root}")
-        print(f"🧪 Tests Root: {self.tests_root}")
+        print(f" Project Root: {self.project_root}")
+        print(f"TEST Tests Root: {self.tests_root}")
         
         self.start_time = time.time()
         
@@ -268,7 +268,7 @@ class TestRunner:
         
         for category in categories:
             if category not in self.test_categories:
-                print(f"⚠️ Unknown category: {category}")
+                print(f"WARN Unknown category: {category}")
                 continue
             
             try:
@@ -280,10 +280,10 @@ class TestRunner:
                 total_duration += result['duration']
                 
             except KeyboardInterrupt:
-                print(f"\n⚠️ Test run interrupted by user")
+                print(f"\nWARN Test run interrupted by user")
                 break
             except Exception as e:
-                print(f"❌ Error running category {category}: {e}")
+                print(f"FAIL Error running category {category}: {e}")
                 all_results[category] = {
                     'category': category,
                     'total': 0,
@@ -299,11 +299,11 @@ class TestRunner:
         overall_success_rate = (total_passed / total_tests * 100) if total_tests > 0 else 0
         
         print("\n" + "=" * 80)
-        print("📊 COMPREHENSIVE TEST RESULTS")
+        print("CHART COMPREHENSIVE TEST RESULTS")
         print("=" * 80)
         
         for category, result in all_results.items():
-            status = "✅" if result['failed'] == 0 else "❌"
+            status = "PASS" if result['failed'] == 0 else "FAIL"
             print(f"{status} {category:20} | "
                   f"Tests: {result['total']:3} | "
                   f"Passed: {result['passed']:3} | "
@@ -311,7 +311,7 @@ class TestRunner:
                   f"Rate: {result.get('success_rate', 0):5.1f}%")
         
         print("-" * 80)
-        print(f"🎯 OVERALL SUMMARY:")
+        print(f"TARGET OVERALL SUMMARY:")
         print(f"   Total Tests: {total_tests}")
         print(f"   Passed: {total_passed}")
         print(f"   Failed: {total_failed}")
@@ -319,9 +319,9 @@ class TestRunner:
         print(f"   Total Duration: {total_duration:.2f}s")
         
         if total_failed == 0:
-            print("\n🎉 🎉 🎉 ALL TESTS PASSED! 🎉 🎉 🎉")
+            print("\nPARTY PARTY PARTY ALL TESTS PASSED! PARTY PARTY PARTY")
         else:
-            print(f"\n⚠️ {total_failed} test(s) failed. Check individual outputs for details.")
+            print(f"\nWARN {total_failed} test(s) failed. Check individual outputs for details.")
         
         return {
             'overall': {
@@ -336,17 +336,17 @@ class TestRunner:
     
     def run_quick(self) -> Dict:
         """Run quick tests (unit tests only)"""
-        print("⚡ Running Quick Tests (Unit Tests Only)")
+        print("LIGHTNING Running Quick Tests (Unit Tests Only)")
         return self.run_all(['unit'])
     
     def run_dimension_focus(self) -> Dict:
         """Run dimension-focused tests"""
-        print("📏 Running Dimension-Focused Tests")
+        print(" Running Dimension-Focused Tests")
         return self.run_all(['unit', 'integration_dimension'])
     
     def run_integration_only(self) -> Dict:
         """Run integration tests only"""
-        print("🔗 Running Integration Tests Only")
+        print(" Running Integration Tests Only")
         return self.run_all(['integration_dimension', 'integration_end_to_end', 'integration_modular'])
     
     def generate_report(self, results: Dict, output_file: Optional[str] = None):
@@ -381,7 +381,7 @@ class TestRunner:
             if 'details' in result:
                 report_lines.append("#### Individual Tests")
                 for detail in result['details']:
-                    status = "✅" if detail['success'] else "❌"
+                    status = "PASS" if detail['success'] else "FAIL"
                     report_lines.append(f"- {status} {detail['file']} ({detail['duration']:.2f}s)")
                 report_lines.append("")
         
@@ -390,7 +390,7 @@ class TestRunner:
         if output_file:
             with open(output_file, 'w') as f:
                 f.write(report_content)
-            print(f"📄 Report saved to: {output_file}")
+            print(f"PAGE Report saved to: {output_file}")
         
         return report_content
 
@@ -432,10 +432,10 @@ def main():
         sys.exit(exit_code)
         
     except KeyboardInterrupt:
-        print("\n⚠️ Test run interrupted by user")
+        print("\nWARN Test run interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ Test runner error: {e}")
+        print(f"FAIL Test runner error: {e}")
         traceback.print_exc()
         sys.exit(1)
 

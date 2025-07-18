@@ -38,7 +38,7 @@ class SimpleConfig:
 
 def test_hf_model_covariates():
     """Test all HF models with covariate inputs"""
-    print("🔍 Testing HF Models Covariate Integration After Fix")
+    print("SEARCH Testing HF Models Covariate Integration After Fix")
     print("=" * 55)
     
     config = SimpleConfig()
@@ -60,14 +60,14 @@ def test_hf_model_covariates():
     results = {}
     
     for model_name, model_class in models_to_test:
-        print(f"\n📊 Testing {model_name}...")
+        print(f"\nCHART Testing {model_name}...")
         
         try:
             # Initialize model
             model = model_class(config)
             model.eval()
             
-            print(f"   ✅ Model initialized successfully")
+            print(f"   PASS Model initialized successfully")
             
             # Test with covariates
             with torch.no_grad():
@@ -79,17 +79,17 @@ def test_hf_model_covariates():
             no_cov_mean = output_without_cov.mean().item()
             difference = abs(cov_mean - no_cov_mean)
             
-            print(f"   📈 Output with covariates: {cov_mean:.4f}")
-            print(f"   📉 Output without covariates: {no_cov_mean:.4f}")
-            print(f"   🔍 Difference: {difference:.4f}")
+            print(f"   GRAPH Output with covariates: {cov_mean:.4f}")
+            print(f"    Output without covariates: {no_cov_mean:.4f}")
+            print(f"   SEARCH Difference: {difference:.4f}")
             
             # Test temporal embedding
             if hasattr(model, 'temporal_embedding'):
-                print(f"   ✅ Temporal embedding layer found")
+                print(f"   PASS Temporal embedding layer found")
                 temp_emb = model.temporal_embedding(x_mark_enc)
-                print(f"   📐 Temporal embedding shape: {temp_emb.shape}")
+                print(f"    Temporal embedding shape: {temp_emb.shape}")
             else:
-                print(f"   ❌ No temporal embedding found")
+                print(f"   FAIL No temporal embedding found")
             
             results[model_name] = {
                 'status': 'SUCCESS',
@@ -98,17 +98,17 @@ def test_hf_model_covariates():
                 'difference': difference
             }
             
-            print(f"   ✅ {model_name} working correctly!")
+            print(f"   PASS {model_name} working correctly!")
             
         except Exception as e:
-            print(f"   ❌ Error: {str(e)}")
+            print(f"   FAIL Error: {str(e)}")
             results[model_name] = {
                 'status': 'FAILED', 
                 'error': str(e)
             }
     
     # Summary
-    print(f"\n🎯 SUMMARY - HF Models Covariate Test")
+    print(f"\nTARGET SUMMARY - HF Models Covariate Test")
     print("=" * 45)
     
     successful = 0
@@ -116,21 +116,21 @@ def test_hf_model_covariates():
     
     for model_name, result in results.items():
         if result['status'] == 'SUCCESS':
-            covariate_working = "✅" if result['covariate_effect'] else "⚠️"
+            covariate_working = "PASS" if result['covariate_effect'] else "WARN"
             print(f"{model_name}: {result['status']} {covariate_working}")
             print(f"  - Shape: {result['output_shape']}")
             print(f"  - Covariate effect: {result['difference']:.4f}")
             successful += 1
         else:
-            print(f"{model_name}: ❌ {result['status']}")
+            print(f"{model_name}: FAIL {result['status']}")
             print(f"  - Error: {result['error']}")
     
-    print(f"\n📊 Results: {successful}/{total} models working correctly")
+    print(f"\nCHART Results: {successful}/{total} models working correctly")
     
     if successful == total:
-        print("🎉 All HF models successfully use covariates!")
+        print("PARTY All HF models successfully use covariates!")
     else:
-        print("⚠️  Some models need attention")
+        print("WARN  Some models need attention")
 
 if __name__ == "__main__":
     test_hf_model_covariates()

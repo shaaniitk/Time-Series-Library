@@ -66,16 +66,16 @@ def test_model_with_config(config_path, model_name):
         logger.info(f"Starting training for {model_name}...")
         train_dynamic(args)
         
-        logger.info(f"✅ {model_name} completed successfully!")
+        logger.info(f"PASS {model_name} completed successfully!")
         
     except Exception as e:
-        logger.error(f"❌ {model_name} failed with error: {str(e)}")
+        logger.error(f"FAIL {model_name} failed with error: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
 
 def main():
     """Run tests for all three enhanced models"""
-    logger.info("🚀 Starting Enhanced Autoformer variants testing with future covariates")
+    logger.info("ROCKET Starting Enhanced Autoformer variants testing with future covariates")
     logger.info(f"Working directory: {os.getcwd()}")
     logger.info(f"PyTorch version: {torch.__version__}")
     logger.info(f"CUDA available: {torch.cuda.is_available()}")
@@ -103,7 +103,7 @@ def main():
         config_path = model_info['config']
         
         if not os.path.exists(config_path):
-            logger.error(f"❌ Config file not found: {config_path}")
+            logger.error(f"FAIL Config file not found: {config_path}")
             results[model_name] = "CONFIG_NOT_FOUND"
             continue
         
@@ -111,7 +111,7 @@ def main():
             test_model_with_config(config_path, model_name)
             results[model_name] = "SUCCESS"
         except Exception as e:
-            logger.error(f"❌ {model_name} failed: {str(e)}")
+            logger.error(f"FAIL {model_name} failed: {str(e)}")
             results[model_name] = f"FAILED: {str(e)}"
     
     # Print summary
@@ -120,7 +120,7 @@ def main():
     logger.info("="*60)
     
     for model_name, result in results.items():
-        status_emoji = "✅" if result == "SUCCESS" else "❌"
+        status_emoji = "PASS" if result == "SUCCESS" else "FAIL"
         logger.info(f"{status_emoji} {model_name}: {result}")
     
     # Check data files
@@ -132,7 +132,7 @@ def main():
     if os.path.exists(data_path):
         import pandas as pd
         df = pd.read_csv(data_path)
-        logger.info(f"✅ Data file found: {data_path}")
+        logger.info(f"PASS Data file found: {data_path}")
         logger.info(f"  Shape: {df.shape}")
         logger.info(f"  Columns: {len(df.columns)}")
         logger.info(f"  Date range: {df['date'].min()} to {df['date'].max()}")
@@ -145,9 +145,9 @@ def main():
         logger.info(f"  Covariate columns: {len(covariate_cols)}")
         logger.info(f"  Sample covariates: {covariate_cols[:10]}...")
     else:
-        logger.error(f"❌ Data file not found: {data_path}")
+        logger.error(f"FAIL Data file not found: {data_path}")
     
-    logger.info("\n🏁 All tests completed!")
+    logger.info("\n All tests completed!")
 
 if __name__ == "__main__":
     main()

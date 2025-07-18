@@ -37,19 +37,19 @@ try:
         HFQuantileAutoformer
     )
     HF_MODELS_AVAILABLE = True
-    print("✅ HFAutoformer models available for testing")
+    print("PASS HFAutoformer models available for testing")
 except ImportError as e:
     HF_MODELS_AVAILABLE = False
-    print(f"⚠️ HFAutoformer models not available: {e}")
+    print(f"WARN HFAutoformer models not available: {e}")
 
 # Try to import modular components
 try:
     from utils.modular_components.registry import create_component, get_global_registry
     MODULAR_COMPONENTS_AVAILABLE = True
-    print("✅ Modular components available for testing")
+    print("PASS Modular components available for testing")
 except ImportError as e:
     MODULAR_COMPONENTS_AVAILABLE = False
-    print(f"⚠️ Modular components not available: {e}")
+    print(f"WARN Modular components not available: {e}")
 
 
 class MockConfig:
@@ -129,7 +129,7 @@ class DimensionAwareHFAutoformer(nn.Module):
         
         self.config = config
         
-        print(f"  🏗️ {self.model_type} initialized with DimensionManager:")
+        print(f"   {self.model_type} initialized with DimensionManager:")
         print(f"     {self.dim_manager}")
     
     def _create_mock_model(self, config):
@@ -240,11 +240,11 @@ class TestHFAutoformerDimensionIntegration:
         # Model types to test
         self.model_types = ['Enhanced', 'Bayesian', 'Hierarchical', 'Quantile']
         
-        print("🧪 HFAutoformer Dimension Integration Test Suite")
+        print("TEST HFAutoformer Dimension Integration Test Suite")
         print("=" * 70)
         
         if not HF_MODELS_AVAILABLE:
-            print("⚠️ Running with mock models (HF models not available)")
+            print("WARN Running with mock models (HF models not available)")
     
     def create_test_data(self, scenario_config: Dict, batch_size: int = 4) -> Tuple[torch.Tensor, ...]:
         """Create test data for a scenario"""
@@ -270,13 +270,13 @@ class TestHFAutoformerDimensionIntegration:
     
     def test_individual_model_dimension_handling(self):
         """Test each HF model type with dimension manager"""
-        print("\n🏗️ Testing Individual Model Dimension Handling")
+        print("\n Testing Individual Model Dimension Handling")
         
         for scenario_name, scenario_config in self.test_scenarios.items():
-            print(f"\n  📊 Testing scenario: {scenario_name}")
+            print(f"\n  CHART Testing scenario: {scenario_name}")
             
             for model_type in self.model_types:
-                print(f"\n    🤖 Testing {model_type} model:")
+                print(f"\n     Testing {model_type} model:")
                 
                 try:
                     # Create dimension-aware model
@@ -291,7 +291,7 @@ class TestHFAutoformerDimensionIntegration:
                     # Get dimension info
                     dim_info = model.get_dimension_info()
                     
-                    print(f"      ✅ {model_type}: {dim_info['enc_in']}→{dim_info['c_out_model']} | "
+                    print(f"      PASS {model_type}: {dim_info['enc_in']}{dim_info['c_out_model']} | "
                           f"Output: {output.shape}")
                     
                     # Validate basic properties
@@ -300,13 +300,13 @@ class TestHFAutoformerDimensionIntegration:
                     assert output.shape[2] == dim_info['c_out_model']  # Correct output dimensions
                     
                 except Exception as e:
-                    print(f"      ❌ {model_type} failed: {e}")
+                    print(f"      FAIL {model_type} failed: {e}")
                     # Don't fail the entire test suite for individual model failures
                     continue
     
     def test_quantile_dimension_scaling(self):
         """Test quantile dimension scaling across models"""
-        print("\n📈 Testing Quantile Dimension Scaling")
+        print("\nGRAPH Testing Quantile Dimension Scaling")
         
         quantile_configs = [
             ("3-quantile", [0.1, 0.5, 0.9]),
@@ -322,7 +322,7 @@ class TestHFAutoformerDimensionIntegration:
         }
         
         for quantile_name, quantiles in quantile_configs:
-            print(f"\n  📊 Testing {quantile_name}:")
+            print(f"\n  CHART Testing {quantile_name}:")
             
             config = {**base_config, 'quantiles': quantiles}
             
@@ -343,16 +343,16 @@ class TestHFAutoformerDimensionIntegration:
                     batch_size, pred_len, _ = output.shape
                     reshaped = output.reshape(batch_size, pred_len, expected_base_dim, len(quantiles))
                     
-                    print(f"    ✅ {model_type}: {expected_base_dim}×{len(quantiles)}={expected_scaled_dim} | "
+                    print(f"    PASS {model_type}: {expected_base_dim}{len(quantiles)}={expected_scaled_dim} | "
                           f"Reshaped: {reshaped.shape}")
                     
                 except Exception as e:
-                    print(f"    ❌ {model_type} quantile test failed: {e}")
+                    print(f"    FAIL {model_type} quantile test failed: {e}")
                     continue
     
     def test_mode_transitions(self):
         """Test models across different modes (S, MS, M)"""
-        print("\n🔄 Testing Mode Transitions")
+        print("\nREFRESH Testing Mode Transitions")
         
         base_features = {
             'target_features': ['price', 'volume'],
@@ -362,7 +362,7 @@ class TestHFAutoformerDimensionIntegration:
         modes = ['S', 'MS', 'M']
         
         for mode in modes:
-            print(f"\n  📊 Testing mode: {mode}")
+            print(f"\n  CHART Testing mode: {mode}")
             
             config = {
                 **base_features,
@@ -390,16 +390,16 @@ class TestHFAutoformerDimensionIntegration:
                     assert dim_info['enc_in'] == len(base_features['all_features'])
                     assert dim_info['c_out_evaluation'] == len(base_features['all_features'])
                 
-                print(f"    ✅ Mode {mode}: {dim_info['enc_in']}→{dim_info['c_out_evaluation']} | "
+                print(f"    PASS Mode {mode}: {dim_info['enc_in']}{dim_info['c_out_evaluation']} | "
                       f"Output: {output.shape}")
                 
             except Exception as e:
-                print(f"    ❌ Mode {mode} failed: {e}")
+                print(f"    FAIL Mode {mode} failed: {e}")
                 continue
     
     def test_batch_size_scaling(self):
         """Test dimension handling across different batch sizes"""
-        print("\n📦 Testing Batch Size Scaling")
+        print("\n Testing Batch Size Scaling")
         
         config = {
             'target_features': ['price'],
@@ -420,14 +420,14 @@ class TestHFAutoformerDimensionIntegration:
                 assert output.shape[0] == batch_size
                 assert output.shape[1] == 24  # pred_len
                 
-                print(f"    ✅ Batch size {batch_size}: {output.shape}")
+                print(f"    PASS Batch size {batch_size}: {output.shape}")
                 
         except Exception as e:
-            print(f"    ❌ Batch scaling test failed: {e}")
+            print(f"    FAIL Batch scaling test failed: {e}")
     
     def test_dimension_mismatch_detection(self):
         """Test proper error detection for dimension mismatches"""
-        print("\n⚠️ Testing Dimension Mismatch Detection")
+        print("\nWARN Testing Dimension Mismatch Detection")
         
         config = {
             'target_features': ['price'],
@@ -452,21 +452,21 @@ class TestHFAutoformerDimensionIntegration:
             # This should fail
             try:
                 output = model(x_enc_wrong, x_mark_enc, x_dec_wrong, x_mark_dec)
-                print("    ❌ Should have detected dimension mismatch")
+                print("    FAIL Should have detected dimension mismatch")
                 assert False, "Expected dimension mismatch error"
             except AssertionError as e:
                 if "dimension mismatch" in str(e).lower():
-                    print("    ✅ Correctly detected dimension mismatch")
+                    print("    PASS Correctly detected dimension mismatch")
                 else:
                     raise
             
         except Exception as e:
-            print(f"    ❌ Mismatch detection test failed: {e}")
+            print(f"    FAIL Mismatch detection test failed: {e}")
     
     @pytest.mark.skipif(not MODULAR_COMPONENTS_AVAILABLE, reason="Modular components not available")
     def test_modular_component_integration(self):
         """Test integration with modular components if available"""
-        print("\n🔧 Testing Modular Component Integration")
+        print("\nTOOL Testing Modular Component Integration")
         
         try:
             registry = get_global_registry()
@@ -494,7 +494,7 @@ class TestHFAutoformerDimensionIntegration:
                     'input_dim': dm.c_out_model,
                     'target_dim': dm.c_out_evaluation
                 })
-                print("    ✅ Bayesian loss component created successfully")
+                print("    PASS Bayesian loss component created successfully")
             
             # Test attention component creation
             if registry.is_registered('attention', 'optimized_autocorrelation'):
@@ -502,15 +502,15 @@ class TestHFAutoformerDimensionIntegration:
                     'd_model': 512,
                     'num_heads': 8
                 })
-                print("    ✅ Optimized attention component created successfully")
+                print("    PASS Optimized attention component created successfully")
             
         except Exception as e:
-            print(f"    ⚠️ Modular component test skipped: {e}")
+            print(f"    WARN Modular component test skipped: {e}")
 
 
 def run_hf_dimension_tests():
     """Run all HF Autoformer dimension tests"""
-    print("🚀 Running HFAutoformer Dimension Integration Test Suite")
+    print("ROCKET Running HFAutoformer Dimension Integration Test Suite")
     print("=" * 80)
     
     test_instance = TestHFAutoformerDimensionIntegration()
@@ -527,9 +527,9 @@ def run_hf_dimension_tests():
         if MODULAR_COMPONENTS_AVAILABLE:
             test_instance.test_modular_component_integration()
         
-        print("\n🎉 🎉 🎉 ALL HF DIMENSION TESTS PASSED! 🎉 🎉 🎉")
+        print("\nPARTY PARTY PARTY ALL HF DIMENSION TESTS PASSED! PARTY PARTY PARTY")
         print("=" * 80)
-        print("\n✅ Key Achievements:")
+        print("\nPASS Key Achievements:")
         print("  - HFAutoformer models integrate properly with DimensionManager")
         print("  - Quantile dimension scaling works correctly")
         print("  - Mode transitions handle dimensions properly")
@@ -540,7 +540,7 @@ def run_hf_dimension_tests():
             print("  - Modular components integrate with dimension management")
         
     except Exception as e:
-        print(f"\n❌ HF Dimension Tests Failed: {e}")
+        print(f"\nFAIL HF Dimension Tests Failed: {e}")
         raise
 
 

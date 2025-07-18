@@ -22,11 +22,11 @@ def test_format_fallback():
     try:
         # Load the Parquet version
         target_df = data_manager.load_target_data('nifty50_returns.parquet')
-        print(f"   ✓ Parquet file loaded successfully: {target_df.shape}")
+        print(f"    Parquet file loaded successfully: {target_df.shape}")
         print(f"     Date range: {target_df['date'].min()} to {target_df['date'].max()}")
         print(f"     Target columns: {len(data_manager.target_columns)} features")
     except Exception as e:
-        print(f"   ✗ Error loading Parquet: {e}")
+        print(f"    Error loading Parquet: {e}")
     
     print("\n2. Testing CSV loading...")
     try:
@@ -34,11 +34,11 @@ def test_format_fallback():
         data_manager = FinancialDataManager(data_root='data')
         # Load the CSV version
         target_df = data_manager.load_target_data('nifty50_returns.csv')
-        print(f"   ✓ CSV file loaded successfully: {target_df.shape}")
+        print(f"    CSV file loaded successfully: {target_df.shape}")
         print(f"     Date range: {target_df['date'].min()} to {target_df['date'].max()}")
         print(f"     Target columns: {len(data_manager.target_columns)} features")
     except Exception as e:
-        print(f"   ✗ Error loading CSV: {e}")
+        print(f"    Error loading CSV: {e}")
     
     print("\n3. Testing auto-detection (file without clear extension)...")
     try:
@@ -50,12 +50,12 @@ def test_format_fallback():
         # Reinitialize
         data_manager = FinancialDataManager(data_root='data')
         target_df = data_manager.load_target_data('test_auto_detect')
-        print(f"   ✓ Auto-detection successful: {target_df.shape}")
+        print(f"    Auto-detection successful: {target_df.shape}")
         
         # Clean up
         os.remove(test_file)
     except Exception as e:
-        print(f"   ✗ Auto-detection failed: {e}")
+        print(f"    Auto-detection failed: {e}")
         # Clean up on error
         try:
             os.remove('data/test_auto_detect')
@@ -72,13 +72,13 @@ def test_format_fallback():
         # Reinitialize
         data_manager = FinancialDataManager(data_root='data')
         target_df = data_manager.load_target_data('test_fallback.csv')
-        print(f"   ✓ Fallback mechanism worked: {target_df.shape}")
+        print(f"    Fallback mechanism worked: {target_df.shape}")
         print("     (CSV extension with Parquet content was handled)")
         
         # Clean up
         os.remove(test_file)
     except Exception as e:
-        print(f"   ✗ Fallback mechanism failed: {e}")
+        print(f"    Fallback mechanism failed: {e}")
         # Clean up on error
         try:
             os.remove('data/test_fallback.csv')
@@ -99,22 +99,22 @@ def test_format_fallback():
         
         # Check if data is equivalent
         if csv_df.shape == parquet_df.shape:
-            print("   ✓ Both files have same dimensions")
+            print("    Both files have same dimensions")
             
             # Compare columns
             csv_cols = set(csv_df.columns)
             parquet_cols = set(parquet_df.columns)
             if csv_cols == parquet_cols:
-                print("   ✓ Both files have same columns")
+                print("    Both files have same columns")
             else:
                 print(f"   ! Column differences: CSV only: {csv_cols - parquet_cols}, Parquet only: {parquet_cols - csv_cols}")
         else:
             print("   ! Files have different dimensions")
             
     except Exception as e:
-        print(f"   ✗ Comparison failed: {e}")
+        print(f"    Comparison failed: {e}")
 
-    print("\n🎉 Format support testing completed!")
+    print("\nPARTY Format support testing completed!")
 
 
 if __name__ == "__main__":

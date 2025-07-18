@@ -55,9 +55,9 @@ def debug_df_stamp():
     # Try the drop operation
     try:
         data_stamp = df_stamp.drop(['date'], 1).values
-        print(f"✓ Drop operation successful, data_stamp shape: {data_stamp.shape}")
+        print(f" Drop operation successful, data_stamp shape: {data_stamp.shape}")
     except Exception as e:
-        print(f"✗ Drop operation failed: {e}")
+        print(f" Drop operation failed: {e}")
         print(f"df_stamp info:\n{df_stamp.info()}")
 
 if __name__ == "__main__":
