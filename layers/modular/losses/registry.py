@@ -2,13 +2,23 @@
 import torch.nn as nn
 from .quantile_loss import PinballLoss
 from .standard_losses import StandardLossWrapper
+from utils.bayesian_losses import BayesianLoss, BayesianQuantileLoss, BayesianAdaptiveLoss, BayesianFrequencyAwareLoss
 from utils.logger import logger
 
 class LossRegistry:
     _registry = {
+        # Standard losses
         "quantile": PinballLoss,
+        "pinball": PinballLoss,  # Alias for quantile
         "mse": lambda: StandardLossWrapper(nn.MSELoss),
         "mae": lambda: StandardLossWrapper(nn.L1Loss),
+        "huber": lambda **kwargs: StandardLossWrapper(nn.HuberLoss, **kwargs),
+        
+        # Bayesian losses  
+        "bayesian": lambda **kwargs: BayesianLoss(nn.MSELoss(), **kwargs),
+        "bayesian_quantile": BayesianQuantileLoss,
+        "bayesian_adaptive": BayesianAdaptiveLoss,
+        "bayesian_frequency": BayesianFrequencyAwareLoss,
     }
 
     @classmethod

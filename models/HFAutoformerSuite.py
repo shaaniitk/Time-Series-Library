@@ -14,10 +14,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 from transformers import AutoModel, AutoConfig
 from argparse import Namespace
 import logging
+
+# Import unified base framework
+from models.base_forecaster import BaseTimeSeriesForecaster, HFFrameworkMixin
 
 logger = logging.getLogger(__name__)
 
@@ -29,32 +32,38 @@ class UncertaintyResult:
         self.confidence_intervals = confidence_intervals or {}
         self.quantiles = quantiles or {}
 
-class HFEnhancedAutoformer(nn.Module):
+class HFEnhancedAutoformer(BaseTimeSeriesForecaster, HFFrameworkMixin):
     """
     Basic HF-based Enhanced Autoformer
     Drop-in replacement for EnhancedAutoformer using HF backbone
     """
     
     def __init__(self, configs):
-        super().__init__()
-        self.configs = configs
+        super().__init__(configs)
+        
+        # Set framework identification
+        self.framework_type = 'hf'
+        self.model_type = 'hf_enhanced_autoformer'
+        
         logger.info("Initializing HFEnhancedAutoformer (Basic Enhanced Model)")
         
         # Try to use Chronos, fallback to standard transformer
         try:
             self.backbone = AutoModel.from_pretrained("amazon/chronos-t5-tiny")
+            self.backbone_name = "amazon/chronos-t5-tiny"
             logger.info("✅ Using Amazon Chronos T5 backbone")
         except Exception as e:
             logger.warning(f"Chronos not available ({e}), using fallback transformer")
             config = AutoConfig.from_pretrained("google/flan-t5-small")
             config.d_model = getattr(configs, 'd_model', 64)
             self.backbone = AutoModel.from_config(config)
+            self.backbone_name = "google/flan-t5-small"
         
         # Input projection layer
-        self.input_projection = nn.Linear(configs.enc_in, self.backbone.config.d_model)
+        self.input_projection = nn.Linear(self.enc_in, self.backbone.config.d_model)
         
         # Output projection
-        self.projection = nn.Linear(self.backbone.config.d_model, configs.c_out)
+        self.projection = nn.Linear(self.backbone.config.d_model, self.c_out)
         
         # Optional dropout for regularization
         self.dropout = nn.Dropout(0.1)
@@ -95,6 +104,27 @@ class HFEnhancedAutoformer(nn.Module):
         output = self.projection(hidden_state)
         
         return output
+    
+    def supports_uncertainty(self) -> bool:
+        """Check if model supports uncertainty quantification."""
+        return False  # Basic model doesn't support uncertainty
+    
+    def supports_quantiles(self) -> bool:
+        """Check if model supports quantile predictions."""
+        return False  # Basic model doesn't support quantiles
+    
+    def get_hf_model_info(self) -> Dict[str, Any]:
+        """Get HuggingFace specific model information."""
+        return {
+            'backbone_name': self.backbone_name,
+            'model_type': 'enhanced_autoformer',
+            'uncertainty_support': False,
+            'quantile_support': False
+        }
+    
+    def get_backbone_model_name(self) -> Optional[str]:
+        """Get the name of the HF backbone model."""
+        return self.backbone_name
 
 class HFBayesianAutoformer(nn.Module):
     """

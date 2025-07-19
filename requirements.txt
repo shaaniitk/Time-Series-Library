@@ -7,7 +7,7 @@ pandas==1.5.3
 patool
 reformer-pytorch==1.4.4
 scikit-learn
-scipy==1.10.1
+scipy
 sktime
 sympy==1.11.1
 tqdm

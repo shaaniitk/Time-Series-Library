@@ -38,4 +38,16 @@ class HierarchicalEncoder(BaseEncoder):
         # The original hierarchical encoder expects a list of tensors
         if not isinstance(x, list):
             x = [x]
-        return self.encoder(x, attn_mask)
+        multi_res_output = self.encoder(x, attn_mask)
+        
+        # For compatibility with standard decoder interface, 
+        # we need to return a single tensor for cross-attention
+        # We'll concatenate or take the finest resolution
+        if isinstance(multi_res_output, list) and len(multi_res_output) > 0:
+            # Use the finest resolution (last one) as the main output
+            output = multi_res_output[-1]
+        else:
+            output = multi_res_output
+            
+        # Return output and None for attention weights to match standard encoder interface
+        return output, None

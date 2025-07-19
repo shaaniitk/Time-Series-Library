@@ -240,12 +240,29 @@ class TestModelIntegration:
             assert output.shape == (1, config.pred_len, config.c_out)
 
     def test_quantile_integration(self, realistic_config):
-        """Test quantile functionality in EnhancedAutoformer"""
-        config = realistic_config
-        config.quantile_levels = [0.1, 0.25, 0.5, 0.75, 0.9]
-        config.c_out = config.c_out * len(config.quantile_levels)  # Adjust for quantiles
+        """Test quantile functionality using ModularAutoformer with proper quantile configuration"""
+        # Import the quantile bayesian config and ModularAutoformer
+        from configs.autoformer.quantile_bayesian_config import get_quantile_bayesian_autoformer_config
+        from models.modular_autoformer import ModularAutoformer
         
-        model = EnhancedAutoformer(config)
+        # Create proper quantile bayesian configuration with 5 quantiles
+        config = get_quantile_bayesian_autoformer_config(
+            num_targets=7,
+            num_covariates=3,
+            seq_len=96,
+            pred_len=24,
+            label_len=48,
+            quantile_levels=[0.1, 0.25, 0.5, 0.75, 0.9]
+        )
+        
+        print(f"=== Quantile Integration Test ===")
+        print(f"Loss function: {config.loss_function_type}")
+        print(f"Output head type: {config.output_head_type}")
+        print(f"Quantiles: {config.quantile_levels}")
+        print(f"c_out (model output): {config.c_out}")
+        print(f"c_out_evaluation (targets): {config.c_out_evaluation}")
+        
+        model = ModularAutoformer(config)
         model.eval()
         
         batch_size = 2
@@ -255,11 +272,22 @@ class TestModelIntegration:
         x_mark_dec = torch.randn(batch_size, config.label_len + config.pred_len, 4)
         
         with torch.no_grad():
-            output = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            output = model(x_enc=x_enc, x_mark_enc=x_mark_enc, x_dec=x_dec, x_mark_dec=x_mark_dec)
         
-        # Should handle quantile dimensions correctly
-        assert output.shape == (batch_size, config.pred_len, config.c_out)
-        assert not torch.isnan(output).any()
+        # For quantile models, output should be [batch, pred_len, num_features * num_quantiles]
+        expected_shape = (batch_size, config.pred_len, config.c_out)
+        print(f"Expected shape: {expected_shape}")
+        print(f"Actual shape: {output.shape}")
+        
+        assert output.shape == expected_shape, f"Expected {expected_shape}, got {output.shape}"
+        assert not torch.isnan(output).any(), "Output contains NaN values"
+        assert not torch.isinf(output).any(), "Output contains Inf values"
+        
+        # Verify the model is properly configured for quantiles
+        assert config.loss_function_type == 'bayesian_quantile'
+        assert config.output_head_type == 'quantile'
+        assert len(config.quantile_levels) == 5
+        assert config.c_out == config.c_out_evaluation * len(config.quantile_levels)  # 7 * 5 = 35
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ def get_hierarchical_autoformer_config(num_targets, num_covariates, **kwargs):
     Returns the configuration for the HierarchicalEnhancedAutoformer model.
     """
     kwargs['attention_type'] = 'adaptive_autocorrelation_layer'
-    kwargs['decomposition_type'] = 'wavelet_decomp'
+    kwargs['decomposition_type'] = 'wavelet_decomp'  # For encoder/decoder (embedded space)
     kwargs['encoder_type'] = 'hierarchical'
     kwargs['decoder_type'] = 'enhanced'
 
@@ -15,9 +15,12 @@ def get_hierarchical_autoformer_config(num_targets, num_covariates, **kwargs):
     config.decomposition_params.update({
         'wavelet_type': 'db4', 'levels': 3
     })
+    
+    # Use different decomposition for init_decomp (raw input space)
+    config.init_decomposition_type = 'learnable_decomp'
     config.init_decomposition_params.update({
-        'seq_len': config.seq_len, 'd_model': config.d_model,
-        'wavelet_type': 'db4', 'levels': 3
+        'input_dim': config.dec_in,  # Raw input dimension
+        'init_kernel_size': 25
     })
     config.attention_type = 'cross_resolution_attention'
     config.attention_params.update({
@@ -33,7 +36,11 @@ def get_hierarchical_autoformer_config(num_targets, num_covariates, **kwargs):
         'n_levels': 3, 
         'decomp_type': 'wavelet_decomp',
         'attention_type': 'adaptive_autocorrelation_layer',
-        'decomp_params': config.init_decomposition_params
+        'decomp_params': {
+            'seq_len': config.seq_len,
+            'd_model': config.d_model,
+            **config.decomposition_params  # Include wavelet_type, levels, etc.
+        }
     })
     config.decoder_params.update({
         'd_model': config.d_model,

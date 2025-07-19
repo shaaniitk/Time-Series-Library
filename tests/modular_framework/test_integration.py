@@ -24,10 +24,10 @@ class TestModularAutoformerIntegration(unittest.TestCase):
         self.batch_size = 2
 
         self.configs_to_test = {
-            # "standard": standard_config.get_standard_autoformer_config,
-            # "fixed": fixed_config.get_fixed_autoformer_config,
-            # "enhanced": enhanced_config.get_enhanced_autoformer_config,
-            # "enhanced_fixed": enhanced_fixed_config.get_enhanced_fixed_autoformer_config,
+            "standard": standard_config.get_standard_autoformer_config,
+            "fixed": fixed_config.get_fixed_autoformer_config,
+            "enhanced": enhanced_config.get_enhanced_autoformer_config,
+            "enhanced_fixed": enhanced_fixed_config.get_enhanced_fixed_autoformer_config,
             "bayesian_enhanced": bayesian_enhanced_config.get_bayesian_enhanced_autoformer_config,
             "hierarchical": hierarchical_config.get_hierarchical_autoformer_config,
             "quantile_bayesian": quantile_bayesian_config.get_quantile_bayesian_autoformer_config,

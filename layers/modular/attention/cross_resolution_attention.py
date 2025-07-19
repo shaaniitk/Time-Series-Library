@@ -34,7 +34,52 @@ class CrossResolutionAttention(BaseAttention):
             nn.Linear(d_model, d_model) for _ in range(n_levels - 1)
         ])
     
-    def forward(self, multi_res_features):
+    def forward(self, queries, keys, values, attn_mask=None, tau=None, delta=None):
+        """
+        Standard attention interface for compatibility.
+        
+        Args:
+            queries: Query tensor
+            keys: Key tensor  
+            values: Value tensor
+            attn_mask: Attention mask (optional, ignored for now)
+            tau: Temperature parameter (optional, ignored)
+            delta: Delta parameter (optional, ignored)
+            
+        Returns:
+            Tuple of (output, attention_weights)
+        """
+        # For now, just apply standard attention since this is being called in regular flow
+        # TODO: Implement proper cross-resolution logic when multi-resolution data is available
+        
+        batch_size, seq_len_q, d_model = queries.shape
+        _, seq_len_k, _ = keys.shape
+        
+        # Simple attention mechanism for compatibility
+        scale = (d_model // self.n_heads) ** -0.5
+        
+        # Reshape for multi-head attention
+        q = queries.view(batch_size, seq_len_q, self.n_heads, d_model // self.n_heads).transpose(1, 2)
+        k = keys.view(batch_size, seq_len_k, self.n_heads, d_model // self.n_heads).transpose(1, 2)
+        v = values.view(batch_size, seq_len_k, self.n_heads, d_model // self.n_heads).transpose(1, 2)
+        
+        # Compute attention scores
+        scores = torch.matmul(q, k.transpose(-2, -1)) * scale
+        
+        if attn_mask is not None:
+            scores = scores.masked_fill(attn_mask, -1e9)
+            
+        attn_weights = torch.softmax(scores, dim=-1)
+        
+        # Apply attention to values
+        out = torch.matmul(attn_weights, v)
+        
+        # Reshape back
+        out = out.transpose(1, 2).contiguous().view(batch_size, seq_len_q, d_model)
+        
+        return out, attn_weights
+    
+    def forward_multi_resolution(self, multi_res_features):
         """
         Apply cross-resolution attention between different scales.
         
@@ -46,6 +91,7 @@ class CrossResolutionAttention(BaseAttention):
         """
         if len(multi_res_features) < 2:
             return multi_res_features, None
+        
         
         attended_features = []
         

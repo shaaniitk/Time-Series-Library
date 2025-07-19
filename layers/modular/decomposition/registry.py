@@ -47,6 +47,23 @@ class DecompositionRegistry:
 def get_decomposition_component(name, **kwargs):
     """
     Factory function to get an instance of a decomposition component.
+    Automatically filters parameters based on component requirements.
     """
     component_class = DecompositionRegistry.get(name)
-    return component_class(**kwargs)
+    
+    # Filter parameters based on component's __init__ signature
+    import inspect
+    signature = inspect.signature(component_class.__init__)
+    valid_params = set(signature.parameters.keys()) - {'self'}
+    
+    # Filter kwargs to only include valid parameters for this component
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
+    
+    # Log filtered parameters for debugging
+    if len(filtered_kwargs) != len(kwargs):
+        from utils.logger import logger
+        removed_params = set(kwargs.keys()) - set(filtered_kwargs.keys())
+        logger.debug(f"Component '{name}' filtered out parameters: {removed_params}")
+        logger.debug(f"Component '{name}' using parameters: {list(filtered_kwargs.keys())}")
+    
+    return component_class(**filtered_kwargs)

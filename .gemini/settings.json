@@ -1,8 +1,7 @@
 {
-    "mcpServers": {"github": {
-			"type": "http",
-			"url": "https://api.githubcopilot.com/mcp/"
-		},
+  "theme": "GitHub",
+  "selectedAuthType": "gemini-api-key",
+  "mcpServers": {
 		"sequentialthinking": {
 			"command": "npx",
 			"args": [
@@ -25,16 +24,6 @@
 			],
 			"type": "stdio"
 		},
-		"yfinance": {
-			"command": "C:\\Users\\mishr\\.local\\bin\\uv.exe",
-			"args": [
-				"--directory",
-				"D:\\workspace\\yahoo-finance-mcp",
-				"run",
-				"server.py"
-			],
-			"type": "stdio"
-		},
 		"zen": {
 			"command": "C:\\Users\\mishr\\.local\\bin\\uv.exe",
 			"args": [
@@ -42,8 +31,7 @@
 				"D:\\workspace\\zen-mcp-server",
 				"run",
 				"server.py"
-			],
-			"type": "stdio"
+			]
 		},
 		"serena": {
 			"command": "C:\\Users\\mishr\\.local\\bin\\uv.exe",
@@ -52,8 +40,7 @@
 				"D:\\workspace\\serena",
 				"run",
 				"serena-mcp-server"
-			],
-			"type": "stdio"
+			]
 		},
 		"desktop-commander": {
 			"command": "npx",
@@ -82,10 +69,7 @@
 			],
 			"gallery": true
 		}
-	},
-	"python.testing.pytestArgs": [
-		"tests"
-	],
-	"python.testing.unittestEnabled": false,
-	"python.testing.pytestEnabled": true
-}
+	}
+  }
+
+  

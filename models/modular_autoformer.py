@@ -1,7 +1,16 @@
 import torch
 import torch.nn as nn
 from argparse import Namespace
+from typing import Union, Dict, Any
 
+# GCLI Structured Configuration System
+from configs.schemas import ModularAutoformerConfig, ComponentType
+from configs.modular_components import (
+    ModularAssembler, component_registry, AssembledAutoformer,
+    register_all_components
+)
+
+# Legacy imports for backward compatibility
 from layers.modular.decomposition import get_decomposition_component
 from layers.modular.encoder import get_encoder_component
 from layers.modular.decoder import get_decoder_component
@@ -12,85 +21,314 @@ from layers.modular.losses import get_loss_component
 from layers.Embed import DataEmbedding_wo_pos
 from utils.logger import logger
 
-# Import modular component registry
-from utils.modular_components.registry import ComponentRegistry, create_global_registry
-from utils.modular_components.example_components import register_example_components
-from utils.modular_components.config_schemas import ComponentConfig
+# Import unified base framework
+from models.base_forecaster import BaseTimeSeriesForecaster, CustomFrameworkMixin
 
-class ModularAutoformer(nn.Module):
+# Import modular dimension manager
+from utils.modular_dimension_manager import create_modular_dimension_manager
+
+class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
     """
     A completely modular Autoformer that can be configured to replicate
     any of the 7 in-house Autoformer models and create new variants.
     
-    Now supports ChronosX and other backbone options through the component registry.
+    Now implements GCLI recommendations with structured configuration
+    and "dumb assembler" pattern.
     """
-    def __init__(self, configs):
-        super(ModularAutoformer, self).__init__()
-        logger.info("Initializing ModularAutoformer with modular backbone support")
+    def __init__(self, configs: Union[Namespace, ModularAutoformerConfig]):
+        super(ModularAutoformer, self).__init__(configs)
+        logger.info("Initializing ModularAutoformer with GCLI structured configuration")
 
-        self.configs = configs
-        self.task_name = configs.task_name
-        self.seq_len = configs.seq_len
-        self.label_len = configs.label_len
-        self.pred_len = configs.pred_len
+        # Set framework identification
+        self.framework_type = 'custom'
+        self.model_type = 'modular_autoformer'
 
-        # Initialize component registry if not already done
-        self.registry = create_global_registry()
+        # Convert legacy Namespace to structured config if needed
+        if isinstance(configs, Namespace):
+            self.structured_config = self._convert_namespace_to_structured(configs)
+            self.legacy_configs = configs
+        else:
+            self.structured_config = configs
+            self.legacy_configs = configs.to_namespace()
+        
+        # Initialize component registry
+        register_all_components()
+        self.assembler = ModularAssembler(component_registry)
         
         # Check if we should use a modular backbone
-        self.use_backbone_component = getattr(configs, 'use_backbone_component', False)
-        self.backbone_type = getattr(configs, 'backbone_type', None)
+        self.use_backbone_component = getattr(self.legacy_configs, 'use_backbone_component', False)
+        self.backbone_type = getattr(self.legacy_configs, 'backbone_type', None)
         
         if self.use_backbone_component and self.backbone_type:
             logger.info(f"Using modular backbone: {self.backbone_type}")
             self._initialize_with_backbone()
         else:
-            logger.info("Using traditional encoder-decoder architecture")
-            self._initialize_traditional()
-
+            # Use "dumb assembler" pattern to build the model
+            self._initialize_with_assembler()
+            
+    def _convert_namespace_to_structured(self, ns_config: Namespace) -> ModularAutoformerConfig:
+        """Convert legacy Namespace configuration to structured Pydantic config"""
+        # This is a compatibility layer - extract parameters from Namespace
+        from configs.schemas import (
+            AttentionConfig, DecompositionConfig, EncoderConfig, DecoderConfig,
+            SamplingConfig, OutputHeadConfig, LossConfig, BayesianConfig,
+            BackboneConfig, ComponentType
+        )
+        
+        # Map string types to ComponentType enums
+        type_mapping = {
+            'multi_head': ComponentType.MULTI_HEAD,
+            'autocorrelation': ComponentType.AUTOCORRELATION,
+            'autocorrelation_layer': ComponentType.AUTOCORRELATION,
+            'adaptive_autocorrelation_layer': ComponentType.ADAPTIVE_AUTOCORRELATION,
+            'cross_resolution_attention': ComponentType.CROSS_RESOLUTION,
+            'moving_avg': ComponentType.MOVING_AVG,
+            'series_decomp': ComponentType.MOVING_AVG,
+            'stable_decomp': ComponentType.MOVING_AVG,
+            'learnable_decomp': ComponentType.LEARNABLE_DECOMP,
+            'wavelet_decomp': ComponentType.WAVELET_DECOMP,
+            'standard': ComponentType.STANDARD_ENCODER,  # Default for encoder
+            'enhanced': ComponentType.ENHANCED_ENCODER,
+            'hierarchical': ComponentType.HIERARCHICAL_ENCODER,
+            'deterministic': ComponentType.DETERMINISTIC,
+            'bayesian': ComponentType.BAYESIAN,
+            'quantile': ComponentType.QUANTILE,
+            'mse': ComponentType.MSE,
+            'bayesian_mse': ComponentType.BAYESIAN_MSE,
+            'bayesian_quantile': ComponentType.BAYESIAN_QUANTILE,
+        }
+        
+        # Decoder type mapping
+        decoder_type_mapping = {
+            'standard': ComponentType.STANDARD_DECODER,
+            'enhanced': ComponentType.ENHANCED_DECODER,
+            'hierarchical': ComponentType.HIERARCHICAL_DECODER,
+        }
+        
+        # Output head type mapping
+        output_head_type_mapping = {
+            'standard': ComponentType.STANDARD_HEAD,
+            'quantile': ComponentType.QUANTILE,
+        }
+        
+        # Extract basic parameters
+        seq_len = getattr(ns_config, 'seq_len', 96)
+        pred_len = getattr(ns_config, 'pred_len', 24)
+        label_len = getattr(ns_config, 'label_len', 48)
+        enc_in = getattr(ns_config, 'enc_in', 7)
+        dec_in = getattr(ns_config, 'dec_in', 7)
+        c_out = getattr(ns_config, 'c_out', 7)
+        c_out_evaluation = getattr(ns_config, 'c_out_evaluation', 7)
+        d_model = getattr(ns_config, 'd_model', 512)
+        
+        # Extract component types with fallbacks
+        attention_type = type_mapping.get(
+            getattr(ns_config, 'attention_type', 'autocorrelation'),
+            ComponentType.AUTOCORRELATION
+        )
+        decomp_type = type_mapping.get(
+            getattr(ns_config, 'decomposition_type', 'moving_avg'),
+            ComponentType.MOVING_AVG
+        )
+        # Loss function type mapping (separate from general type mapping)
+        loss_type_mapping = {
+            'mse': ComponentType.MSE,
+            'mae': ComponentType.MSE,  # Map to MSE for now - could add MAE later
+            'huber': ComponentType.MSE,  # Map to MSE for now - could add Huber later
+            'bayesian': ComponentType.MSE,  # Bayesian uses MSE loss but Bayesian sampling
+        }
+        
+        encoder_type = type_mapping.get(
+            getattr(ns_config, 'encoder_type', 'standard'),
+            ComponentType.STANDARD_ENCODER
+        )
+        decoder_type = decoder_type_mapping.get(
+            getattr(ns_config, 'decoder_type', 'standard'),
+            ComponentType.STANDARD_DECODER
+        )
+        sampling_type = type_mapping.get(
+            getattr(ns_config, 'sampling_type', 'deterministic'),
+            ComponentType.DETERMINISTIC
+        )
+        output_head_type = output_head_type_mapping.get(
+            getattr(ns_config, 'output_head_type', 'standard'),
+            ComponentType.STANDARD_HEAD
+        )
+        loss_type = loss_type_mapping.get(
+            getattr(ns_config, 'loss_function_type', 'mse'),
+            ComponentType.MSE
+        )
+        
+        # Build structured configuration
+        structured_config = ModularAutoformerConfig(
+            seq_len=seq_len,
+            pred_len=pred_len,
+            label_len=label_len,
+            enc_in=enc_in,
+            dec_in=dec_in,
+            c_out=c_out,
+            c_out_evaluation=c_out_evaluation,
+            d_model=d_model,
+            
+            attention=AttentionConfig(
+                type=attention_type,
+                d_model=d_model,
+                n_heads=getattr(ns_config, 'n_heads', 8),
+                dropout=getattr(ns_config, 'dropout', 0.1),
+                factor=getattr(ns_config, 'factor', 1),
+                output_attention=getattr(ns_config, 'output_attention', False)
+            ),
+            
+            decomposition=DecompositionConfig(
+                type=decomp_type,
+                kernel_size=getattr(ns_config, 'moving_avg', 25)
+            ),
+            
+            encoder=EncoderConfig(
+                type=encoder_type,
+                e_layers=getattr(ns_config, 'e_layers', 2),
+                d_model=d_model,
+                n_heads=getattr(ns_config, 'n_heads', 8),
+                d_ff=getattr(ns_config, 'd_ff', 2048),
+                dropout=getattr(ns_config, 'dropout', 0.1),
+                activation=getattr(ns_config, 'activation', 'gelu'),
+            ),
+            
+            decoder=DecoderConfig(
+                type=decoder_type,
+                d_layers=getattr(ns_config, 'd_layers', 1),
+                d_model=d_model,
+                n_heads=getattr(ns_config, 'n_heads', 8),
+                d_ff=getattr(ns_config, 'd_ff', 2048),
+                dropout=getattr(ns_config, 'dropout', 0.1),
+                activation=getattr(ns_config, 'activation', 'gelu'),
+                c_out=c_out
+            ),
+            
+            sampling=SamplingConfig(
+                type=sampling_type,
+                n_samples=getattr(ns_config, 'n_samples', 50),
+                quantile_levels=getattr(ns_config, 'quantile_levels', None)
+            ),
+            
+            output_head=OutputHeadConfig(
+                type=output_head_type,
+                d_model=d_model,
+                c_out=c_out_evaluation,  # Use evaluation targets for output head
+                num_quantiles=len(getattr(ns_config, 'quantile_levels', [])) if getattr(ns_config, 'quantile_levels', None) else None
+            ),
+            
+            loss=LossConfig(
+                type=loss_type,
+                quantiles=getattr(ns_config, 'quantile_levels', None)
+            ),
+            
+            bayesian=BayesianConfig(
+                enabled=len(getattr(ns_config, 'bayesian_layers', [])) > 0,
+                layers_to_convert=getattr(ns_config, 'bayesian_layers', [])
+            ),
+            
+            backbone=BackboneConfig(
+                use_backbone=getattr(ns_config, 'use_backbone_component', False),
+                type=type_mapping.get(getattr(ns_config, 'backbone_type', None), None) if getattr(ns_config, 'backbone_type', None) else None
+            ),
+            
+            quantile_levels=getattr(ns_config, 'quantile_levels', None),
+            embed=getattr(ns_config, 'embed', 'timeF'),
+            freq=getattr(ns_config, 'freq', 'h'),
+            dropout=getattr(ns_config, 'dropout', 0.1),
+        )
+        
+        return structured_config
+        
+    def _initialize_with_assembler(self):
+        """Initialize model using the GCLI "dumb assembler" pattern"""
+        logger.info("Assembling model using structured configuration")
+        
+        # Use the assembler to build the model
+        self.assembled_model = self.assembler.assemble_model(self.structured_config)
+        
+        # Set up embedding layers (still needed for time series data)
+        self.enc_embedding = DataEmbedding_wo_pos(
+            self.structured_config.enc_in, 
+            self.structured_config.d_model, 
+            self.structured_config.embed, 
+            self.structured_config.freq,
+            self.structured_config.dropout
+        )
+        self.dec_embedding = DataEmbedding_wo_pos(
+            self.structured_config.dec_in, 
+            self.structured_config.d_model, 
+            self.structured_config.embed, 
+            self.structured_config.freq,
+            self.structured_config.dropout
+        )
+        
+        # Store component references for compatibility
+        self.attention = self.assembled_model.attention
+        self.decomposition = self.assembled_model.decomposition
+        self.encoder = self.assembled_model.encoder
+        self.decoder = self.assembled_model.decoder
+        self.sampling = self.assembled_model.sampling
+        self.output_head = self.assembled_model.output_head
+        self.loss_component = self.assembled_model.loss_component
+        
+        logger.info("Model assembly complete using GCLI dumb assembler pattern")
+        
     def _initialize_with_backbone(self):
         """Initialize with modular backbone component (e.g., ChronosX)"""
+        logger.info("Using backbone component - legacy mode (will be migrated to GCLI)")
         
-        # Create backbone configuration
-        backbone_config = ComponentConfig()
-        backbone_config.d_model = self.configs.d_model
-        backbone_config.seq_len = self.configs.seq_len
-        backbone_config.pred_len = self.configs.pred_len
-        
-        # Add backbone-specific parameters
-        if hasattr(self.configs, 'backbone_params'):
-            for key, value in self.configs.backbone_params.items():
-                setattr(backbone_config, key, value)
-        
-        # Create backbone component
-        backbone_class = self.registry.get('backbone', self.backbone_type)
-        self.backbone = backbone_class(backbone_config)
+        # Legacy backbone initialization for backward compatibility
+        # TODO: Migrate to GCLI component system
         
         # Traditional components (may be used differently with backbone)
-        self.loss_function, _ = get_loss_component(self.configs.loss_function_type, **self.configs.loss_params)
+        from layers.modular.losses import get_loss_component
+        from layers.modular.sampling import get_sampling_component
+        from layers.modular.output_heads import get_output_head_component
+        
+        self.loss_function, _ = get_loss_component(
+            self.legacy_configs.loss_function_type, 
+            **getattr(self.legacy_configs, 'loss_params', {})
+        )
         
         # Embeddings (may not be needed with some backbones)
         if not self._backbone_handles_embedding():
-            self.enc_embedding = DataEmbedding_wo_pos(self.configs.enc_in, self.configs.d_model, self.configs.embed, self.configs.freq, self.configs.dropout)
-            self.dec_embedding = DataEmbedding_wo_pos(self.configs.dec_in, self.configs.d_model, self.configs.embed, self.configs.freq, self.configs.dropout)
+            self.enc_embedding = DataEmbedding_wo_pos(
+                self.legacy_configs.enc_in, 
+                self.legacy_configs.d_model, 
+                self.legacy_configs.embed, 
+                self.legacy_configs.freq, 
+                self.legacy_configs.dropout
+            )
+            self.dec_embedding = DataEmbedding_wo_pos(
+                self.legacy_configs.dec_in, 
+                self.legacy_configs.d_model, 
+                self.legacy_configs.embed, 
+                self.legacy_configs.freq, 
+                self.legacy_configs.dropout
+            )
         
         # Sampling and output head
-        self.sampling = get_sampling_component(self.configs.sampling_type, **self.configs.sampling_params)
-        self.output_head = get_output_head_component(self.configs.output_head_type, **self.configs.output_head_params)
-        
-        # Processor components (if using modular processing)
-        if hasattr(self.configs, 'processor_type'):
-            processor_config = ComponentConfig()
-            processor_config.d_model = self.configs.d_model
-            processor_config.pred_len = self.configs.pred_len
-            
-            processor_class = self.registry.get('processor', self.configs.processor_type)
-            self.processor = processor_class(processor_config)
-        else:
-            self.processor = None
+        self.sampling = get_sampling_component(
+            self.legacy_configs.sampling_type, 
+            **getattr(self.legacy_configs, 'sampling_params', {})
+        )
+        self.output_head = get_output_head_component(
+            self.legacy_configs.output_head_type, 
+            **getattr(self.legacy_configs, 'output_head_params', {})
+        )
     
     def _initialize_traditional(self):
         """Initialize with traditional encoder-decoder architecture"""
+        
+        # Create dimension manager for clean parameter handling
+        self.dim_manager = create_modular_dimension_manager(self.configs)
+        
+        # Validate component compatibility
+        is_valid, issues = self.dim_manager.validate_component_compatibility({})
+        if not is_valid:
+            logger.warning(f"Dimension compatibility issues: {issues}")
         
         # --- Component Assembly from Registries ---
         self.loss_function, _ = get_loss_component(self.configs.loss_function_type, **self.configs.loss_params)
@@ -98,18 +336,32 @@ class ModularAutoformer(nn.Module):
         self.enc_embedding = DataEmbedding_wo_pos(self.configs.enc_in, self.configs.d_model, self.configs.embed, self.configs.freq, self.configs.dropout)
         self.dec_embedding = DataEmbedding_wo_pos(self.configs.dec_in, self.configs.d_model, self.configs.embed, self.configs.freq, self.configs.dropout)
 
+        # Get component-specific dimensions from dimension manager
+        encoder_decomp_dims = self.dim_manager.get_component_dimensions('decomposition', 'encoder')
+        decoder_decomp_dims = self.dim_manager.get_component_dimensions('decomposition', 'decoder')
+        init_decomp_dims = self.dim_manager.get_component_dimensions('decomposition', 'init')
+        
+        # Merge with configured parameters
+        encoder_decomp_params = {**encoder_decomp_dims, **self.configs.decomposition_params}
+        decoder_decomp_params = {**decoder_decomp_dims, **self.configs.decomposition_params}
+        init_decomp_params = {**init_decomp_dims, **self.configs.init_decomposition_params}
+
+        # Create decomposition components - let the factory filter parameters
         self.configs.encoder_params['attention_comp'] = get_attention_component(self.configs.attention_type, **self.configs.attention_params)
-        self.configs.encoder_params['decomp_comp'] = get_decomposition_component(self.configs.decomposition_type, **self.configs.encoder_params.get('decomp_params', self.configs.decomposition_params))
+        self.configs.encoder_params['decomp_comp'] = get_decomposition_component(self.configs.decomposition_type, **encoder_decomp_params)
         self.encoder = get_encoder_component(self.configs.encoder_type, **self.configs.encoder_params)
 
         self.configs.decoder_params['self_attention_comp'] = get_attention_component(self.configs.attention_type, **self.configs.attention_params)
         self.configs.decoder_params['cross_attention_comp'] = get_attention_component(self.configs.attention_type, **self.configs.attention_params)
-        self.configs.decoder_params['decomp_comp'] = get_decomposition_component(self.configs.decomposition_type, **self.configs.decoder_params.get('decomp_params', self.configs.decomposition_params))
+        self.configs.decoder_params['decomp_comp'] = get_decomposition_component(self.configs.decomposition_type, **decoder_decomp_params)
         self.decoder = get_decoder_component(self.configs.decoder_type, **self.configs.decoder_params)
 
         self.sampling = get_sampling_component(self.configs.sampling_type, **self.configs.sampling_params)
         self.output_head = get_output_head_component(self.configs.output_head_type, **self.configs.output_head_params)
-        self.init_decomp = get_decomposition_component(self.configs.decomposition_type, **self.configs.init_decomposition_params)
+        
+        # Handle init_decomp - may use different decomposition type than encoder/decoder
+        init_decomp_type = getattr(self.configs, 'init_decomposition_type', self.configs.decomposition_type)
+        self.init_decomp = get_decomposition_component(init_decomp_type, **init_decomp_params)
     
     def _backbone_handles_embedding(self) -> bool:
         """Check if the backbone handles its own embedding"""
@@ -209,6 +461,43 @@ class ModularAutoformer(nn.Module):
         return final_output
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        """
+        Forward pass using either GCLI assembled model or legacy approach
+        """
+        if hasattr(self, 'assembled_model'):
+            # Use GCLI assembled model
+            return self._forward_with_assembled_model(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
+        else:
+            # Use legacy approach
+            return self._forward_legacy(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
+    
+    def _forward_with_assembled_model(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        """Forward pass using the GCLI assembled model"""
+        if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
+            # Prepare embeddings
+            x_enc_embedded = self.enc_embedding(x_enc, x_mark_enc)
+            x_dec_embedded = self.dec_embedding(x_dec, x_mark_dec)
+            
+            # Use assembled model forward pass
+            results = self.assembled_model.forward(
+                x_enc_embedded, x_mark_enc, x_dec_embedded, x_mark_dec, mask
+            )
+            
+            # Apply sampling if needed
+            if self.structured_config.sampling.type != ComponentType.DETERMINISTIC:
+                results = self.sampling(lambda: results)
+                if isinstance(results, dict):
+                    prediction = results.get('prediction')
+                    self.last_sampling_results = results
+                    return prediction[:, -self.pred_len:, :]
+            
+            return results[:, -self.pred_len:, :]
+        
+        logger.warning(f"Task '{self.task_name}' not fully implemented for GCLI ModularAutoformer yet.")
+        return None
+    
+    def _forward_legacy(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        """Legacy forward pass for backward compatibility"""
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             results = self.sampling(self._model_forward_pass, x_enc, x_mark_enc, x_dec, x_mark_dec)
             if isinstance(results, dict):
@@ -220,6 +509,17 @@ class ModularAutoformer(nn.Module):
         
         logger.warning(f"Task '{self.task_name}' not fully implemented for ModularAutoformer yet.")
         return None
+    
+    def supports_uncertainty(self) -> bool:
+        """Check if model supports uncertainty quantification."""
+        if hasattr(self, 'backbone'):
+            return getattr(self.backbone, 'supports_uncertainty', lambda: False)()
+        return hasattr(self, 'sampling') and getattr(self.configs, 'sampling_type', '') == 'bayesian'
+    
+    def supports_quantiles(self) -> bool:
+        """Check if model supports quantile predictions."""
+        loss_type = getattr(self.configs, 'loss_function_type', '')
+        return 'quantile' in loss_type
     
     def get_uncertainty_results(self):
         """Get uncertainty results from backbone if available"""

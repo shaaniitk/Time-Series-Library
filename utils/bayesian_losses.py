@@ -137,6 +137,9 @@ class BayesianQuantileLoss(BayesianLoss):
         logger.info(f"Initializing BayesianQuantileLoss with quantiles={quantiles}")
         self.quantiles = quantiles
         self.quantile_certainty_weight = quantile_certainty_weight
+        
+        # CRITICAL: Bayesian quantile loss requires output dimension = c_out * num_quantiles
+        self.output_dim_multiplier = len(quantiles)
     
     def forward(self, model, pred_result, true, **kwargs):
         """Enhanced quantile loss with uncertainty measures"""

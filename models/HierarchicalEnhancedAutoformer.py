@@ -295,7 +295,15 @@ class HierarchicalEncoder(nn.Module):
         self.share_weights = share_weights
         
         if decomp_params:
-            self.decomposer = WaveletHierarchicalDecomposer(**decomp_params)
+            # Filter parameters for WaveletHierarchicalDecomposer
+            # Only keep parameters that the decomposer actually accepts
+            valid_params = {}
+            decomposer_params = ['seq_len', 'd_model', 'wavelet_type', 'levels', 'use_learnable_weights']
+            for param in decomposer_params:
+                if param in decomp_params:
+                    valid_params[param] = decomp_params[param]
+            
+            self.decomposer = WaveletHierarchicalDecomposer(**valid_params)
         else:
             self.decomposer = None
         

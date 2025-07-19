@@ -13,9 +13,13 @@ def get_bayesian_enhanced_autoformer_config(num_targets, num_covariates, **kwarg
     config.encoder_type = 'enhanced'
     config.decoder_type = 'enhanced'
     
-    # Key difference: Bayesian sampling
+    # Key difference: Bayesian sampling with proper loss function
     config.sampling_type = 'bayesian'
     config.output_head_type = 'standard'
+    
+    # CRITICAL: Bayesian models MUST use Bayesian loss functions
+    # This enforces proper uncertainty quantification training
+    config.loss_function_type = 'bayesian'  # Changed from 'mse' to 'bayesian'
     
     # Parameters
     config.attention_params = {
