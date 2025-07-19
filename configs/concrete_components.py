@@ -770,3 +770,188 @@ component_registry.register_component(
     )
 )
 
+
+# Additional Loss Components
+
+class MAELoss(LossComponent):
+    """MAE loss component"""
+    
+    def __init__(self, config: LossConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        self.metadata = ComponentMetadata(
+            name="MAE",
+            component_type=ComponentType.MAE,
+            required_params=[],
+            optional_params=[],
+            description="Mean absolute error loss function"
+        )
+    
+    def _initialize_component(self, **kwargs):
+        self.loss_fn = nn.L1Loss()
+    
+    def forward(self, predictions, targets, **kwargs):
+        return self.loss_fn(predictions, targets)
+
+
+class QuantileLoss(LossComponent):
+    """Quantile loss component for single quantile prediction"""
+    
+    def __init__(self, config: LossConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        self.metadata = ComponentMetadata(
+            name="QuantileLoss",
+            component_type=ComponentType.QUANTILE_LOSS,
+            required_params=['quantiles'],
+            optional_params=[],
+            description="Quantile loss for probabilistic forecasting"
+        )
+    
+    def _initialize_component(self, **kwargs):
+        self.quantiles = torch.tensor(self.config.quantiles, dtype=torch.float32)
+    
+    def forward(self, predictions, targets, **kwargs):
+        """Compute quantile loss for multiple quantiles"""
+        # Predictions shape: [B, T, C*Q] where Q is number of quantiles
+        batch_size, seq_len, combined_dim = predictions.shape
+        num_quantiles = len(self.quantiles)
+        num_features = combined_dim // num_quantiles
+        
+        # Reshape predictions: [B, T, C, Q]
+        pred_quantiles = predictions.view(batch_size, seq_len, num_features, num_quantiles)
+        
+        # Compute quantile loss
+        total_loss = 0.0
+        for i, tau in enumerate(self.quantiles):
+            pred_q = pred_quantiles[:, :, :, i]  # [B, T, C]
+            residual = targets - pred_q
+            loss_q = torch.where(residual >= 0, 
+                               tau * residual, 
+                               (tau - 1) * residual)
+            total_loss += loss_q.mean()
+        
+        return total_loss
+
+
+class BayesianMSELoss(LossComponent):
+    """Bayesian MSE loss with KL divergence"""
+    
+    def __init__(self, config: LossConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        self.metadata = ComponentMetadata(
+            name="BayesianMSE",
+            component_type=ComponentType.BAYESIAN_MSE,
+            required_params=['kl_weight'],
+            optional_params=['prior_scale'],
+            description="Bayesian MSE loss with KL divergence regularization"
+        )
+    
+    def _initialize_component(self, **kwargs):
+        self.mse_loss = nn.MSELoss()
+        self.kl_weight = self.config.kl_weight
+        self.prior_scale = getattr(self.config, 'prior_scale', 1.0)
+    
+    def forward(self, predictions, targets, model=None, **kwargs):
+        """Compute MSE + KL divergence loss"""
+        mse_loss = self.mse_loss(predictions, targets)
+        
+        # Add KL divergence if model has Bayesian layers
+        kl_loss = 0.0
+        if model is not None and hasattr(model, 'get_kl_divergence'):
+            kl_loss = model.get_kl_divergence()
+        
+        return mse_loss + self.kl_weight * kl_loss
+
+
+class BayesianQuantileLoss(LossComponent):
+    """Bayesian quantile loss with KL divergence"""
+    
+    def __init__(self, config: LossConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        self.metadata = ComponentMetadata(
+            name="BayesianQuantileLoss",
+            component_type=ComponentType.BAYESIAN_QUANTILE,
+            required_params=['quantiles', 'kl_weight'],
+            optional_params=['prior_scale'],
+            description="Bayesian quantile loss for uncertainty quantification"
+        )
+    
+    def _initialize_component(self, **kwargs):
+        self.quantiles = torch.tensor(self.config.quantiles, dtype=torch.float32)
+        self.kl_weight = self.config.kl_weight
+        self.prior_scale = getattr(self.config, 'prior_scale', 1.0)
+    
+    def forward(self, predictions, targets, model=None, **kwargs):
+        """Compute combined quantile and KL divergence loss"""
+        # Quantile loss computation (same as QuantileLoss)
+        batch_size, seq_len, combined_dim = predictions.shape
+        num_quantiles = len(self.quantiles)
+        num_features = combined_dim // num_quantiles
+        
+        pred_quantiles = predictions.view(batch_size, seq_len, num_features, num_quantiles)
+        
+        quantile_loss = 0.0
+        for i, tau in enumerate(self.quantiles):
+            pred_q = pred_quantiles[:, :, :, i]
+            residual = targets - pred_q
+            loss_q = torch.where(residual >= 0, 
+                               tau * residual, 
+                               (tau - 1) * residual)
+            quantile_loss += loss_q.mean()
+        
+        # Add KL divergence
+        kl_loss = 0.0
+        if model is not None and hasattr(model, 'get_kl_divergence'):
+            kl_loss = model.get_kl_divergence()
+        
+        return quantile_loss + self.kl_weight * kl_loss
+
+
+# Register additional loss components
+component_registry.register_component(
+    ComponentType.MAE,
+    MAELoss,
+    ComponentMetadata(
+        name="MAE",
+        component_type=ComponentType.MAE,
+        required_params=[],
+        optional_params=[],
+        description="Mean absolute error loss function"
+    )
+)
+
+component_registry.register_component(
+    ComponentType.QUANTILE_LOSS,
+    QuantileLoss,
+    ComponentMetadata(
+        name="QuantileLoss",
+        component_type=ComponentType.QUANTILE_LOSS,
+        required_params=['quantiles'],
+        optional_params=[],
+        description="Quantile loss for probabilistic forecasting"
+    )
+)
+
+component_registry.register_component(
+    ComponentType.BAYESIAN_MSE,
+    BayesianMSELoss,
+    ComponentMetadata(
+        name="BayesianMSE",
+        component_type=ComponentType.BAYESIAN_MSE,
+        required_params=['kl_weight'],
+        optional_params=['prior_scale'],
+        description="Bayesian MSE loss with KL divergence regularization"
+    )
+)
+
+component_registry.register_component(
+    ComponentType.BAYESIAN_QUANTILE,
+    BayesianQuantileLoss,
+    ComponentMetadata(
+        name="BayesianQuantileLoss",
+        component_type=ComponentType.BAYESIAN_QUANTILE,
+        required_params=['quantiles', 'kl_weight'],
+        optional_params=['prior_scale'],
+        description="Bayesian quantile loss for uncertainty quantification"
+    )
+)
+

@@ -60,16 +60,28 @@ The Modular Autoformer Architecture implements a unified framework that supports
 
 ## Core Components
 
-The framework consists of several component types, each serving a specific purpose in the autoformer architecture:
+The framework consists of **7 component types**, each serving a specific purpose in the autoformer architecture. **All components are fully modular and interchangeable**, allowing for flexible architecture composition through the component registry system.
+
+### Component Modularity Principles
+
+1. **Interface Standardization**: All components inherit from `ModularComponent` with standardized initialization and forward methods
+2. **Registry Management**: Components are registered with metadata for dynamic discovery and validation
+3. **Configuration Validation**: Pydantic schemas ensure type safety and parameter validation
+4. **Dependency Injection**: Components receive dependencies through the assembler pattern
+5. **Runtime Swapping**: Components can be swapped at runtime through configuration changes
 
 ### 1. Attention Components
 
 **Purpose**: Handle attention mechanisms for temporal dependencies
 
 **Available Types**:
-- `AUTOCORRELATION`: Standard autocorrelation attention
-- `ADAPTIVE_AUTOCORRELATION`: Adaptive autocorrelation with dynamic factors
-- `CROSS_RESOLUTION`: Multi-resolution attention for hierarchical processing
+- `AUTOCORRELATION`: Standard autocorrelation attention for temporal dependencies
+- `ADAPTIVE_AUTOCORRELATION`: Adaptive autocorrelation with dynamic factor adjustment
+- `CROSS_RESOLUTION`: Multi-resolution attention for hierarchical temporal processing
+- `MULTI_HEAD`: Traditional multi-head attention mechanism
+- `SPARSE`: Sparse attention for long sequences
+- `LOG_SPARSE`: Logarithmic sparse attention pattern
+- `PROB_SPARSE`: Probabilistic sparse attention selection
 
 **Implementation**: `configs/concrete_components.py`
 
@@ -89,9 +101,9 @@ class AutoCorrelationAttention(AttentionComponent):
 **Purpose**: Separate time series into trend and seasonal components
 
 **Available Types**:
-- `MOVING_AVG`: Moving average decomposition
-- `LEARNABLE_DECOMP`: Learnable decomposition with trainable parameters
-- `WAVELET_DECOMP`: Wavelet-based decomposition for hierarchical analysis
+- `MOVING_AVG`: Moving average decomposition for trend extraction
+- `LEARNABLE_DECOMP`: Learnable decomposition with trainable trend/seasonal separation
+- `WAVELET_DECOMP`: Wavelet-based hierarchical decomposition for multi-scale analysis
 
 **Implementation**:
 ```python
@@ -107,41 +119,63 @@ class LearnableDecomposition(DecompositionComponent):
 **Purpose**: Encode input sequences with attention and decomposition
 
 **Available Types**:
-- `STANDARD_ENCODER`: Basic transformer encoder
-- `ENHANCED_ENCODER`: Enhanced encoder with adaptive features
-- `HIERARCHICAL_ENCODER`: Multi-level hierarchical encoder
+- `STANDARD_ENCODER`: Basic transformer encoder with attention and feedforward layers
+- `ENHANCED_ENCODER`: Enhanced encoder with adaptive features and improved normalization
+- `HIERARCHICAL_ENCODER`: Multi-level hierarchical encoder for multi-scale processing
 
 ### 4. Decoder Components
 
 **Purpose**: Decode and generate predictions
 
 **Available Types**:
-- `STANDARD_DECODER`: Basic transformer decoder
-- `ENHANCED_DECODER`: Enhanced decoder with adaptive features
+- `STANDARD_DECODER`: Basic transformer decoder with cross-attention capabilities
+- `ENHANCED_DECODER`: Enhanced decoder with adaptive features and improved prediction
+- `HIERARCHICAL_DECODER`: Multi-level hierarchical decoder (planned for future implementation)
 
 ### 5. Sampling Components
 
 **Purpose**: Handle uncertainty quantification and sampling strategies
 
 **Available Types**:
-- `DETERMINISTIC`: Standard deterministic prediction
-- `BAYESIAN`: Bayesian sampling for uncertainty quantification
+- `DETERMINISTIC`: Standard deterministic prediction without uncertainty
+- `BAYESIAN`: Bayesian sampling for uncertainty quantification with dropout
+- `MONTE_CARLO`: Monte Carlo sampling methods for robust uncertainty estimation
 
 ### 6. Output Head Components
 
 **Purpose**: Final projection to output dimensions
 
 **Available Types**:
-- `STANDARD_HEAD`: Basic linear projection
-- `QUANTILE`: Multi-quantile prediction head
+- `STANDARD_HEAD`: Basic linear projection to output dimensions
+- `QUANTILE`: Multi-quantile prediction head for uncertainty bounds and confidence intervals
 
 ### 7. Loss Components
 
-**Purpose**: Loss function computation
+**Purpose**: Loss function computation and optimization
 
 **Available Types**:
-- `MSE`: Mean squared error
-- `BAYESIAN`: Bayesian loss with KL divergence
+- `MSE`: Mean squared error for standard regression
+- `MAE`: Mean absolute error for robust regression  
+- `QUANTILE_LOSS`: Quantile loss for single quantile prediction
+- `BAYESIAN_MSE`: Bayesian MSE with KL divergence regularization
+- `BAYESIAN_QUANTILE`: Bayesian quantile loss for uncertainty quantification
+
+**Implementation**: Each loss component handles different prediction scenarios:
+
+```python
+class MSELoss(LossComponent):
+    """Standard MSE loss for deterministic predictions"""
+    def forward(self, predictions, targets, **kwargs):
+        return nn.MSELoss()(predictions, targets)
+
+class BayesianQuantileLoss(LossComponent):
+    """Bayesian quantile loss with KL divergence"""
+    def forward(self, predictions, targets, **kwargs):
+        # Quantile loss + KL divergence from Bayesian layers
+        quantile_loss = self._compute_quantile_loss(predictions, targets)
+        kl_loss = self._compute_kl_divergence()
+        return quantile_loss + self.kl_weight * kl_loss
+```
 
 ## HF Integration Framework
 
@@ -151,12 +185,358 @@ The framework seamlessly integrates HuggingFace autoformer models through a unif
 
 **Location**: `models/HFAutoformerSuite.py`, `models/unified_autoformer_factory.py`
 
-1. **HFEnhancedAutoformer**: Basic HF enhanced autoformer
-2. **HFBayesianAutoformer**: HF Bayesian autoformer with uncertainty
-3. **HFHierarchicalAutoformer**: HF hierarchical autoformer
-4. **HFQuantileAutoformer**: HF quantile autoformer
-5. **HFEnhancedAutoformerAdvanced**: Advanced HF enhanced model
-6. **HFBayesianAutoformerProduction**: Production-ready HF Bayesian model
+1. **HFEnhancedAutoformer**: Basic HF enhanced autoformer with improved attention mechanisms
+2. **HFBayesianAutoformer**: HF Bayesian autoformer with uncertainty quantification capabilities
+3. **HFHierarchicalAutoformer**: HF hierarchical autoformer for multi-scale temporal modeling
+4. **HFQuantileAutoformer**: HF quantile autoformer for probabilistic forecasting
+5. **HFEnhancedAutoformerAdvanced**: Advanced HF enhanced model with additional optimizations
+6. **HFBayesianAutoformerProduction**: Production-ready HF Bayesian model with robust uncertainty
+
+## Complete Component File Examples
+
+### Custom Component Implementation (`configs/concrete_components.py`)
+
+```python
+# Example: Complete Attention Component
+class AutoCorrelationAttention(AttentionComponent):
+    """AutoCorrelation attention component with GCLI compliance"""
+    
+    def __init__(self, config: AttentionConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        self.metadata = ComponentMetadata(
+            name="AutoCorrelation",
+            component_type=ComponentType.AUTOCORRELATION,
+            required_params=['d_model', 'n_heads'],
+            optional_params=['dropout', 'factor'],
+            description="AutoCorrelation mechanism for time series modeling"
+        )
+    
+    def _initialize_component(self, **kwargs):
+        """Initialize component with configuration validation"""
+        self.d_model = self.config.d_model
+        self.n_heads = self.config.n_heads
+        self.dropout = nn.Dropout(self.config.dropout)
+        self.factor = self.config.factor
+        
+        # Core projection layers
+        self.query_projection = nn.Linear(self.d_model, self.d_model)
+        self.key_projection = nn.Linear(self.d_model, self.d_model)
+        self.value_projection = nn.Linear(self.d_model, self.d_model)
+        self.out_projection = nn.Linear(self.d_model, self.d_model)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        """Modular forward pass with standardized interface"""
+        B, L, _ = queries.shape
+        _, S, _ = keys.shape
+        H = self.n_heads
+        
+        # Project and reshape
+        queries = self.query_projection(queries).view(B, L, H, -1)
+        keys = self.key_projection(keys).view(B, S, H, -1)
+        values = self.value_projection(values).view(B, S, H, -1)
+        
+        # AutoCorrelation mechanism
+        scale = 1. / math.sqrt(queries.shape[-1])
+        scores = torch.einsum("blhd,bshd->bhls", queries, keys) * scale
+        
+        if attn_mask is not None:
+            scores.masked_fill_(attn_mask, -1e9)
+        
+        attn = torch.softmax(scores, dim=-1)
+        attn = self.dropout(attn)
+        
+        out = torch.einsum("bhls,bshd->blhd", attn, values)
+        out = out.contiguous().view(B, L, -1)
+        
+        return self.out_projection(out), attn
+
+# Example: Complete Loss Component
+class BayesianQuantileLoss(LossComponent):
+    """Bayesian quantile loss with KL divergence regularization"""
+    
+    def __init__(self, config: LossConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        self.metadata = ComponentMetadata(
+            name="BayesianQuantileLoss",
+            component_type=ComponentType.BAYESIAN_QUANTILE,
+            required_params=['quantiles', 'prior_scale', 'kl_weight'],
+            optional_params=['reduction'],
+            description="Bayesian quantile loss for uncertainty quantification"
+        )
+    
+    def _initialize_component(self, **kwargs):
+        """Initialize with quantile and Bayesian parameters"""
+        self.quantiles = torch.tensor(self.config.quantiles, dtype=torch.float32)
+        self.prior_scale = self.config.prior_scale
+        self.kl_weight = self.config.kl_weight
+        self.reduction = getattr(self.config, 'reduction', 'mean')
+        
+    def forward(self, predictions, targets, model=None, **kwargs):
+        """Compute combined quantile and KL divergence loss"""
+        # Predictions shape: [B, T, C*Q] where Q is number of quantiles
+        batch_size, seq_len, combined_dim = predictions.shape
+        num_quantiles = len(self.quantiles)
+        num_features = combined_dim // num_quantiles
+        
+        # Reshape predictions: [B, T, C, Q]
+        pred_quantiles = predictions.view(batch_size, seq_len, num_features, num_quantiles)
+        
+        # Compute quantile loss
+        quantile_loss = 0.0
+        for i, tau in enumerate(self.quantiles):
+            pred_q = pred_quantiles[:, :, :, i]  # [B, T, C]
+            residual = targets - pred_q
+            loss_q = torch.where(residual >= 0, 
+                               tau * residual, 
+                               (tau - 1) * residual)
+            quantile_loss += loss_q.mean()
+        
+        # Add KL divergence if model has Bayesian layers
+        kl_loss = 0.0
+        if model is not None and hasattr(model, 'get_kl_divergence'):
+            kl_loss = model.get_kl_divergence()
+        
+        total_loss = quantile_loss + self.kl_weight * kl_loss
+        
+        return total_loss if self.reduction == 'mean' else total_loss.sum()
+```
+
+### Complete Model Implementation (`models/modular_autoformer.py`)
+
+```python
+class ModularAutoformer(BaseTimeSeriesForecaster):
+    """
+    Complete GCLI-compliant Modular Autoformer implementation
+    
+    This model uses the "dumb assembler" pattern with modular components
+    managed through the component registry system.
+    """
+    
+    def __init__(self, configs):
+        super().__init__(configs)
+        self.framework_type = 'custom'
+        
+        # Initialize GCLI assembler
+        self.assembler = ModularAssembler()
+        
+        # Store configuration
+        self.configs = configs
+        self.task_name = configs.task_name
+        
+        # Component assembly through registry
+        self.components = self._assemble_components()
+        
+        # Extract assembled components
+        self.enc_embedding = self.components['enc_embedding']
+        self.dec_embedding = self.components['dec_embedding'] 
+        self.encoder = self.components['encoder']
+        self.decoder = self.components['decoder']
+        self.output_head = self.components['output_head']
+        self.loss_fn = self.components['loss']
+        
+        # Optional components
+        self.sampling_component = self.components.get('sampling')
+        
+        # Model metadata
+        self.model_type = getattr(configs, 'model_variant', 'modular_autoformer')
+        
+    def _assemble_components(self):
+        """Assemble all components using GCLI assembler pattern"""
+        try:
+            return self.assembler.assemble(self.configs)
+        except Exception as e:
+            logger.error(f"Component assembly failed: {e}")
+            raise RuntimeError(f"Failed to assemble modular autoformer: {e}")
+    
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
+                mask=None, **kwargs):
+        """
+        Modular forward pass using assembled components
+        
+        Args:
+            x_enc: Encoder input [B, L, D]
+            x_mark_enc: Encoder time features [B, L, F] 
+            x_dec: Decoder input [B, T, D]
+            x_mark_dec: Decoder time features [B, T, F]
+            mask: Optional attention mask
+            
+        Returns:
+            Predictions tensor [B, T, C] or [B, T, C*Q] for quantile models
+        """
+        # Embedding layers
+        enc_out = self.enc_embedding(x_enc, x_mark_enc)
+        dec_out = self.dec_embedding(x_dec, x_mark_dec)
+        
+        # Encoder processing
+        enc_out, enc_attns = self.encoder(enc_out, attn_mask=mask)
+        
+        # Decoder processing with cross-attention
+        dec_out, trend = self.decoder(dec_out, enc_out, 
+                                    x_mask=mask, cross_mask=None)
+        
+        # Output head projection
+        predictions = self.output_head(dec_out)
+        
+        # Handle different prediction modes
+        if self.task_name == 'long_term_forecast':
+            # Return predictions in format [B, pred_len, c_out]
+            return predictions[:, -self.configs.pred_len:, :]
+        else:
+            return predictions
+    
+    def predict_with_uncertainty(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
+                               **kwargs):
+        """Unified uncertainty prediction interface"""
+        if self.sampling_component and hasattr(self.sampling_component, 'forward'):
+            # Use Bayesian sampling for uncertainty
+            def model_fn():
+                return self.forward(x_enc, x_mark_enc, x_dec, x_mark_dec, **kwargs)
+            
+            return self.sampling_component.forward(model_fn, **kwargs)
+        else:
+            # Deterministic prediction
+            prediction = self.forward(x_enc, x_mark_enc, x_dec, x_mark_dec, **kwargs)
+            return {
+                'prediction': prediction,
+                'uncertainty': None
+            }
+    
+    def supports_uncertainty(self):
+        """Check if model supports uncertainty quantification"""
+        return (self.sampling_component is not None and 
+                self.sampling_component.metadata.component_type in 
+                [ComponentType.BAYESIAN, ComponentType.MONTE_CARLO])
+    
+    def get_component_info(self):
+        """Get information about assembled components"""
+        return {
+            component_name: {
+                'type': component.metadata.component_type.value,
+                'name': component.metadata.name,
+                'description': component.metadata.description
+            }
+            for component_name, component in self.components.items()
+            if hasattr(component, 'metadata')
+        }
+```
+
+### HF Model Integration (`models/HFAutoformerSuite.py`)
+
+```python
+class HFEnhancedAutoformer(nn.Module, HFFrameworkMixin):
+    """
+    HuggingFace Enhanced Autoformer with unified interface
+    
+    Provides drop-in replacement for custom ModularAutoformer with
+    production-ready HF optimizations and consistent APIs.
+    """
+    
+    def __init__(self, configs):
+        super().__init__()
+        self.framework_type = 'hf'
+        self.model_type = 'hf_enhanced'
+        self.configs = configs
+        
+        # Initialize HF-specific components
+        self._initialize_hf_components()
+        
+        # Uncertainty support
+        self.supports_bayesian = False
+        self.uncertainty_method = 'none'
+        
+    def _initialize_hf_components(self):
+        """Initialize HF-optimized autoformer components"""
+        from layers.Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLayer
+        from layers.SelfAttention_Family import AutoCorrelationLayer
+        from layers.Embed import DataEmbedding
+        
+        # Embedding layers
+        self.enc_embedding = DataEmbedding(
+            self.configs.enc_in, self.configs.d_model, 
+            self.configs.embed, self.configs.freq, self.configs.dropout
+        )
+        self.dec_embedding = DataEmbedding(
+            self.configs.dec_in, self.configs.d_model,
+            self.configs.embed, self.configs.freq, self.configs.dropout
+        )
+        
+        # HF-optimized encoder/decoder
+        self.encoder = self._build_hf_encoder()
+        self.decoder = self._build_hf_decoder()
+        
+        # Output projection
+        self.projection = nn.Linear(self.configs.d_model, self.configs.c_out, bias=True)
+        
+    def _build_hf_encoder(self):
+        """Build HF-optimized encoder"""
+        return Encoder([
+            EncoderLayer(
+                AutoCorrelationLayer(
+                    correlation=self._build_autocorr(),
+                    d_model=self.configs.d_model,
+                    n_heads=self.configs.n_heads
+                ),
+                self.configs.d_model,
+                self.configs.d_ff,
+                dropout=self.configs.dropout,
+                activation=self.configs.activation
+            ) for _ in range(self.configs.e_layers)
+        ], norm_layer=torch.nn.LayerNorm(self.configs.d_model))
+    
+    def _build_hf_decoder(self):
+        """Build HF-optimized decoder"""
+        return Decoder([
+            DecoderLayer(
+                self_attention=AutoCorrelationLayer(
+                    correlation=self._build_autocorr(),
+                    d_model=self.configs.d_model,
+                    n_heads=self.configs.n_heads
+                ),
+                cross_attention=AutoCorrelationLayer(
+                    correlation=self._build_autocorr(),
+                    d_model=self.configs.d_model,
+                    n_heads=self.configs.n_heads
+                ),
+                d_model=self.configs.d_model,
+                d_ff=self.configs.d_ff,
+                dropout=self.configs.dropout,
+                activation=self.configs.activation,
+            ) for _ in range(self.configs.d_layers)
+        ], norm_layer=torch.nn.LayerNorm(self.configs.d_model),
+           projection=nn.Linear(self.configs.d_model, self.configs.c_out, bias=True))
+    
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
+                enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
+        """HF autoformer forward pass with unified interface"""
+        # Embedding
+        enc_out = self.enc_embedding(x_enc, x_mark_enc)
+        dec_out = self.dec_embedding(x_dec, x_mark_dec)
+        
+        # Encoding
+        enc_out, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
+        
+        # Decoding with trend decomposition
+        dec_out = self.decoder(dec_out, enc_out, 
+                             x_mask=dec_self_mask, cross_mask=dec_enc_mask,
+                             trend=None)
+        
+        return dec_out  # [B, L, D]
+    
+    def supports_uncertainty(self):
+        """HF model uncertainty support"""
+        return self.supports_bayesian
+    
+    def get_model_info(self):
+        """Get HF model information"""
+        return {
+            'framework_type': self.framework_type,
+            'model_type': self.model_type,
+            'hf_optimized': True,
+            'supports_uncertainty': self.supports_uncertainty(),
+            'uncertainty_method': self.uncertainty_method,
+            'component_count': 'HF-integrated'
+        }
+```
 
 ### HF Integration Architecture
 
@@ -200,6 +580,50 @@ def _ensure_hf_config_completeness(cls, config: Namespace):
 ## Component Registry System
 
 The component registry manages all available components and their metadata, enabling dynamic component discovery and validation.
+
+### Complete Component Inventory
+
+The framework currently supports **24 distinct component implementations** across 7 component types:
+
+#### Attention Components (7 types)
+- `AUTOCORRELATION`: Standard autocorrelation attention
+- `ADAPTIVE_AUTOCORRELATION`: Adaptive autocorrelation with dynamic factors  
+- `CROSS_RESOLUTION`: Multi-resolution attention for hierarchical processing
+- `MULTI_HEAD`: Traditional multi-head attention
+- `SPARSE`: Sparse attention for long sequences
+- `LOG_SPARSE`: Logarithmic sparse attention pattern
+- `PROB_SPARSE`: Probabilistic sparse attention selection
+
+#### Decomposition Components (3 types)
+- `MOVING_AVG`: Moving average decomposition
+- `LEARNABLE_DECOMP`: Learnable decomposition with trainable parameters
+- `WAVELET_DECOMP`: Wavelet-based hierarchical decomposition
+
+#### Encoder Components (3 types)  
+- `STANDARD_ENCODER`: Basic transformer encoder
+- `ENHANCED_ENCODER`: Enhanced encoder with adaptive features
+- `HIERARCHICAL_ENCODER`: Multi-level hierarchical encoder
+
+#### Decoder Components (3 types)
+- `STANDARD_DECODER`: Basic transformer decoder
+- `ENHANCED_DECODER`: Enhanced decoder with adaptive features  
+- `HIERARCHICAL_DECODER`: Multi-level hierarchical decoder (planned)
+
+#### Sampling Components (3 types)
+- `DETERMINISTIC`: Standard deterministic prediction
+- `BAYESIAN`: Bayesian sampling for uncertainty quantification
+- `MONTE_CARLO`: Monte Carlo sampling methods
+
+#### Output Head Components (2 types)
+- `STANDARD_HEAD`: Basic linear projection
+- `QUANTILE`: Multi-quantile prediction head
+
+#### Loss Components (5 types)
+- `MSE`: Mean squared error for standard regression
+- `MAE`: Mean absolute error for robust regression
+- `QUANTILE_LOSS`: Quantile loss for probabilistic forecasting
+- `BAYESIAN_MSE`: Bayesian MSE with KL divergence regularization
+- `BAYESIAN_QUANTILE`: Bayesian quantile loss for uncertainty quantification
 
 ### Registry Structure
 
