@@ -74,6 +74,9 @@ class UnifiedAutoformerFactory:
         if isinstance(config, dict):
             config = Namespace(**config)
             
+        # Add default configuration parameters for HF models if missing
+        cls._ensure_hf_config_completeness(config)
+            
         # Determine implementation based on preference and model type
         use_hf = cls._should_use_hf(model_type, framework_preference)
         
@@ -101,6 +104,34 @@ class UnifiedAutoformerFactory:
             # Default fallback to custom for unknown types
             logger.warning(f"Unknown model type '{model_type}', defaulting to custom implementation")
             return False
+    
+    @classmethod
+    def _ensure_hf_config_completeness(cls, config: Namespace) -> None:
+        """Ensure HF models have all required configuration parameters"""
+        
+        # Required HF configuration defaults
+        hf_defaults = {
+            'embed': 'timeF',
+            'freq': 'h',
+            'dropout': 0.1,
+            'activation': 'gelu',
+            'factor': 1,
+            'output_attention': False,
+            'use_amp': False,
+            'task_name': 'long_term_forecast',
+            'e_layers': 2,
+            'd_layers': 1,
+            'n_heads': 8,
+            'd_ff': 2048,
+            'moving_avg': 25,
+            'norm_type': 'LayerNorm'
+        }
+        
+        # Add missing parameters with defaults
+        for param, default_value in hf_defaults.items():
+            if not hasattr(config, param):
+                setattr(config, param, default_value)
+                logger.debug(f"Added missing HF config parameter: {param} = {default_value}")
     
     @classmethod
     def _create_hf_model(cls, model_type: str, config: Namespace) -> BaseTimeSeriesForecaster:
