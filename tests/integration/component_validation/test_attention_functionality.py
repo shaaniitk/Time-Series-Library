@@ -564,6 +564,224 @@ def test_attention_edge_cases():
         print(f"    FAIL Attention edge cases test failed: {e}")
         return False
 
+
+def test_fourier_attention_functionality():
+    """Test Fourier-based attention mechanisms"""
+    print("TEST Testing Fourier Attention Components...")
+    
+    try:
+        from layers.modular.attention.fourier_attention import FourierAttention, FourierBlock, FourierCrossAttention
+        
+        config = MockConfig(d_model=64, n_heads=4)
+        batch_size, seq_len = 2, 32
+        queries, keys, values, mask = create_attention_inputs(batch_size, seq_len, config.d_model)
+        
+        # Test FourierAttention
+        fourier_attn = FourierAttention(config.d_model, config.n_heads)
+        output, _ = fourier_attn(queries, keys, values)
+        assert output.shape == queries.shape, f"FourierAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test FourierBlock
+        fourier_block = FourierBlock(config.d_model, config.n_heads, seq_len)
+        output, _ = fourier_block(queries, keys, values)
+        assert output.shape == queries.shape, f"FourierBlock shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test FourierCrossAttention
+        fourier_cross = FourierCrossAttention(config.d_model, config.n_heads)
+        output, _ = fourier_cross(queries, keys, values)
+        assert output.shape == queries.shape, f"FourierCrossAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        print("PASS Fourier attention components working correctly")
+        return True
+        
+    except Exception as e:
+        print(f"FAIL Fourier attention test failed: {e}")
+        return False
+
+
+def test_wavelet_attention_functionality():
+    """Test Wavelet-based attention mechanisms"""
+    print("TEST Testing Wavelet Attention Components...")
+    
+    try:
+        from layers.modular.attention.wavelet_attention import (
+            WaveletAttention, WaveletDecomposition, AdaptiveWaveletAttention, MultiScaleWaveletAttention
+        )
+        
+        config = MockConfig(d_model=64, n_heads=4)
+        batch_size, seq_len = 2, 32
+        queries, keys, values, mask = create_attention_inputs(batch_size, seq_len, config.d_model)
+        
+        # Test WaveletAttention
+        wavelet_attn = WaveletAttention(config.d_model, config.n_heads, n_levels=3)
+        output, _ = wavelet_attn(queries, keys, values)
+        assert output.shape == queries.shape, f"WaveletAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test WaveletDecomposition
+        wavelet_decomp = WaveletDecomposition(config.d_model, config.n_heads, n_levels=3)
+        output, _ = wavelet_decomp(queries, keys, values)
+        assert output.shape == queries.shape, f"WaveletDecomposition shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test AdaptiveWaveletAttention
+        adaptive_wavelet = AdaptiveWaveletAttention(config.d_model, config.n_heads, max_levels=4)
+        output, _ = adaptive_wavelet(queries, keys, values)
+        assert output.shape == queries.shape, f"AdaptiveWaveletAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test MultiScaleWaveletAttention
+        multiscale_wavelet = MultiScaleWaveletAttention(config.d_model, config.n_heads, scales=[1, 2, 4])
+        output, _ = multiscale_wavelet(queries, keys, values)
+        assert output.shape == queries.shape, f"MultiScaleWaveletAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        print("PASS Wavelet attention components working correctly")
+        return True
+        
+    except Exception as e:
+        print(f"FAIL Wavelet attention test failed: {e}")
+        return False
+
+
+def test_enhanced_autocorrelation_functionality():
+    """Test Enhanced AutoCorrelation mechanisms"""
+    print("TEST Testing Enhanced AutoCorrelation Components...")
+    
+    try:
+        from layers.modular.attention.enhanced_autocorrelation import (
+            EnhancedAutoCorrelation, AdaptiveAutoCorrelationLayer, HierarchicalAutoCorrelation
+        )
+        
+        config = MockConfig(d_model=64, n_heads=4)
+        batch_size, seq_len = 2, 32
+        queries, keys, values, mask = create_attention_inputs(batch_size, seq_len, config.d_model)
+        
+        # Test EnhancedAutoCorrelation
+        enhanced_autocorr = EnhancedAutoCorrelation(config.d_model, config.n_heads)
+        output, _ = enhanced_autocorr(queries, keys, values)
+        assert output.shape == queries.shape, f"EnhancedAutoCorrelation shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test AdaptiveAutoCorrelationLayer
+        adaptive_autocorr = AdaptiveAutoCorrelationLayer(config.d_model, config.n_heads)
+        output, _ = adaptive_autocorr(queries, keys, values)
+        assert output.shape == queries.shape, f"AdaptiveAutoCorrelationLayer shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test HierarchicalAutoCorrelation
+        hierarchical_autocorr = HierarchicalAutoCorrelation(config.d_model, config.n_heads, hierarchy_levels=[1, 2, 4])
+        output, _ = hierarchical_autocorr(queries, keys, values)
+        assert output.shape == queries.shape, f"HierarchicalAutoCorrelation shape mismatch: {output.shape} vs {queries.shape}"
+        
+        print("PASS Enhanced AutoCorrelation components working correctly")
+        return True
+        
+    except Exception as e:
+        print(f"FAIL Enhanced AutoCorrelation test failed: {e}")
+        return False
+
+
+def test_bayesian_attention_functionality():
+    """Test Bayesian attention mechanisms"""
+    print("TEST Testing Bayesian Attention Components...")
+    
+    try:
+        from layers.modular.attention.bayesian_attention import (
+            BayesianAttention, BayesianMultiHeadAttention, VariationalAttention, BayesianCrossAttention
+        )
+        
+        config = MockConfig(d_model=64, n_heads=4)
+        batch_size, seq_len = 2, 32
+        queries, keys, values, mask = create_attention_inputs(batch_size, seq_len, config.d_model)
+        
+        # Test BayesianAttention
+        bayesian_attn = BayesianAttention(config.d_model, config.n_heads)
+        output, _ = bayesian_attn(queries, keys, values)
+        assert output.shape == queries.shape, f"BayesianAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test BayesianMultiHeadAttention
+        bayesian_mha = BayesianMultiHeadAttention(config.d_model, config.n_heads, n_samples=3)
+        output, _ = bayesian_mha(queries, keys, values)
+        assert output.shape == queries.shape, f"BayesianMultiHeadAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test VariationalAttention
+        variational_attn = VariationalAttention(config.d_model, config.n_heads)
+        output, _ = variational_attn(queries, keys, values)
+        assert output.shape == queries.shape, f"VariationalAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test BayesianCrossAttention
+        bayesian_cross = BayesianCrossAttention(config.d_model, config.n_heads)
+        output, _ = bayesian_cross(queries, keys, values)
+        assert output.shape == queries.shape, f"BayesianCrossAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        print("PASS Bayesian attention components working correctly")
+        return True
+        
+    except Exception as e:
+        print(f"FAIL Bayesian attention test failed: {e}")
+        return False
+
+
+def test_adaptive_components_functionality():
+    """Test Adaptive learning components"""
+    print("TEST Testing Adaptive Components...")
+    
+    try:
+        from layers.modular.attention.adaptive_components import MetaLearningAdapter, AdaptiveMixture
+        
+        config = MockConfig(d_model=64, n_heads=4)
+        batch_size, seq_len = 2, 32
+        queries, keys, values, mask = create_attention_inputs(batch_size, seq_len, config.d_model)
+        
+        # Test MetaLearningAdapter
+        meta_adapter = MetaLearningAdapter(config.d_model, config.n_heads, adaptation_steps=2)
+        output, _ = meta_adapter(queries, keys, values)
+        assert output.shape == queries.shape, f"MetaLearningAdapter shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test AdaptiveMixture
+        adaptive_mixture = AdaptiveMixture(config.d_model, config.n_heads, mixture_components=3)
+        output, _ = adaptive_mixture(queries, keys, values)
+        assert output.shape == queries.shape, f"AdaptiveMixture shape mismatch: {output.shape} vs {queries.shape}"
+        
+        print("PASS Adaptive components working correctly")
+        return True
+        
+    except Exception as e:
+        print(f"FAIL Adaptive components test failed: {e}")
+        return False
+
+
+def test_temporal_conv_attention_functionality():
+    """Test Temporal convolution attention mechanisms"""
+    print("TEST Testing Temporal Convolution Attention Components...")
+    
+    try:
+        from layers.modular.attention.temporal_conv_attention import (
+            CausalConvolution, TemporalConvNet, ConvolutionalAttention
+        )
+        
+        config = MockConfig(d_model=64, n_heads=4)
+        batch_size, seq_len = 2, 32
+        queries, keys, values, mask = create_attention_inputs(batch_size, seq_len, config.d_model)
+        
+        # Test CausalConvolution
+        causal_conv = CausalConvolution(config.d_model, config.n_heads, kernel_sizes=[3, 5])
+        output, _ = causal_conv(queries, keys, values)
+        assert output.shape == queries.shape, f"CausalConvolution shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test TemporalConvNet
+        temporal_conv = TemporalConvNet(config.d_model, config.n_heads, num_levels=3)
+        output, _ = temporal_conv(queries, keys, values)
+        assert output.shape == queries.shape, f"TemporalConvNet shape mismatch: {output.shape} vs {queries.shape}"
+        
+        # Test ConvolutionalAttention
+        conv_attn = ConvolutionalAttention(config.d_model, config.n_heads)
+        output, _ = conv_attn(queries, keys, values)
+        assert output.shape == queries.shape, f"ConvolutionalAttention shape mismatch: {output.shape} vs {queries.shape}"
+        
+        print("PASS Temporal convolution attention components working correctly")
+        return True
+        
+    except Exception as e:
+        print(f"FAIL Temporal convolution attention test failed: {e}")
+        return False
+
+
 def run_attention_functionality_tests():
     """Run all attention mechanism functionality tests"""
     print("ROCKET Running Attention Mechanism Component Functionality Tests")
@@ -581,6 +799,14 @@ def run_attention_functionality_tests():
         ("Memory Efficient Attention", test_memory_efficient_attention),
         ("Attention Mathematical Properties", test_attention_mathematical_properties),
         ("Attention Edge Cases", test_attention_edge_cases),
+        
+        # Phase 2: New Attention Components
+        ("Fourier Attention", test_fourier_attention_functionality),
+        ("Wavelet Attention", test_wavelet_attention_functionality),
+        ("Enhanced AutoCorrelation", test_enhanced_autocorrelation_functionality),
+        ("Bayesian Attention", test_bayesian_attention_functionality),
+        ("Adaptive Components", test_adaptive_components_functionality),
+        ("Temporal Conv Attention", test_temporal_conv_attention_functionality),
     ]
     
     passed = 0

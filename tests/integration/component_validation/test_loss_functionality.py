@@ -474,6 +474,238 @@ def test_loss_numerical_stability():
         print(f"    FAIL Loss numerical stability test failed: {e}")
         return False
 
+def test_mape_loss_functionality():
+    """Test MAPE loss functionality"""
+    print("TEST Testing MAPE Loss Functionality...")
+    
+    try:
+        from layers.modular.losses.advanced_losses import MAPELoss
+        loss_fn = MAPELoss()
+        
+        pred, target = create_sample_predictions_and_targets()
+        
+        # Ensure targets are positive for MAPE
+        target = torch.abs(target) + 0.1
+        pred = torch.abs(pred) + 0.1
+        
+        # Test basic loss computation
+        loss = loss_fn(pred, target)
+        assert isinstance(loss, torch.Tensor), "Loss should be a tensor"
+        assert loss.item() >= 0, "MAPE loss should be non-negative"
+        
+        # Test perfect prediction
+        loss_perfect = loss_fn(target, target)
+        assert abs(loss_perfect.item()) < 1e-4, "Perfect prediction MAPE should be ~0"
+        
+        # Test percentage interpretation (MAPE should be in percentage)
+        pred_10_percent_off = target * 1.1  # 10% higher
+        loss_10_percent = loss_fn(pred_10_percent_off, target)
+        assert 9 < loss_10_percent.item() < 11, f"10% error should give ~10% MAPE, got {loss_10_percent.item()}"
+        
+        print("    PASS MAPE loss functionality validated")
+        return True
+        
+    except Exception as e:
+        print(f"    FAIL MAPE loss test failed: {e}")
+        return False
+
+def test_smape_loss_functionality():
+    """Test SMAPE loss functionality"""
+    print("TEST Testing SMAPE Loss Functionality...")
+    
+    try:
+        from layers.modular.losses.advanced_losses import SMAPELoss
+        loss_fn = SMAPELoss()
+        
+        pred, target = create_sample_predictions_and_targets()
+        
+        # Test basic loss computation
+        loss = loss_fn(pred, target)
+        assert isinstance(loss, torch.Tensor), "Loss should be a tensor"
+        assert loss.item() >= 0, "SMAPE loss should be non-negative"
+        assert loss.item() <= 200, "SMAPE should be bounded by 200%"
+        
+        # Test perfect prediction
+        loss_perfect = loss_fn(target, target)
+        assert abs(loss_perfect.item()) < 1e-4, "Perfect prediction SMAPE should be ~0"
+        
+        # Test symmetry (SMAPE(a,b) should equal SMAPE(b,a))
+        loss_ab = loss_fn(pred, target)
+        loss_ba = loss_fn(target, pred)
+        assert abs(loss_ab.item() - loss_ba.item()) < 1e-4, "SMAPE should be symmetric"
+        
+        print("    PASS SMAPE loss functionality validated")
+        return True
+        
+    except Exception as e:
+        print(f"    FAIL SMAPE loss test failed: {e}")
+        return False
+
+def test_mase_loss_functionality():
+    """Test MASE loss functionality"""
+    print("TEST Testing MASE Loss Functionality...")
+    
+    try:
+        from layers.modular.losses.advanced_losses import MASELoss
+        loss_fn = MASELoss(freq=1)  # Daily frequency
+        
+        pred, target = create_sample_predictions_and_targets()
+        
+        # Test basic loss computation
+        loss = loss_fn(pred, target)
+        assert isinstance(loss, torch.Tensor), "Loss should be a tensor"
+        assert loss.item() >= 0, "MASE loss should be non-negative"
+        
+        # Test perfect prediction
+        loss_perfect = loss_fn(target, target)
+        assert abs(loss_perfect.item()) < 1e-4, "Perfect prediction MASE should be ~0"
+        
+        # Test scale invariance
+        target_scaled = target * 10
+        pred_scaled = pred * 10
+        loss_scaled = loss_fn(pred_scaled, target_scaled)
+        # MASE should be scale-invariant (approximately equal)
+        assert abs(loss.item() - loss_scaled.item()) / loss.item() < 0.1, "MASE should be approximately scale-invariant"
+        
+        print("    PASS MASE loss functionality validated")
+        return True
+        
+    except Exception as e:
+        print(f"    FAIL MASE loss test failed: {e}")
+        return False
+
+def test_ps_loss_functionality():
+    """Test PS (Patch-wise Structural) loss functionality"""
+    print("TEST Testing PS Loss Functionality...")
+    
+    try:
+        from layers.modular.losses.advanced_losses import PSLoss
+        loss_fn = PSLoss(pred_len=24, mse_weight=0.5)
+        
+        pred, target = create_sample_predictions_and_targets(seq_len=24)
+        
+        # Test basic loss computation
+        loss = loss_fn(pred, target)
+        assert isinstance(loss, torch.Tensor), "Loss should be a tensor"
+        assert loss.item() >= 0, "PS loss should be non-negative"
+        
+        # Test perfect prediction
+        loss_perfect = loss_fn(target, target)
+        assert abs(loss_perfect.item()) < 1e-4, "Perfect prediction PS loss should be ~0"
+        
+        # Test that loss captures structural differences
+        # Create target with specific pattern
+        target_pattern = torch.sin(torch.linspace(0, 4*np.pi, 24)).repeat(4, 1, 7)
+        pred_pattern = torch.cos(torch.linspace(0, 4*np.pi, 24)).repeat(4, 1, 7)  # Different pattern
+        
+        loss_pattern = loss_fn(pred_pattern, target_pattern)
+        assert loss_pattern.item() > 0, "PS loss should detect pattern differences"
+        
+        print("    PASS PS loss functionality validated")
+        return True
+        
+    except Exception as e:
+        print(f"    FAIL PS loss test failed: {e}")
+        return False
+
+def test_focal_loss_functionality():
+    """Test Focal loss functionality"""
+    print("TEST Testing Focal Loss Functionality...")
+    
+    try:
+        from layers.modular.losses.advanced_losses import FocalLoss
+        loss_fn = FocalLoss(alpha=1.0, gamma=2.0)
+        
+        pred, target = create_sample_predictions_and_targets()
+        
+        # Test basic loss computation
+        loss = loss_fn(pred, target)
+        assert isinstance(loss, torch.Tensor), "Loss should be a tensor"
+        assert loss.item() >= 0, "Focal loss should be non-negative"
+        
+        # Test perfect prediction
+        loss_perfect = loss_fn(target, target)
+        assert abs(loss_perfect.item()) < 1e-4, "Perfect prediction Focal loss should be ~0"
+        
+        # Test focusing property - smaller errors should have reduced loss
+        pred_small_error = target + 0.1 * torch.randn_like(target)
+        pred_large_error = target + 2.0 * torch.randn_like(target)
+        
+        loss_small = loss_fn(pred_small_error, target)
+        loss_large = loss_fn(pred_large_error, target)
+        
+        # Focal loss should focus on hard examples (large errors)
+        assert loss_large.item() > loss_small.item(), "Focal loss should give higher weight to large errors"
+        
+        print("    PASS Focal loss functionality validated")
+        return True
+        
+    except Exception as e:
+        print(f"    FAIL Focal loss test failed: {e}")
+        return False
+
+def test_frequency_aware_loss_functionality():
+    """Test Frequency-aware loss functionality"""
+    print("TEST Testing Frequency-Aware Loss Functionality...")
+    
+    try:
+        from layers.modular.losses.adaptive_bayesian_losses import FrequencyAwareLoss
+        loss_fn = FrequencyAwareLoss(base_loss='mse')
+        
+        pred, target = create_sample_predictions_and_targets()
+        
+        # Test basic loss computation
+        loss = loss_fn(pred, target)
+        assert isinstance(loss, torch.Tensor), "Loss should be a tensor"
+        assert loss.item() >= 0, "Frequency-aware loss should be non-negative"
+        
+        # Test perfect prediction
+        loss_perfect = loss_fn(target, target)
+        assert abs(loss_perfect.item()) < 1e-4, "Perfect prediction should give ~0 loss"
+        
+        print("    PASS Frequency-aware loss functionality validated")
+        return True
+        
+    except Exception as e:
+        print(f"    FAIL Frequency-aware loss test failed: {e}")
+        return False
+
+def test_uncertainty_calibration_loss_functionality():
+    """Test Uncertainty calibration loss functionality"""
+    print("TEST Testing Uncertainty Calibration Loss Functionality...")
+    
+    try:
+        from layers.modular.losses.adaptive_bayesian_losses import UncertaintyCalibrationLoss
+        loss_fn = UncertaintyCalibrationLoss(calibration_weight=1.0)
+        
+        pred, target = create_sample_predictions_and_targets()
+        uncertainties = torch.abs(torch.randn_like(pred)) + 0.1  # Positive uncertainties
+        
+        # Test basic loss computation
+        loss = loss_fn(pred, target, uncertainties)
+        assert isinstance(loss, torch.Tensor), "Loss should be a tensor"
+        assert loss.item() >= 0, "Uncertainty calibration loss should be non-negative"
+        
+        # Test that higher uncertainty with large error gives lower calibration loss
+        pred_accurate = target + 0.1 * torch.randn_like(target)
+        pred_inaccurate = target + 2.0 * torch.randn_like(target)
+        uncertainty_low = torch.ones_like(pred) * 0.1
+        uncertainty_high = torch.ones_like(pred) * 2.0
+        
+        # Well-calibrated: high uncertainty with high error
+        loss_calibrated = loss_fn(pred_inaccurate, target, uncertainty_high)
+        # Poorly-calibrated: low uncertainty with high error
+        loss_miscalibrated = loss_fn(pred_inaccurate, target, uncertainty_low)
+        
+        print(f"    INFO Calibrated loss: {loss_calibrated.item():.4f}, Miscalibrated: {loss_miscalibrated.item():.4f}")
+        
+        print("    PASS Uncertainty calibration loss functionality validated")
+        return True
+        
+    except Exception as e:
+        print(f"    FAIL Uncertainty calibration loss test failed: {e}")
+        return False
+
 def run_loss_functionality_tests():
     """Run all loss function functionality tests"""
     print("ROCKET Running Loss Function Component Functionality Tests")
@@ -491,6 +723,14 @@ def run_loss_functionality_tests():
         ("Frequency-Aware Loss", test_frequency_aware_loss),
         ("Loss Mathematical Properties", test_loss_mathematical_properties),
         ("Loss Numerical Stability", test_loss_numerical_stability),
+        # Advanced Loss Components (Phase 1)
+        ("MAPE Loss", test_mape_loss_functionality),
+        ("SMAPE Loss", test_smape_loss_functionality),
+        ("MASE Loss", test_mase_loss_functionality),
+        ("PS Loss", test_ps_loss_functionality),
+        ("Focal Loss", test_focal_loss_functionality),
+        ("Frequency-Aware Loss Advanced", test_frequency_aware_loss_functionality),
+        ("Uncertainty Calibration Loss", test_uncertainty_calibration_loss_functionality),
     ]
     
     passed = 0

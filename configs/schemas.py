@@ -16,6 +16,39 @@ class ComponentType(str, Enum):
     MULTI_HEAD = "multi_head"
     AUTOCORRELATION = "autocorrelation"
     ADAPTIVE_AUTOCORRELATION = "adaptive_autocorrelation_layer"
+    
+    # Phase 2: Fourier Attention Components
+    FOURIER_ATTENTION = "fourier_attention"
+    FOURIER_BLOCK = "fourier_block"
+    FOURIER_CROSS_ATTENTION = "fourier_cross_attention"
+    
+    # Phase 2: Wavelet Attention Components
+    WAVELET_ATTENTION = "wavelet_attention"
+    WAVELET_DECOMPOSITION = "wavelet_decomposition"
+    ADAPTIVE_WAVELET_ATTENTION = "adaptive_wavelet_attention"
+    MULTI_SCALE_WAVELET_ATTENTION = "multi_scale_wavelet_attention"
+    
+    # Phase 2: Enhanced AutoCorrelation Components
+    ENHANCED_AUTOCORRELATION = "enhanced_autocorrelation"
+    NEW_ADAPTIVE_AUTOCORRELATION_LAYER = "new_adaptive_autocorrelation_layer"
+    HIERARCHICAL_AUTOCORRELATION = "hierarchical_autocorrelation"
+    
+    # Phase 2: Bayesian Attention Components
+    BAYESIAN_ATTENTION = "bayesian_attention"
+    BAYESIAN_MULTI_HEAD_ATTENTION = "bayesian_multi_head_attention"
+    VARIATIONAL_ATTENTION = "variational_attention"
+    BAYESIAN_CROSS_ATTENTION = "bayesian_cross_attention"
+    
+    # Phase 2: Adaptive Components
+    META_LEARNING_ADAPTER_ATTN = "meta_learning_adapter"
+    ADAPTIVE_MIXTURE_ATTN = "adaptive_mixture"
+    
+    # Phase 2: Temporal Convolution Attention Components
+    CAUSAL_CONVOLUTION = "causal_convolution"
+    TEMPORAL_CONV_NET = "temporal_conv_net"
+    CONVOLUTIONAL_ATTENTION = "convolutional_attention"
+    
+    # Other attention types
     SPARSE = "sparse"
     LOG_SPARSE = "log_sparse"
     PROB_SPARSE = "prob_sparse"
@@ -25,6 +58,7 @@ class ComponentType(str, Enum):
     MOVING_AVG = "moving_avg"
     LEARNABLE_DECOMP = "learnable_decomp"
     WAVELET_DECOMP = "wavelet_hierarchical_decomp"
+    ADVANCED_WAVELET = "advanced_wavelet_decomp"
     
     # Encoder/Decoder components
     STANDARD_ENCODER = "standard_encoder"
@@ -33,15 +67,19 @@ class ComponentType(str, Enum):
     ENHANCED_DECODER = "enhanced_decoder"
     HIERARCHICAL_ENCODER = "hierarchical_encoder"
     HIERARCHICAL_DECODER = "hierarchical_decoder"
+    TEMPORAL_CONV_ENCODER = "temporal_conv_encoder"
+    META_LEARNING_ADAPTER = "meta_learning_adapter"
     
     # Sampling components
     DETERMINISTIC = "deterministic"
     BAYESIAN = "bayesian"
     MONTE_CARLO = "monte_carlo"
+    ADAPTIVE_MIXTURE = "adaptive_mixture"
     
     # Output head components
     STANDARD_HEAD = "standard"
     QUANTILE = "quantile"
+    BAYESIAN_HEAD = "bayesian_head"
     
     # Loss components
     MSE = "mse"
@@ -49,6 +87,20 @@ class ComponentType(str, Enum):
     QUANTILE_LOSS = "quantile"
     BAYESIAN_MSE = "bayesian"
     BAYESIAN_QUANTILE = "bayesian_quantile"
+    ADAPTIVE_AUTOFORMER_LOSS = "adaptive_autoformer_loss"
+    
+    # Advanced metric losses
+    MAPE_LOSS = "mape_loss"
+    SMAPE_LOSS = "smape_loss"
+    MASE_LOSS = "mase_loss"
+    PS_LOSS = "ps_loss"
+    FOCAL_LOSS = "focal_loss"
+    
+    # Advanced adaptive losses
+    FREQUENCY_AWARE_LOSS = "frequency_aware_loss"
+    MULTI_QUANTILE_LOSS = "multi_quantile_loss"
+    UNCERTAINTY_CALIBRATION_LOSS = "uncertainty_calibration_loss"
+    ADAPTIVE_LOSS_WEIGHTING = "adaptive_loss_weighting"
     
     # Backbone components (for future HF integration)
     CHRONOS = "chronos"

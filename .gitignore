@@ -180,3 +180,65 @@ synthetic_timeseries.csv
 *.zip
 *.png
 .DS_Store
+
+# Performance optimization - exclude from VS Code indexing
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.coverage
+.tox/
+.cache
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Large directories that slow down VS Code
+checkpoints/
+logs/
+test_results/
+trained/
+tsl-env/
+data/
+*.zip
+pic/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
+
+# Performance optimization - exclude from VS Code indexing
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.coverage
+.tox/
+.cache
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Large directories that slow down VS Code
+checkpoints/
+logs/
+test_results/
+trained/
+tsl-env/
+data/
+*.zip
+pic/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db

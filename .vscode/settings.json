@@ -87,5 +87,87 @@
 		"tests"
 	],
 	"python.testing.unittestEnabled": false,
-	"python.testing.pytestEnabled": true
+	"python.testing.pytestEnabled": true,
+	
+	// ===============================================
+	// PERFORMANCE OPTIMIZATIONS FOR LARGE PROJECT
+	// ===============================================
+	
+	// Exclude large directories from file watching (major performance boost)
+	"files.watcherExclude": {
+		"**/node_modules/**": true,
+		"**/checkpoints/**": true,
+		"**/logs/**": true,
+		"**/test_results/**": true,
+		"**/trained/**": true,
+		"**/tsl-env/**": true,
+		"**/.git/**": true,
+		"**/data/**": true,
+		"**/*.zip": true,
+		"**/pic/**": true,
+		"**/__pycache__/**": true,
+		"**/*.pyc": true,
+		"**/.pytest_cache/**": true
+	},
+	
+	// Exclude from search (faster search)
+	"search.exclude": {
+		"**/node_modules": true,
+		"**/checkpoints": true,
+		"**/logs": true,
+		"**/test_results": true,
+		"**/trained": true,
+		"**/tsl-env": true,
+		"**/data": true,
+		"**/*.zip": true,
+		"**/pic": true,
+		"**/__pycache__": true,
+		"**/*.pyc": true,
+		"**/.pytest_cache": true
+	},
+	
+	// Hide clutter from explorer
+	"files.exclude": {
+		"**/__pycache__": true,
+		"**/*.pyc": true,
+		"**/.pytest_cache": true
+	},
+	
+	// Python/Pylance performance optimizations
+	"python.analysis.autoSearchPaths": false,
+	"python.analysis.indexing": false,
+	"python.analysis.packageIndexDepths": [
+		{
+			"name": "",
+			"depth": 2
+		}
+	],
+	"python.analysis.exclude": [
+		"**/checkpoints/**",
+		"**/logs/**",
+		"**/test_results/**", 
+		"**/trained/**",
+		"**/tsl-env/**",
+		"**/data/**"
+	],
+	
+	// Jupyter optimizations
+	"jupyter.askForKernelRestart": false,
+	"jupyter.enableExtendedPythonKernelCompletions": false,
+	
+	// Git optimizations
+	"git.autorefresh": false,
+	"git.autofetch": false,
+	
+	// Editor performance
+	"editor.semanticHighlighting.enabled": false,
+	"editor.suggest.filterGraceful": false,
+	"editor.acceptSuggestionOnCommitCharacter": false,
+	
+	// Extensions
+	"extensions.autoUpdate": false,
+	"extensions.autoCheckUpdates": false,
+	
+	// Disable telemetry for performance
+	"telemetry.telemetryLevel": "off"
 }

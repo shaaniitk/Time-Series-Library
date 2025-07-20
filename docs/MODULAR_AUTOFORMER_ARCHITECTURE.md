@@ -74,9 +74,11 @@ The framework consists of **7 component types**, each serving a specific purpose
 
 **Purpose**: Handle attention mechanisms for temporal dependencies
 
-**Available Types**:
+**Available Types** (11 total):
 - `AUTOCORRELATION`: Standard autocorrelation attention for temporal dependencies
-- `ADAPTIVE_AUTOCORRELATION`: Adaptive autocorrelation with dynamic factor adjustment
+- `ADAPTIVE_AUTOCORRELATION`: Enhanced autocorrelation with adaptive window selection and multi-scale analysis
+- `FOURIER_ATTENTION`: Fourier-based attention for capturing periodic patterns in frequency domain
+- `FOURIER_BLOCK`: Fourier block for frequency domain representation learning with learnable modes
 - `CROSS_RESOLUTION`: Multi-resolution attention for hierarchical temporal processing
 - `MULTI_HEAD`: Traditional multi-head attention mechanism
 - `SPARSE`: Sparse attention for long sequences
@@ -100,10 +102,11 @@ class AutoCorrelationAttention(AttentionComponent):
 
 **Purpose**: Separate time series into trend and seasonal components
 
-**Available Types**:
+**Available Types** (4 total):
 - `MOVING_AVG`: Moving average decomposition for trend extraction
 - `LEARNABLE_DECOMP`: Learnable decomposition with trainable trend/seasonal separation
 - `WAVELET_DECOMP`: Wavelet-based hierarchical decomposition for multi-scale analysis
+- `ADVANCED_WAVELET`: Advanced learnable wavelet decomposition with multi-level filtering and reconstruction weights
 
 **Implementation**:
 ```python
@@ -118,16 +121,18 @@ class LearnableDecomposition(DecompositionComponent):
 
 **Purpose**: Encode input sequences with attention and decomposition
 
-**Available Types**:
+**Available Types** (5 total):
 - `STANDARD_ENCODER`: Basic transformer encoder with attention and feedforward layers
 - `ENHANCED_ENCODER`: Enhanced encoder with adaptive features and improved normalization
 - `HIERARCHICAL_ENCODER`: Multi-level hierarchical encoder for multi-scale processing
+- `TEMPORAL_CONV_ENCODER`: Temporal Convolutional Network encoder for causal sequence modeling
+- `META_LEARNING_ADAPTER`: Meta-learning adapter for quick adaptation to new time series patterns
 
 ### 4. Decoder Components
 
 **Purpose**: Decode and generate predictions
 
-**Available Types**:
+**Available Types** (3 total):
 - `STANDARD_DECODER`: Basic transformer decoder with cross-attention capabilities
 - `ENHANCED_DECODER`: Enhanced decoder with adaptive features and improved prediction
 - `HIERARCHICAL_DECODER`: Multi-level hierarchical decoder (planned for future implementation)
@@ -136,29 +141,34 @@ class LearnableDecomposition(DecompositionComponent):
 
 **Purpose**: Handle uncertainty quantification and sampling strategies
 
-**Available Types**:
+**Available Types** (4 total):
 - `DETERMINISTIC`: Standard deterministic prediction without uncertainty
 - `BAYESIAN`: Bayesian sampling for uncertainty quantification with dropout
 - `MONTE_CARLO`: Monte Carlo sampling methods for robust uncertainty estimation
+- `ADAPTIVE_MIXTURE`: Adaptive mixture of experts for different time series patterns with gating networks
 
 ### 6. Output Head Components
 
 **Purpose**: Final projection to output dimensions
 
-**Available Types**:
+**Available Types** (3 total):
 - `STANDARD_HEAD`: Basic linear projection to output dimensions
 - `QUANTILE`: Multi-quantile prediction head for uncertainty bounds and confidence intervals
+- `BAYESIAN_HEAD`: Bayesian linear head with weight uncertainty quantification for robust predictions
 
 ### 7. Loss Components
 
 **Purpose**: Loss function computation and optimization
 
-**Available Types**:
+**Available Types** (8 total):
 - `MSE`: Mean squared error for standard regression
 - `MAE`: Mean absolute error for robust regression  
 - `QUANTILE_LOSS`: Quantile loss for single quantile prediction
 - `BAYESIAN_MSE`: Bayesian MSE with KL divergence regularization
 - `BAYESIAN_QUANTILE`: Bayesian quantile loss for uncertainty quantification
+- `FOCAL_LOSS`: Focal loss for handling imbalanced time series data
+- `ADAPTIVE_AUTOFORMER_LOSS`: Adaptive loss with learnable trend/seasonal component weighting
+- `ADAPTIVE_LOSS_WEIGHTING`: Multi-task adaptive loss weighting for complex optimization
 
 **Implementation**: Each loss component handles different prediction scenarios:
 
@@ -583,47 +593,57 @@ The component registry manages all available components and their metadata, enab
 
 ### Complete Component Inventory
 
-The framework currently supports **24 distinct component implementations** across 7 component types:
+The framework currently supports **38 distinct component implementations** across 7 component types:
 
-#### Attention Components (7 types)
+#### Attention Components (11 types)
 - `AUTOCORRELATION`: Standard autocorrelation attention
-- `ADAPTIVE_AUTOCORRELATION`: Adaptive autocorrelation with dynamic factors  
+- `ADAPTIVE_AUTOCORRELATION`: Enhanced autocorrelation with adaptive features  
+- `FOURIER_ATTENTION`: Fourier-based attention for periodic patterns
+- `FOURIER_BLOCK`: Fourier block for frequency domain representation learning
 - `CROSS_RESOLUTION`: Multi-resolution attention for hierarchical processing
 - `MULTI_HEAD`: Traditional multi-head attention
 - `SPARSE`: Sparse attention for long sequences
 - `LOG_SPARSE`: Logarithmic sparse attention pattern
 - `PROB_SPARSE`: Probabilistic sparse attention selection
 
-#### Decomposition Components (3 types)
+#### Decomposition Components (4 types)
 - `MOVING_AVG`: Moving average decomposition
 - `LEARNABLE_DECOMP`: Learnable decomposition with trainable parameters
 - `WAVELET_DECOMP`: Wavelet-based hierarchical decomposition
+- `ADVANCED_WAVELET`: Advanced learnable wavelet decomposition with multi-level filtering
 
-#### Encoder Components (3 types)  
+#### Encoder Components (5 types)  
 - `STANDARD_ENCODER`: Basic transformer encoder
 - `ENHANCED_ENCODER`: Enhanced encoder with adaptive features
 - `HIERARCHICAL_ENCODER`: Multi-level hierarchical encoder
+- `TEMPORAL_CONV_ENCODER`: Temporal Convolutional Network encoder for causal modeling
+- `META_LEARNING_ADAPTER`: Meta-learning adapter for quick pattern adaptation
 
 #### Decoder Components (3 types)
 - `STANDARD_DECODER`: Basic transformer decoder
 - `ENHANCED_DECODER`: Enhanced decoder with adaptive features  
 - `HIERARCHICAL_DECODER`: Multi-level hierarchical decoder (planned)
 
-#### Sampling Components (3 types)
+#### Sampling Components (4 types)
 - `DETERMINISTIC`: Standard deterministic prediction
 - `BAYESIAN`: Bayesian sampling for uncertainty quantification
 - `MONTE_CARLO`: Monte Carlo sampling methods
+- `ADAPTIVE_MIXTURE`: Adaptive mixture of experts with gating networks
 
-#### Output Head Components (2 types)
+#### Output Head Components (3 types)
 - `STANDARD_HEAD`: Basic linear projection
 - `QUANTILE`: Multi-quantile prediction head
+- `BAYESIAN_HEAD`: Bayesian linear head with weight uncertainty
 
-#### Loss Components (5 types)
+#### Loss Components (8 types)
 - `MSE`: Mean squared error for standard regression
 - `MAE`: Mean absolute error for robust regression
 - `QUANTILE_LOSS`: Quantile loss for probabilistic forecasting
 - `BAYESIAN_MSE`: Bayesian MSE with KL divergence regularization
 - `BAYESIAN_QUANTILE`: Bayesian quantile loss for uncertainty quantification
+- `FOCAL_LOSS`: Focal loss for handling imbalanced data
+- `ADAPTIVE_AUTOFORMER_LOSS`: Adaptive loss with trend/seasonal weighting
+- `ADAPTIVE_LOSS_WEIGHTING`: Multi-task adaptive loss weighting
 
 ### Registry Structure
 

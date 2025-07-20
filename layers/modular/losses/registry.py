@@ -2,7 +2,13 @@
 import torch.nn as nn
 from .quantile_loss import PinballLoss
 from .standard_losses import StandardLossWrapper
-from utils.bayesian_losses import BayesianLoss, BayesianQuantileLoss, BayesianAdaptiveLoss, BayesianFrequencyAwareLoss
+from .advanced_losses import (
+    MAPELoss, SMAPELoss, MASELoss, PSLoss, FocalLoss
+)
+from .adaptive_bayesian_losses import (
+    AdaptiveAutoformerLoss, FrequencyAwareLoss, BayesianLoss, 
+    BayesianQuantileLoss, QuantileLoss, UncertaintyCalibrationLoss
+)
 from utils.logger import logger
 
 class LossRegistry:
@@ -14,11 +20,22 @@ class LossRegistry:
         "mae": lambda: StandardLossWrapper(nn.L1Loss),
         "huber": lambda **kwargs: StandardLossWrapper(nn.HuberLoss, **kwargs),
         
+        # Advanced metric losses
+        "mape": MAPELoss,
+        "smape": SMAPELoss,
+        "mase": MASELoss,
+        "ps_loss": PSLoss,
+        "focal": FocalLoss,
+        
+        # Adaptive losses
+        "adaptive_autoformer": AdaptiveAutoformerLoss,
+        "frequency_aware": FrequencyAwareLoss,
+        "multi_quantile": QuantileLoss,
+        
         # Bayesian losses  
         "bayesian": lambda **kwargs: BayesianLoss(nn.MSELoss(), **kwargs),
         "bayesian_quantile": BayesianQuantileLoss,
-        "bayesian_adaptive": BayesianAdaptiveLoss,
-        "bayesian_frequency": BayesianFrequencyAwareLoss,
+        "uncertainty_calibration": UncertaintyCalibrationLoss,
     }
 
     @classmethod
