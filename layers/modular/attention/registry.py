@@ -5,7 +5,7 @@ from .cross_resolution_attention import CrossResolutionAttention
 
 # Import new Phase 2 components
 from .fourier_attention import FourierAttention, FourierBlock, FourierCrossAttention
-from .wavelet_attention import WaveletAttention, WaveletDecomposition, AdaptiveWaveletAttention, MultiScaleWaveletAttention
+from .wavelet_attention import WaveletAttention, WaveletDecomposition, AdaptiveWaveletAttention, MultiScaleWaveletAttention, TwoStageAttention, ExponentialSmoothingAttention, MultiWaveletCrossAttention
 from .enhanced_autocorrelation import EnhancedAutoCorrelation, AdaptiveAutoCorrelationLayer as NewAdaptiveAutoCorrelationLayer, HierarchicalAutoCorrelation
 from .bayesian_attention import BayesianAttention, BayesianMultiHeadAttention, VariationalAttention, BayesianCrossAttention
 from .adaptive_components import MetaLearningAdapter, AdaptiveMixture
@@ -33,6 +33,11 @@ class AttentionRegistry:
         "wavelet_decomposition": WaveletDecomposition,
         "adaptive_wavelet_attention": AdaptiveWaveletAttention,
         "multi_scale_wavelet_attention": MultiScaleWaveletAttention,
+
+        # Modular Advanced Attention Components
+        "two_stage_attention": TwoStageAttention,
+        "exponential_smoothing_attention": ExponentialSmoothingAttention,
+        "multi_wavelet_cross_attention": MultiWaveletCrossAttention,
         
         # Phase 2: Enhanced AutoCorrelation Components
         "enhanced_autocorrelation": EnhancedAutoCorrelation,

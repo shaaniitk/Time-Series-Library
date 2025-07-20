@@ -23,7 +23,7 @@ class WaveletAttention(BaseAttention):
     
     def __init__(self, d_model, n_heads, levels=3, n_levels=None, wavelet_type='learnable', 
                  dropout=0.1):
-        super(WaveletAttention, self).__init__()
+        super().__init__()
         
         # Handle both levels and n_levels parameters for compatibility
         if n_levels is not None:
@@ -53,6 +53,133 @@ class WaveletAttention(BaseAttention):
         self.fusion_proj = nn.Linear(d_model * (levels + 1), d_model)
         
         self.output_dim_multiplier = 1
+
+class TwoStageAttention(BaseAttention):
+    """
+    Modular implementation of Two-Stage Attention (TSA).
+    This combines cross-time and cross-dimension attention for segment merging and multi-variate time series.
+    Algorithm adapted from TwoStageAttentionLayer in SelfAttention_Family.py.
+    """
+    def __init__(self, d_model: int, n_heads: int, seg_num: int, factor: int, d_ff: int = None, dropout: float = 0.1):
+        super().__init__()
+        d_ff = d_ff or 4 * d_model
+        self.time_attention = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
+        self.dim_sender = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
+        self.dim_receiver = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
+        self.router = nn.Parameter(torch.randn(seg_num, factor, d_model))
+        self.dropout = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.norm3 = nn.LayerNorm(d_model)
+        self.norm4 = nn.LayerNorm(d_model)
+        self.MLP1 = nn.Sequential(nn.Linear(d_model, d_ff), nn.GELU(), nn.Linear(d_ff, d_model))
+        self.MLP2 = nn.Sequential(nn.Linear(d_model, d_ff), nn.GELU(), nn.Linear(d_ff, d_model))
+
+    def forward(self, x: torch.Tensor, attn_mask=None, tau=None, delta=None):
+        # x: [batch, ts_d, seg_num, d_model]
+        batch = x.shape[0]
+        ts_d = x.shape[1]
+        seg_num = x.shape[2]
+        d_model = x.shape[3]
+        # Cross Time Stage
+        time_in = x.reshape(-1, seg_num, d_model)
+        time_enc, _ = self.time_attention(time_in, time_in, time_in, attn_mask=attn_mask)
+        dim_in = time_in + self.dropout(time_enc)
+        dim_in = self.norm1(dim_in)
+        dim_in = dim_in + self.dropout(self.MLP1(dim_in))
+        dim_in = self.norm2(dim_in)
+        # Cross Dimension Stage
+        dim_send = dim_in.reshape(batch * seg_num, ts_d, d_model)
+        batch_router = self.router.repeat(batch, 1, 1)
+        dim_buffer, _ = self.dim_sender(batch_router, dim_send, dim_send, attn_mask=attn_mask)
+        dim_receive, _ = self.dim_receiver(dim_send, dim_buffer, dim_buffer, attn_mask=attn_mask)
+        dim_enc = dim_send + self.dropout(dim_receive)
+        dim_enc = self.norm3(dim_enc)
+        dim_enc = dim_enc + self.dropout(self.MLP2(dim_enc))
+        dim_enc = self.norm4(dim_enc)
+        final_out = dim_enc.reshape(batch, ts_d, seg_num, d_model)
+        return final_out, None
+
+
+class ExponentialSmoothingAttention(BaseAttention):
+    """
+    Modular implementation of Exponential Smoothing Attention.
+    Implements ETS-style attention using learnable smoothing weights.
+    Algorithm adapted from ExponentialSmoothing in ETSformer_EncDec.py.
+    """
+    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.1):
+        super().__init__()
+        self.n_heads = n_heads
+        self.d_model = d_model
+        self._smoothing_weight = nn.Parameter(torch.randn(n_heads, 1))
+        self.v0 = nn.Parameter(torch.randn(1, 1, n_heads, d_model // n_heads))
+        self.dropout = nn.Dropout(dropout)
+
+    @property
+    def weight(self):
+        return torch.sigmoid(self._smoothing_weight)
+
+    def get_exponential_weight(self, T):
+        powers = torch.arange(T, dtype=torch.float, device=self.weight.device)
+        weight = (1 - self.weight) * (self.weight ** torch.flip(powers, dims=(0,)))
+        init_weight = self.weight ** (powers + 1)
+        return init_weight.unsqueeze(0).unsqueeze(-1), weight.unsqueeze(0).unsqueeze(-1)
+
+    def forward(self, values: torch.Tensor, attn_mask=None, tau=None, delta=None):
+        # values: [B, L, D]
+        B, L, D = values.shape
+        H = self.n_heads
+        d_head = D // H
+        values = values.view(B, L, H, d_head)
+        init_weight, weight = self.get_exponential_weight(L)
+        output = F.conv1d(self.dropout(values.permute(0, 2, 3, 1)), weight.squeeze(-1), groups=H)
+        output = init_weight * self.v0 + output
+        output = output.permute(0, 3, 1, 2).reshape(B, L, D)
+        return output, None
+
+
+class MultiWaveletCrossAttention(BaseAttention):
+    """
+    Modular implementation of Multi-Wavelet Cross Attention.
+    Applies cross-attention using multi-resolution wavelet transforms.
+    Algorithm adapted from MultiWaveletCorrelation and wavelet attention patterns.
+    """
+    def __init__(self, d_model: int, n_heads: int, levels: int = 3, dropout: float = 0.1):
+        super().__init__()
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.levels = levels
+        self.dropout = nn.Dropout(dropout)
+        self.wavelet_decomp = WaveletDecomposition(d_model, levels)
+        self.cross_attentions = nn.ModuleList([
+            nn.MultiheadAttention(d_model, n_heads, batch_first=True)
+            for _ in range(levels + 1)
+        ])
+        self.level_weights = nn.Parameter(torch.ones(levels + 1) / (levels + 1))
+        self.fusion_proj = nn.Linear(d_model * (levels + 1), d_model)
+
+    def forward(self, queries, keys, values, attn_mask=None, tau=None, delta=None):
+        B, L, D = queries.shape
+        _, q_components = self.wavelet_decomp(queries)
+        _, k_components = self.wavelet_decomp(keys)
+        _, v_components = self.wavelet_decomp(values)
+        level_outputs = []
+        level_attentions = []
+        for i, (q_comp, k_comp, v_comp, attention_layer) in enumerate(
+            zip(q_components, k_components, v_components, self.cross_attentions)
+        ):
+            if q_comp.size(1) != L:
+                q_comp = F.interpolate(q_comp.transpose(1, 2), size=L, mode='linear', align_corners=False).transpose(1, 2)
+                k_comp = F.interpolate(k_comp.transpose(1, 2), size=L, mode='linear', align_corners=False).transpose(1, 2)
+                v_comp = F.interpolate(v_comp.transpose(1, 2), size=L, mode='linear', align_corners=False).transpose(1, 2)
+            level_out, level_attn = attention_layer(q_comp, k_comp, v_comp, attn_mask=attn_mask)
+            level_outputs.append(level_out)
+            level_attentions.append(level_attn)
+        weights = F.softmax(self.level_weights, dim=0)
+        concatenated = torch.cat(level_outputs, dim=-1)
+        fused_output = self.fusion_proj(concatenated)
+        avg_attention = torch.stack(level_attentions, dim=0).mean(dim=0)
+        return fused_output, avg_attention
     
     def forward(self, queries, keys, values, attn_mask=None, tau=None, delta=None):
         """

@@ -39,7 +39,7 @@ class ModularConfig:
     backbone_type: str = 'chronos'
     processor_type: str = 'time_domain'
     attention_type: str = 'multi_head'
-    loss_type: str = 'mse'
+    loss_type: str = 'mse'  # Now using standard MSE instead of bayesian_mse
     embedding_type: str = 'standard'
     output_type: str = 'linear'
     

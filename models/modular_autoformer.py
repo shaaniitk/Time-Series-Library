@@ -10,6 +10,10 @@ from configs.modular_components import (
     register_all_components
 )
 
+# Import backbone factory for component creation
+from utils.modular_components.factories import create_backbone
+from utils.modular_components.config_schemas import BackboneConfig
+
 # Legacy imports for backward compatibility
 from layers.modular.decomposition import get_decomposition_component
 from layers.modular.encoder import get_encoder_component
@@ -278,6 +282,22 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
     def _initialize_with_backbone(self):
         """Initialize with modular backbone component (e.g., ChronosX)"""
         logger.info("Using backbone component - legacy mode (will be migrated to GCLI)")
+        
+        # Create backbone using factory
+        backbone_type = getattr(self.legacy_configs, 'backbone_type', 'chronos_tiny')
+        
+        # Create backbone config
+        backbone_config = BackboneConfig(
+            model_name=backbone_type,
+            seq_len=getattr(self.legacy_configs, 'seq_len', 96),
+            pred_len=getattr(self.legacy_configs, 'pred_len', 96),
+            enc_in=getattr(self.legacy_configs, 'enc_in', 7),
+            c_out=getattr(self.legacy_configs, 'c_out', 7)
+        )
+        
+        # Create the backbone using the factory
+        self.backbone = create_backbone(backbone_type, backbone_config)
+        logger.info(f"Created backbone: {backbone_type}")
         
         # Legacy backbone initialization for backward compatibility
         # TODO: Migrate to GCLI component system

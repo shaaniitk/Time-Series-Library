@@ -59,14 +59,29 @@ class ComponentMetadata:
         
         if hasattr(self.component_class, 'get_requirements'):
             reqs = self.component_class.get_requirements()
-            for target_type, capability in reqs.items():
-                self.requirements.append(
-                    ComponentRequirement(
-                        source_component=self.component_class.__name__,
-                        target_component=target_type,
-                        capability_needed=capability
+            
+            # Handle both dict and list formats for requirements
+            if isinstance(reqs, dict):
+                # Dict format: target_type -> capability
+                for target_type, capability in reqs.items():
+                    self.requirements.append(
+                        ComponentRequirement(
+                            source_component=self.component_class.__name__,
+                            target_component=target_type,
+                            capability_needed=capability
+                        )
                     )
-                )
+            elif isinstance(reqs, list):
+                # List format: just capability names (no specific target)
+                for capability in reqs:
+                    self.requirements.append(
+                        ComponentRequirement(
+                            source_component=self.component_class.__name__,
+                            target_component='any',  # Generic requirement
+                            capability_needed=capability,
+                            is_optional=True  # List requirements are usually optional
+                        )
+                    )
         
         if hasattr(self.component_class, 'get_compatibility_tags'):
             self.compatibility_tags.update(self.component_class.get_compatibility_tags())

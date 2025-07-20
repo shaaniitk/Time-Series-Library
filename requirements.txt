@@ -40,7 +40,7 @@ catboost>=1.2.0
 # Time Series Specific
 pmdarima>=2.0.0
 prophet>=1.1.0
-mxnet>=1.9.0
+# mxnet>=1.9.0
 
 # Development and Testing
 pytest>=7.0.0

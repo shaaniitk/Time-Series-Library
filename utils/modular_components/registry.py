@@ -368,6 +368,14 @@ def create_global_registry() -> ComponentRegistry:
     except ImportError as e:
         logger.warning(f"Could not load example components: {e}")
     
+    # Register legacy loss functions
+    try:
+        from .legacy_loss_bridge import register_legacy_losses
+        register_legacy_losses(_global_registry)
+        logger.info("Global registry initialized with legacy loss functions")
+    except ImportError as e:
+        logger.warning(f"Could not load legacy loss functions: {e}")
+    
     # Try to register components from existing modules
     try:
         _register_fallback_components(_global_registry)
