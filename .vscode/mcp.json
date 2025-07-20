@@ -1,0 +1,79 @@
+{
+	"servers": {
+		"desktopcomandeer": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"@wonderwhy-er/desktop-commander@latest"
+			]
+		},
+		"sequentialthinking": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@modelcontextprotocol/server-sequential-thinking"
+			],
+			"type": "stdio"
+		},
+		
+	
+		"serena": {
+				"command": "uv",
+				"args": [
+				"--directory",
+				"D:\\workspace\\serena",
+				"run",
+				"serena-mcp-server"
+			]
+				
+		},
+		"memory": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"-y",
+				"@modelcontextprotocol/server-memory@latest"
+			],
+			"env": {
+				"MEMORY_FILE_PATH": "D:\\workspace\\memory_banks"
+			},
+			"autoApprove": [
+			"memory_bank_read",
+			"memory_bank_write",
+			"memory_bank_update",
+			"list_projects",
+			"list_project_files"
+			],
+			"gallery": true
+		},
+		"zen": {
+			"command": "uv",
+			"args": [
+				"--directory",
+				"D:\\workspace\\zen-mcp-server",
+				"run",
+				"server.py"
+			]
+		},
+		"memento": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@gannonh/memento-mcp"
+			],
+			"env": {
+				"MEMORY_STORAGE_TYPE": "neo4j",
+				"NEO4J_URI": "bolt://127.0.0.1:7687",
+				"NEO4J_USERNAME": "neo4j",
+				"NEO4J_PASSWORD": "memento_password",
+				"NEO4J_DATABASE": "neo4j",
+				"NEO4J_VECTOR_INDEX": "entity_embeddings",
+				"NEO4J_VECTOR_DIMENSIONS": "1536",
+				"NEO4J_SIMILARITY_FUNCTION": "cosine",
+				"OPENAI_API_KEY": "your-openai-api-key",
+				"OPENAI_EMBEDDING_MODEL": "text-embedding-3-small"
+			}
+		}
+	},
+	"inputs": []
+}

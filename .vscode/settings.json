@@ -107,7 +107,13 @@
 		"**/pic/**": true,
 		"**/__pycache__/**": true,
 		"**/*.pyc": true,
-		"**/.pytest_cache/**": true
+		"**/.pytest_cache/**": true,
+		"**/test_*.py": true,
+		"**/simple_*.py": true,
+		"**/run_*.py": true,
+		"**/verify_*.py": true,
+		"**/validate_*.py": true,
+		"**/monitor_*.py": true
 	},
 	
 	// Exclude from search (faster search)
@@ -136,10 +142,15 @@
 	// Python/Pylance performance optimizations
 	"python.analysis.autoSearchPaths": false,
 	"python.analysis.indexing": false,
+	"python.analysis.autoImportCompletions": false,
+	"python.analysis.userFileIndexingLimit": 50,
+	"python.analysis.memory.keepLibraryAst": false,
+	"python.analysis.completeFunctionParens": false,
+	"python.analysis.addImport.exactMatchOnly": true,
 	"python.analysis.packageIndexDepths": [
 		{
 			"name": "",
-			"depth": 2
+			"depth": 1
 		}
 	],
 	"python.analysis.exclude": [
@@ -148,8 +159,16 @@
 		"**/test_results/**", 
 		"**/trained/**",
 		"**/tsl-env/**",
-		"**/data/**"
+		"**/data/**",
+		"**/test_*.py",
+		"**/simple_*.py",
+		"**/run_*.py",
+		"**/verify_*.py",
+		"**/validate_*.py",
+		"**/monitor_*.py",
+		"**/pic/**"
 	],
+	
 	
 	// Jupyter optimizations
 	"jupyter.askForKernelRestart": false,
@@ -163,6 +182,14 @@
 	"editor.semanticHighlighting.enabled": false,
 	"editor.suggest.filterGraceful": false,
 	"editor.acceptSuggestionOnCommitCharacter": false,
+	"editor.bracketPairColorization.enabled": false,
+	"editor.guides.bracketPairs": false,
+	"editor.inlayHints.enabled": "off",
+	"editor.parameterHints.enabled": false,
+	"editor.suggest.showSnippets": false,
+	"editor.hover.enabled": false,
+	"editor.links": false,
+	"editor.colorDecorators": false,
 	
 	// Extensions
 	"extensions.autoUpdate": false,

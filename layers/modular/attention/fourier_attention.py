@@ -78,23 +78,40 @@ class FourierAttention(BaseAttention):
         queries = queries.contiguous()
         
         try:
-            # Ensure input is contiguous and properly shaped for FFT operations
+            # Use alternative FFT approach to avoid Intel MKL issues
             queries = queries.contiguous()
             
             # Check if sequence length is compatible with FFT
             if L < 2:
                 raise RuntimeError("Sequence length too short for FFT")
             
-            # Transform to frequency domain with proper error handling
-            queries_freq = torch.fft.rfft(queries, dim=1)  # [B, F, D] where F = L//2 + 1
-            freq_dim = queries_freq.shape[1]
+            # Try multiple FFT approaches
+            queries_freq = None
+            approaches = [
+                lambda x: torch.fft.rfft(x, dim=1, norm='ortho'),  # Orthogonal normalization
+                lambda x: torch.fft.fft(x, dim=1)[:, :L//2+1],    # Manual truncation
+                lambda x: self._manual_dft(x)                      # Manual DFT implementation
+            ]
             
+            for i, approach in enumerate(approaches):
+                try:
+                    queries_freq = approach(queries)
+                    freq_dim = queries_freq.shape[1]
+                    logger.debug(f"FFT approach {i+1} succeeded with freq_dim={freq_dim}")
+                    break
+                except Exception as e:
+                    logger.debug(f"FFT approach {i+1} failed: {e}")
+                    continue
+            
+            if queries_freq is None:
+                raise RuntimeError("All FFT approaches failed")
+                
             # Validate frequency dimensions
             if freq_dim <= 0:
                 raise RuntimeError("Invalid frequency dimension")
                 
         except (RuntimeError, Exception) as e:
-            logger.warning(f"FFT operation failed: {e}, using fallback frequency simulation")
+            logger.warning(f"All FFT operations failed: {e}, using fallback frequency simulation")
             # Fallback: simulate frequency filtering using conv1d
             queries_filtered = self._frequency_fallback(queries)
             return self._standard_attention(queries_filtered, attn_mask)
@@ -139,8 +156,30 @@ class FourierAttention(BaseAttention):
             freq_filter = freq_filter.unsqueeze(-1)  # [B, freq_dim, 1] or [1, freq_dim, 1]
             queries_freq_filtered = queries_freq * freq_filter  # [B, freq_dim, D]
             
-            # Transform back to time domain with error handling
-            queries_filtered = torch.fft.irfft(queries_freq_filtered, n=L, dim=1)  # [B, L, D]
+            # Transform back to time domain with error handling and multiple approaches
+            try:
+                inverse_approaches = [
+                    lambda x: torch.fft.irfft(x, n=L, dim=1, norm='ortho'),
+                    lambda x: torch.real(torch.fft.ifft(F.pad(x, (0, 0, 0, L-x.shape[1])), dim=1)),
+                    lambda x: self._manual_idft(x, L)
+                ]
+                
+                for i, inv_approach in enumerate(inverse_approaches):
+                    try:
+                        queries_filtered = inv_approach(queries_freq_filtered)
+                        logger.debug(f"Inverse FFT approach {i+1} succeeded")
+                        break
+                    except Exception as e:
+                        logger.debug(f"Inverse FFT approach {i+1} failed: {e}")
+                        continue
+                        
+                if 'queries_filtered' not in locals():
+                    raise RuntimeError("All inverse FFT approaches failed")
+                    
+            except Exception as e:
+                logger.warning(f"Inverse FFT failed: {e}, using frequency fallback")
+                queries_filtered = self._frequency_fallback(queries)
+                return self._standard_attention(queries_filtered, attn_mask)
             
             # Ensure correct output length
             if queries_filtered.shape[1] != L:
@@ -174,6 +213,77 @@ class FourierAttention(BaseAttention):
         out = (attn_weights @ v).transpose(1, 2).reshape(B, L, D)
         
         return self.out_proj(out), attn_weights
+
+    def _manual_dft(self, x):
+        """
+        Manual DFT implementation as fallback for problematic FFT configurations.
+        
+        Args:
+            x: [B, L, D] input tensor
+            
+        Returns:
+            x_freq: [B, L//2+1, D] frequency domain representation
+        """
+        B, L, D = x.shape
+        
+        # Create frequency indices
+        freqs = torch.arange(0, L//2 + 1, device=x.device, dtype=torch.float32)
+        times = torch.arange(0, L, device=x.device, dtype=torch.float32)
+        
+        # Compute DFT manually (simplified version)
+        x_freq = torch.zeros(B, L//2 + 1, D, dtype=torch.complex64, device=x.device)
+        
+        for k in range(L//2 + 1):
+            # e^(-2πi * k * n / L)
+            phase = -2 * math.pi * k * times / L
+            kernel_real = torch.cos(phase)
+            kernel_imag = torch.sin(phase)
+            
+            # Apply DFT kernel
+            real_part = torch.sum(x * kernel_real.view(1, -1, 1), dim=1)
+            imag_part = torch.sum(x * kernel_imag.view(1, -1, 1), dim=1)
+            
+            x_freq[:, k, :] = torch.complex(real_part, imag_part)
+        
+        return x_freq
+
+    def _manual_idft(self, x_freq, target_length):
+        """
+        Manual inverse DFT implementation.
+        
+        Args:
+            x_freq: [B, F, D] frequency domain tensor
+            target_length: Target time series length
+            
+        Returns:
+            x_time: [B, target_length, D] time domain representation
+        """
+        B, F, D = x_freq.shape
+        L = target_length
+        
+        # Create time and frequency indices
+        times = torch.arange(0, L, device=x_freq.device, dtype=torch.float32)
+        freqs = torch.arange(0, F, device=x_freq.device, dtype=torch.float32)
+        
+        # Initialize output
+        x_time = torch.zeros(B, L, D, device=x_freq.device)
+        
+        for n in range(L):
+            # e^(2πi * k * n / L)
+            phase = 2 * math.pi * freqs * n / L
+            kernel_real = torch.cos(phase)
+            kernel_imag = torch.sin(phase)
+            
+            # Apply inverse DFT
+            real_contrib = torch.sum(
+                torch.real(x_freq) * kernel_real.view(1, -1, 1) - 
+                torch.imag(x_freq) * kernel_imag.view(1, -1, 1), 
+                dim=1
+            )
+            
+            x_time[:, n, :] = real_contrib / L
+        
+        return x_time
 
     def _frequency_fallback(self, x):
         """
