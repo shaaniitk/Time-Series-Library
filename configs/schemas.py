@@ -80,6 +80,9 @@ class ComponentType(str, Enum):
     STANDARD_HEAD = "standard"
     QUANTILE = "quantile"
     BAYESIAN_HEAD = "bayesian_head"
+
+    # Meta-components
+    MIXTURE_OF_EXPERTS = "mixture_of_experts"
     
     # Loss components
     MSE = "mse"
