@@ -210,3 +210,6 @@ def register_layers_components(registry):
     """Register all layers components with the registry"""
     # This will be implemented to register all migrated components
     pass
+
+class EnhancedDecoderLayer(BaseDecoderLayer):
+    

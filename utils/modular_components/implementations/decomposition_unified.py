@@ -133,6 +133,9 @@ class LearnableDecomposition(BaseDecomposition):
         
         return trend, seasonal
 
+    def get_output_dim(self) -> int:
+        return self.d_model
+
 
 # =============================================================================
 # FOURIER DECOMPOSITION
@@ -358,6 +361,7 @@ class DecompositionRegistry:
         'wavelet': WaveletDecomposition,
         'adaptive': AdaptiveDecomposition,
         'residual': ResidualDecomposition,
+        'learnable_decomp': LearnableDecomposition,
     }
     
     @classmethod

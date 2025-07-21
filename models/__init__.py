@@ -37,10 +37,4 @@ from .HierarchicalEnhancedAutoformer import HierarchicalEnhancedAutoformer
 # HF models
 from .HFEnhancedAutoformer import HFEnhancedAutoformer
 from .HFBayesianAutoformerProduction import HFBayesianAutoformerProduction
-from .HFAdvancedFactory import (
-    HFBayesianEnhancedAutoformer,
-    HFHierarchicalEnhancedAutoformer,
-    HFQuantileEnhancedAutoformer,
-    HFFullEnhancedAutoformer,
-    create_hf_model_from_config
-)
+from .HFAdvancedFactory import create_hf_model_from_config as HFBayesianEnhancedAutoformer

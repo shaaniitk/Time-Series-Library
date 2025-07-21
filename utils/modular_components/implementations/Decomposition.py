@@ -32,12 +32,12 @@ logger = logging.getLogger(__name__)
 # BASE DECOMPOSITION INTERFACE
 # ==============================================================================
 
-class BaseDecomposition(nn.Module, ABC):
+class BaseDecomposition(BaseComponent):
     """
     Abstract base class for all series decomposition components.
     """
-    def __init__(self):
-        super(BaseDecomposition, self).__init__()
+    def __init__(self, config: ComponentConfig):
+        super(BaseDecomposition, self).__init__(config)
 
     @abstractmethod
     def forward(self, x):
