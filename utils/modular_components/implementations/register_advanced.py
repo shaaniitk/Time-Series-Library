@@ -110,59 +110,9 @@ def register_advanced_losses():
 
 
 def register_advanced_attentions():
-    """Register advanced attention mechanisms"""
-    try:
-        from .advanced_attentions import (
-            OptimizedAutoCorrelationAttention, AdaptiveAutoCorrelationAttention,
-            EnhancedAutoCorrelationLayer, MemoryEfficientAttention
-        )
-        
-        register_component(
-            'attention', 'optimized_autocorrelation', OptimizedAutoCorrelationAttention,
-            metadata={
-                'type': 'autocorrelation',
-                'optimized': True,
-                'memory_efficient': True,
-                'chunked_processing': True,
-                'mixed_precision': True
-            }
-        )
-        
-        register_component(
-            'attention', 'adaptive_autocorrelation', AdaptiveAutoCorrelationAttention,
-            metadata={
-                'type': 'autocorrelation',
-                'adaptive': True,
-                'multi_scale': True,
-                'adaptive_k': True
-            }
-        )
-        
-        register_component(
-            'attention', 'enhanced_autocorrelation', EnhancedAutoCorrelationLayer,
-            metadata={
-                'type': 'autocorrelation',
-                'enhanced': True,
-                'has_projections': True,
-                'multi_scale': True,
-                'adaptive_k': True
-            }
-        )
-        
-        register_component(
-            'attention', 'memory_efficient', MemoryEfficientAttention,
-            metadata={
-                'type': 'general',
-                'memory_efficient': True,
-                'gradient_checkpointing': True,
-                'fallback_capable': True
-            }
-        )
-        
-        logger.info("Successfully registered 4 advanced attention mechanisms")
-        
-    except Exception as e:
-        logger.error(f"Failed to register advanced attentions: {e}")
+    """Register advanced attention mechanisms - SKIPPED: Using unified Attention.py instead"""
+    logger.info("Advanced attentions registration skipped - using unified Attention.py module")
+    # All attention components are now available through utils.modular_components.implementations.Attention
 
 
 def register_specialized_processors():

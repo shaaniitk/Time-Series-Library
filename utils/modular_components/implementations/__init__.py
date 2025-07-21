@@ -28,24 +28,37 @@ except ImportError as e:
 # Always import simple backbones (no external dependencies)
 from . import simple_backbones
 from . import embeddings  
-from . import attentions
 
-# Import advanced integrations
-try:
-    from . import advanced_losses
-    ADVANCED_LOSSES_AVAILABLE = True
-    logger.info("Advanced losses integration available")
-except ImportError as e:
-    logger.warning(f"Could not import advanced losses: {e}")
-    ADVANCED_LOSSES_AVAILABLE = False
 
+# Import unified attention implementations
 try:
-    from . import advanced_attentions
-    ADVANCED_ATTENTIONS_AVAILABLE = True
-    logger.info("Advanced attention mechanisms available")
+    from . import Attention  # Our unified attention module
+    ATTENTION_AVAILABLE = True
+    logger.info("Unified Attention module integration available")
 except ImportError as e:
-    logger.warning(f"Could not import advanced attentions: {e}")
-    ADVANCED_ATTENTIONS_AVAILABLE = False
+    logger.warning(f"Could not import unified Attention: {e}")
+    ATTENTION_AVAILABLE = False
+
+# Import unified loss implementations
+try:
+    from . import Losses  # Our unified loss module
+    LOSSES_AVAILABLE = True
+    logger.info("Unified Losses module integration available")
+except ImportError as e:
+    logger.warning(f"Could not import unified Losses: {e}")
+    LOSSES_AVAILABLE = False
+
+# Import unified decomposition implementations
+try:
+    from . import Decomposition  # Our unified decomposition module
+    DECOMPOSITION_AVAILABLE = True
+    logger.info("Unified Decomposition module integration available")
+except ImportError as e:
+    logger.warning(f"Could not import unified Decomposition: {e}")
+    DECOMPOSITION_AVAILABLE = False
+
+# Skip advanced_attentions - we use unified Attention.py instead
+ADVANCED_ATTENTIONS_AVAILABLE = False
 
 try:
     from . import specialized_processors
@@ -66,15 +79,24 @@ except ImportError as e:
 
 __all__ = [
     'simple_backbones',
-    'embeddings', 
-    'attentions'
+    'embeddings'
 ]
+
+
+if ATTENTION_AVAILABLE:
+    __all__.append('Attention')  # Our unified attention module
+
+if LOSSES_AVAILABLE:
+    __all__.append('Losses')     # Our unified loss module
+
+if DECOMPOSITION_AVAILABLE:
+    __all__.append('Decomposition')  # Our unified decomposition module
 
 if BACKBONES_AVAILABLE:
     __all__.append('backbones')
 
-if ADVANCED_LOSSES_AVAILABLE:
-    __all__.append('advanced_losses')
+if LOSSES_AVAILABLE:
+    __all__.append('Losses')
 
 if ADVANCED_ATTENTIONS_AVAILABLE:
     __all__.append('advanced_attentions')
@@ -90,7 +112,8 @@ def get_integration_status():
     """Get status of all advanced integrations"""
     return {
         'backbones_available': BACKBONES_AVAILABLE,
-        'advanced_losses_available': ADVANCED_LOSSES_AVAILABLE,
+        'attention_available': ATTENTION_AVAILABLE,
+        'losses_available': LOSSES_AVAILABLE,
         'advanced_attentions_available': ADVANCED_ATTENTIONS_AVAILABLE,
         'specialized_processors_available': SPECIALIZED_PROCESSORS_AVAILABLE,
         'advanced_registration_complete': ADVANCED_REGISTRATION_COMPLETE,
@@ -99,31 +122,74 @@ def get_integration_status():
 
 
 def validate_critical_integrations():
-    """Validate that critical Bayesian integrations are working"""
-    if not ADVANCED_REGISTRATION_COMPLETE:
-        logger.error("CRITICAL: Advanced component registration failed!")
-        return False
+    """Validate that critical unified modules are working"""
+    success = True
     
-    try:
-        from .register_advanced import validate_bayesian_integration
-        validation = validate_bayesian_integration()
-        
-        critical_checks = [
-            validation.get('bayesian_mse_registered', False),
-            validation.get('kl_divergence_supported', False),
-            validation.get('uncertainty_supported', False)
-        ]
-        
-        if all(critical_checks):
-            logger.info("✅ Critical Bayesian integrations validated successfully")
-            return True
-        else:
-            logger.error(f"❌ Critical validation failed: {validation}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"Validation error: {e}")
-        return False
+
+    # Validate Losses module
+    if not LOSSES_AVAILABLE:
+        logger.error("CRITICAL: Unified Losses module failed to load!")
+        success = False
+    else:
+        try:
+            from .Losses import LOSS_REGISTRY, get_loss_function
+            # Test critical loss functions
+            critical_losses = ['bayesian_mse', 'bayesian_mae', 'mse', 'mae']
+            available_losses = list(LOSS_REGISTRY.keys())
+            missing_losses = [loss for loss in critical_losses if loss not in available_losses]
+            if missing_losses:
+                logger.error(f"❌ Critical losses missing: {missing_losses}")
+                success = False
+            else:
+                # Test creating a Bayesian loss function
+                try:
+                    from .Losses import LossConfig
+                    config = LossConfig()
+                    bayesian_mse = get_loss_function('bayesian_mse', config)
+                    logger.info("✅ Bayesian MSE loss successfully created")
+                    logger.info("✅ Critical loss functions validated successfully")
+                except Exception as e:
+                    logger.error(f"❌ Failed to create Bayesian MSE loss: {e}")
+                    success = False
+        except Exception as e:
+            logger.error(f"❌ Failed to validate loss functions: {e}")
+            success = False
+
+    # Validate Decomposition module
+    if not DECOMPOSITION_AVAILABLE:
+        logger.error("CRITICAL: Unified Decomposition module failed to load!")
+        success = False
+    else:
+        try:
+            from .Decomposition import DECOMPOSITION_REGISTRY, get_decomposition_method
+            # Test critical decomposition methods
+            critical_decomps = ['series_decomp', 'stable_decomp', 'learnable_decomp', 'wavelet_decomp']
+            available_decomps = list(DECOMPOSITION_REGISTRY.keys())
+            missing_decomps = [d for d in critical_decomps if d not in available_decomps]
+            if missing_decomps:
+                logger.error(f"❌ Critical decompositions missing: {missing_decomps}")
+                success = False
+            else:
+                # Test creating a SeriesDecomposition
+                try:
+                    series_decomp = get_decomposition_method('series_decomp', kernel_size=7)
+                    logger.info("✅ SeriesDecomposition successfully created")
+                    logger.info("✅ Critical decomposition methods validated successfully")
+                except Exception as e:
+                    logger.error(f"❌ Failed to create SeriesDecomposition: {e}")
+                    success = False
+        except Exception as e:
+            logger.error(f"❌ Failed to validate decomposition methods: {e}")
+            success = False
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to validate loss functions: {e}")
+            success = False
+    
+    if success:
+        logger.info("✅ Critical unified integrations validated successfully")
+    
+    return success
 
 
 # Perform validation on import
@@ -136,14 +202,9 @@ except Exception as e:
     logger.error(f"Validation check failed: {e}")
 
 
-# Migrated components
-from .attention_migrated import register_attention_components
-from .decomposition_migrated import register_decomposition_components
-from .encoder_migrated import register_encoder_components
-from .decoder_migrated import register_decoder_components
-from .sampling_migrated import register_sampling_components
-from .output_heads_migrated import register_output_heads_components
-from .losses_migrated import register_losses_components
-from .layers_migrated import register_layers_components
-from .fusion_migrated import register_fusion_components
-from .migrated_registry import migrated_registry
+# Component registration is now handled by unified modules
+# All components are available through their respective unified files:
+# - Attention.py contains all 29 attention components with comprehensive registry
+# - Losses.py contains all 25+ loss functions with Bayesian support and KL divergence
+# - componentHelpers.py contains utility classes (BayesianLinear, WaveletDecomposition, etc.)
+logger.info("🎉 Modular framework with unified components ready!")

@@ -479,3 +479,20 @@ class ConvFFN(BaseFeedForward):
             'supports_layer_norm': self.config.layer_norm,
             'dropout': self.dropout_rate
         }
+
+# --- Unified FeedForward Registry and Factory ---
+FEEDFORWARD_REGISTRY = {}
+
+def register_feedforward(name: str, cls: type):
+    FEEDFORWARD_REGISTRY[name] = cls
+
+def create_feedforward(name: str, config: FFNConfig, **kwargs) -> BaseFeedForward:
+    if name not in FEEDFORWARD_REGISTRY:
+        raise ValueError(f"FeedForward '{name}' not found in registry.")
+    return FEEDFORWARD_REGISTRY[name](config, **kwargs)
+
+# Register all major feedforward variants
+register_feedforward('standard', StandardFFN)
+register_feedforward('gated', GatedFFN)
+register_feedforward('moe', MoEFFN)
+register_feedforward('conv', ConvFFN)

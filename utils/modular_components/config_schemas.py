@@ -5,7 +5,14 @@ These dataclasses define the configuration structure for all modular components,
 providing type safety and validation for component parameters.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
+def safe_config_from_dict(cls, config_dict):
+    """
+    Safely construct a dataclass config from a dict, ignoring extra fields.
+    """
+    allowed = {f.name for f in fields(cls)}
+    filtered = {k: v for k, v in config_dict.items() if k in allowed}
+    return cls(**filtered)
 from typing import Dict, Any, List, Optional, Union
 from abc import ABC
 

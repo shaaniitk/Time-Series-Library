@@ -11,29 +11,38 @@ from configs.modular_components import (
 )
 
 # New modular framework imports - using UNIFIED components
-from utils.modular_components.registry import ComponentRegistry
-from utils.modular_components.config_schemas import ComponentConfig, BackboneConfig
-from utils.modular_components.base_interfaces import BaseComponent, BaseLoss, BaseAttention
 
-# Import unified component registries (single source of truth)
-try:
-    from utils.modular_components.implementations.attentions_unified import ATTENTION_REGISTRY
-    from utils.modular_components.implementations.losses_unified import LOSS_REGISTRY  
-    from utils.modular_components.implementations.decomposition_unified import DECOMPOSITION_REGISTRY
-    from utils.modular_components.implementations.encoder_unified import ENCODER_REGISTRY
-except ImportError as e:
-    logger.warning(f"Unified components not available: {e}")
-    # Will fall back to minimal components
+from utils.modular_components.registry import ComponentRegistry
+from utils.modular_components.config_schemas import ComponentConfig, BackboneConfig, safe_config_from_dict
+from utils.modular_components.base_interfaces import BaseComponent, BaseLoss, BaseAttention
 
 # Essential imports for embedding and base functionality
 from layers.Embed import DataEmbedding_wo_pos
 from utils.logger import logger
+
+# Import unified component registries (single source of truth)
+try:
+    from utils.modular_components.implementations.Attention import ATTENTION_REGISTRY
+    from utils.modular_components.implementations.Losses import LOSS_REGISTRY
+    from utils.modular_components.implementations.Decomposition import DECOMPOSITION_REGISTRY
+    # If encoder registry is needed, update here:
+    # from utils.modular_components.implementations.Encoder import ENCODER_REGISTRY
+except ImportError as e:
+    logger.warning(f"Unified components not available: {e}")
+    # Will fall back to minimal components
+
 
 # Import unified base framework
 from models.base_forecaster import BaseTimeSeriesForecaster, CustomFrameworkMixin
 
 # Import modular dimension manager
 from utils.modular_dimension_manager import create_modular_dimension_manager
+
+# Import MigrationManager for component migration
+from utils.modular_components.migration_framework import MigrationManager
+
+# Import create_backbone for backbone instantiation
+from utils.modular_components.factories import create_backbone
 
 
 class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
@@ -60,14 +69,17 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
         else:
             self.structured_config = configs
             self.legacy_configs = configs.to_namespace()
-        
+
+        # Set dropout from config (ensure always available)
+        self.dropout = getattr(self.structured_config, 'dropout', 0.1)
+
         # Initialize new modular framework
         self._initialize_new_framework()
-        
+
         # Check if we should use a modular backbone
         self.use_backbone_component = getattr(self.legacy_configs, 'use_backbone_component', False)
         self.backbone_type = getattr(self.legacy_configs, 'backbone_type', None)
-        
+
         if self.use_backbone_component and self.backbone_type:
             logger.info(f"Using modular backbone: {self.backbone_type}")
             self._initialize_with_backbone()
@@ -96,18 +108,18 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
         configs = self.legacy_configs
         
         # Basic dimensions
-        self.seq_len = configs.seq_len
-        self.label_len = configs.label_len
-        self.pred_len = configs.pred_len
-        self.enc_in = configs.enc_in
-        self.dec_in = configs.dec_in
-        self.c_out = configs.c_out
-        self.d_model = configs.d_model
-        self.n_heads = configs.n_heads
-        self.e_layers = configs.e_layers
-        self.d_layers = configs.d_layers
-        self.d_ff = configs.d_ff
-        self.dropout = configs.dropout
+        self.seq_len = self.structured_config.seq_len
+        self.label_len = self.structured_config.label_len
+        self.pred_len = self.structured_config.pred_len
+        self.enc_in = self.structured_config.enc_in
+        self.dec_in = self.structured_config.dec_in
+        self.c_out = self.structured_config.c_out
+        self.d_model = self.structured_config.d_model
+        self.n_heads = self.structured_config.encoder.n_heads
+        self.e_layers = self.structured_config.encoder.e_layers
+        self.d_layers = self.structured_config.decoder.d_layers
+        self.d_ff = self.structured_config.encoder.d_ff
+        self.dropout = self.structured_config.encoder.dropout
         self.factor = getattr(configs, 'factor', 1)
         self.output_attention = getattr(configs, 'output_attention', False)
         
@@ -135,11 +147,16 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
         configs = self.legacy_configs
         
         # Create decomposition component
-        decomp_config = ComponentConfig(
-            component_type='decomposition',
-            component_name=getattr(configs, 'decomposition_type', 'series_decomp'),
-            parameters={'kernel_size': self.moving_avg, 'seq_len': self.seq_len, 'd_model': self.d_model}
-        )
+        decomp_config_dict = {
+            'component_name': getattr(configs, 'decomposition_type', 'series_decomp'),
+            'd_model': self.d_model,
+            'dropout': self.dropout,
+            'device': 'auto',
+            'dtype': 'float32',
+            'custom_params': {'kernel_size': self.moving_avg, 'seq_len': self.seq_len}
+        }
+        from utils.modular_components.config_schemas import safe_config_from_dict
+        decomp_config = safe_config_from_dict(ComponentConfig, decomp_config_dict)
         
         # Note: Decomposition not migrated yet, use fallback
         try:
@@ -154,17 +171,19 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
             self.decomp = SimpleDecomp()
         
         # Create attention component using migrated framework
-        attention_config = ComponentConfig(
-            component_type='attention',
-            component_name=getattr(configs, 'attention_type', 'autocorrelation_layer'),
-            parameters={
-                'd_model': self.d_model,
+        attention_config_dict = {
+            'component_name': getattr(configs, 'attention_type', 'autocorrelation_layer'),
+            'd_model': self.d_model,
+            'dropout': self.dropout,
+            'device': 'auto',
+            'dtype': 'float32',
+            'custom_params': {
                 'n_heads': self.n_heads,
-                'dropout': self.dropout,
                 'factor': self.factor,
                 'output_attention': self.output_attention
             }
-        )
+        }
+        attention_config = safe_config_from_dict(ComponentConfig, attention_config_dict)
         
         try:
             self.attention = self.component_registry.create('attention', 
@@ -219,11 +238,15 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
             self.output_head = nn.Linear(self.d_model, self.c_out)
         
         # Create loss component using migrated framework
-        loss_config = ComponentConfig(
-            component_type='loss',
-            component_name=getattr(configs, 'loss_type', 'mse'),
-            parameters={}
-        )
+        loss_config_dict = {
+            'component_name': getattr(configs, 'loss_type', 'mse'),
+            'd_model': self.d_model,
+            'dropout': self.dropout,
+            'device': 'auto',
+            'dtype': 'float32',
+            'custom_params': {}
+        }
+        loss_config = safe_config_from_dict(ComponentConfig, loss_config_dict)
         
         try:
             self.loss_component = self.component_registry.create('loss',
@@ -245,12 +268,26 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
         logger.info(f"Initializing with backbone: {self.backbone_type}")
         
         # Create backbone configuration
-        backbone_config = BackboneConfig(
-            backbone_type=self.backbone_type,
-            d_model=getattr(self.legacy_configs, 'd_model', 512),
-            seq_len=getattr(self.legacy_configs, 'seq_len', 96),
-            pred_len=getattr(self.legacy_configs, 'pred_len', 24)
-        )
+        backbone_config_dict = {
+            'model_name': getattr(self.legacy_configs, 'backbone_model_name', None),
+            'pretrained': True,
+            'freeze_backbone': False,
+            'cache_dir': None,
+            'trust_remote_code': False,
+            'num_layers': getattr(self.legacy_configs, 'e_layers', 6),
+            'num_heads': getattr(self.legacy_configs, 'n_heads', 8),
+            'd_ff': getattr(self.legacy_configs, 'd_ff', 2048),
+            'vocab_size': 1000,
+            'd_model': self.d_model,
+            'dropout': self.dropout,
+            'device': 'auto',
+            'dtype': 'float32',
+            'custom_params': {
+                'prediction_length': getattr(self.legacy_configs, 'pred_len', None),
+                'context_length': getattr(self.legacy_configs, 'seq_len', None)
+            }
+        }
+        backbone_config = safe_config_from_dict(BackboneConfig, backbone_config_dict)
         
         try:
             # Create backbone using new framework
@@ -299,6 +336,7 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
             'mse': ComponentType.MSE,
             'bayesian_mse': ComponentType.BAYESIAN_MSE,
             'bayesian_quantile': ComponentType.BAYESIAN_QUANTILE,
+            'standard_head': ComponentType.STANDARD_HEAD,
         }
         
         # Extract basic parameters
@@ -319,13 +357,14 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
             enc_in=enc_in,
             dec_in=dec_in,
             c_out=c_out,
+            c_out_evaluation=getattr(ns_config, 'c_out_evaluation', c_out),
             d_model=d_model,
             n_heads=getattr(ns_config, 'n_heads', 8),
             e_layers=getattr(ns_config, 'e_layers', 2),
             d_layers=getattr(ns_config, 'd_layers', 1),
             d_ff=getattr(ns_config, 'd_ff', 2048),
             dropout=getattr(ns_config, 'dropout', 0.1),
-            
+
             # Component configurations using migrated framework
             attention=AttentionConfig(
                 type=type_mapping.get(
@@ -333,7 +372,9 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
                     ComponentType.AUTOCORRELATION
                 ),
                 factor=getattr(ns_config, 'factor', 1),
-                output_attention=getattr(ns_config, 'output_attention', False)
+                output_attention=getattr(ns_config, 'output_attention', False),
+                d_model=getattr(ns_config, 'd_model', 512),
+                n_heads=getattr(ns_config, 'n_heads', 8)
             ),
             
             decomposition=DecompositionConfig(
@@ -348,14 +389,29 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
                 type=type_mapping.get(
                     getattr(ns_config, 'encoder_type', 'standard'),
                     ComponentType.STANDARD_ENCODER
-                )
+                ),
+                e_layers=getattr(ns_config, 'e_layers', 2),
+                d_model=getattr(ns_config, 'd_model', 512),
+                n_heads=getattr(ns_config, 'n_heads', 8),
+                d_ff=getattr(ns_config, 'd_ff', 2048),
+                dropout=getattr(ns_config, 'dropout', 0.1),
+                activation=getattr(ns_config, 'activation', 'gelu'),
+                factor=getattr(ns_config, 'factor', 1)
             ),
-            
+
             decoder=DecoderConfig(
                 type=type_mapping.get(
                     getattr(ns_config, 'decoder_type', 'standard'),
                     ComponentType.STANDARD_DECODER
-                )
+                ),
+                d_layers=getattr(ns_config, 'd_layers', 1),
+                d_model=getattr(ns_config, 'd_model', 512),
+                n_heads=getattr(ns_config, 'n_heads', 8),
+                d_ff=getattr(ns_config, 'd_ff', 2048),
+                dropout=getattr(ns_config, 'dropout', 0.1),
+                activation=getattr(ns_config, 'activation', 'gelu'),
+                factor=getattr(ns_config, 'factor', 1),
+                c_out=getattr(ns_config, 'c_out', 7)
             ),
             
             loss=LossConfig(
@@ -365,13 +421,23 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
                 )
             ),
             
+            sampling=SamplingConfig(
+                type=type_mapping.get(getattr(ns_config, 'sampling_type', 'deterministic'), ComponentType.DETERMINISTIC)
+            ),
+            output_head=OutputHeadConfig(
+                type=type_mapping.get(getattr(ns_config, 'output_head_type', 'standard_head'), ComponentType.STANDARD_HEAD),
+                d_model=d_model,
+                c_out=c_out,
+                dropout=getattr(ns_config, 'dropout', 0.1)
+            ),
             # Optional components
             backbone=BackboneConfig(
-                backbone_type=getattr(ns_config, 'backbone_type', None),
-                d_model=d_model,
-                seq_len=seq_len,
-                pred_len=pred_len
-            ) if getattr(ns_config, 'use_backbone_component', False) else None
+                type=type_mapping.get(getattr(ns_config, 'backbone_type', None), None),
+                model_name=getattr(ns_config, 'backbone_model_name', None),
+                use_backbone=getattr(ns_config, 'use_backbone_component', False),
+                prediction_length=getattr(ns_config, 'pred_len', None),
+                context_length=getattr(ns_config, 'seq_len', None)
+            ),
         )
         
         return structured_config

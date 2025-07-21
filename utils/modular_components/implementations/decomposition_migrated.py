@@ -15,12 +15,12 @@ from ..config_schemas import ComponentConfig
 logger = logging.getLogger(__name__)
 
 # Migrated imports
-    import inspect
+import inspect
 from abc import ABC, abstractmethod
 from utils.logger import logger
 import torch.nn as nn
 import torch
-        from utils.logger import logger
+from utils.logger import logger
 import torch.nn.functional as F
 from layers.DWT_Decomposition import DWT1DForward, DWT1DInverse
 

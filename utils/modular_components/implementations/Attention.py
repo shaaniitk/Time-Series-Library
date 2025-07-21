@@ -15,6 +15,16 @@ import logging
 from ..base_interfaces import BaseAttention
 from ..config_schemas import ComponentConfig
 
+# Import helper classes
+from .componentHelpers import (
+    BayesianLinear, 
+    WaveletDecomposition, 
+    TemporalBlock, 
+    Chomp1d,
+    FourierModeSelector,
+    ComplexMultiply1D
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -1347,6 +1357,731 @@ class CrossResolutionAttention(BaseAttention):
 
 
 # =============================================================================
+# MISSING AUTOCORRELATION COMPONENTS
+# =============================================================================
+
+class AdaptiveAutoCorrelationLayer(BaseAttention):
+    """Layer wrapper for Enhanced AutoCorrelation with additional processing"""
+    
+    def __init__(self, d_model=512, n_heads=8, factor=1, attention_dropout=0.1, 
+                 output_attention=False, adaptive_k=True, multi_scale=True):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        
+        # Core autocorrelation mechanism
+        self.autocorrelation = EnhancedAutoCorrelation(
+            d_model=d_model, n_heads=n_heads, factor=factor,
+            attention_dropout=attention_dropout, output_attention=output_attention,
+            adaptive_k=adaptive_k, multi_scale=multi_scale
+        )
+        
+        # Additional processing layers
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        
+        # Feed-forward network
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_model * 4),
+            nn.GELU(),
+            nn.Dropout(attention_dropout),
+            nn.Linear(d_model * 4, d_model),
+            nn.Dropout(attention_dropout)
+        )
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "adaptive_autocorrelation_layer"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        # Autocorrelation with residual connection
+        residual = queries
+        attn_output, attn_weights = self.autocorrelation(queries, keys, values, attn_mask)
+        x = self.norm1(residual + attn_output)
+        
+        # Feed-forward with residual connection
+        residual = x
+        ffn_output = self.ffn(x)
+        output = self.norm2(residual + ffn_output)
+        
+        return output, attn_weights
+
+
+class HierarchicalAutoCorrelation(BaseAttention):
+    """Hierarchical autocorrelation with multiple time scales"""
+    
+    def __init__(self, d_model=512, n_heads=8, hierarchy_levels=[1, 4, 16], factor=1):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.hierarchy_levels = hierarchy_levels
+        self.factor = factor
+        
+        # Autocorrelation for each hierarchy level
+        self.autocorrelations = nn.ModuleList([
+            AutoCorrelationAttention(d_model=d_model, n_heads=n_heads, factor=factor)
+            for _ in hierarchy_levels
+        ])
+        
+        # Level weights
+        self.level_weights = nn.Parameter(torch.ones(len(hierarchy_levels)) / len(hierarchy_levels))
+        self.fusion_proj = nn.Linear(d_model * len(hierarchy_levels), d_model)
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "hierarchical_autocorrelation"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        B, L, D = queries.shape
+        level_outputs = []
+        level_attentions = []
+        
+        for level, autocorr in zip(self.hierarchy_levels, self.autocorrelations):
+            if level == 1:
+                # Full resolution
+                level_q, level_k, level_v = queries, keys, values
+            else:
+                # Downsample
+                level_q = F.avg_pool1d(queries.transpose(1, 2), kernel_size=level, stride=level).transpose(1, 2)
+                level_k = F.avg_pool1d(keys.transpose(1, 2), kernel_size=level, stride=level).transpose(1, 2)
+                level_v = F.avg_pool1d(values.transpose(1, 2), kernel_size=level, stride=level).transpose(1, 2)
+            
+            # Apply autocorrelation
+            level_output, level_attn = autocorr(level_q, level_k, level_v, attn_mask)
+            
+            # Upsample back if needed
+            if level > 1:
+                level_output = F.interpolate(level_output.transpose(1, 2), size=L, mode='linear', align_corners=False).transpose(1, 2)
+            
+            level_outputs.append(level_output)
+            level_attentions.append(level_attn)
+        
+        # Weighted fusion
+        weights = F.softmax(self.level_weights, dim=0)
+        concatenated = torch.cat(level_outputs, dim=-1)
+        fused_output = self.fusion_proj(concatenated)
+        
+        # Average attention weights
+        avg_attention = torch.stack(level_attentions, dim=0).mean(dim=0)
+        
+        return fused_output, avg_attention
+
+
+# =============================================================================
+# MISSING FOURIER COMPONENTS
+# =============================================================================
+
+class FourierBlock(BaseAttention):
+    """1D Fourier block for frequency domain representation learning"""
+    
+    def __init__(self, d_model=512, n_heads=8, seq_len=96, modes=64, mode_select_method='random'):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.modes = modes
+        self.mode_select_method = mode_select_method
+        
+        # Complex weights for frequency domain
+        self.fourier_weights = nn.Parameter(
+            torch.randn(d_model, modes, dtype=torch.cfloat) * 0.02
+        )
+        
+        # Mode selection
+        if mode_select_method == 'random':
+            self.register_buffer('modes_list', torch.randperm(seq_len//2 + 1)[:modes])
+        else:  # 'low'
+            self.register_buffer('modes_list', torch.arange(modes))
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "fourier_block"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        B, L, D = queries.shape
+        
+        # FFT
+        x_ft = torch.fft.rfft(queries, dim=1)
+        
+        # Multiply with learnable weights
+        out_ft = torch.zeros_like(x_ft)
+        for i, mode in enumerate(self.modes_list):
+            if mode < x_ft.size(1):
+                out_ft[:, mode, :] = x_ft[:, mode, :] * self.fourier_weights[:, i].unsqueeze(0)
+        
+        # IFFT
+        output = torch.fft.irfft(out_ft, n=L, dim=1)
+        
+        return output, None
+
+
+class FourierCrossAttention(BaseAttention):
+    """Fourier-enhanced cross attention for encoder-decoder architectures"""
+    
+    def __init__(self, d_model=512, n_heads=8, seq_len_q=96, seq_len_kv=96, modes=64, 
+                 mode_select_method='random', activation='tanh'):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.modes = modes
+        
+        # Fourier weights for cross attention
+        self.fourier_weights_q = nn.Parameter(
+            torch.randn(d_model, modes, dtype=torch.cfloat) * 0.02
+        )
+        self.fourier_weights_kv = nn.Parameter(
+            torch.randn(d_model, modes, dtype=torch.cfloat) * 0.02
+        )
+        
+        # Standard attention components
+        self.w_q = nn.Linear(d_model, d_model)
+        self.w_k = nn.Linear(d_model, d_model)
+        self.w_v = nn.Linear(d_model, d_model)
+        self.w_o = nn.Linear(d_model, d_model)
+        
+        # Activation
+        if activation == 'tanh':
+            self.activation = torch.tanh
+        elif activation == 'relu':
+            self.activation = F.relu
+        else:
+            self.activation = lambda x: x
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "fourier_cross_attention"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        B, L_q, D = queries.shape
+        _, L_kv, _ = keys.shape
+        
+        # Standard projections
+        Q = self.w_q(queries)
+        K = self.w_k(keys)
+        V = self.w_v(values)
+        
+        # Fourier processing for queries
+        Q_ft = torch.fft.rfft(Q, dim=1)
+        Q_out_ft = torch.zeros_like(Q_ft)
+        for i in range(min(self.modes, Q_ft.size(1))):
+            Q_out_ft[:, i, :] = Q_ft[:, i, :] * self.fourier_weights_q[:, i].unsqueeze(0)
+        Q_fourier = torch.fft.irfft(Q_out_ft, n=L_q, dim=1)
+        
+        # Fourier processing for keys and values
+        K_ft = torch.fft.rfft(K, dim=1)
+        K_out_ft = torch.zeros_like(K_ft)
+        for i in range(min(self.modes, K_ft.size(1))):
+            K_out_ft[:, i, :] = K_ft[:, i, :] * self.fourier_weights_kv[:, i].unsqueeze(0)
+        K_fourier = torch.fft.irfft(K_out_ft, n=L_kv, dim=1)
+        
+        # Cross attention computation
+        scores = torch.matmul(Q_fourier.view(B, L_q, self.n_heads, -1).transpose(1, 2),
+                            K_fourier.view(B, L_kv, self.n_heads, -1).transpose(1, 2).transpose(-2, -1))
+        scores = scores / math.sqrt(D // self.n_heads)
+        
+        if attn_mask is not None:
+            scores.masked_fill_(attn_mask.unsqueeze(1) == 0, -1e9)
+        
+        attn_weights = F.softmax(scores, dim=-1)
+        
+        # Apply to values
+        context = torch.matmul(attn_weights, V.view(B, L_kv, self.n_heads, -1).transpose(1, 2))
+        context = context.transpose(1, 2).contiguous().view(B, L_q, D)
+        
+        output = self.w_o(self.activation(context))
+        
+        return output, attn_weights
+
+
+# =============================================================================
+# MISSING CONVOLUTION AND SPECIAL ATTENTION COMPONENTS
+# =============================================================================
+
+class ConvolutionalAttention(BaseAttention):
+    """Convolutional attention combining spatial and temporal convolutions"""
+    
+    def __init__(self, d_model=512, n_heads=8, conv_kernel_size=3, pool_size=2, dropout=0.1):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.d_k = d_model // n_heads
+        self.conv_kernel_size = conv_kernel_size
+        
+        # 2D convolutions for attention feature extraction
+        self.spatial_conv = nn.Conv2d(
+            1, n_heads, 
+            kernel_size=(conv_kernel_size, conv_kernel_size),
+            padding=(conv_kernel_size//2, conv_kernel_size//2)
+        )
+        
+        # Temporal convolutions
+        self.temporal_conv_q = nn.Conv1d(d_model, d_model, kernel_size=3, padding=1)
+        self.temporal_conv_k = nn.Conv1d(d_model, d_model, kernel_size=3, padding=1)
+        self.temporal_conv_v = nn.Conv1d(d_model, d_model, kernel_size=3, padding=1)
+        
+        # Standard attention projections
+        self.w_qs = nn.Linear(d_model, d_model)
+        self.w_ks = nn.Linear(d_model, d_model)
+        self.w_vs = nn.Linear(d_model, d_model)
+        self.w_o = nn.Linear(d_model, d_model)
+        
+        self.dropout = nn.Dropout(dropout)
+        self.layer_norm = nn.LayerNorm(d_model)
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "convolutional"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        B, L, D = queries.shape
+        
+        residual = queries
+        
+        # Apply temporal convolutions
+        q_temp = self.temporal_conv_q(queries.transpose(1, 2)).transpose(1, 2)
+        k_temp = self.temporal_conv_k(keys.transpose(1, 2)).transpose(1, 2)
+        v_temp = self.temporal_conv_v(values.transpose(1, 2)).transpose(1, 2)
+        
+        # Apply standard projections
+        q = self.w_qs(q_temp).view(B, L, self.n_heads, self.d_k).transpose(1, 2)
+        k = self.w_ks(k_temp).view(B, L, self.n_heads, self.d_k).transpose(1, 2)
+        v = self.w_vs(v_temp).view(B, L, self.n_heads, self.d_k).transpose(1, 2)
+        
+        # Compute attention scores
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
+        
+        # Apply attention mask if provided
+        if attn_mask is not None:
+            scores.masked_fill_(attn_mask.unsqueeze(1) == 0, -1e9)
+        
+        # Compute attention weights
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+        
+        # Apply attention to values
+        context = torch.matmul(attn_weights, v)
+        context = context.transpose(1, 2).contiguous().view(B, L, D)
+        
+        # Apply output projection
+        output = self.w_o(context)
+        
+        # Residual connection and normalization
+        output = self.layer_norm(output + residual)
+        
+        return output, attn_weights
+
+
+class TwoStageAttention(BaseAttention):
+    """Two-Stage Attention (TSA) for segment merging and multi-variate time series"""
+    
+    def __init__(self, d_model=512, n_heads=8, seg_num=4, factor=5, d_ff=None, dropout=0.1):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        d_ff = d_ff or 4 * d_model
+        
+        self.time_attention = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
+        self.dim_sender = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
+        self.dim_receiver = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
+        
+        self.router = nn.Parameter(torch.randn(seg_num, factor, d_model))
+        self.dropout = nn.Dropout(dropout)
+        
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.norm3 = nn.LayerNorm(d_model)
+        self.norm4 = nn.LayerNorm(d_model)
+        
+        self.MLP1 = nn.Sequential(nn.Linear(d_model, d_ff), nn.GELU(), nn.Linear(d_ff, d_model))
+        self.MLP2 = nn.Sequential(nn.Linear(d_model, d_ff), nn.GELU(), nn.Linear(d_ff, d_model))
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "two_stage"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        # Assume input is [batch, ts_d, seg_num, d_model]
+        if queries.dim() == 3:
+            # Reshape if needed
+            B, L, D = queries.shape
+            seg_num = int(math.sqrt(L))  # Assume square segmentation
+            queries = queries.view(B, seg_num, seg_num, D)
+        
+        batch, ts_d, seg_num, d_model = queries.shape
+        
+        # Cross Time Stage
+        time_in = queries.reshape(-1, seg_num, d_model)
+        time_enc, _ = self.time_attention(time_in, time_in, time_in, attn_mask=attn_mask)
+        dim_in = time_in + self.dropout(time_enc)
+        dim_in = self.norm1(dim_in)
+        dim_in = dim_in + self.dropout(self.MLP1(dim_in))
+        dim_in = self.norm2(dim_in)
+        
+        # Cross Dimension Stage
+        dim_send = dim_in.reshape(batch * seg_num, ts_d, d_model)
+        batch_router = self.router.repeat(batch, 1, 1)
+        dim_buffer, _ = self.dim_sender(batch_router, dim_send, dim_send, attn_mask=attn_mask)
+        dim_receive, _ = self.dim_receiver(dim_send, dim_buffer, dim_buffer, attn_mask=attn_mask)
+        dim_enc = dim_send + self.dropout(dim_receive)
+        dim_enc = self.norm3(dim_enc)
+        dim_enc = dim_enc + self.dropout(self.MLP2(dim_enc))
+        dim_enc = self.norm4(dim_enc)
+        
+        final_out = dim_enc.reshape(batch, ts_d, seg_num, d_model)
+        # Flatten back to [B, L, D] format
+        final_out = final_out.view(batch, ts_d * seg_num, d_model)
+        
+        return final_out, None
+
+
+class ExponentialSmoothingAttention(BaseAttention):
+    """Exponential Smoothing Attention using learnable smoothing weights"""
+    
+    def __init__(self, d_model=512, n_heads=8, dropout=0.1):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.n_heads = n_heads
+        self.d_model = d_model
+        
+        self._smoothing_weight = nn.Parameter(torch.randn(n_heads, 1))
+        self.v0 = nn.Parameter(torch.randn(1, 1, n_heads, d_model // n_heads))
+        self.dropout = nn.Dropout(dropout)
+    
+    @property
+    def weight(self):
+        return torch.sigmoid(self._smoothing_weight)
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "exponential_smoothing"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def get_exponential_weight(self, T):
+        powers = torch.arange(T, dtype=torch.float, device=self.weight.device)
+        weight = (1 - self.weight) * (self.weight ** torch.flip(powers, dims=(0,)))
+        init_weight = self.weight ** (powers + 1)
+        return init_weight.unsqueeze(0).unsqueeze(-1), weight.unsqueeze(0).unsqueeze(-1)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        B, L, D = values.shape
+        H = self.n_heads
+        d_head = D // H
+        
+        values = values.view(B, L, H, d_head)
+        init_weight, weight = self.get_exponential_weight(L)
+        
+        output = F.conv1d(self.dropout(values.permute(0, 2, 3, 1)), weight.squeeze(-1), groups=H)
+        output = init_weight * self.v0 + output
+        output = output.permute(0, 3, 1, 2).reshape(B, L, D)
+        
+        return output, None
+
+
+class MultiWaveletCrossAttention(BaseAttention):
+    """Multi-Wavelet Cross Attention using multi-resolution wavelet transforms"""
+    
+    def __init__(self, d_model=512, n_heads=8, levels=3, dropout=0.1):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.levels = levels
+        
+        self.dropout = nn.Dropout(dropout)
+        self.wavelet_decomp = WaveletDecomposition(d_model, levels)
+        
+        self.cross_attentions = nn.ModuleList([
+            nn.MultiheadAttention(d_model, n_heads, batch_first=True)
+            for _ in range(levels + 1)
+        ])
+        
+        self.level_weights = nn.Parameter(torch.ones(levels + 1) / (levels + 1))
+        self.fusion_proj = nn.Linear(d_model * (levels + 1), d_model)
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "multi_wavelet_cross"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        B, L, D = queries.shape
+        
+        # Wavelet decomposition
+        _, q_components = self.wavelet_decomp(queries)
+        _, k_components = self.wavelet_decomp(keys)
+        _, v_components = self.wavelet_decomp(values)
+        
+        level_outputs = []
+        level_attentions = []
+        
+        for i, (q_comp, k_comp, v_comp, attention_layer) in enumerate(
+            zip(q_components, k_components, v_components, self.cross_attentions)
+        ):
+            level_output, level_attn = attention_layer(q_comp, k_comp, v_comp, attn_mask=attn_mask)
+            level_outputs.append(level_output)
+            level_attentions.append(level_attn)
+        
+        # Weighted fusion
+        weights = F.softmax(self.level_weights, dim=0)
+        concatenated = torch.cat(level_outputs, dim=-1)
+        fused_output = self.fusion_proj(concatenated)
+        
+        avg_attention = torch.stack(level_attentions, dim=0).mean(dim=0)
+        
+        return fused_output, avg_attention
+
+
+# =============================================================================
+# MISSING BAYESIAN ATTENTION COMPONENTS
+# =============================================================================
+
+class BayesianMultiHeadAttention(BaseAttention):
+    """Multi-head Bayesian attention with ensemble predictions"""
+    
+    def __init__(self, d_model=512, n_heads=8, dropout=0.1, prior_std=1.0, n_samples=5, output_attention=False):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.n_samples = n_samples
+        self.output_attention = output_attention
+        
+        # Core Bayesian attention
+        self.bayesian_attention = BayesianAttention(
+            d_model=d_model, n_heads=n_heads, dropout=dropout, prior_std=prior_std
+        )
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "bayesian_multihead"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        if self.training:
+            return self.bayesian_attention(queries, keys, values, attn_mask)
+        else:
+            # Multiple forward passes for uncertainty estimation
+            outputs = []
+            for _ in range(self.n_samples):
+                output, _ = self.bayesian_attention(queries, keys, values, attn_mask)
+                outputs.append(output)
+            
+            # Mean and uncertainty
+            stacked_outputs = torch.stack(outputs, dim=0)
+            mean_output = stacked_outputs.mean(dim=0)
+            uncertainty = stacked_outputs.var(dim=0)
+            
+            return mean_output, uncertainty
+
+
+class VariationalAttention(BaseAttention):
+    """Variational attention with learnable variance"""
+    
+    def __init__(self, d_model=512, n_heads=8, dropout=0.1, learn_variance=True):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.learn_variance = learn_variance
+        
+        self.w_qs = nn.Linear(d_model, d_model)
+        self.w_ks = nn.Linear(d_model, d_model)
+        self.w_vs = nn.Linear(d_model, d_model)
+        self.w_o = nn.Linear(d_model, d_model)
+        
+        if learn_variance:
+            self.logvar_q = nn.Linear(d_model, d_model)
+            self.logvar_k = nn.Linear(d_model, d_model)
+            self.logvar_v = nn.Linear(d_model, d_model)
+        
+        self.dropout = nn.Dropout(dropout)
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "variational"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        B, L, D = queries.shape
+        
+        # Standard projections
+        Q = self.w_qs(queries).view(B, L, self.n_heads, -1).transpose(1, 2)
+        K = self.w_ks(keys).view(B, L, self.n_heads, -1).transpose(1, 2)
+        V = self.w_vs(values).view(B, L, self.n_heads, -1).transpose(1, 2)
+        
+        if self.learn_variance and self.training:
+            # Add variational sampling
+            logvar_q = self.logvar_q(queries).view(B, L, self.n_heads, -1).transpose(1, 2)
+            logvar_k = self.logvar_k(keys).view(B, L, self.n_heads, -1).transpose(1, 2)
+            
+            # Reparameterization trick
+            epsilon_q = torch.randn_like(Q)
+            epsilon_k = torch.randn_like(K)
+            
+            Q = Q + torch.exp(0.5 * logvar_q) * epsilon_q
+            K = K + torch.exp(0.5 * logvar_k) * epsilon_k
+        
+        # Standard attention computation
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(D // self.n_heads)
+        
+        if attn_mask is not None:
+            scores.masked_fill_(attn_mask.unsqueeze(1) == 0, -1e9)
+        
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+        
+        context = torch.matmul(attn_weights, V)
+        context = context.transpose(1, 2).contiguous().view(B, L, D)
+        
+        output = self.w_o(context)
+        return output, attn_weights
+
+
+class BayesianCrossAttention(BaseAttention):
+    """Bayesian cross attention for encoder-decoder architectures"""
+    
+    def __init__(self, d_model=512, n_heads=8, dropout=0.1, prior_std=1.0):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+        
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        
+        # Bayesian projections
+        self.bayesian_q = BayesianLinear(d_model, d_model, prior_std)
+        self.bayesian_k = BayesianLinear(d_model, d_model, prior_std)
+        self.bayesian_v = BayesianLinear(d_model, d_model, prior_std)
+        self.bayesian_o = BayesianLinear(d_model, d_model, prior_std)
+        
+        self.dropout = nn.Dropout(dropout)
+    
+    def get_output_dim(self) -> int:
+        return self.d_model
+    
+    def get_attention_type(self) -> str:
+        return "bayesian_cross"
+    
+    def apply_attention(self, queries, keys, values, attn_mask=None):
+        return self.forward(queries, keys, values, attn_mask)
+    
+    def forward(self, queries, keys, values, attn_mask=None):
+        B, L_q, D = queries.shape
+        _, L_kv, _ = keys.shape
+        
+        # Bayesian projections
+        Q = self.bayesian_q(queries).view(B, L_q, self.n_heads, -1).transpose(1, 2)
+        K = self.bayesian_k(keys).view(B, L_kv, self.n_heads, -1).transpose(1, 2)
+        V = self.bayesian_v(values).view(B, L_kv, self.n_heads, -1).transpose(1, 2)
+        
+        # Cross attention computation
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(D // self.n_heads)
+        
+        if attn_mask is not None:
+            scores.masked_fill_(attn_mask.unsqueeze(1) == 0, -1e9)
+        
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+        
+        context = torch.matmul(attn_weights, V)
+        context = context.transpose(1, 2).contiguous().view(B, L_q, D)
+        
+        output = self.bayesian_o(context)
+        return output, attn_weights
+
+
+# =============================================================================
 # UPDATED REGISTRY WITH ALL COMPONENTS
 # =============================================================================
 
@@ -1354,6 +2089,21 @@ ATTENTION_REGISTRY.update({
     'log_sparse': LogSparseAttention,
     'prob_sparse': ProbSparseAttention,
     'cross_resolution': CrossResolutionAttention,
+    # Additional Bayesian components
+    'bayesian_multihead': BayesianMultiHeadAttention,
+    'variational': VariationalAttention,
+    'bayesian_cross': BayesianCrossAttention,
+    # AutoCorrelation components
+    'adaptive_autocorrelation_layer': AdaptiveAutoCorrelationLayer,
+    'hierarchical_autocorrelation': HierarchicalAutoCorrelation,
+    # Fourier components
+    'fourier_block': FourierBlock,
+    'fourier_cross_attention': FourierCrossAttention,
+    # Convolution and special components
+    'convolutional': ConvolutionalAttention,
+    'two_stage': TwoStageAttention,
+    'exponential_smoothing': ExponentialSmoothingAttention,
+    'multi_wavelet_cross': MultiWaveletCrossAttention,
 })
 
 # Export all components
@@ -1365,9 +2115,28 @@ __all__ = [
     'WaveletAttention',
     'BayesianAttention',
     'AdaptiveAttention',
+    'MetaLearningAdapter',
+    'AdaptiveMixture',
+    'EnhancedAutoCorrelation',
+    'CausalConvolution',
+    'TemporalConvNet',
+    'AdaptiveWaveletAttention',
+    'MultiScaleWaveletAttention',
     'LogSparseAttention',
     'ProbSparseAttention', 
     'CrossResolutionAttention',
+    # Missing components from attention_migrated.py
+    'BayesianMultiHeadAttention',
+    'VariationalAttention',
+    'BayesianCrossAttention',
+    'AdaptiveAutoCorrelationLayer',
+    'HierarchicalAutoCorrelation',
+    'FourierBlock',
+    'FourierCrossAttention',
+    'ConvolutionalAttention',
+    'TwoStageAttention',
+    'ExponentialSmoothingAttention',
+    'MultiWaveletCrossAttention',
     'ATTENTION_REGISTRY',
     'get_attention_component',
     'register_attention_components',

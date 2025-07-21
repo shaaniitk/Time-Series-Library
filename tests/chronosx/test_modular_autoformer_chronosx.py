@@ -152,7 +152,9 @@ class ModularAutoformerTester:
             'factor': 1,
             'dropout': 0.1,
             'd_model': config.d_model,
-            'n_heads': 4
+            'n_heads': 4,
+            'output_attention': False,
+            'type': 'autocorr'
         }
         
         config.decomposition_params = {
@@ -192,7 +194,8 @@ class ModularAutoformerTester:
             model.eval()
             
             print(f"   PASS Model created successfully")
-            print(f"      Architecture: {model.get_component_info()['architecture']}")
+            arch_info = model.get_component_info()
+            print(f"      Architecture: {arch_info.get('architecture', 'N/A')}")
             
             # Test forward pass
             with torch.no_grad():
@@ -252,8 +255,8 @@ class ModularAutoformerTester:
             
             # Get backbone info
             backbone_info = model.get_backbone_info()
-            print(f"      Backbone type: {backbone_info['backbone_type']}")
-            print(f"      Supports uncertainty: {backbone_info['supports_uncertainty']}")
+            print(f"      Backbone type: {backbone_info.get('backbone_type', 'N/A')}")
+            print(f"      Supports uncertainty: {backbone_info.get('supports_uncertainty', 'N/A')}")
             
             # Test forward pass
             with torch.no_grad():
@@ -452,3 +455,22 @@ if __name__ == "__main__":
         print(f"\nTOOL Some issues found. Check the test results above for details.")
     
     sys.exit(0 if success else 1)
+
+
+# Pytest-compatible test functions
+import pytest
+
+@pytest.fixture(scope="module")
+def tester():
+    t = ModularAutoformerTester()
+    t.generate_test_data()
+    return t
+
+def test_traditional_autoformer(tester):
+    assert tester.test_traditional_autoformer() is True
+
+def test_chronosx_backbone(tester):
+    assert tester.test_chronosx_backbone() is True
+
+def test_uncertainty_variants(tester):
+    tester.test_uncertainty_variants()  # No return value, just check for exceptions

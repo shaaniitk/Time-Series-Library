@@ -1,3 +1,5 @@
+
+
 """
 Concrete Embedding Implementations
 
@@ -18,6 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 class TemporalEmbedding(BaseEmbedding):
+    def embed_sequence(self, x: torch.Tensor, x_mark: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Stub for abstract method."""
+        # For test purposes, just call forward
+        return self.forward(x, temporal_features=x_mark)
+
+    def get_embedding_type(self) -> str:
+        return "temporal"
     """
     Temporal embedding with multiple time feature support
     
@@ -144,6 +153,12 @@ class TemporalEmbedding(BaseEmbedding):
 
 
 class ValueEmbedding(BaseEmbedding):
+    def embed_sequence(self, x: torch.Tensor, x_mark: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Stub for abstract method."""
+        return self.forward(x)
+
+    def get_embedding_type(self) -> str:
+        return "value"
     """
     Value-based embedding for continuous time series values
     
@@ -229,6 +244,13 @@ class ValueEmbedding(BaseEmbedding):
 
 
 class CovariateEmbedding(BaseEmbedding):
+    def embed_sequence(self, x: torch.Tensor, x_mark: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Stub for abstract method."""
+        # x: numerical, x_mark: categorical
+        return self.forward(categorical_data=x_mark, numerical_data=x)
+
+    def get_embedding_type(self) -> str:
+        return "covariate"
     """
     Covariate embedding for external features
     
@@ -338,6 +360,13 @@ class CovariateEmbedding(BaseEmbedding):
 
 
 class HybridEmbedding(BaseEmbedding):
+    def embed_sequence(self, x: torch.Tensor, x_mark: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Stub for abstract method."""
+        # x: values, x_mark: temporal features
+        return self.forward(values=x, temporal_features=x_mark)
+
+    def get_embedding_type(self) -> str:
+        return "hybrid"
     """
     Hybrid embedding that combines multiple embedding strategies
     
@@ -374,11 +403,16 @@ class HybridEmbedding(BaseEmbedding):
             self.embeddings['value'] = ValueEmbedding(value_config)
         
         if self.use_covariate:
+            cov_cfg_dict = getattr(config, 'covariate_config', {})
             covariate_config = EmbeddingConfig(
                 d_model=self.d_model,
-                dropout=config.dropout,
-                **getattr(config, 'covariate_config', {})
+                dropout=config.dropout
             )
+            # Set extra attributes if present
+            if 'categorical_features' in cov_cfg_dict:
+                setattr(covariate_config, 'categorical_features', cov_cfg_dict['categorical_features'])
+            if 'numerical_features' in cov_cfg_dict:
+                setattr(covariate_config, 'numerical_features', cov_cfg_dict['numerical_features'])
             self.embeddings['covariate'] = CovariateEmbedding(covariate_config)
         
         # Combination strategy
@@ -489,3 +523,26 @@ class HybridEmbedding(BaseEmbedding):
             })
         
         return capabilities
+
+# Unified registry for embedding components
+EMBEDDING_REGISTRY = {
+    "temporal": TemporalEmbedding,
+    "value": ValueEmbedding,
+    "covariate": CovariateEmbedding,
+    "hybrid": HybridEmbedding,
+}
+
+import inspect
+
+def get_embedding_method(name, **kwargs):
+    """
+    Factory function to get an instance of an embedding component.
+    Automatically filters parameters based on component requirements.
+    """
+    component_class = EMBEDDING_REGISTRY.get(name)
+    if component_class is None:
+        raise ValueError(f"Embedding component '{name}' not found.")
+    signature = inspect.signature(component_class.__init__)
+    valid_params = set(signature.parameters.keys()) - {'self'}
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
+    return component_class(**filtered_kwargs)
