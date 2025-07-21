@@ -19,7 +19,7 @@
 			"args": [
 				"-y",
 				"@modelcontextprotocol/server-filesystem",
-				"D:\\workspace"
+				"/Users/shantanumisra/workspace/MCP"
 			],
 			"type": "stdio"
 		},
@@ -27,7 +27,7 @@
 			"command": "uv",
 			"args": [
 				"--directory",
-				"D:\\workspace\\zen-mcp-server",
+				"Users/shantanumisra/workspace/MCP/zen-mcp-server",
 				"run",
 				"server.py"
 			],
