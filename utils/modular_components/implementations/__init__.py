@@ -134,3 +134,16 @@ try:
         logger.warning("⚠️ Some advanced integrations may not be fully functional")
 except Exception as e:
     logger.error(f"Validation check failed: {e}")
+
+
+# Migrated components
+from .attention_migrated import register_attention_components
+from .decomposition_migrated import register_decomposition_components
+from .encoder_migrated import register_encoder_components
+from .decoder_migrated import register_decoder_components
+from .sampling_migrated import register_sampling_components
+from .output_heads_migrated import register_output_heads_components
+from .losses_migrated import register_losses_components
+from .layers_migrated import register_layers_components
+from .fusion_migrated import register_fusion_components
+from .migrated_registry import migrated_registry

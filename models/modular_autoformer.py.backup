@@ -10,20 +10,12 @@ from configs.modular_components import (
     register_all_components
 )
 
-# New modular framework imports - using UNIFIED components
+# New modular framework imports
 from utils.modular_components.registry import ComponentRegistry
+from utils.modular_components.migration_framework import MigrationManager
+from utils.modular_components.factories import create_backbone
 from utils.modular_components.config_schemas import ComponentConfig, BackboneConfig
 from utils.modular_components.base_interfaces import BaseComponent, BaseLoss, BaseAttention
-
-# Import unified component registries (single source of truth)
-try:
-    from utils.modular_components.implementations.attentions_unified import ATTENTION_REGISTRY
-    from utils.modular_components.implementations.losses_unified import LOSS_REGISTRY  
-    from utils.modular_components.implementations.decomposition_unified import DECOMPOSITION_REGISTRY
-    from utils.modular_components.implementations.encoder_unified import ENCODER_REGISTRY
-except ImportError as e:
-    logger.warning(f"Unified components not available: {e}")
-    # Will fall back to minimal components
 
 # Essential imports for embedding and base functionality
 from layers.Embed import DataEmbedding_wo_pos
