@@ -52,8 +52,6 @@ def prepare_data(df, seq_len, label_len, pred_len, n_targets, n_covariates):
 
 def main():
     logger.info("--- Training EnhancedAutoformer Example ---")
-    # Add a debug breakpoint
-    # pdb.set_trace()  # Uncomment to add manual breakpoint
     
     # 1. Generate or ensure data exists
     data_path = 'examples/dummy_timeseries.csv'

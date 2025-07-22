@@ -182,7 +182,8 @@ synthetic_timeseries.csv
 .DS_Store
 
 # VS Code and Gemini configuration
-.vscode/
+.vscode/*
+!.vscode/launch.json
 .gemini/
 
 # Performance optimization - exclude from VS Code indexing
