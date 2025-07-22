@@ -177,6 +177,8 @@ synthetic_timeseries.csv
 
 # Ignore all CSV files (temporary data files)
 *.csv
+tests_legacy/
+config_legacy/
 *.zip
 *.png
 .DS_Store

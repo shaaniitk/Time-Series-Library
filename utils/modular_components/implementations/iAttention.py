@@ -694,9 +694,7 @@ def add_compute_loss_method(cls):
 # Apply compatibility patches
 for name, cls in ATTENTION_REGISTRY.items():
     ATTENTION_REGISTRY[name] = add_compute_loss_method(cls)
-
-
-logger.info("✅ ALL attention components consolidated in iAttention.py")
+    logger.info("✅ ALL attention components consolidated in iAttention.py")
     
     def get_output_dim(self) -> int:
         """Return the output dimension"""
