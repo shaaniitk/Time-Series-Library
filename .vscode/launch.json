@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Enhanced Autoformer",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/train_enhanced_autoformer.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "python": "${command:python.interpreterPath}"
+        }
+    ]
+}

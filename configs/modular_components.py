@@ -205,107 +205,20 @@ class ComponentRegistry:
         return self._metadata.get(component_type)
 
 
+from layers.processors.registry import get_processor_component
+
 class ModularAssembler:
-    """
-    "Dumb assembler" for building modular autoformers
-    
-    This implements the GCLI recommendation for a simple assembler that
-    follows structured configuration without complex logic.
-    """
-    
-    def __init__(self, registry: ComponentRegistry):
-        self.registry = registry
-        self.components: Dict[str, ModularComponent] = {}
+    def assemble(self, config: AutoformerConfig) -> ModularAutoformer:
+        # 1. Create processor component
+        processor = get_processor_component(config.processor.type, configs=config)
+
+        # 2. Create other components from configuration
+        attention = self._create_attention_component(config.attention)
+        decomp = self._create_decomposition_component(config.decomposition)
+        # The encoder and decoder are now part of the processor, so we don't create them here
         
-    def assemble_model(self, config: ModularAutoformerConfig) -> 'AssembledAutoformer':
-        """
-        Assemble a complete autoformer model from configuration
-        
-        This follows the "dumb assembler" pattern - it simply follows
-        the configuration without making decisions.
-        """
-        
-        # Create base components
-        attention = self.registry.create_component(
-            config.attention.type, 
-            config.attention,
-            d_model=config.d_model,
-            seq_len=config.seq_len
-        )
-        
-        decomposition = self.registry.create_component(
-            config.decomposition.type,
-            config.decomposition,
-            d_model=config.d_model
-        )
-        
-        encoder = self.registry.create_component(
-            config.encoder.type,
-            config.encoder,
-            attention_comp=attention,
-            decomp_comp=decomposition
-        )
-        
-        decoder = self.registry.create_component(
-            config.decoder.type,
-            config.decoder,
-            attention_comp=attention,
-            decomp_comp=decomposition
-        )
-        
-        sampling = self.registry.create_component(
-            config.sampling.type,
-            config.sampling,
-            d_model=config.d_model
-        )
-        
-        output_head = self.registry.create_component(
-            config.output_head.type,
-            config.output_head,
-            d_model=config.d_model
-        )
-        
-        loss_component = self.registry.create_component(
-            config.loss.type,
-            config.loss
-        )
-        
-        # Apply Bayesian modifiers if needed
-        components_to_modify = [encoder, decoder, output_head]
-        if config.bayesian.enabled:
-            modified_components = []
-            for comp in components_to_modify:
-                if any(layer_name in str(comp.__class__.__name__).lower() 
-                       for layer_name in config.bayesian.layers_to_convert):
-                    modified_comp = self.registry.apply_modifier(
-                        comp, 
-                        'bayesian',
-                        prior_scale=config.bayesian.prior_scale,
-                        posterior_scale_init=config.bayesian.posterior_scale_init
-                    )
-                    modified_components.append(modified_comp)
-                else:
-                    modified_components.append(comp)
-            encoder, decoder, output_head = modified_components
-        
-        # Store components
-        self.components = {
-            'attention': attention,
-            'decomposition': decomposition,
-            'encoder': encoder,
-            'decoder': decoder,
-            'sampling': sampling,
-            'output_head': output_head,
-            'loss': loss_component
-        }
-        
-        # Create assembled model
-        assembled_model = AssembledAutoformer(
-            config=config,
-            components=self.components
-        )
-        
-        return assembled_model
+        # 3. Assemble complete model
+        return ModularAutoformer(config, processor, attention, decomp, ...)
     
     def get_component_summary(self) -> Dict[str, Dict[str, Any]]:
         """Get summary of assembled components"""

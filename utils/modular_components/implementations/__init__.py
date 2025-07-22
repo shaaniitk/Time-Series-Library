@@ -68,6 +68,15 @@ except ImportError as e:
     logger.warning(f"Could not import specialized processors: {e}")
     SPECIALIZED_PROCESSORS_AVAILABLE = False
 
+try:
+    from . import decoders
+    DECODERS_AVAILABLE = True
+    logger.info("Unified decoders available")
+except ImportError as e:
+    logger.warning(f"Could not import unified decoders: {e}")
+    DECODERS_AVAILABLE = False
+
+
 # Auto-register all advanced components
 try:
     from . import register_advanced

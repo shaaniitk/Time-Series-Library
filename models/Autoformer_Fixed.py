@@ -2,12 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from layers.Embed import DataEmbedding_wo_pos
-from layers.AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
-from layers.Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLayer, series_decomp
+from utils.modular_components.implementations.decomposition_unified import get_decomposition_component
+from utils.modular_components.implementations.encoder_unified import get_encoder_component
+from utils.modular_components.implementations.decoder_migrated import get_decoder_component
+from utils.modular_components.implementations.attentions_unified import get_attention_component
+from utils.modular_components.config_schemas import ComponentConfig
 from layers.Normalization import get_norm_layer
-import math
 from utils.logger import logger
-
 
 class Model(nn.Module):
     def __init__(self, configs):
@@ -19,37 +20,52 @@ class Model(nn.Module):
         self.label_len = configs.label_len
         self.pred_len = configs.pred_len
         
-        # Fix: Ensure odd kernel size for stability
         kernel_size = getattr(configs, 'moving_avg', 25)
-        kernel_size = kernel_size + (1 - kernel_size % 2)
-        self.decomp = series_decomp(kernel_size)
+        decomp_config = ComponentConfig(component_name='stable_decomp', custom_params={'kernel_size': kernel_size})
+        self.decomp = get_decomposition_component('stable_decomp', decomp_config)
 
         self.enc_embedding = DataEmbedding_wo_pos(configs.enc_in, configs.d_model, configs.embed, configs.freq, configs.dropout)
         
-        # Add gradient scaling
         self.gradient_scale = nn.Parameter(torch.ones(1) * 0.1)
         
-        self.encoder = Encoder([
-            EncoderLayer(
-                AutoCorrelationLayer(
-                    AutoCorrelation(False, configs.factor, attention_dropout=configs.dropout, output_attention=False),
-                    configs.d_model, configs.n_heads),
-                configs.d_model, configs.d_ff, moving_avg=kernel_size,
-                dropout=configs.dropout, activation=configs.activation
-            ) for l in range(configs.e_layers)
-        ], norm_layer=get_norm_layer(configs.norm_type, configs.d_model))
+        attention_config = ComponentConfig(
+            component_name='autocorrelation', 
+            d_model=configs.d_model, 
+            custom_params={'n_heads': configs.n_heads, 'factor': configs.factor, 'attention_dropout': configs.dropout}
+        )
+        autocorrelation = get_attention_component('autocorrelation_layer', attention_config)
+
+        encoder_config = {
+            'e_layers': configs.e_layers,
+            'd_model': configs.d_model,
+            'n_heads': configs.n_heads,
+            'd_ff': configs.d_ff,
+            'dropout': configs.dropout,
+            'activation': configs.activation,
+            'attention_comp': autocorrelation,
+            'decomp_comp': self.decomp,
+            'norm_layer': get_norm_layer(configs.norm_type, configs.d_model)
+        }
+        self.encoder = get_encoder_component('standard', **encoder_config)
 
         if self.task_name in ['long_term_forecast', 'short_term_forecast']:
             self.dec_embedding = DataEmbedding_wo_pos(configs.dec_in, configs.d_model, configs.embed, configs.freq, configs.dropout)
-            self.decoder = Decoder([
-                DecoderLayer(
-                    AutoCorrelationLayer(AutoCorrelation(True, configs.factor, attention_dropout=configs.dropout, output_attention=False), configs.d_model, configs.n_heads),
-                    AutoCorrelationLayer(AutoCorrelation(False, configs.factor, attention_dropout=configs.dropout, output_attention=False), configs.d_model, configs.n_heads),
-                    configs.d_model, configs.c_out, configs.d_ff, moving_avg=kernel_size,
-                    dropout=configs.dropout, activation=configs.activation,
-                ) for l in range(configs.d_layers)
-            ], norm_layer=get_norm_layer(configs.norm_type, configs.d_model),
-               projection=nn.Linear(configs.d_model, configs.c_out, bias=True))
+            
+            decoder_config = {
+                'd_layers': configs.d_layers,
+                'd_model': configs.d_model,
+                'c_out': configs.c_out,
+                'n_heads': configs.n_heads,
+                'd_ff': configs.d_ff,
+                'dropout': configs.dropout,
+                'activation': configs.activation,
+                'self_attention_comp': get_attention_component('autocorrelation_layer', attention_config),
+                'cross_attention_comp': get_attention_component('autocorrelation_layer', attention_config),
+                'decomp_comp': self.decomp,
+                'norm_layer': get_norm_layer(configs.norm_type, configs.d_model),
+                'projection': nn.Linear(configs.d_model, configs.c_out, bias=True)
+            }
+            self.decoder = get_decoder_component('standard', **decoder_config)
         
         if self.task_name == 'imputation':
             self.projection = nn.Linear(configs.d_model, configs.c_out, bias=True)
@@ -67,7 +83,6 @@ class Model(nn.Module):
                 raise ValueError(f"Missing config: {attr}")
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
-        # Fix: Add numerical stability
         mean = torch.mean(x_enc, dim=1, keepdim=True).repeat(1, self.pred_len, 1)
         zeros = torch.zeros([x_dec.shape[0], self.pred_len, x_dec.shape[2]], device=x_enc.device)
         
@@ -78,7 +93,6 @@ class Model(nn.Module):
         enc_out = self.enc_embedding(x_enc, x_mark_enc)
         enc_out, _ = self.encoder(enc_out, attn_mask=None)
         
-        # Apply gradient scaling
         enc_out = enc_out * self.gradient_scale
 
         dec_out = self.dec_embedding(seasonal_init, x_mark_dec)
@@ -87,8 +101,7 @@ class Model(nn.Module):
         return trend_part + seasonal_part
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
-        # Add input validation
-        if x_enc.size(-1) != getattr(self, 'enc_in', x_enc.size(-1)):
+        if hasattr(self, 'enc_in') and x_enc.size(-1) != self.enc_in:
             logger.warning(f"Input dimension mismatch detected")
         
         if self.task_name in ['long_term_forecast', 'short_term_forecast']:

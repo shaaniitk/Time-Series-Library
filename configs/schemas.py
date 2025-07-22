@@ -80,10 +80,16 @@ class ComponentType(str, Enum):
     STANDARD_HEAD = "standard"
     QUANTILE = "quantile"
     BAYESIAN_HEAD = "bayesian_head"
+
+    # Meta-components
+    MIXTURE_OF_EXPERTS = "mixture_of_experts"
     
     # Loss components
     MSE = "mse"
     MAE = "mae"
+
+    # Processor components
+    PROCESSOR = "processor"
     QUANTILE_LOSS = "quantile"
     BAYESIAN_MSE = "bayesian"
     BAYESIAN_QUANTILE = "bayesian_quantile"
@@ -196,6 +202,14 @@ class OutputHeadConfig(BaseModel):
 class LossConfig(BaseModel):
     """Configuration for loss functions"""
     type: ComponentType
+
+
+class ProcessorConfig(BaseModel):
+    """Configuration for processor components"""
+    type: str  # The name of the processor, e.g., 'autoformer', 'dlinear'
+    # Processor-specific configs can be added here if needed
+    # For now, we'll pass the main config to the processor
+
     
     # Quantile-specific
     quantiles: Optional[List[float]] = None
@@ -245,6 +259,7 @@ class ModularAutoformerConfig(BaseModel):
     d_model: int = 512
     
     # Component configurations
+    processor: ProcessorConfig
     attention: AttentionConfig
     decomposition: DecompositionConfig
     encoder: EncoderConfig

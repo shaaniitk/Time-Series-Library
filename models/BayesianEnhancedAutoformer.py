@@ -1,11 +1,5 @@
-# BayesianEnhancedAutoformer.py
-
 """
 Bayesian Enhanced Autoformer for Uncertainty Quantification
-
-This module implements a Bayesian version of the Enhanced Autoformer that provides
-uncertainty estimates along with predictions. It integrates with any loss function
-including quantile loss to provide certainty measures for specific quantile ranges.
 """
 
 import torch
@@ -13,34 +7,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
-
-from models.EnhancedAutoformer import EnhancedAutoformer
-from layers.BayesianLayers import BayesianLinear, BayesianConv1d, convert_to_bayesian, collect_kl_divergence, DropoutSampling
-from layers.Embed import DataEmbedding_wo_pos
-from utils.logger import logger
 from argparse import Namespace
-from utils.losses import PinballLoss # More direct import for type checking
+
+from .EnhancedAutoformer import EnhancedAutoformer
+from layers.BayesianLayers import convert_to_bayesian, collect_kl_divergence, DropoutSampling
+from utils.logger import logger
+from utils.losses import PinballLoss
 
 class BayesianEnhancedAutoformer(nn.Module):
     """
     Bayesian version of Enhanced Autoformer with uncertainty quantification.
-    
-    Key Features:
-    - Provides prediction uncertainty estimates
-    - Works with any loss function (MSE, MAE, Quantile, etc.)
-    - Separates aleatoric and epistemic uncertainty
-    - Supports multiple uncertainty estimation methods
     """
     
-   
-        
-    def _setup_dropout_layers(self):
-        """Add Monte Carlo dropout layers for uncertainty estimation"""
-        logger.info("Setting up Monte Carlo Dropout layers")
-        self.mc_dropout1 = DropoutSampling(p=0.1)
-        self.mc_dropout2 = DropoutSampling(p=0.15)
-        self.mc_dropout3 = DropoutSampling(p=0.1)
-
     def __init__(self, configs, uncertainty_method='bayesian', n_samples=50, 
                  bayesian_layers=['projection'], kl_weight=1e-5, 
                  use_quantiles=None,
@@ -80,10 +58,8 @@ class BayesianEnhancedAutoformer(nn.Module):
         self.original_c_out = getattr(configs, 'c_out_evaluation', configs.c_out)
         
         base_model_configs_dict = vars(configs).copy()
-        if 'quantile_levels' in base_model_configs_dict: # Remove quantile_levels from base model configs
+        if 'quantile_levels' in base_model_configs_dict:
             del base_model_configs_dict['quantile_levels']
-        # The base model should always be configured for point prediction.
-        # Its output dimension (c_out) should be the number of base target variables.
         base_model_configs_dict['c_out'] = self.original_c_out
        
         base_model_configs_ns = Namespace(**base_model_configs_dict)
@@ -97,13 +73,17 @@ class BayesianEnhancedAutoformer(nn.Module):
         
         if uncertainty_method == 'bayesian':
             logger.info(f"Converting layers to Bayesian: {bayesian_layers}")
-            # This is the safe way to convert layers.
             self.bayesian_layers_list = convert_to_bayesian(self.base_model, bayesian_layers)
             logger.info(f"Converted {len(self.bayesian_layers_list)} layers to Bayesian.")
         elif uncertainty_method == 'dropout':
             self._setup_dropout_layers()
 
-        
+    def _setup_dropout_layers(self):
+        logger.info("Setting up Monte Carlo Dropout layers")
+        self.mc_dropout1 = DropoutSampling(p=0.1)
+        self.mc_dropout2 = DropoutSampling(p=0.15)
+        self.mc_dropout3 = DropoutSampling(p=0.1)
+
     def _single_forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         if self.uncertainty_method == 'dropout':
             x_enc = self.mc_dropout1(x_enc)
@@ -121,8 +101,6 @@ class BayesianEnhancedAutoformer(nn.Module):
     def _bayesian_forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, detailed=False):
         logger.debug(f"Computing Bayesian uncertainty with {self.n_samples} samples")
         predictions = []
-        # When training, enable gradients for all samples to update distributions.
-        # When evaluating, only the first sample needs gradients for the prediction.
         grad_context = torch.enable_grad if self.training else torch.no_grad
 
         for i in range(self.n_samples):
@@ -179,7 +157,7 @@ class BayesianEnhancedAutoformer(nn.Module):
         if not current_quantiles_list:
             return {}
         n_quantiles = len(self.quantiles)
-        batch_size, seq_len, total_features = pred_stack.shape[1], pred_stack.shape[2], pred_stack.shape[3]
+        total_features = pred_stack.shape[3]
         if total_features % n_quantiles != 0:
             raise ValueError(f"Total features ({total_features}) must be divisible by the number of quantiles ({n_quantiles})")
         features_per_quantile = total_features // n_quantiles
@@ -195,14 +173,9 @@ class BayesianEnhancedAutoformer(nn.Module):
                 alpha = 1 - conf
                 q_lower = torch.quantile(q_predictions, alpha/2, dim=0)
                 q_upper = torch.quantile(q_predictions, 1-alpha/2, dim=0)
-                q_intervals[f'{int(conf*100)}%'] = {
-                    'lower': q_lower,
-                    'upper': q_upper,
-                    'width': q_upper - q_lower
-                }
+                q_intervals[f'{int(conf*100)}%'] = {'lower': q_lower, 'upper': q_upper, 'width': q_upper - q_lower}
             quantile_results[f'quantile_{q_level}'] = {
-                'prediction': q_mean,
-                'uncertainty': q_std,
+                'prediction': q_mean, 'uncertainty': q_std,
                 'confidence_intervals': q_intervals,
                 'certainty_score': self._compute_quantile_certainty(q_predictions, q_level)
             }
@@ -212,52 +185,23 @@ class BayesianEnhancedAutoformer(nn.Module):
         mean_pred = torch.mean(q_predictions, dim=0)
         std_pred = torch.std(q_predictions, dim=0)
         cv = std_pred / (torch.abs(mean_pred) + 1e-8)
-        certainty = 1.0 / (1.0 + cv)
-        return certainty
+        return 1.0 / (1.0 + cv)
     
     def get_kl_loss(self, max_kl_value=1e6):
         if self.uncertainty_method != 'bayesian':
             return 0.0
-        
         kl_div = collect_kl_divergence(self)
-        
-        # Clip KL divergence to prevent instability
         kl_div_clipped = torch.clamp(kl_div, max=max_kl_value)
-        
         if kl_div > kl_div_clipped:
             logger.warning(f"Clipped KL divergence from {kl_div:.4f} to {kl_div_clipped:.4f}")
-
         return kl_div_clipped * self.kl_weight_param
 
     def compute_loss(self, predictions, targets, base_criterion, return_components=False):
-        """
-        Computes the total loss for the Bayesian model, combining data loss and KL divergence.
-        
-        Args:
-            predictions: Model outputs.
-            targets: Ground truth values.
-            base_criterion: The base loss function (e.g., MSE, PinballLoss).
-            return_components: If True, returns a dictionary of loss components.
-            
-        Returns:
-            The total loss, or a dictionary of loss components.
-        """
-        # 1. Data Loss
         data_loss = base_criterion(predictions, targets)
-
-        # 2. KL Divergence Loss (already weighted)
         kl_loss_weighted = self.get_kl_loss()
-
-        # 3. Total Loss
         total_loss = data_loss + kl_loss_weighted
-
         if return_components:
-            return {
-                'data_loss': data_loss,
-                'kl_contribution': kl_loss_weighted,
-                'total_loss': total_loss,
-            }
-        
+            return {'data_loss': data_loss, 'kl_contribution': kl_loss_weighted, 'total_loss': total_loss}
         return total_loss
 
     def configure_optimizer_loss(self, base_criterion, verbose=False):
@@ -265,9 +209,7 @@ class BayesianEnhancedAutoformer(nn.Module):
         self._loss_history = []
         
         def enhanced_bayesian_loss(predictions, targets):
-            loss_components = self.compute_loss( # type: ignore
-                predictions, targets, base_criterion, return_components=True
-            )
+            loss_components = self.compute_loss(predictions, targets, base_criterion, return_components=True)
             if self._verbose_loss:
                 loss_history_entry = {k: v.item() for k, v in loss_components.items()}
                 self._loss_history.append(loss_history_entry)
@@ -282,5 +224,4 @@ class BayesianEnhancedAutoformer(nn.Module):
             
         return enhanced_bayesian_loss
 
-# Alias for compatibility with experiment framework
 Model = BayesianEnhancedAutoformer
