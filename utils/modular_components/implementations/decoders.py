@@ -28,7 +28,12 @@ class StandardDecoder(BaseDecoder):
             projection=projection
         )
     def forward(self, x, cross, x_mask=None, cross_mask=None, trend=None):
-        return self.decoder(x, cross, x_mask, cross_mask, trend)
+        out = self.decoder(x, cross, x_mask, cross_mask, trend)
+        # Ensure output is always a tuple (x, trend)
+        if isinstance(out, tuple) and len(out) == 2:
+            return out
+        else:
+            return out, None
 
 class EnhancedDecoder(BaseDecoder):
     def __init__(self, d_layers, d_model, c_out, n_heads, d_ff, dropout, activation, self_attention_comp, cross_attention_comp, decomp_comp, norm_layer=None, projection=None):

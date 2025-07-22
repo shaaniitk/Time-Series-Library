@@ -205,10 +205,12 @@ class ComponentRegistry:
         return self._metadata.get(component_type)
 
 
-from layers.processors.registry import get_processor_component
+
+from utils.modular_components.implementations.processors import get_processor_component
+from models.modular_autoformer import ModularAutoformer
 
 class ModularAssembler:
-    def assemble(self, config: AutoformerConfig) -> ModularAutoformer:
+    def assemble(self, config: ModularAutoformerConfig) -> ModularAutoformer:
         # 1. Create processor component
         processor = get_processor_component(config.processor.type, configs=config)
 

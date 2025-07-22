@@ -22,8 +22,13 @@ from dataclasses import dataclass
 from ..base_interfaces import BaseLoss
 from .componentHelpers import BayesianLinear, WaveletDecomposition, TemporalBlock, Chomp1d, FourierModeSelector, ComplexMultiply1D
 
+
 logger = logging.getLogger(__name__)
 
+# ===============================================================================
+# COMPREHENSIVE LOSS REGISTRY (moved to top for safe registration)
+# ===============================================================================
+LOSS_REGISTRY = {}
 
 # ===============================================================================
 # CONFIGURATION CLASSES
@@ -33,71 +38,102 @@ logger = logging.getLogger(__name__)
 class LossConfig:
     """Base configuration for loss functions"""
     reduction: str = 'mean'  # 'mean', 'sum', 'none'
-    weight: Optional[torch.Tensor] = None
+    weight: Optional[Any] = None
     ignore_index: int = -100
+    def __init__(self, reduction='mean', weight=None, ignore_index=-100):
+        self.reduction = reduction
+        self.weight = weight
+        self.ignore_index = ignore_index
 
 
 @dataclass
 class BayesianLossConfig(LossConfig):
     """Configuration for Bayesian loss functions with KL divergence"""
-    kl_weight: float = 1e-5
-    uncertainty_weight: float = 0.1
-    base_loss_type: str = 'mse'
-    calibration_weight: float = 0.0
+    def __init__(self, reduction='mean', weight=None, ignore_index=-100, kl_weight=1e-5, uncertainty_weight=0.1, base_loss_type='mse', calibration_weight=0.0):
+        super().__init__(reduction, weight, ignore_index)
+        self.kl_weight = kl_weight if kl_weight is not None else 1e-5
+        self.uncertainty_weight = uncertainty_weight if uncertainty_weight is not None else 0.1
+        self.base_loss_type = base_loss_type if base_loss_type is not None else 'mse'
+        self.calibration_weight = calibration_weight if calibration_weight is not None else 0.0
 
 
 @dataclass  
 class AdaptiveLossConfig(LossConfig):
     """Configuration for adaptive autoformer loss"""
-    base_loss: str = 'mse'
-    moving_avg: int = 25
-    initial_trend_weight: float = 1.0
-    initial_seasonal_weight: float = 1.0
-    adaptive_weights: bool = True
+    def __init__(self, reduction='mean', weight=None, ignore_index=-100, base_loss='mse', moving_avg=25, initial_trend_weight=1.0, initial_seasonal_weight=1.0, adaptive_weights=True, mse_weight=1.0, mae_weight=0.5, autocorr_weight=0.3, frequency_weight=0.2, trend_weight=0.1):
+        super().__init__(reduction, weight, ignore_index)
+        self.base_loss = base_loss if base_loss is not None else 'mse'
+        self.moving_avg = moving_avg if moving_avg is not None else 25
+        self.initial_trend_weight = initial_trend_weight if initial_trend_weight is not None else 1.0
+        self.initial_seasonal_weight = initial_seasonal_weight if initial_seasonal_weight is not None else 1.0
+        self.adaptive_weights = adaptive_weights if adaptive_weights is not None else True
+        self.mse_weight = mse_weight if mse_weight is not None else 1.0
+        self.mae_weight = mae_weight if mae_weight is not None else 0.5
+        self.autocorr_weight = autocorr_weight if autocorr_weight is not None else 0.3
+        self.frequency_weight = frequency_weight if frequency_weight is not None else 0.2
+        self.trend_weight = trend_weight if trend_weight is not None else 0.1
 
 
 @dataclass
 class FrequencyLossConfig(LossConfig):
     """Configuration for frequency-aware loss"""
-    freq_weight: float = 0.1
-    base_loss: str = 'mse'
+    def __init__(self, reduction='mean', weight=None, ignore_index=-100, freq_weight=0.1, base_loss='mse', time_weight=1.0, high_freq_penalty=0.1):
+        super().__init__(reduction, weight, ignore_index)
+        self.freq_weight = freq_weight if freq_weight is not None else 0.1
+        self.base_loss = base_loss if base_loss is not None else 'mse'
+        self.time_weight = time_weight if time_weight is not None else 1.0
+        self.high_freq_penalty = high_freq_penalty if high_freq_penalty is not None else 0.1
 
 
 @dataclass
 class StructuralLossConfig(LossConfig):
     """Configuration for patch-wise structural loss"""
-    pred_len: int = 96
-    mse_weight: float = 0.5
-    w_corr: float = 1.0
-    w_var: float = 1.0  
-    w_mean: float = 1.0
-    k_dominant_freqs: int = 3
-    min_patch_len: int = 5
+    def __init__(self, reduction='mean', weight=None, ignore_index=-100, pred_len=96, mse_weight=0.5, w_corr=1.0, w_var=1.0, w_mean=1.0, k_dominant_freqs=3, min_patch_len=5, trend_weight=1.0, seasonal_weight=1.0, residual_weight=1.0, patch_size=16, stride=8, structural_weight=1.0, patch_weight=1.0):
+        super().__init__(reduction, weight, ignore_index)
+        self.pred_len = pred_len if pred_len is not None else 96
+        self.mse_weight = mse_weight if mse_weight is not None else 0.5
+        self.w_corr = w_corr if w_corr is not None else 1.0
+        self.w_var = w_var if w_var is not None else 1.0
+        self.w_mean = w_mean if w_mean is not None else 1.0
+        self.k_dominant_freqs = k_dominant_freqs if k_dominant_freqs is not None else 3
+        self.min_patch_len = min_patch_len if min_patch_len is not None else 5
+        self.trend_weight = trend_weight if trend_weight is not None else 1.0
+        self.seasonal_weight = seasonal_weight if seasonal_weight is not None else 1.0
+        self.residual_weight = residual_weight if residual_weight is not None else 1.0
+        self.patch_size = patch_size if patch_size is not None else 16
+        self.stride = stride if stride is not None else 8
+        self.structural_weight = structural_weight if structural_weight is not None else 1.0
+        self.patch_weight = patch_weight if patch_weight is not None else 1.0
 
 
 @dataclass
 class QuantileConfig(LossConfig):
     """Configuration for quantile loss"""
-    quantiles: List[float] = None
-    
-    def __post_init__(self):
-        if self.quantiles is None:
-            self.quantiles = [0.1, 0.5, 0.9]
+    def __init__(self, reduction='mean', weight=None, ignore_index=-100, quantiles=None, kl_weight=1e-5, uncertainty_weight=0.1):
+        super().__init__(reduction, weight, ignore_index)
+        self.quantiles = [0.1, 0.5, 0.9] if quantiles is None else quantiles
+        self.kl_weight = kl_weight if kl_weight is not None else 1e-5
+        self.uncertainty_weight = uncertainty_weight if uncertainty_weight is not None else 0.1
 
 
 @dataclass
 class FocalLossConfig(LossConfig):
     """Configuration for focal loss"""
-    alpha: float = 1.0
-    gamma: float = 2.0
-    num_classes: Optional[int] = None
+    def __init__(self, reduction='mean', weight=None, ignore_index=-100, alpha=1.0, gamma=2.0, num_classes=None, smooth=1e-8):
+        super().__init__(reduction, weight, ignore_index)
+        self.alpha = alpha if alpha is not None else 1.0
+        self.gamma = gamma if gamma is not None else 2.0
+        self.num_classes = num_classes
+        self.smooth = smooth if smooth is not None else 1e-8
 
 
 @dataclass
 class DTWConfig(LossConfig):
     """Configuration for DTW loss"""
-    gamma: float = 1.0
-    normalize: bool = True
+    def __init__(self, reduction='mean', weight=None, ignore_index=-100, gamma=1.0, normalize=True):
+        super().__init__(reduction, weight, ignore_index)
+        self.gamma = gamma if gamma is not None else 1.0
+        self.normalize = normalize if normalize is not None else True
 
 
 # ===============================================================================
@@ -136,15 +172,12 @@ class SeriesDecomposition(nn.Module):
 
 class MSELoss(BaseLoss):
     """Mean Squared Error loss for regression tasks"""
-    
     def __init__(self, config: Union[LossConfig, Dict[str, Any]]):
         super().__init__(config)
-        
         if isinstance(config, dict):
             self.reduction = config.get('reduction', 'mean')
         else:
-            self.reduction = config.reduction
-            
+            self.reduction = getattr(config, 'reduction', 'mean')
         self.mse_loss = nn.MSELoss(reduction=self.reduction)
         logger.info(f"MSELoss initialized with reduction={self.reduction}")
     
@@ -166,19 +199,46 @@ class MSELoss(BaseLoss):
             'reduction': self.reduction,
             'differentiable': True
         }
+    
+    def get_loss_info(self) -> dict:
+        """Return info about the loss type and config."""
+        return {
+            'type': 'mse',
+            'reduction': self.reduction,
+            'differentiable': True
+        }
+
+# Example: Adding a completely new component
+@dataclass
+class CustomLossConfig(LossConfig):
+    custom_param: float = 0.5
+
+class CustomLoss(BaseLoss):
+    def __init__(self, config: Union[CustomLossConfig, Dict[str, Any]]):
+        super().__init__(config)
+        if isinstance(config, dict):
+            self.custom_param = config.get('custom_param', 0.5)
+        else:
+            self.custom_param = config.custom_param
+    def compute_loss(self, pred, true):
+        # Use self.custom_param safely
+        return (pred - true).abs().mean() * self.custom_param
+    def forward(self, pred, true):
+        return self.compute_loss(pred, true)
+    def get_loss_type(self) -> str:
+        return "custom"
+
+LOSS_REGISTRY['custom'] = CustomLoss
 
 
 class MAELoss(BaseLoss):
     """Mean Absolute Error loss for regression tasks"""
-    
     def __init__(self, config: Union[LossConfig, Dict[str, Any]]):
         super().__init__(config)
-        
         if isinstance(config, dict):
             self.reduction = config.get('reduction', 'mean')
         else:
-            self.reduction = config.reduction
-            
+            self.reduction = getattr(config, 'reduction', 'mean')
         self.mae_loss = nn.L1Loss(reduction=self.reduction)
         logger.info(f"MAELoss initialized with reduction={self.reduction}")
     
@@ -205,17 +265,14 @@ class MAELoss(BaseLoss):
 
 class HuberLoss(BaseLoss):
     """Huber loss for robust regression"""
-    
     def __init__(self, config: Union[LossConfig, Dict[str, Any]]):
         super().__init__(config)
-        
         if isinstance(config, dict):
             self.reduction = config.get('reduction', 'mean')
             self.delta = config.get('delta', 1.0)
         else:
-            self.reduction = config.reduction
+            self.reduction = getattr(config, 'reduction', 'mean')
             self.delta = getattr(config, 'delta', 1.0)
-            
         logger.info(f"HuberLoss initialized with delta={self.delta}")
     
     def compute_loss(self, pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
@@ -456,42 +513,27 @@ class BayesianLoss(BaseLoss):
         """Compute base loss - implements abstract method"""
         return self.base_loss_fn(pred, true)
     
-    def forward(self, model: Optional[nn.Module], predictions: Union[torch.Tensor, Dict[str, torch.Tensor]], 
-                targets: torch.Tensor) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Compute Bayesian loss with KL divergence"""
-        
+    def forward(self, predictions: Union[torch.Tensor, Dict[str, torch.Tensor]], targets: torch.Tensor, model: Optional[nn.Module] = None) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        """Compute Bayesian loss with KL divergence. Accepts predictions, targets, and optional model."""
         if isinstance(predictions, dict):
-            pred = predictions['prediction']
+            pred = predictions.get('prediction', predictions)
             uncertainty = predictions.get('uncertainty', None)
         else:
             pred = predictions
             uncertainty = None
-        
-        # Base loss
         base_loss = self.base_loss_fn(pred, targets)
-        
-        # KL divergence
         kl_loss = 0.0
         if model is not None:
             if hasattr(model, 'kl_divergence'):
                 kl_loss = model.kl_divergence()
             elif hasattr(model, 'get_kl_loss'):
                 kl_loss = model.get_kl_loss()
-        
-        # Uncertainty loss
         uncertainty_loss = 0.0
         if uncertainty is not None:
             pred_error = torch.abs(pred - targets)
             uncertainty_loss = self.base_loss_fn(uncertainty, pred_error.detach())
-        
         total_loss = base_loss + self.kl_weight * kl_loss + self.uncertainty_weight * uncertainty_loss
-        
-        return {
-            'total_loss': total_loss,
-            'base_loss': base_loss,
-            'kl_loss': kl_loss,
-            'uncertainty_loss': uncertainty_loss
-        }
+        return total_loss
     
     def get_loss_type(self) -> str:
         return f"bayesian_{self.base_loss_type}"# ===============================================================================
@@ -519,16 +561,26 @@ class BayesianQuantileLoss(BaseLoss):
         logger.info(f"BayesianQuantileLoss initialized with quantiles: {self.quantiles.tolist()}")
     
     def compute_loss(self, pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-        """Compute quantile loss - implements abstract method"""
-        # pred should be of shape [batch_size, seq_len, num_quantiles]
-        errors = true.unsqueeze(-1) - pred
+        """Compute quantile loss - implements abstract method. Handles 1D, 2D, 3D input shapes."""
+        # pred: [batch, num_quantiles] or [batch, seq_len, num_quantiles] or [batch, seq_len]
+        # true: [batch] or [batch, seq_len]
+        # Broadcast true to match pred's quantile dimension
+        if pred.dim() == 2 and true.dim() == 1:
+            true = true.unsqueeze(-1).expand(-1, pred.size(1))
+        elif pred.dim() == 3 and true.dim() == 2:
+            true = true.unsqueeze(-1).expand(-1, -1, pred.size(2))
+        elif pred.dim() == 1:
+            pred = pred.unsqueeze(-1)
+            true = true.unsqueeze(-1)
+        errors = true - pred
         quantiles = self.quantiles.to(pred.device)
-        
+        # Broadcast quantiles to match errors shape
+        while quantiles.dim() < errors.dim():
+            quantiles = quantiles.unsqueeze(0)
         losses = torch.maximum(
             quantiles * errors, 
             (quantiles - 1) * errors
         )
-        
         if self.reduction == 'mean':
             return losses.mean()
         elif self.reduction == 'sum':
@@ -581,15 +633,23 @@ class QuantileLoss(BaseLoss):
         logger.info(f"QuantileLoss initialized with quantiles: {self.quantiles.tolist()}")
     
     def compute_loss(self, pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-        """Compute quantile loss - implements abstract method"""
-        errors = true.unsqueeze(-1) - pred
+        """Compute quantile loss - implements abstract method. Handles 1D, 2D, 3D input shapes."""
+        # Broadcast true to match pred's quantile dimension
+        if pred.dim() == 2 and true.dim() == 1:
+            true = true.unsqueeze(-1).expand(-1, pred.size(1))
+        elif pred.dim() == 3 and true.dim() == 2:
+            true = true.unsqueeze(-1).expand(-1, -1, pred.size(2))
+        elif pred.dim() == 1:
+            pred = pred.unsqueeze(-1)
+            true = true.unsqueeze(-1)
+        errors = true - pred
         quantiles = self.quantiles.to(pred.device)
-        
+        while quantiles.dim() < errors.dim():
+            quantiles = quantiles.unsqueeze(0)
         losses = torch.maximum(
             quantiles * errors, 
             (quantiles - 1) * errors
         )
-        
         if self.reduction == 'mean':
             return losses.mean()
         elif self.reduction == 'sum':
@@ -1174,24 +1234,23 @@ class PSLoss(BaseLoss):
         return total_loss
     
     def _compute_patch_loss(self, pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-        """Compute patch-based loss"""
+        """Compute patch-based loss, robust to input shape."""
+        # Accept [batch, seq_len, features] or [batch, seq_len]
+        if pred.dim() == 2:
+            pred = pred.unsqueeze(-1)
+            true = true.unsqueeze(-1)
         batch_size, seq_len, features = pred.shape
-        
         if seq_len < self.patch_size:
             return F.mse_loss(pred, true, reduction=self.reduction)
-        
         total_patch_loss = 0.0
         num_patches = 0
-        
         for start in range(0, seq_len - self.patch_size + 1, self.stride):
             end = start + self.patch_size
             pred_patch = pred[:, start:end, :]
             true_patch = true[:, start:end, :]
-            
             patch_loss = F.mse_loss(pred_patch, true_patch, reduction=self.reduction)
             total_patch_loss += patch_loss
             num_patches += 1
-        
         return total_patch_loss / max(num_patches, 1)
     
     def _compute_structural_loss(self, pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:

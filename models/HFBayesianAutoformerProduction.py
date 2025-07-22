@@ -12,7 +12,7 @@ from argparse import Namespace
 from .HFEnhancedAutoformer import HFEnhancedAutoformer
 from layers.BayesianLayers import BayesianLinear, convert_to_bayesian, collect_kl_divergence
 from utils.modular_components.factories import create_loss
-from utils.modular_components.implementations.losses import LossConfig, BayesianLossConfig
+from utils.modular_components.implementations.Losses import LossConfig, BayesianLossConfig
 
 logger = logging.getLogger(__name__)
 

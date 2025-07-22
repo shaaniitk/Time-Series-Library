@@ -6,7 +6,7 @@ import torch.nn as nn
 from typing import Optional
 
 # Import all required models
-from ....models import (
+from models import (
     Autoformer,
     DLinear,
     Transformer,
@@ -20,9 +20,9 @@ from ....models import (
 )
 
 # Import the new base interface and config schema
-from ..base_interfaces import BaseProcessor as NewBaseProcessor
-from ..config_schemas import ComponentConfig, safe_config_from_dict
-from ....utils.logger import logger
+from utils.modular_components.base_interfaces import BaseProcessor as NewBaseProcessor
+from utils.modular_components.config_schemas import ComponentConfig, safe_config_from_dict
+from utils.logger import logger
 
 
 class BaseProcessor(NewBaseProcessor):
