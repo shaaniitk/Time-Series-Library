@@ -253,11 +253,17 @@ class Autoformer_Decoder(nn.Module):
         logger.debug("Autoformer_Decoder forward")
         for layer in self.layers:
             x, residual_trend = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
-            trend = trend + residual_trend
+            if trend is None:
+                trend = residual_trend
+            else:
+                trend = trend + residual_trend
 
         if self.norm is not None:
             x = self.norm(x)
 
         if self.projection is not None:
             x = self.projection(x)
+        # Always return a tuple (x, trend), even if trend is None
+        if isinstance(x, tuple) and len(x) == 2:
+            return x
         return x, trend

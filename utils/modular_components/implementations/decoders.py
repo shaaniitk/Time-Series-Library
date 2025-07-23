@@ -29,9 +29,11 @@ class StandardDecoder(BaseDecoder):
         )
     def forward(self, x, cross, x_mask=None, cross_mask=None, trend=None):
         out = self.decoder(x, cross, x_mask, cross_mask, trend)
-        # Ensure output is always a tuple (x, trend)
+        # Always return a tuple (x, trend)
         if isinstance(out, tuple) and len(out) == 2:
             return out
+        elif isinstance(out, tuple) and len(out) == 1:
+            return out[0], None
         else:
             return out, None
 
@@ -43,8 +45,17 @@ class EnhancedDecoder(BaseDecoder):
         self.projection = projection
     def forward(self, x, cross, x_mask=None, cross_mask=None, trend=None):
         for layer in self.layers:
-            x, residual_trend = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
-            trend = trend + residual_trend
+            out = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
+            if isinstance(out, tuple) and len(out) == 2:
+                x, residual_trend = out
+            elif isinstance(out, tuple) and len(out) == 1:
+                x, residual_trend = out[0], None
+            else:
+                x, residual_trend = out, None
+            if trend is None:
+                trend = residual_trend
+            else:
+                trend = trend + residual_trend if residual_trend is not None else trend
         if self.norm is not None:
             x = self.norm(x)
         if self.projection is not None:
@@ -59,8 +70,17 @@ class StableDecoder(BaseDecoder):
         self.projection = projection
     def forward(self, x, cross, x_mask=None, cross_mask=None, trend=None):
         for layer in self.decoder:
-            x, residual_trend = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
-            trend = trend + residual_trend
+            out = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
+            if isinstance(out, tuple) and len(out) == 2:
+                x, residual_trend = out
+            elif isinstance(out, tuple) and len(out) == 1:
+                x, residual_trend = out[0], None
+            else:
+                x, residual_trend = out, None
+            if trend is None:
+                trend = residual_trend
+            else:
+                trend = trend + residual_trend if residual_trend is not None else trend
         if self.norm is not None:
             x = self.norm(x)
         if self.projection is not None:

@@ -5,7 +5,7 @@ from typing import Union, Dict, Any
 
 # GCLI Structured Configuration System
 from configs.schemas import ModularAutoformerConfig
-from utils.modular_components.implementations.processors import get_processor_component
+from utils.modular_components.implementations.processorss import get_processor_component
 
 # Import unified base framework
 from models.base_forecaster import BaseTimeSeriesForecaster, CustomFrameworkMixin

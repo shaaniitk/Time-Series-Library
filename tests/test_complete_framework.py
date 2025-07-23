@@ -27,7 +27,7 @@ def test_complete_framework():
         from utils.modular_components.implementations.outputs import ForecastingHead, RegressionHead, OutputConfig
         from utils.modular_components.implementations.losses import MSELoss, MAELoss, LossConfig
         from utils.modular_components.implementations.adapters import CovariateAdapter
-        from utils.modular_components.implementations.processors import WaveletProcessor
+        from utils.modular_components.implementations.processorss import WaveletProcessor
         
         print("PASS All imports successful")
         

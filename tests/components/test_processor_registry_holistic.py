@@ -4,7 +4,7 @@ This test instantiates every registered processor component and validates a basi
 """
 import pytest
 import torch
-from utils.modular_components.implementations.processors import PROCESSOR_REGISTRY
+from utils.modular_components.implementations.processorss import PROCESSOR_REGISTRY
 from utils.modular_components.config_schemas import ComponentConfig
 
 def get_minimal_processor_config():

@@ -6,7 +6,7 @@ Ensures every registered attention component can be instantiated and run a forwa
 import pytest
 import torch
 import inspect
-from utils.modular_components.implementations.attentions_unified import ATTENTION_REGISTRY
+from utils.modular_components.implementations.Attention import ATTENTION_REGISTRY
 
 @pytest.mark.parametrize("name", list(ATTENTION_REGISTRY.keys()))
 def test_attention_registry_forward(name):

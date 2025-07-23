@@ -15,7 +15,7 @@ import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.modular_components.implementations.adapters import CovariateAdapter
-from utils.modular_components.implementations.processors import WaveletProcessor
+from utils.modular_components.implementations.processorss import WaveletProcessor
 from utils.modular_components.implementations.backbones import ChronosBackbone
 from utils.modular_components.config_schemas import BackboneConfig
 

@@ -1,3 +1,54 @@
+class BayesianLinear(nn.Module):
+    """
+    Bayesian Linear layer with weight uncertainty (ported from layers/BayesianLayers.py).
+    Instead of fixed weights, this layer learns weight distributions and samples from them during forward passes to estimate uncertainty.
+    """
+    def __init__(self, in_features, out_features, bias=True, prior_std=1.0):
+        super(BayesianLinear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.prior_std = prior_std
+        self.weight_mean = nn.Parameter(torch.randn(out_features, in_features) * 0.1)
+        self.weight_logvar = nn.Parameter(torch.full((out_features, in_features), -5.0))
+        if bias:
+            self.bias_mean = nn.Parameter(torch.randn(out_features) * 0.1)
+            self.bias_logvar = nn.Parameter(torch.full((out_features,), -5.0))
+        else:
+            self.register_parameter('bias_mean', None)
+            self.register_parameter('bias_logvar', None)
+
+    def forward(self, x):
+        # Sample weights and bias
+        weight_std = torch.exp(0.5 * self.weight_logvar)
+        weight = self.weight_mean + weight_std * torch.randn_like(self.weight_mean)
+        if self.bias_mean is not None:
+            bias_std = torch.exp(0.5 * self.bias_logvar)
+            bias = self.bias_mean + bias_std * torch.randn_like(self.bias_mean)
+        else:
+            bias = None
+        return F.linear(x, weight, bias)
+class MixtureOfExperts(nn.Module):
+    """
+    A generalized Mixture of Experts (MoE) component (ported from layers/MixtureOfExperts.py).
+    This component can wrap any set of 'expert' modules and uses a gating
+    network to dynamically select and combine their outputs.
+    """
+    def __init__(self, input_dim: int, num_experts: int, expert_class: type, expert_configs: list):
+        super().__init__()
+        assert num_experts == len(expert_configs), "Number of experts must match the number of expert configurations."
+        self.gating_network = nn.Sequential(
+            nn.Linear(input_dim, num_experts),
+            nn.Softmax(dim=-1)
+        )
+        self.experts = nn.ModuleList([expert_class(**config) for config in expert_configs])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: [batch, ...]
+        gate_scores = self.gating_network(x)
+        expert_outputs = [expert(x) for expert in self.experts]
+        stacked = torch.stack(expert_outputs, dim=-1)  # [..., num_experts]
+        output = (stacked * gate_scores.unsqueeze(-2)).sum(dim=-1)
+        return output
 """
 UNIFIED LAYER COMPONENTS
 Complete layer implementations including normalization, residuals, and feed-forward.
@@ -81,6 +132,9 @@ class StandardDecoderLayer(BaseDecoderLayer):
         y = self.dropout(self.conv2(y).transpose(-1, 1))
         x, trend3 = self.decomp3(x + y)
         residual_trend = trend1 + trend2 + trend3
+        # Always return a tuple (x, residual_trend)
+        if isinstance(x, tuple) and len(x) == 2:
+            return x
         return x, residual_trend
 
 # Enhanced Autoformer Layers
@@ -149,4 +203,7 @@ class EnhancedDecoderLayer(BaseDecoderLayer):
         x = residual + y
         x, trend3 = self.decomp3(x)
         residual_trend = trend1 + trend2 + trend3
+        # Always return a tuple (x, residual_trend)
+        if isinstance(x, tuple) and len(x) == 2:
+            return x
         return x, residual_trend

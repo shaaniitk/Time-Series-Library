@@ -1,3 +1,156 @@
+class MultiWaveletCorrelation(BaseAttention):
+    """
+    MultiWaveletCorrelation: Multiwavelet and polynomial basis correlation (ported from layers/MultiWaveletCorrelation.py).
+    """
+    def __init__(self, d_model, n_heads, seq_len, basis='legendre', degree=4, dropout=0.1):
+        import torch
+        import torch.nn as nn
+        import numpy as np
+        from scipy.special import eval_legendre
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+                self.seq_len = seq_len
+                self.basis = basis
+                self.degree = degree
+                self.dropout = dropout
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.seq_len = seq_len
+        self.basis = basis
+        self.degree = degree
+        self.dropout = nn.Dropout(dropout)
+        self.head_dim = d_model // n_heads
+        # Construct polynomial basis (Legendre or Chebyshev)
+        self.register_buffer('basis_matrix', self._build_basis_matrix(seq_len, degree, basis))
+        self.proj_q = nn.Linear(d_model, d_model)
+        self.proj_k = nn.Linear(d_model, d_model)
+        self.proj_v = nn.Linear(d_model, d_model)
+        self.out_proj = nn.Linear(d_model, d_model)
+
+    def _build_basis_matrix(self, seq_len, degree, basis):
+        # Returns [seq_len, degree] matrix
+        x = np.linspace(-1, 1, seq_len)
+        basis_matrix = []
+        if basis == 'legendre':
+            for d in range(degree):
+                basis_matrix.append(eval_legendre(d, x))
+        elif basis == 'chebyshev':
+            for d in range(degree):
+                basis_matrix.append(np.cos(d * np.arccos(x)))
+        else:
+            raise ValueError(f"Unknown basis: {basis}")
+        basis_matrix = np.stack(basis_matrix, axis=1)  # [seq_len, degree]
+        return torch.tensor(basis_matrix, dtype=torch.float32)
+
+    def forward(self, x, attn_mask=None):
+        # x: [B, L, D]
+        B, L, D = x.shape
+        H = self.n_heads
+        D_h = self.head_dim
+        # Project to Q, K, V
+        Q = self.proj_q(x).view(B, L, H, D_h).transpose(1, 2)  # [B, H, L, D_h]
+        K = self.proj_k(x).view(B, L, H, D_h).transpose(1, 2)
+        V = self.proj_v(x).view(B, L, H, D_h).transpose(1, 2)
+        # Project Q, K onto polynomial basis
+        # basis_matrix: [L, degree]
+        basis = self.basis_matrix[:L, :].to(Q.device)  # [L, degree]
+        Qb = torch.einsum('bhlm,md->bhld', Q, basis)  # [B, H, L, degree]
+        Kb = torch.einsum('bhlm,md->bhld', K, basis)
+        # Compute correlation in basis space
+        corr = torch.einsum('bhld,bhld->bhl', Qb, Kb) / (self.degree ** 0.5)  # [B, H, L]
+        attn = torch.softmax(corr, dim=-1)
+        attn = self.dropout(attn)
+        # Weighted sum of V
+        out = torch.einsum('bhlm,bhl->bhlm', V, attn)
+        out = out.transpose(1, 2).contiguous().view(B, L, D)
+        out = self.out_proj(out)
+        return out, attn
+class FourierAttention(BaseAttention):
+    """Fourier-based attention for capturing periodic patterns (ported from layers/AdvancedComponents.py)"""
+    def __init__(self, d_model, n_heads, seq_len, dropout=0.1):
+        class Config:
+            def __init__(self):
+                self.d_model = d_model
+                self.n_heads = n_heads
+                self.seq_len = seq_len
+                self.dropout = dropout
+        super().__init__(Config())
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.seq_len = seq_len
+        self.freq_weights = nn.Parameter(torch.randn(seq_len // 2 + 1, n_heads))
+        self.phase_weights = nn.Parameter(torch.zeros(seq_len // 2 + 1, n_heads))
+        self.qkv = nn.Linear(d_model, d_model * 3)
+        self.out_proj = nn.Linear(d_model, d_model)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, attn_mask=None):
+        B, L, D = x.shape
+        x_freq = torch.fft.rfft(x, dim=1)
+        freq_filter = torch.complex(
+            torch.cos(self.phase_weights) * self.freq_weights,
+            torch.sin(self.phase_weights) * self.freq_weights
+        )
+        x_freq = x_freq.unsqueeze(-1) * freq_filter.unsqueeze(0).unsqueeze(2)
+        x_filtered = torch.fft.irfft(x_freq.mean(-1), n=L, dim=1)
+        qkv = self.qkv(x_filtered).reshape(B, L, 3, self.n_heads, D // self.n_heads)
+        q, k, v = qkv.permute(2, 0, 3, 1, 4)
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(D // self.n_heads)
+        if attn_mask is not None:
+            scores.masked_fill_(attn_mask == 0, -1e9)
+        attn = self.dropout(F.softmax(scores, dim=-1))
+        out = torch.matmul(attn, v)
+        out = out.transpose(1, 2).contiguous().view(B, L, D)
+        out = self.out_proj(out)
+        return out, attn
+
+
+def get_frequency_modes(seq_len, modes=64, mode_select_method='random'):
+    modes = min(modes, seq_len // 2)
+    if mode_select_method == 'random':
+        index = list(range(0, seq_len // 2))
+        np.random.shuffle(index)
+        index = index[:modes]
+    else:
+        index = list(range(0, modes))
+    index.sort()
+    return index
+
+class FourierBlock(BaseAttention):
+    """1D Fourier block for frequency domain representation learning (ported from layers/FourierCorrelation.py)"""
+    def __init__(self, in_channels, out_channels, n_heads, seq_len, modes=0, mode_select_method='random'):
+        class Config:
+            def __init__(self):
+                self.in_channels = in_channels
+                self.out_channels = out_channels
+                self.n_heads = n_heads
+                self.seq_len = seq_len
+                self.modes = modes
+                self.mode_select_method = mode_select_method
+        super().__init__(Config())
+        self.index = get_frequency_modes(seq_len, modes=modes, mode_select_method=mode_select_method)
+        self.n_heads = n_heads
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.seq_len = seq_len
+        self.modes = modes
+        self.mode_select_method = mode_select_method
+        self.linear = nn.Linear(in_channels, out_channels)
+
+    def forward(self, x, attn_mask=None):
+        # x: [B, L, D]
+        B, L, D = x.shape
+        x_fft = torch.fft.rfft(x, dim=1)
+        # Select frequency modes
+        x_fft_modes = x_fft[:, self.index, :]
+        # Linear transform in frequency domain
+        x_fft_modes = self.linear(x_fft_modes)
+        # Inverse FFT to time domain
+        x_ifft = torch.fft.irfft(x_fft_modes, n=L, dim=1)
+        return x_ifft, None
 """
 ATTENTION COMPONENTS - UNIFIED IMPLEMENTATION
 Single source of truth for ALL attention mechanisms in the modular framework

@@ -206,7 +206,7 @@ class ComponentRegistry:
 
 
 
-from utils.modular_components.implementations.processors import get_processor_component
+from utils.modular_components.implementations.processorss import get_processor_component
 from models.modular_autoformer import ModularAutoformer
 
 class ModularAssembler:
