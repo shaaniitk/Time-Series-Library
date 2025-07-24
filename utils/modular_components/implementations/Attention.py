@@ -1,3 +1,4 @@
+
 """
 ATTENTION COMPONENTS - UNIFIED IMPLEMENTATION
 Single source of truth for ALL attention mechanisms in the modular framework
@@ -70,7 +71,7 @@ logger = logging.getLogger(__name__)
 # CORE ATTENTION MECHANISMS
 # =============================================================================
 
-class MultiHeadAttention(BaseAttention):
+
 
 class FourierAttention(BaseAttention):
     """Fourier-based attention for capturing periodic patterns (ported from layers/AdvancedComponents.py)"""
@@ -165,159 +166,10 @@ class FourierAttention(BaseAttention):
         return output, attn
 
 
-class AutoCorrelationAttention(BaseAttention):
-    """Clean implementation of AutoCorrelation attention"""
-    
-    def __init__(self, d_model=512, n_heads=8, factor=1, dropout=0.1):
-        # Create a minimal config object for BaseComponent
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.factor = factor
-                self.dropout = dropout
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.factor = factor
-        
-        self.w_qs = nn.Linear(d_model, d_model, bias=False)
-        self.w_ks = nn.Linear(d_model, d_model, bias=False)
-        self.w_vs = nn.Linear(d_model, d_model, bias=False)
-        self.fc = nn.Linear(d_model, d_model, bias=False)
-        
-        self.dropout = nn.Dropout(dropout)
-    
-    def get_output_dim(self) -> int:
-        """Return the output dimension"""
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        """Return the attention type identifier"""
-        return "autocorrelation"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        """Apply autocorrelation attention mechanism"""
-        return self.forward(queries, keys, values, attn_mask)
-        
-    def time_delay_agg_training(self, values, corr):
-        """Aggregation in time delay"""
-        head = values.shape[1]
-        channel = values.shape[2]
-        length = values.shape[3]
-        
-        # find top k
-        top_k = int(self.factor * math.log(length))
-        mean_value = torch.mean(torch.mean(corr, dim=1), dim=1)
-        index = torch.topk(torch.mean(mean_value, dim=0), top_k, dim=-1)[1]
-        weights = torch.stack([mean_value[:, index[i]] for i in range(top_k)], dim=-1)
-        
-        # update corr
-        tmp_corr = torch.softmax(weights, dim=-1)
-        
-        # aggregation
-        tmp_values = values
-        delays_agg = torch.zeros_like(values).float()
-        for i in range(top_k):
-            pattern = torch.roll(tmp_values, -int(index[i]), -1)
-            delays_agg = delays_agg + pattern * (tmp_corr[:, i].unsqueeze(1).unsqueeze(1).unsqueeze(1).repeat(1, head, channel, length))
-        
-        return delays_agg
-    
-    def forward(self, queries, keys, values, attn_mask=None):
-        B, L, H, E = queries.shape
-        _, S, _, D = values.shape
-        
-        if L > S:
-            zeros = torch.zeros_like(queries[:, :(L - S), :]).float()
-            values = torch.cat([values, zeros], dim=1)
-            keys = torch.cat([keys, zeros], dim=1)
-        else:
-            values = values[:, :L, :, :]
-            keys = keys[:, :L, :, :]
-        
-        # period-based dependencies
-        q_fft = torch.fft.rfft(queries.permute(0, 2, 3, 1).contiguous(), dim=-1)
-        k_fft = torch.fft.rfft(keys.permute(0, 2, 3, 1).contiguous(), dim=-1)
-        res = q_fft * torch.conj(k_fft)
-        corr = torch.fft.irfft(res, dim=-1)
-        
-        # time delay agg
-        if self.training:
-            V = self.time_delay_agg_training(values.permute(0, 2, 3, 1).contiguous(), corr)
-        else:
-            # simplified for inference
-            V = values.permute(0, 2, 3, 1).contiguous()
-        
-        V = V.permute(0, 3, 1, 2).contiguous()
-        return V.contiguous(), corr
+from .Attention.AutoCorrelation.autocorr import AutoCorrelationAttention
 
 
-class SparseAttention(BaseAttention):
-    """Sparse attention with configurable sparsity pattern"""
-    
-    def __init__(self, d_model=512, n_heads=8, sparsity_factor=0.1, dropout=0.1):
-        # Create a minimal config object for BaseComponent
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.sparsity_factor = sparsity_factor
-                self.dropout = dropout
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.sparsity_factor = sparsity_factor
-        
-        self.w_qs = nn.Linear(d_model, d_model, bias=False)
-        self.w_ks = nn.Linear(d_model, d_model, bias=False)
-        self.w_vs = nn.Linear(d_model, d_model, bias=False)
-        self.fc = nn.Linear(d_model, d_model, bias=False)
-        
-        self.dropout = nn.Dropout(dropout)
-    
-    def get_output_dim(self) -> int:
-        """Return the output dimension"""
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        """Return the attention type identifier"""
-        return "sparse"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        """Apply sparse attention mechanism"""
-        return self.forward(queries, keys, values, attn_mask)
-        
-    def forward(self, queries, keys, values, attn_mask=None):
-        B, L, _ = queries.shape
-        d_k = self.d_model // self.n_heads
-        
-        Q = self.w_qs(queries).view(B, L, self.n_heads, d_k).transpose(1, 2)
-        K = self.w_ks(keys).view(B, L, self.n_heads, d_k).transpose(1, 2)
-        V = self.w_vs(values).view(B, L, self.n_heads, d_k).transpose(1, 2)
-        
-        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(d_k)
-        
-        # Apply sparsity mask
-        k = int(L * self.sparsity_factor)
-        if k > 0:
-            top_k = torch.topk(scores, k, dim=-1)[1]
-            sparse_mask = torch.zeros_like(scores)
-            sparse_mask.scatter_(-1, top_k, 1)
-            scores = scores * sparse_mask - 1e9 * (1 - sparse_mask)
-        
-        if attn_mask is not None:
-            scores.masked_fill_(attn_mask == 0, -1e9)
-            
-        attn = self.dropout(F.softmax(scores, dim=-1))
-        output = torch.matmul(attn, V)
-        
-        output = output.transpose(1, 2).contiguous().view(B, L, self.d_model)
-        output = self.fc(output)
-        
-        return output, attn
+from .Attention.Sparse.sparse import SparseAttention
 
 
 class FourierAttention(BaseAttention):
@@ -397,586 +249,24 @@ class FourierAttention(BaseAttention):
         return output, attn
 
 
-class WaveletAttention(BaseAttention):
-    """Wavelet-based attention for multi-scale analysis"""
-    
-    def __init__(self, d_model=512, n_heads=8, levels=3, dropout=0.1):
-        # Create a minimal config object for BaseComponent
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.levels = levels
-                self.dropout = dropout
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.levels = levels
-        
-        # Learnable wavelet filters
-        self.wavelet_filters = nn.ParameterList([
-            nn.Parameter(torch.randn(self.d_model, 4))  # 4-tap wavelet
-            for _ in range(self.levels)
-        ])
-        
-        self.qkv = nn.Linear(self.d_model, self.d_model * 3)
-        self.out_proj = nn.Linear(self.d_model, self.d_model)
-        self.dropout = nn.Dropout(dropout)
-    
-    def get_output_dim(self) -> int:
-        """Return the output dimension"""
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        """Return the attention type identifier"""
-        return "wavelet"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        """Apply wavelet attention mechanism"""
-        return self.forward(queries, keys, values, attn_mask)
-        
-    def _wavelet_transform(self, x, level):
-        """Simple learnable wavelet transform"""
-        B, L, D = x.shape
-        filter_weights = self.wavelet_filters[level]
-        
-        # Apply 1D convolution as wavelet transform
-        x_conv = F.conv1d(x.transpose(1, 2), filter_weights.unsqueeze(1), 
-                         padding=2, groups=D)
-        
-        # Downsample
-        x_down = x_conv[:, :, ::2]
-        return x_down.transpose(1, 2)
-    
-    def forward(self, queries, keys, values, attn_mask=None):
-        B, L, D = queries.shape
-        
-        # Multi-scale wavelet decomposition
-        scale_features = []
-        current_q = queries
-        
-        for level in range(self.levels):
-            if current_q.shape[1] > 4:  # Minimum sequence length
-                current_q = self._wavelet_transform(current_q, level)
-                scale_features.append(current_q)
-        
-        # Process largest scale
-        if scale_features:
-            processed = scale_features[-1]
-            
-            qkv = self.qkv(processed).reshape(processed.shape[0], processed.shape[1], 
-                                            3, self.n_heads, D // self.n_heads)
-            q, k, v = qkv.permute(2, 0, 3, 1, 4)
-            
-            scale = math.sqrt(D // self.n_heads)
-            attn_scores = (q @ k.transpose(-2, -1)) / scale
-            attn_weights = F.softmax(attn_scores, dim=-1)
-            attn_weights = self.dropout(attn_weights)
-            
-            out = (attn_weights @ v).transpose(1, 2).reshape(processed.shape[0], 
-                                                           processed.shape[1], D)
-            
-            # Interpolate back to original length
-            out = F.interpolate(out.transpose(1, 2), size=L, 
-                              mode='linear', align_corners=False).transpose(1, 2)
-        else:
-            # Fallback to standard attention
-            qkv = self.qkv(queries).reshape(B, L, 3, self.n_heads, D // self.n_heads)
-            q, k, v = qkv.permute(2, 0, 3, 1, 4)
-            
-            scale = math.sqrt(D // self.n_heads)
-            attn_scores = (q @ k.transpose(-2, -1)) / scale
-            attn_weights = F.softmax(attn_scores, dim=-1)
-            out = (attn_weights @ v).transpose(1, 2).reshape(B, L, D)
-        
-        return self.out_proj(out), attn_weights
+from .Attention.Wavelet.wavelet import WaveletAttention
 
 
-class BayesianAttention(BaseAttention):
-    """Bayesian attention with uncertainty quantification"""
-    
-    def __init__(self, d_model=512, n_heads=8, prior_std=1.0, dropout=0.1):
-        # Create a minimal config object for BaseComponent
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.prior_std = prior_std
-                self.dropout = dropout
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.prior_std = prior_std
-        
-        # Bayesian linear layers
-        self.q_mean = nn.Linear(self.d_model, self.d_model)
-        self.q_logvar = nn.Linear(self.d_model, self.d_model)
-        self.k_mean = nn.Linear(self.d_model, self.d_model)
-        self.k_logvar = nn.Linear(self.d_model, self.d_model)
-        self.v_mean = nn.Linear(self.d_model, self.d_model)
-        self.v_logvar = nn.Linear(self.d_model, self.d_model)
-        
-        self.out_proj = nn.Linear(self.d_model, self.d_model)
-    
-    def get_output_dim(self) -> int:
-        """Return the output dimension"""
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        """Return the attention type identifier"""
-        return "bayesian"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        """Apply bayesian attention mechanism"""
-        return self.forward(queries, keys, values, attn_mask)
-        
-    def _reparameterize(self, mean, logvar):
-        """Reparameterization trick for Bayesian sampling"""
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return mean + eps * std
-    
-    def forward(self, queries, keys, values, attn_mask=None):
-        B, L, D = queries.shape
-        
-        # Bayesian projections
-        q_mean = self.q_mean(queries)
-        q_logvar = self.q_logvar(queries)
-        q = self._reparameterize(q_mean, q_logvar)
-        
-        k_mean = self.k_mean(keys)
-        k_logvar = self.k_logvar(keys)
-        k = self._reparameterize(k_mean, k_logvar)
-        
-        v_mean = self.v_mean(values)
-        v_logvar = self.v_logvar(values)
-        v = self._reparameterize(v_mean, v_logvar)
-        
-        # Reshape for multi-head attention
-        q = q.view(B, L, self.n_heads, D // self.n_heads).transpose(1, 2)
-        k = k.view(B, L, self.n_heads, D // self.n_heads).transpose(1, 2)
-        v = v.view(B, L, self.n_heads, D // self.n_heads).transpose(1, 2)
-        
-        # Attention computation
-        scale = math.sqrt(D // self.n_heads)
-        attn_scores = (q @ k.transpose(-2, -1)) / scale
-        
-        if attn_mask is not None:
-            attn_scores.masked_fill_(attn_mask == 0, -1e9)
-        
-        attn_weights = F.softmax(attn_scores, dim=-1)
-        out = (attn_weights @ v).transpose(1, 2).reshape(B, L, D)
-        
-        return self.out_proj(out), attn_weights
 
+from .Attention.Bayesian.bayesian import BayesianAttention
 
-class AdaptiveAttention(BaseAttention):
-    """Adaptive attention with dynamic parameter selection"""
-    
-    def __init__(self, d_model=512, n_heads=8, adaptation_rate=0.1, dropout=0.1):
-        # Create a minimal config object for BaseComponent
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.adaptation_rate = adaptation_rate
-                self.dropout = dropout
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.adaptation_rate = adaptation_rate
-        
-        # Adaptive parameters
-        self.gate_network = nn.Sequential(
-            nn.Linear(d_model, d_model // 2),
-            nn.ReLU(),
-            nn.Linear(d_model // 2, n_heads),
-            nn.Sigmoid()
-        )
-        
-        self.qkv = nn.Linear(d_model, d_model * 3)
-        self.out_proj = nn.Linear(d_model, d_model)
-        self.dropout = nn.Dropout(dropout)
-    
-    def get_output_dim(self) -> int:
-        """Return the output dimension"""
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        """Return the attention type identifier"""
-        return "adaptive"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        """Apply adaptive attention mechanism"""
-        return self.forward(queries, keys, values, attn_mask)
-        
-    def forward(self, queries, keys, values, attn_mask=None):
-        B, L, D = queries.shape
-        
-        # Compute adaptive gates
-        gates = self.gate_network(queries.mean(dim=1))  # [B, n_heads]
-        
-        # Standard multi-head attention
-        qkv = self.qkv(queries).reshape(B, L, 3, self.n_heads, D // self.n_heads)
-        q, k, v = qkv.permute(2, 0, 3, 1, 4)
-        
-        scale = math.sqrt(D // self.n_heads)
-        attn_scores = (q @ k.transpose(-2, -1)) / scale
-        
-        if attn_mask is not None:
-            attn_scores.masked_fill_(attn_mask == 0, -1e9)
-        
-        attn_weights = F.softmax(attn_scores, dim=-1)
-        attn_weights = self.dropout(attn_weights)
-        
-        # Apply adaptive gates
-        gates = gates.unsqueeze(-1).unsqueeze(-1)  # [B, n_heads, 1, 1]
-        attn_weights = attn_weights * gates
-        
-        out = (attn_weights @ v).transpose(1, 2).reshape(B, L, D)
-        
-        return self.out_proj(out), attn_weights
-
+from .Attention.Adaptive.adaptive import AdaptiveAttention
 
 # =============================================================================
-# ADVANCED ATTENTION COMPONENTS (from attention_migrated.py)
+# ADVANCED ATTENTION COMPONENTS (MetaLearningAdapter now modularized)
 # =============================================================================
-
-class MetaLearningAdapter(BaseAttention):
-    """MAML-style Meta-Learning Adapter with proper gradient-based fast adaptation"""
-    """
-    MAML-style Meta-Learning Adapter with proper gradient-based fast adaptation.
-    
-    Implements Model-Agnostic Meta-Learning (MAML) for rapid adaptation to new
-    time series patterns using support sets and gradient-based inner loop optimization.
-    """
-    def __init__(self, d_model, n_heads=None, adaptation_steps=5, meta_lr=0.01, inner_lr=0.1, dropout=0.1):
-        super(MetaLearningAdapter, self).__init__()
-        logger.info(f"Initializing MAML MetaLearningAdapter: adaptation_steps={adaptation_steps}")
-        self.adaptation_steps = adaptation_steps
-        self.d_model = d_model
-        self.inner_lr = inner_lr
-        self.output_dim_multiplier = 1
-        # Base network for meta-learning (theta parameters)
-        self.base_network = nn.Sequential(
-            nn.Linear(d_model, d_model * 2),
-            nn.ReLU(),
-            nn.Linear(d_model * 2, d_model),
-            nn.ReLU(),
-            nn.Linear(d_model, d_model)
-        )
-        # Meta-learning rate (learnable)
-        self.meta_lr = nn.Parameter(torch.tensor(meta_lr))
-        # Task context encoder for support set analysis
-        self.context_encoder = nn.Sequential(
-            nn.Linear(2 * d_model, d_model // 2),  # Accept 2*d_model input (mean + std)
-            nn.ReLU(),
-            nn.Linear(d_model // 2, d_model // 4)
-        )
-        # Context projection: maps d_model//4 -> d_model for addition with query
-        self.context_projector = nn.Linear(d_model // 4, d_model)
-        # Task-specific adaptation parameters
-        self.task_attention = nn.MultiheadAttention(d_model, n_heads or 4, batch_first=True)
-        self.dropout = nn.Dropout(dropout)
-
-    def extract_task_context(self, support_set):
-        """
-        Extract task-specific features from support set.
-        Args:
-            support_set: [B, S, D] support examples
-        Returns:
-            context: [B, D//4] task context vector
-        """
-        # Aggregate support set statistics
-        support_mean = torch.mean(support_set, dim=1)  # [B, D]
-        support_std = torch.std(support_set, dim=1)    # [B, D]
-        # Encode task context - concatenate mean and std
-        context_features = torch.cat([support_mean, support_std], dim=-1)  # [B, 2*D]
-        # Project to context space (D//4 dimensions)
-        context = self.context_encoder(context_features)  # [B, D//4]
-        return context
-
-    def fast_adaptation(self, support_set, query_set, num_steps=None):
-        """
-        Perform MAML-style fast adaptation using support set.
-        Args:
-            support_set: [B, S, D] support examples for adaptation
-            query_set: [B, Q, D] query examples to adapt to
-            num_steps: Number of adaptation steps (default: self.adaptation_steps)
-        Returns:
-            adapted_params: Dictionary of adapted parameters
-            adaptation_loss: Loss during adaptation process
-        """
-        if num_steps is None:
-            num_steps = self.adaptation_steps
-        # Extract base parameters
-        base_params = {}
-        for name, param in self.base_network.named_parameters():
-            base_params[name] = param
-        adapted_params = {name: param.clone() for name, param in base_params.items()}
-        total_adaptation_loss = 0.0
-        # Fast adaptation loop (inner loop of MAML)
-        for step in range(num_steps):
-            # Forward pass with current adapted parameters
-            adapted_output = self._forward_with_params(support_set, adapted_params)
-            # Compute adaptation loss (task-specific loss on support set)
-            adaptation_loss = F.mse_loss(adapted_output, support_set)
-            total_adaptation_loss += adaptation_loss.item()
-            # Compute gradients w.r.t. adapted parameters
-            gradients = torch.autograd.grad(
-                adaptation_loss, 
-                adapted_params.values(), 
-                create_graph=True,
-                retain_graph=True,
-                allow_unused=True
-            )
-            # Update adapted parameters using gradient descent
-            for (name, param), grad in zip(adapted_params.items(), gradients):
-                if grad is not None:
-                    adapted_params[name] = param - self.inner_lr * grad
-        return adapted_params, total_adaptation_loss / num_steps
-
-    def _forward_with_params(self, x, params):
-        """
-        Forward pass using specified parameters instead of self.parameters()
-        Args:
-            x: [B, L, D] input tensor
-            params: Dictionary of parameters to use
-        Returns:
-            output: [B, L, D] network output
-        """
-        # Manual forward pass through the network layers
-        current = x
-        # Get parameter names in order
-        param_names = list(params.keys())
-        weight_bias_pairs = []
-        # Group weights and biases
-        for i in range(0, len(param_names), 2):
-            if i + 1 < len(param_names):
-                weight_name = param_names[i] if 'weight' in param_names[i] else param_names[i+1]
-                bias_name = param_names[i+1] if 'bias' in param_names[i+1] else param_names[i]
-                weight_bias_pairs.append((weight_name, bias_name))
-        # Apply linear layers with specified parameters
-        for i, (weight_name, bias_name) in enumerate(weight_bias_pairs):
-            current = F.linear(current, params[weight_name], params.get(bias_name))
-            if i < len(weight_bias_pairs) - 1:  # Apply ReLU except for last layer
-                current = F.relu(current)
-        return current
-
-    def forward(self, query, key, value, attn_mask=None, support_set=None):
-        """
-        Forward pass with MAML-style fast adaptation.
-        Args:
-            query: [B, L, D] main query tensor
-            key: [B, L, D] key tensor (can be used as support_set)
-            value: [B, L, D] value tensor  
-            attn_mask: Optional attention mask
-            support_set: [B, S, D] optional explicit support set
-        Returns:
-            Tuple of (adapted_output, attention_weights)
-        """
-        # Use key as support set if not provided explicitly
-        if support_set is None:
-            support_set = key
-        # Store original query for residual connection
-        residual = query
-        if self.training and support_set is not None:
-            # Extract task context from support set
-            task_context = self.extract_task_context(support_set)  # [B, D//4]
-            # Perform fast adaptation using MAML
-            adapted_params, adaptation_loss = self.fast_adaptation(support_set, query)
-            # Apply adapted network to query
-            adapted_output = self._forward_with_params(query, adapted_params)
-            # Task-specific attention using context
-            # Project context to match query dimensions for addition
-            context_projected = self.context_projector(task_context)  # [B, D]
-            context_expanded = context_projected.unsqueeze(1).expand(-1, query.shape[1], -1)  # [B, L, D]
-            query_with_context = query + context_expanded
-            # Apply task attention
-            attended_output, attention_weights = self.task_attention(
-                query_with_context, adapted_output, adapted_output, attn_mask=attn_mask
-            )
-            # Combine adapted and attended outputs
-            final_output = (adapted_output + attended_output) / 2
-        else:
-            # Standard forward pass without adaptation (inference mode)
-            base_output = self.base_network(query)
-            final_output, attention_weights = self.task_attention(query, base_output, base_output, attn_mask=attn_mask)
-        # Apply dropout and residual connection
-        final_output = self.dropout(final_output)
-        final_output = final_output + residual
-        return final_output, attention_weights if 'attention_weights' in locals() else None
-    def __init__(self, d_model=512, n_heads=8, adaptation_steps=5, meta_lr=0.01, inner_lr=0.1, dropout=0.1, **kwargs):
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.adaptation_steps = adaptation_steps
-                self.meta_lr = meta_lr
-                self.inner_lr = inner_lr
-                self.dropout = dropout
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.adaptation_steps = adaptation_steps
-        self.inner_lr = inner_lr
-        
-        # Base network for meta-learning
-        self.base_network = nn.Sequential(
-            nn.Linear(d_model, d_model * 2),
-            nn.ReLU(),
-            nn.Linear(d_model * 2, d_model),
-            nn.ReLU(),
-            nn.Linear(d_model, d_model)
-        )
-        
-        # Meta-learning rate
-        self.meta_lr = nn.Parameter(torch.tensor(meta_lr))
-        
-        # Task context encoder
-        self.context_encoder = nn.Sequential(
-            nn.Linear(2 * d_model, d_model // 2),
-            nn.ReLU(),
-            nn.Linear(d_model // 2, d_model // 4)
-        )
-        
-        self.context_projector = nn.Linear(d_model // 4, d_model)
-        self.task_attention = nn.MultiheadAttention(d_model, n_heads, batch_first=True)
-        self.dropout_layer = nn.Dropout(dropout)
-    
-    def get_output_dim(self) -> int:
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        return "meta_learning"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        return self.forward(queries, keys, values, attn_mask)
-    
-    def forward(self, queries, keys, values, attn_mask=None):
-        # Simplified implementation - use queries as main input
-        residual = queries
-        base_output = self.base_network(queries)
-        final_output, attention_weights = self.task_attention(queries, base_output, base_output, attn_mask=attn_mask)
-        final_output = self.dropout_layer(final_output) + residual
-        return final_output, attention_weights
+from .Attention.MetaLearning.meta_learning_adapter import MetaLearningAdapter
 
 
-class AdaptiveMixture(BaseAttention):
-    """Adaptive mixture of experts for different time series patterns"""
-    """
-    Adaptive mixture of experts for different time series patterns.
-    Adapted to the BaseAttention interface.
-    """
-    def __init__(self, d_model, n_heads=None, mixture_components=4, gate_hidden_dim=None, dropout=0.1, temperature=1.0):
-        super(AdaptiveMixture, self).__init__()
-        logger.info(f"Initializing AdaptiveMixture: components={mixture_components}")
-        self.num_experts = mixture_components
-        self.d_model = d_model
-        self.output_dim_multiplier = 1
-        if gate_hidden_dim is None:
-            gate_hidden_dim = d_model // 2
-        # Expert networks
-        self.experts = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(d_model, d_model * 2),
-                nn.ReLU(),
-                nn.Linear(d_model * 2, d_model)
-            ) for _ in range(self.num_experts)
-        ])
-        # Gating network
-        self.gate = nn.Sequential(
-            nn.Linear(d_model, gate_hidden_dim),
-            nn.ReLU(),
-            nn.Linear(gate_hidden_dim, self.num_experts),
-            nn.Softmax(dim=-1)
-        )
-        self.dropout = nn.Dropout(dropout)
-        self.temperature = temperature
 
-    def forward(self, query, key, value, attn_mask=None):
-        """
-        Forward pass for adaptive mixture.
-        'query' is the main input tensor.
-        """
-        x = query
-        # Compute gating weights with temperature
-        gate_weights = self.gate(x) / self.temperature  # [B, L, num_experts]
-        # Compute expert outputs
-        expert_outputs = []
-        for expert in self.experts:
-            expert_outputs.append(expert(x))
-        expert_outputs = torch.stack(expert_outputs, dim=-1)  # [B, L, d_model, num_experts]
-        # Weighted combination
-        output = torch.sum(expert_outputs * gate_weights.unsqueeze(-2), dim=-1)
-        return output, None
-    def __init__(self, d_model=512, n_heads=8, mixture_components=4, gate_hidden_dim=None, dropout=0.1, temperature=1.0, **kwargs):
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.mixture_components = mixture_components
-                self.dropout = dropout
-                self.temperature = temperature
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.num_experts = mixture_components
-        self.temperature = temperature
-        
-        if gate_hidden_dim is None:
-            gate_hidden_dim = d_model // 2
-        
-        # Expert networks
-        self.experts = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(d_model, d_model * 2),
-                nn.ReLU(),
-                nn.Linear(d_model * 2, d_model)
-            ) for _ in range(self.num_experts)
-        ])
-        
-        # Gating network
-        self.gate = nn.Sequential(
-            nn.Linear(d_model, gate_hidden_dim),
-            nn.ReLU(),
-            nn.Linear(gate_hidden_dim, self.num_experts),
-            nn.Softmax(dim=-1)
-        )
-        
-        self.dropout_layer = nn.Dropout(dropout)
-    
-    def get_output_dim(self) -> int:
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        return "adaptive_mixture"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        return self.forward(queries, keys, values, attn_mask)
-    
-    def forward(self, queries, keys, values, attn_mask=None):
-        x = queries
-        
-        # Compute gating weights with temperature
-        gate_weights = self.gate(x) / self.temperature
-        
-        # Compute expert outputs
-        expert_outputs = []
-        for expert in self.experts:
-            expert_outputs.append(expert(x))
-        
-        expert_outputs = torch.stack(expert_outputs, dim=-1)
-        
-        # Weighted combination
-        output = torch.sum(expert_outputs * gate_weights.unsqueeze(-2), dim=-1)
-        
-        return self.dropout_layer(output), None
+# Modular Mixture family import
+from .Attention.Mixture.adaptive_mixture import AdaptiveMixture
+
 
 
 class EnhancedAutoCorrelation(BaseAttention):
@@ -989,6 +279,238 @@ class EnhancedAutoCorrelation(BaseAttention):
     3. Learnable frequency filtering
     4. Numerical stability enhancements
     """
+
+    def __init__(self, d_model, n_heads, factor=1, scale=None, attention_dropout=0.1, 
+                 output_attention=False, adaptive_k=True, multi_scale=True, 
+                 scales=[1, 2, 4], eps=1e-8):
+        super(EnhancedAutoCorrelation, self).__init__()
+        logger.info(f"Initializing EnhancedAutoCorrelation with enhanced features: d_model={d_model}")
+        
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.factor = factor
+        self.scale = scale
+        self.output_attention = output_attention
+        self.dropout = nn.Dropout(attention_dropout)
+        
+        # Adaptive parameters
+        self.adaptive_k = adaptive_k
+        self.multi_scale = multi_scale
+        self.scales = scales
+        self.eps = eps
+        
+        # Learnable components
+        if self.multi_scale:
+            self.scale_weights = nn.Parameter(torch.ones(len(scales)) / len(scales))
+            
+        # Frequency filter for noise reduction
+        self.frequency_filter = nn.Parameter(torch.ones(1))
+        
+        # Projection layers
+        self.query_projection = nn.Linear(d_model, d_model)
+        self.key_projection = nn.Linear(d_model, d_model)
+        self.value_projection = nn.Linear(d_model, d_model)
+        self.out_projection = nn.Linear(d_model, d_model)
+        
+        self.output_dim_multiplier = 1
+
+    def _select_adaptive_k(self, corr_energy, length):
+        """
+        Intelligently select the number of correlation peaks to use.
+        """
+        # Sort correlation energies in descending order
+        sorted_energies, _ = torch.sort(corr_energy, dim=-1, descending=True)
+        
+        # Find the elbow point using second derivative
+        if length > 10:  # Only for reasonable sequence lengths
+            # Compute first and second derivatives
+            first_diff = sorted_energies[:, :-1] - sorted_energies[:, 1:]
+            second_diff = first_diff[:, :-1] - first_diff[:, 1:]
+            
+            # Find elbow as point of maximum curvature
+            elbow_candidates = torch.argmax(second_diff, dim=-1) + 2  # +2 due to double differencing
+            
+            # Ensure reasonable bounds
+            min_k = max(2, int(0.1 * math.log(length)))
+            max_k = min(int(0.3 * length), int(self.factor * math.log(length) * 2))
+            
+            if min_k > max_k:
+                max_k = min_k
+            
+            adaptive_k = torch.clamp(elbow_candidates, min_k, max_k)
+            
+            # Use median across batch for stability
+            return int(torch.median(adaptive_k.float()).item())
+        else:
+            return max(2, int(self.factor * math.log(length)))
+
+    def _multi_scale_correlation(self, queries, keys, length):
+        """
+        Compute correlations at multiple scales to capture different periodicities.
+        """
+        correlations = []
+        B, H, L, E = queries.shape
+        
+        for i, scale in enumerate(self.scales):
+            if scale == 1:
+                # Original scale - ensure contiguous tensors
+                q_input = queries.contiguous()
+                k_input = keys.contiguous()
+                q_fft = torch.fft.rfft(q_input, dim=-2)  # FFT along sequence dimension
+                k_fft = torch.fft.rfft(k_input, dim=-2)
+                
+            else:
+                # Downsample for multi-scale analysis - handle 4D properly
+                target_len = max(length // scale, 1)
+                q_downsampled = torch.zeros(B, H, target_len, E, device=queries.device)
+                k_downsampled = torch.zeros(B, H, target_len, E, device=keys.device)
+                
+                # Process each head separately for F.interpolate compatibility
+                for h in range(H):
+                    for e in range(E):
+                        q_downsampled[:, h, :, e] = F.interpolate(
+                            queries[:, h, :, e].unsqueeze(1), size=target_len, 
+                            mode='linear', align_corners=False
+                        ).squeeze(1)
+                        k_downsampled[:, h, :, e] = F.interpolate(
+                            keys[:, h, :, e].unsqueeze(1), size=target_len, 
+                            mode='linear', align_corners=False
+                        ).squeeze(1)
+                
+                q_fft = torch.fft.rfft(q_downsampled, dim=-2)
+                k_fft = torch.fft.rfft(k_downsampled, dim=-2)
+            
+            # Compute correlation in frequency domain
+            correlation = q_fft * torch.conj(k_fft)
+            
+            # Apply learnable frequency filtering
+            if hasattr(self, 'frequency_filter'):
+                correlation = correlation * self.frequency_filter
+            
+            # Transform back to time domain
+            correlation_time = torch.fft.irfft(correlation, n=length if scale == 1 else target_len, dim=-2)
+            
+            # Upsample back to original length if needed
+            if scale != 1:
+                correlation_upsampled = torch.zeros(B, H, length, E, device=correlation_time.device)
+                for h in range(H):
+                    for e in range(E):
+                        correlation_upsampled[:, h, :, e] = F.interpolate(
+                            correlation_time[:, h, :, e].unsqueeze(1), size=length,
+                            mode='linear', align_corners=False
+                        ).squeeze(1)
+                correlation_time = correlation_upsampled
+            
+            correlations.append(correlation_time)
+        
+        # Weighted combination of multi-scale correlations
+        if self.multi_scale and len(correlations) > 1:
+            weights = F.softmax(self.scale_weights, dim=0)
+            correlation_combined = sum(w * corr for w, corr in zip(weights, correlations))
+        else:
+            correlation_combined = correlations[0]
+        
+        return correlation_combined
+
+    def _correlation_based_attention(self, queries, keys, values, length):
+        """
+        Compute attention weights based on autocorrelation.
+        """
+        B, H, L, E = queries.shape
+        
+        # Compute multi-scale correlations
+        correlation = self._multi_scale_correlation(queries, keys, length)
+        
+        # Compute correlation energy for adaptive k selection
+        correlation_energy = torch.mean(torch.abs(correlation), dim=[1, 3])  # [B, L]
+        
+        # Select adaptive k
+        if self.adaptive_k:
+            k = self._select_adaptive_k(correlation_energy, length)
+        else:
+            k = int(self.factor * math.log(length))
+        
+        k = max(k, 1)  # Ensure k is at least 1
+        
+        # Find top-k correlations
+        mean_correlation = torch.mean(correlation, dim=1)  # [B, L, E]
+        _, top_k_indices = torch.topk(torch.mean(torch.abs(mean_correlation), dim=-1), k, dim=-1)
+        
+        # Initialize output
+        output = torch.zeros_like(values)
+        weights = torch.zeros(B, H, L, L, device=queries.device)
+        
+        # Apply correlation-based attention
+        for b in range(B):
+            for h in range(H):
+                for i, lag in enumerate(top_k_indices[b]):
+                    lag = lag.item()
+                    
+                    # Circular shift for autocorrelation
+                    if lag > 0:
+                        shifted_values = torch.cat([
+                            values[b, h, -lag:, :], 
+                            values[b, h, :-lag, :]
+                        ], dim=0)
+                    else:
+                        shifted_values = values[b, h, :, :]
+                    
+                    # Compute attention weight based on correlation strength
+                    corr_strength = torch.abs(mean_correlation[b, lag, :]).mean()
+                    weight = F.softmax(torch.tensor([corr_strength]), dim=0)[0]
+                    
+                    output[b, h, :, :] += weight * shifted_values
+                    
+                    # Store attention weights for visualization
+                    if lag > 0:
+                        weights[b, h, :, :] += weight * torch.eye(L, device=queries.device).roll(-lag, dims=0)
+                    else:
+                        weights[b, h, :, :] += weight * torch.eye(L, device=queries.device)
+        
+        return output, weights
+
+    def forward(self, queries, keys, values, attn_mask=None, tau=None, delta=None):
+        """
+        Forward pass of enhanced autocorrelation attention.
+        """
+        # Handle different input shapes
+        if queries.dim() == 4:
+            # Input is [B, H, L, E] - reshape to [B, L, D]
+            B, H, L, E = queries.shape
+            D = H * E
+            queries = queries.transpose(1, 2).contiguous().view(B, L, D)
+            keys = keys.transpose(1, 2).contiguous().view(B, L, D)
+            values = values.transpose(1, 2).contiguous().view(B, L, D)
+        else:
+            # Input is [B, L, D]
+            B, L, D = queries.shape
+            H = self.n_heads
+            E = D // H
+        
+        # Apply projections
+        queries = self.query_projection(queries)
+        keys = self.key_projection(keys)
+        values = self.value_projection(values)
+        
+        # Reshape for multi-head processing
+        queries = queries.view(B, L, H, E).transpose(1, 2)  # [B, H, L, E]
+        keys = keys.view(B, L, H, E).transpose(1, 2)        # [B, H, L, E]
+        values = values.view(B, L, H, E).transpose(1, 2)    # [B, H, L, E]
+        
+        # Apply correlation-based attention
+        output, attn_weights = self._correlation_based_attention(queries, keys, values, L)
+        
+        # Apply dropout
+        output = self.dropout(output)
+        
+        # Reshape back and apply output projection
+        output = output.transpose(1, 2).contiguous().view(B, L, D)
+        output = self.out_projection(output)
+        
+        if self.output_attention:
+            return output, attn_weights
+        else:
+            return output, None
 
     def __init__(self, d_model, n_heads, factor=1, scale=None, attention_dropout=0.1, 
                  output_attention=False, adaptive_k=True, multi_scale=True, 
@@ -1258,59 +780,10 @@ class EnhancedAutoCorrelation(BaseAttention):
             return output, None
 
 
-class CausalConvolution(BaseAttention):
-    """
-    Causal convolution attention mechanism for temporal sequence modeling.
-    
-    This component uses dilated causal convolutions to capture temporal
-    dependencies while maintaining causality constraints.
-    """
-    def __init__(self, d_model, n_heads, kernel_sizes=[3, 5, 7], dilation_rates=[1, 2, 4],
-                 dropout=0.1, activation='gelu'):
-        super(CausalConvolution, self).__init__()
-        logger.info(f"Initializing CausalConvolution: d_model={d_model}, kernels={kernel_sizes}")
-        
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.kernel_sizes = kernel_sizes
-        self.dilation_rates = dilation_rates
-        
-        # Multi-scale causal convolutions
-        self.causal_convs = nn.ModuleList()
-        for kernel_size in kernel_sizes:
-            conv_layers = nn.ModuleList()
-            for dilation in dilation_rates:
-                # Causal padding calculation
-                padding = (kernel_size - 1) * dilation
-                conv = nn.Conv1d(
-                    d_model, d_model, 
-                    kernel_size=kernel_size,
-                    dilation=dilation,
-                    padding=padding
-                )
-                conv_layers.append(conv)
-            self.causal_convs.append(conv_layers)
-        
-        # Attention projection layers
-        self.query_conv = nn.Conv1d(d_model, d_model, kernel_size=1)
-        self.key_conv = nn.Conv1d(d_model, d_model, kernel_size=1)
-        self.value_conv = nn.Conv1d(d_model, d_model, kernel_size=1)
-        
-        # Output projection
-        self.output_projection = nn.Linear(d_model * len(kernel_sizes), d_model)
-        
-        # Normalization and activation
-        self.layer_norm = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
-        
-        if activation == 'gelu':
-            self.activation = nn.GELU()
-        elif activation == 'relu':
-            self.activation = nn.ReLU()
-        else:
-            self.activation = nn.Tanh()
-        
-        # Positional encoding for temporal awareness
+
+# Modular Convolution family imports
+from .Attention.Convolution.causal_convolution import CausalConvolution
+from .Attention.Convolution.convolutional_attention import ConvolutionalAttention
         self.positional_conv = nn.Conv1d(d_model, d_model, kernel_size=3, padding=1)
         
         self.output_dim_multiplier = 1
@@ -1576,207 +1049,8 @@ class Chomp1d(nn.Module):
 
 
 class AdaptiveWaveletAttention(BaseAttention):
-    """Adaptive wavelet attention with learnable decomposition levels"""
-    
-    def __init__(self, d_model=512, n_heads=8, max_levels=5, **kwargs):
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.max_levels = max_levels
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.max_levels = max_levels
-        
-        # Adaptive level selection
-        self.level_selector = nn.Sequential(
-            nn.Linear(d_model, d_model // 2),
-            nn.ReLU(),
-            nn.Linear(d_model // 2, max_levels),
-            nn.Softmax(dim=-1)
-        )
-        
-        # Wavelet decomposition for each level
-        self.wavelet_layers = nn.ModuleList([
-            nn.Conv1d(d_model, d_model, kernel_size=4, stride=2, padding=1)
-            for _ in range(max_levels)
-        ])
-        
-        self.attention_layers = nn.ModuleList([
-            nn.MultiheadAttention(d_model, n_heads, batch_first=True)
-            for _ in range(max_levels)
-        ])
-        
-        self.fusion_proj = nn.Linear(d_model * max_levels, d_model)
-    
-    def get_output_dim(self) -> int:
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        return "adaptive_wavelet"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        return self.forward(queries, keys, values, attn_mask)
-    
-    def forward(self, queries, keys, values, attn_mask=None):
-        B, L, D = queries.shape
-        
-        # Select adaptive levels
-        level_weights = self.level_selector(queries.mean(dim=1))  # [B, max_levels]
-        
-        # Apply wavelet decomposition at each level
-        level_outputs = []
-        x = queries.transpose(1, 2)  # [B, D, L]
-        
-        for i, (wavelet_layer, attention_layer) in enumerate(zip(self.wavelet_layers, self.attention_layers)):
-            # Wavelet decomposition
-            if x.shape[-1] > 1:
-                x_decomp = wavelet_layer(x)
-                x_decomp = x_decomp.transpose(1, 2)  # [B, L', D]
-                
-                # Interpolate back to original length
-                if x_decomp.shape[1] != L:
-                    x_decomp = F.interpolate(x_decomp.transpose(1, 2), size=L, 
-                                           mode='linear', align_corners=False).transpose(1, 2)
-                
-                # Apply attention
-                attn_out, _ = attention_layer(x_decomp, x_decomp, x_decomp, attn_mask=attn_mask)
-                level_outputs.append(attn_out)
-                
-                # Update x for next level
-                x = x_decomp.transpose(1, 2)
-            else:
-                level_outputs.append(queries)  # Fallback
-        
-        # Weighted fusion
-        concatenated = torch.cat(level_outputs, dim=-1)
-        fused_output = self.fusion_proj(concatenated)
-        
-        return fused_output, None
 
 
-class MultiScaleWaveletAttention(BaseAttention):
-    """Multi-scale wavelet attention for capturing patterns at different time scales"""
-    
-    def __init__(self, d_model=512, n_heads=8, scales=[1, 2, 4, 8], **kwargs):
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.scales = scales
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.scales = scales
-        
-        # Scale-specific attention layers
-        self.scale_attentions = nn.ModuleList([
-            nn.MultiheadAttention(d_model, n_heads, batch_first=True)
-            for _ in scales
-        ])
-        
-        # Scale weights
-        self.scale_weights = nn.Parameter(torch.ones(len(scales)) / len(scales))
-        self.fusion_proj = nn.Linear(d_model * len(scales), d_model)
-    
-    def get_output_dim(self) -> int:
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        return "multi_scale_wavelet"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        return self.forward(queries, keys, values, attn_mask)
-    
-    def forward(self, queries, keys, values, attn_mask=None):
-        B, L, D = queries.shape
-        scale_outputs = []
-        
-        for scale, attention_layer in zip(self.scales, self.scale_attentions):
-            # Downsample for this scale
-            if scale > 1:
-                downsampled_q = F.avg_pool1d(queries.transpose(1, 2), kernel_size=scale, stride=scale)
-                downsampled_k = F.avg_pool1d(keys.transpose(1, 2), kernel_size=scale, stride=scale)
-                downsampled_v = F.avg_pool1d(values.transpose(1, 2), kernel_size=scale, stride=scale)
-                
-                downsampled_q = downsampled_q.transpose(1, 2)
-                downsampled_k = downsampled_k.transpose(1, 2)
-                downsampled_v = downsampled_v.transpose(1, 2)
-            else:
-                downsampled_q, downsampled_k, downsampled_v = queries, keys, values
-            
-            # Apply attention at this scale
-            scale_out, _ = attention_layer(downsampled_q, downsampled_k, downsampled_v, attn_mask=attn_mask)
-            
-            # Upsample back to original size
-            if scale > 1:
-                scale_out = F.interpolate(scale_out.transpose(1, 2), size=L, 
-                                        mode='linear', align_corners=False).transpose(1, 2)
-            
-            scale_outputs.append(scale_out)
-        
-        # Weighted fusion
-        weights = F.softmax(self.scale_weights, dim=0)
-        concatenated = torch.cat(scale_outputs, dim=-1)
-        fused_output = self.fusion_proj(concatenated)
-        
-        return fused_output, None
-
-
-# =============================================================================
-# ATTENTION REGISTRY
-# =============================================================================
-
-
-
-
-# =============================================================================
-# ADVANCED ATTENTION COMPONENTS FROM OTHER FILES
-# =============================================================================
-
-class LogSparseAttention(BaseAttention):
-    """LogSparse attention for very long sequences with O(n log n) complexity"""
-    
-    def __init__(self, d_model=512, n_heads=8, block_size=128, dropout=0.1):
-        # Create a minimal config object for BaseComponent
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-                self.block_size = block_size
-                self.dropout = dropout
-        
-        super().__init__(Config())
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.block_size = block_size
-        
-        assert d_model % n_heads == 0
-        self.d_k = d_model // n_heads
-        
-        self.w_q = nn.Linear(d_model, d_model)
-        self.w_k = nn.Linear(d_model, d_model)
-        self.w_v = nn.Linear(d_model, d_model)
-        self.w_o = nn.Linear(d_model, d_model)
-        
-        self.dropout = nn.Dropout(dropout)
-    
-    def get_output_dim(self) -> int:
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        return "log_sparse"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        return self.forward(queries, keys, values, attn_mask)
-        
-    def forward(self, query, key, value, attention_mask=None):
-        B, L, D = query.shape
-        
-        # Standard projections
         Q = self.w_q(query).view(B, L, self.n_heads, self.d_k).transpose(1, 2)
         K = self.w_k(key).view(B, L, self.n_heads, self.d_k).transpose(1, 2)
         V = self.w_v(value).view(B, L, self.n_heads, self.d_k).transpose(1, 2)
@@ -2359,74 +1633,6 @@ class ConvolutionalAttention(BaseAttention):
 
 
 class TwoStageAttention(BaseAttention):
-    """Two-Stage Attention (TSA) for segment merging and multi-variate time series"""
-    
-    def __init__(self, d_model=512, n_heads=8, seg_num=4, factor=5, d_ff=None, dropout=0.1):
-        class Config:
-            def __init__(self):
-                self.d_model = d_model
-                self.n_heads = n_heads
-        
-        super().__init__(Config())
-        d_ff = d_ff or 4 * d_model
-        
-        self.time_attention = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
-        self.dim_sender = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
-        self.dim_receiver = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
-        
-        self.router = nn.Parameter(torch.randn(seg_num, factor, d_model))
-        self.dropout = nn.Dropout(dropout)
-        
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
-        self.norm4 = nn.LayerNorm(d_model)
-        
-        self.MLP1 = nn.Sequential(nn.Linear(d_model, d_ff), nn.GELU(), nn.Linear(d_ff, d_model))
-        self.MLP2 = nn.Sequential(nn.Linear(d_model, d_ff), nn.GELU(), nn.Linear(d_ff, d_model))
-    
-    def get_output_dim(self) -> int:
-        return self.d_model
-    
-    def get_attention_type(self) -> str:
-        return "two_stage"
-    
-    def apply_attention(self, queries, keys, values, attn_mask=None):
-        return self.forward(queries, keys, values, attn_mask)
-    
-    def forward(self, queries, keys, values, attn_mask=None):
-        # Assume input is [batch, ts_d, seg_num, d_model]
-        if queries.dim() == 3:
-            # Reshape if needed
-            B, L, D = queries.shape
-            seg_num = int(math.sqrt(L))  # Assume square segmentation
-            queries = queries.view(B, seg_num, seg_num, D)
-        
-        batch, ts_d, seg_num, d_model = queries.shape
-        
-        # Cross Time Stage
-        time_in = queries.reshape(-1, seg_num, d_model)
-        time_enc, _ = self.time_attention(time_in, time_in, time_in, attn_mask=attn_mask)
-        dim_in = time_in + self.dropout(time_enc)
-        dim_in = self.norm1(dim_in)
-        dim_in = dim_in + self.dropout(self.MLP1(dim_in))
-        dim_in = self.norm2(dim_in)
-        
-        # Cross Dimension Stage
-        dim_send = dim_in.reshape(batch * seg_num, ts_d, d_model)
-        batch_router = self.router.repeat(batch, 1, 1)
-        dim_buffer, _ = self.dim_sender(batch_router, dim_send, dim_send, attn_mask=attn_mask)
-        dim_receive, _ = self.dim_receiver(dim_send, dim_buffer, dim_buffer, attn_mask=attn_mask)
-        dim_enc = dim_send + self.dropout(dim_receive)
-        dim_enc = self.norm3(dim_enc)
-        dim_enc = dim_enc + self.dropout(self.MLP2(dim_enc))
-        dim_enc = self.norm4(dim_enc)
-        
-        final_out = dim_enc.reshape(batch, ts_d, seg_num, d_model)
-        # Flatten back to [B, L, D] format
-        final_out = final_out.view(batch, ts_d * seg_num, d_model)
-        
-        return final_out, None
 
 
 class ExponentialSmoothingAttention(BaseAttention):
@@ -2540,14 +1746,205 @@ class MultiWaveletCrossAttention(BaseAttention):
         avg_attention = torch.stack(level_attentions, dim=0).mean(dim=0)
         
         return fused_output, avg_attention
+class TwoStageAttention(BaseAttention):
+    """
+    Modular implementation of Two-Stage Attention (TSA).
+    This combines cross-time and cross-dimension attention for segment merging and multi-variate time series.
+    Algorithm adapted from TwoStageAttentionLayer in SelfAttention_Family.py.
+    """
+    def __init__(self, d_model: int, n_heads: int, seg_num: int, factor: int, d_ff: int = None, dropout: float = 0.1):
+        super().__init__()
+        d_ff = d_ff or 4 * d_model
+        self.time_attention = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
+        self.dim_sender = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
+        self.dim_receiver = nn.MultiheadAttention(d_model, n_heads, batch_first=True, dropout=dropout)
+        self.router = nn.Parameter(torch.randn(seg_num, factor, d_model))
+        self.dropout = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.norm3 = nn.LayerNorm(d_model)
+        self.norm4 = nn.LayerNorm(d_model)
+        self.MLP1 = nn.Sequential(nn.Linear(d_model, d_ff), nn.GELU(), nn.Linear(d_ff, d_model))
+        self.MLP2 = nn.Sequential(nn.Linear(d_model, d_ff), nn.GELU(), nn.Linear(d_ff, d_model))
 
+    def forward(self, x: torch.Tensor, attn_mask=None, tau=None, delta=None):
+        # x: [batch, ts_d, seg_num, d_model]
+        batch = x.shape[0]
+        ts_d = x.shape[1]
+        seg_num = x.shape[2]
+        d_model = x.shape[3]
+        # Cross Time Stage
+        time_in = x.reshape(-1, seg_num, d_model)
+        time_enc, _ = self.time_attention(time_in, time_in, time_in, attn_mask=attn_mask)
+        dim_in = time_in + self.dropout(time_enc)
+        dim_in = self.norm1(dim_in)
+        dim_in = dim_in + self.dropout(self.MLP1(dim_in))
+        dim_in = self.norm2(dim_in)
+        # Cross Dimension Stage
+        dim_send = dim_in.reshape(batch * seg_num, ts_d, d_model)
+        batch_router = self.router.repeat(batch, 1, 1)
+        dim_buffer, _ = self.dim_sender(batch_router, dim_send, dim_send, attn_mask=attn_mask)
+        dim_receive, _ = self.dim_receiver(dim_send, dim_buffer, dim_buffer, attn_mask=attn_mask)
+        dim_enc = dim_send + self.dropout(dim_receive)
+        dim_enc = self.norm3(dim_enc)
+        dim_enc = dim_enc + self.dropout(self.MLP2(dim_enc))
+        dim_enc = self.norm4(dim_enc)
+        final_out = dim_enc.reshape(batch, ts_d, seg_num, d_model)
+        return final_out, None
+class MultiScaleWaveletAttention(BaseAttention):
+    """
+    Multi-scale wavelet attention for capturing patterns at different time scales.
+    
+    This component applies wavelet attention at multiple predefined scales
+    and combines the results for comprehensive temporal modeling.
+    """
+    
+    def __init__(self, d_model, n_heads, scales=[1, 2, 4, 8]):
+        super(MultiScaleWaveletAttention, self).__init__()
+        logger.info(f"Initializing MultiScaleWaveletAttention: scales={scales}")
+        
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.scales = scales
+        
+        # Wavelet attention for each scale
+        self.scale_attentions = nn.ModuleList([
+            WaveletAttention(d_model, n_heads, levels=3)
+            for _ in scales
+        ])
+        
+        # Scale fusion
+        self.scale_weights = nn.Parameter(torch.ones(len(scales)) / len(scales))
+        self.scale_proj = nn.Linear(d_model * len(scales), d_model)
+        
+        self.output_dim_multiplier = 1
+    
+    def forward(self, queries, keys, values, attn_mask=None, tau=None, delta=None):
+        """
+        Forward pass with multi-scale wavelet processing.
+        
+        Args:
+            queries: [B, L, D] query tensor
+            keys: [B, L, D] key tensor
+            values: [B, L, D] value tensor
+            attn_mask: Optional attention mask
+            
+        Returns:
+            Tuple of (output, attention_weights)
+        """
+        B, L, D = queries.shape
+        
+        scale_outputs = []
+        scale_attentions = []
+        
+        for scale, scale_attn in zip(self.scales, self.scale_attentions):
+            if scale == 1:
+                # Original scale
+                q_scaled, k_scaled, v_scaled = queries, keys, values
+            else:
+                # Downsample for larger scales
+                target_len = max(L // scale, 1)
+                q_scaled = F.interpolate(queries.transpose(1, 2), size=target_len, mode='linear', align_corners=False).transpose(1, 2)
+                k_scaled = F.interpolate(keys.transpose(1, 2), size=target_len, mode='linear', align_corners=False).transpose(1, 2)
+                v_scaled = F.interpolate(values.transpose(1, 2), size=target_len, mode='linear', align_corners=False).transpose(1, 2)
+            
+            # Apply wavelet attention at this scale
+            output, attention = scale_attn(q_scaled, k_scaled, v_scaled, attn_mask)
+            
+            # Upsample back to original length if needed
+            if output.size(1) != L:
+                output = F.interpolate(output.transpose(1, 2), size=L, mode='linear', align_corners=False).transpose(1, 2)
+            
+            scale_outputs.append(output)
+            scale_attentions.append(attention)
+        
+        # Weighted fusion of multi-scale outputs
+        weights = F.softmax(self.scale_weights, dim=0)
+        
+        # Concatenate and project
+        concatenated = torch.cat(scale_outputs, dim=-1)  # [B, L, D*len(scales)]
+        fused_output = self.scale_proj(concatenated)      # [B, L, D]
+        
+        # Average attention weights
+        avg_attention = torch.stack(scale_attentions, dim=0).mean(dim=0)
+        
+        return fused_output, avg_attention
+class AdaptiveWaveletAttention(BaseAttention):
+    """
+    Adaptive wavelet attention with learnable decomposition levels.
+    
+    This component adaptively selects the optimal number of decomposition
+    levels based on the input characteristics.
+    """
+    
+    def __init__(self, d_model, n_heads, max_levels=5):
+        super(AdaptiveWaveletAttention, self).__init__()
+        logger.info(f"Initializing AdaptiveWaveletAttention: d_model={d_model}, max_levels={max_levels}")
+        
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.max_levels = max_levels
+        
+        # Level selection network
+        self.level_selector = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, max_levels),
+            nn.Softmax(dim=-1)
+        )
+        
+        # Multiple wavelet attention modules for different levels
+        self.wavelet_attentions = nn.ModuleList([
+            WaveletAttention(d_model, n_heads, levels=i+1)
+            for i in range(max_levels)
+        ])
+        
+        self.output_dim_multiplier = 1
+    
+    def forward(self, queries, keys, values, attn_mask=None, tau=None, delta=None):
+        """
+        Forward pass with adaptive level selection.
+        
+        Args:
+            queries: [B, L, D] query tensor
+            keys: [B, L, D] key tensor
+            values: [B, L, D] value tensor
+            attn_mask: Optional attention mask
+            
+        Returns:
+            Tuple of (output, attention_weights)
+        """
+        B, L, D = queries.shape
+        
+        # Select optimal decomposition levels based on input characteristics
+        input_summary = queries.mean(dim=1)  # [B, D]
+        level_weights = self.level_selector(input_summary)  # [B, max_levels]
+        
+        # Compute outputs for all levels
+        level_outputs = []
+        level_attentions = []
+        
+        for i, wavelet_attn in enumerate(self.wavelet_attentions):
+            output, attention = wavelet_attn(queries, keys, values, attn_mask)
+            level_outputs.append(output)
+            level_attentions.append(attention)
+        
+        # Weighted combination based on adaptive selection
+        level_outputs = torch.stack(level_outputs, dim=-1)  # [B, L, D, max_levels]
+        level_attentions = torch.stack(level_attentions, dim=-1)  # [B, H, L, L, max_levels]
+        
+        # Apply level weights
+        final_output = torch.sum(level_outputs * level_weights.view(B, 1, 1, -1), dim=-1)
+        final_attention = torch.sum(level_attentions * level_weights.view(B, 1, 1, 1, -1), dim=-1)
+        
+        return final_output, final_attention
 
 # =============================================================================
 # UNIFIED REGISTRY WITH ALL COMPONENTS
 # =============================================================================
 ATTENTION_REGISTRY = {
-    'multihead': MultiHeadAttention,
-    'multi_head': MultiHeadAttention,
+    # 'multihead': MultiHeadAttention,  # Removed, use torch.nn.MultiheadAttention directly
+    # 'multi_head': MultiHeadAttention,  # Removed, use torch.nn.MultiheadAttention directly
     'autocorrelation': AutoCorrelationAttention,
     'sparse': SparseAttention,
     'fourier': FourierAttention,

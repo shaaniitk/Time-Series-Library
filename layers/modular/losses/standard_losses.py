@@ -1,5 +1,6 @@
 
 import torch.nn as nn
+from .loss_configs import LossConfig
 
 class StandardLossWrapper(nn.Module):
     """

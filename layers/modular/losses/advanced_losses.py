@@ -6,6 +6,7 @@ and adapted for the modular component system.
 """
 
 import torch
+from .loss_configs import MAPELoss, SMAPELoss, MASELoss, PSLoss, FocalLossConfig, StructuralLossConfig, FrequencyLossConfig
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np

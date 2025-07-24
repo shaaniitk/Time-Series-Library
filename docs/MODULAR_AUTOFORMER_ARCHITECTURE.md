@@ -1,3 +1,178 @@
+# Modular Autoformer Component Architecture
+
+## Overview
+
+The Modular Autoformer architecture is designed for flexibility, maintainability, and extensibility. Each subsystem (Attention, Decomposition, Embedding, FeedForward, Loss, etc.) is implemented as a modular component, with clear separation of concerns and robust dependency management.
+
+---
+
+## Component Structure
+
+- **Directory Organization:**
+  - Each component family (e.g., Decomposition, Embeddings, FeedForward) is organized in its own directory under `utils/modular_components/implementations/`.
+  - Each family contains:
+    - `base.py`: Defines the base class/interface for the family.
+    - One file per real implementation (e.g., `learnable.py`, `wavelet.py`).
+    - `registry.py`: Exposes a registry and factory for dynamic instantiation.
+
+- **Example:**
+  ```
+  utils/modular_components/implementations/Decomposition/
+    base.py
+    learnable.py
+    wavelet.py
+    moving_average.py
+    registry.py
+  ```
+
+- **Registries:**
+  - Each family’s registry maps string names to component classes, enabling dynamic selection and instantiation based on configuration.
+  - Example usage:
+    ```python
+    from .registry import DecompositionRegistry
+    decomp = DecompositionRegistry.create('learnable', config)
+    ```
+
+---
+
+## Configuration Integration (`schemas.py`)
+
+- **Structured Configs:**
+  - All model configuration is defined using Pydantic models in `configs/schemas.py` (e.g., `ModularAutoformerConfig`, `AttentionConfig`, `DecompositionConfig`).
+  - The `ComponentType` enum lists all available component types for type safety and validation.
+
+- **Validation:**
+  - Pydantic validators ensure cross-field consistency (e.g., matching `d_model` across components, correct quantile output dimensions).
+  - Example validator:
+    ```python
+    @validator('encoder', 'decoder')
+    def validate_component_configs(cls, v, values):
+        if hasattr(v, 'd_model') and 'd_model' in values:
+            if v.d_model != values['d_model']:
+                raise ValueError("Component d_model must match parent d_model")
+        return v
+    ```
+
+- **Factory Functions:**
+  - Helper functions (`create_enhanced_config`, etc.) build validated config objects for different model variants.
+
+---
+
+## Registry System
+
+- **ComponentRegistry:**
+  - Each modular family exposes a registry (e.g., `DecompositionRegistry`, `EmbeddingRegistry`) with:
+    - `register(name, class)`: Add new components.
+    - `create(name, config)`: Instantiate a component by name and config.
+    - `list_components()`: List available component names.
+
+- **Dynamic Instantiation:**
+  - The main model code uses the registry to instantiate components based on the config, e.g.:
+    ```python
+    decomp = DecompositionRegistry.create(config.decomposition.type.value, config.decomposition)
+    embedding = EmbeddingRegistry.create(config.embedding.type.value, config.embedding)
+    ffn = FeedForwardRegistry.create(config.feedforward.type.value, config.feedforward)
+    ```
+
+---
+
+## Dependency Management (`dependency_manager.py`)
+
+- **ComponentMetadata:**
+  - Extracts capabilities, requirements, and compatibility tags from each component class.
+  - Example:
+    ```python
+    class LearnableDecomposition(BaseDecomposition):
+        def get_capabilities(self):
+            return {'learnable', 'trend_extraction'}
+        def get_requirements(self):
+            return {'backbone': 'd_model'}
+    ```
+
+- **DependencyValidator:**
+  - Validates that all selected components are compatible:
+    - Checks required capabilities between components.
+    - Validates dimensional compatibility (e.g., `d_model` matches across backbone, embedding, processor).
+    - Applies suite-specific rules (Bayesian, Quantile, Hierarchical).
+    - Suggests adapters for dimension mismatches.
+    - Provides clear error and warning messages for invalid configurations.
+  - Example usage:
+    ```python
+    validator = DependencyValidator(registry)
+    is_valid, errors, warnings = validator.validate_configuration(config_dict)
+    ```
+
+- **Integration:**
+  - The validator is called during model setup to ensure the configuration is valid before training or inference.
+
+---
+
+## Integration Flow
+
+1. **Config Creation:**
+   - User or CLI builds a `ModularAutoformerConfig` (or variant) using `schemas.py`.
+2. **Component Instantiation:**
+   - Each component is instantiated via its registry, using the config.
+3. **Dependency Validation:**
+   - The `DependencyValidator` checks the full configuration for compatibility.
+4. **Model Assembly:**
+   - Validated components are assembled into the final model.
+
+---
+
+## Extensibility
+
+- **Adding New Components:**
+  - Implement the new class, add it to the family’s registry, and update the `ComponentType` enum in `schemas.py`.
+  - Example:
+    ```python
+    class FourierDecomposition(BaseDecomposition):
+        ...
+    DecompositionRegistry.register('fourier', FourierDecomposition)
+    ```
+
+- **Custom Validation:**
+  - Extend `dependency_manager.py` with new rules as needed.
+
+---
+
+## Example: Adding a New Decomposition Component
+
+1. Create `fourier.py` in `Decomposition` directory:
+    ```python
+    class FourierDecomposition(BaseDecomposition):
+        ...
+    ```
+2. Register in `registry.py`:
+    ```python
+    from .fourier import FourierDecomposition
+    DecompositionRegistry.register('fourier', FourierDecomposition)
+    ```
+3. Add to `ComponentType` enum in `schemas.py`:
+    ```python
+    class ComponentType(str, Enum):
+        FOURIER_DECOMP = "fourier_decomp"
+    ```
+4. Use in config:
+    ```python
+    config = ModularAutoformerConfig(
+        decomposition=DecompositionConfig(type=ComponentType.FOURIER_DECOMP, ...)
+        ...
+    )
+    ```
+
+---
+
+## Summary
+
+This architecture ensures that all model components are modular, discoverable, and validated for compatibility, with structured configuration and robust error handling. The system is designed for easy extension and safe experimentation.
+
+---
+
+## References
+- `configs/schemas.py`: Structured configuration models and enums
+- `utils/modular_components/implementations/*/registry.py`: Component registries
+- `utils/modular_components/dependency_manager.py`: Dependency validation and management
 # Modular Autoformer Architecture - Complete Framework Documentation
 
 ## Table of Contents

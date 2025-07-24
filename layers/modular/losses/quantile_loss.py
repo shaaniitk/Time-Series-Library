@@ -1,5 +1,6 @@
 
 import torch
+from .loss_configs import QuantileConfig
 import torch.nn as nn
 
 class PinballLoss(nn.Module):

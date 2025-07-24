@@ -6,6 +6,7 @@ training with trend/seasonal awareness and uncertainty quantification.
 """
 
 import torch
+from .loss_configs import BayesianLossConfig, AdaptiveLossConfig, QuantileConfig
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, Any, Optional, Union, Tuple
