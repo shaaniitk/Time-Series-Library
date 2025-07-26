@@ -75,7 +75,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.args.scaler_manager = self.scaler_manager
 
     def _build_model(self):
-        ModelClass = self.model_dict[self.args.model].Model
+        ModelClass = self.model_dict[self.args.model]
         # Get model initialization parameters from the DimensionManager
         # self.model_init_args was set in __init__
         model = ModelClass(self.model_init_args).float()
