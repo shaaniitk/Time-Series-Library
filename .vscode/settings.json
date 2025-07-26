@@ -196,5 +196,6 @@
 	"extensions.autoCheckUpdates": false,
 	
 	// Disable telemetry for performance
-	"telemetry.telemetryLevel": "off"
+	"telemetry.telemetryLevel": "off",
+	"python-envs.pythonProjects": []
 }

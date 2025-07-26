@@ -154,6 +154,8 @@ def get_user_input():
     # --- Hierarchical Model Specific Prompts ---
     n_levels = 3
     fusion_strategy = 'weighted_concat'
+    use_moe_ffn = True
+    num_experts = 4
     if model_name == 'HierarchicalEnhancedAutoformer':
         print("\n--- Hierarchical Model Settings ---")
         try:
@@ -161,10 +163,24 @@ def get_user_input():
         except ValueError:
             logger.warning("Invalid input. Defaulting to 3 levels.")
             n_levels = 3
-        fusion_strategy = input("Enter fusion strategy (weighted_sum, weighted_concat): ").strip().lower() or 'weighted_concat'
-        if fusion_strategy not in ['weighted_sum', 'weighted_concat']:
+        fusion_strategy = input("Enter fusion strategy (weighted_sum, weighted_concat, attention_fusion): ").strip().lower() or 'weighted_concat'
+        if fusion_strategy not in ['weighted_sum', 'weighted_concat', 'attention_fusion']:
             logger.warning("Invalid strategy. Defaulting to 'weighted_concat'.")
             fusion_strategy = 'weighted_concat'
+        # Prompt for MoE FFN usage
+        use_moe_ffn_input = input("Enable MoE FFN in decoder? (y/n, default: y): ").strip().lower()
+        if use_moe_ffn_input == 'n':
+            use_moe_ffn = False
+        else:
+            use_moe_ffn = True
+        if use_moe_ffn:
+            num_experts_input = input("Number of MoE experts (default: 4): ").strip()
+            if num_experts_input:
+                try:
+                    num_experts = int(num_experts_input)
+                except ValueError:
+                    logger.warning("Invalid input for num_experts. Using default (4).")
+            # else keep default
 
     # --- GPU prompt ---
     use_gpu_input = input("\nUse GPU for training? (y/n, default: y): ").strip().lower()
@@ -172,13 +188,13 @@ def get_user_input():
             
     return data_path, target_columns, complexity, model_name, feature_mode, \
            seq_len, label_len, pred_len, loss_type, quantile_levels, enable_kl, kl_weight, \
-           n_levels, fusion_strategy, use_gpu
+           n_levels, fusion_strategy, use_gpu, use_moe_ffn, num_experts
 
 def generate_configurations():
     """Generates a single configuration file based on user input."""
     data_path, target_columns, complexity, model_name, feature_mode, \
     seq_len, label_len, pred_len, loss_type, quantile_levels, enable_kl, kl_weight, \
-    n_levels, fusion_strategy, use_gpu = get_user_input()
+    n_levels, fusion_strategy, use_gpu, use_moe_ffn, num_experts = get_user_input()
 
     # --- Base Template ---
     base_template = {
@@ -204,10 +220,27 @@ def generate_configurations():
         'num_workers': 0,
     }
 
+
     # Apply complexity settings
     config = base_template.copy()
     config.update(complexity_configs[complexity])
-    
+
+    # Ensure d_model and n_heads are always visible and set in config
+    config['d_model'] = complexity_configs[complexity]['d_model']
+    config['n_heads'] = complexity_configs[complexity]['n_heads']
+
+    # --- General d_model/n_heads check for all models ---
+    while config['d_model'] % config['n_heads'] != 0:
+        print(f"\n[ERROR] d_model ({config['d_model']}) must be divisible by n_heads ({config['n_heads']})!")
+        try:
+            new_n_heads = int(input(f"Enter a valid n_heads (divisor of {config['d_model']}): ").strip())
+            if new_n_heads > 0 and config['d_model'] % new_n_heads == 0:
+                config['n_heads'] = new_n_heads
+            else:
+                print(f"[ERROR] {new_n_heads} is not a valid divisor of {config['d_model']}.")
+        except ValueError:
+            print("[ERROR] Please enter a valid integer.")
+
     # Override sequence lengths with user input
     config['seq_len'] = seq_len
     config['label_len'] = label_len
@@ -216,7 +249,7 @@ def generate_configurations():
     # Set model and feature mode
     config['model'] = model_name
     config['features'] = feature_mode
-    
+
     # Add optional settings
     if quantile_levels:
         config['quantile_levels'] = quantile_levels
@@ -225,6 +258,8 @@ def generate_configurations():
     if model_name == 'HierarchicalEnhancedAutoformer':
         config['n_levels'] = n_levels
         config['fusion_strategy'] = fusion_strategy
+        config['use_moe_ffn'] = use_moe_ffn
+        config['num_experts'] = num_experts
 
     # --- Dynamic Dimension Calculation ---
     data_analysis = analyze_dataset(
