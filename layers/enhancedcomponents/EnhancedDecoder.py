@@ -36,6 +36,7 @@ class HierarchicalDecoder(nn.Module):
     """Hierarchical decoder using standard or MoE layers."""
     def __init__(self, configs, trend_dim, n_levels=3, share_weights=False):
         super().__init__()
+        print(f"Debug: HierarchicalDecoder trend_dim={trend_dim}, d_model={configs.d_model}, c_out={configs.c_out}")
         self.use_moe_ffn = getattr(configs, 'use_moe_ffn', False)
         def create_decoder():
             self_attn = AdaptiveAutoCorrelationLayer(
@@ -46,10 +47,10 @@ class HierarchicalDecoder(nn.Module):
                 configs.d_model, configs.n_heads)
             if self.use_moe_ffn:
                 layer = MoEDecoderLayer(self_attn, cross_attn, configs.d_model, configs.d_ff, getattr(configs, 'num_experts', 4), configs.dropout)
-                return EnhancedDecoder([layer], configs.c_out, norm_layer=get_norm_layer('LayerNorm', configs.d_model), projection=nn.Linear(configs.d_model, configs.c_out, bias=True))
+                return EnhancedDecoder([layer], configs.d_model, norm_layer=get_norm_layer('LayerNorm', configs.d_model))
             else:
                 layer = EnhancedDecoderLayer(self_attn, cross_attn, configs.d_model, trend_dim, configs.d_ff, configs.dropout)
-                return EnhancedDecoder([layer], configs.c_out, norm_layer=get_norm_layer('LayerNorm', configs.d_model), projection=nn.Linear(configs.d_model, configs.c_out, bias=True))
+                return EnhancedDecoder([layer], configs.d_model, norm_layer=get_norm_layer('LayerNorm', configs.d_model))
         self.resolution_decoders = nn.ModuleList(
             [create_decoder() for _ in range(n_levels)] if not share_weights else [create_decoder()] * n_levels)
 
@@ -70,4 +71,6 @@ class HierarchicalDecoder(nn.Module):
         return seasonals, trends, aux_loss
 
     def _align(self, t, target_len):
+        if t is None:
+            return None
         return F.interpolate(t.transpose(1, 2), size=target_len, mode='linear').transpose(1, 2)

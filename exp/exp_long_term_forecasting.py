@@ -202,6 +202,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 else:
                     outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 
+                # Handle auxiliary loss if model returns tuple
+                if isinstance(outputs_raw, tuple):
+                    outputs_raw, aux_loss_val = outputs_raw
+                
                 # Prepare y_true for loss: scale the target part of batch_y_val_unscaled_targets
                 y_true_targets_unscaled_val_loss = batch_y_val_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation].cpu().numpy()
                 y_true_targets_scaled_val_loss_np = self.scaler_manager.target_scaler.transform(y_true_targets_unscaled_val_loss.reshape(-1, c_out_evaluation)).reshape(y_true_targets_unscaled_val_loss.shape)
@@ -291,6 +295,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
                     outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                
+                # Handle auxiliary loss if model returns tuple
+                aux_loss_train = 0
+                if isinstance(outputs_raw_train, tuple):
+                    outputs_raw_train, aux_loss_train = outputs_raw_train
+                
                 # Prepare y_true for loss: scale the target part of batch_y
                 y_true_targets_unscaled_train_loss = batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_train].cpu().numpy()
                 y_true_for_loss_train = torch.from_numpy(self.scaler_manager.target_scaler.transform(y_true_targets_unscaled_train_loss.reshape(-1, c_out_evaluation_train)).reshape(y_true_targets_unscaled_train_loss.shape)).float().to(self.device)
@@ -305,6 +315,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     y_pred_for_loss_train = outputs_raw_train[:, -self.args.pred_len:, :c_out_evaluation_train]
                 
                 loss_train = criterion(y_pred_for_loss_train, y_true_for_loss_train)
+                
+                # Add auxiliary loss if present
+                if aux_loss_train != 0:
+                    loss_train = loss_train + aux_loss_train
+                
                 train_loss_epoch_list.append(loss_train.item())
 
                 if (i + 1) % 100 == 0:

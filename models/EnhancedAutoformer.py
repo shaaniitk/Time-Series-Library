@@ -193,15 +193,30 @@ class EnhancedEncoder(nn.Module):
         
         if self.conv_layers is not None:
             for i, (attn_layer, conv_layer) in enumerate(zip(self.attn_layers, self.conv_layers)):
-                x, attn = attn_layer(x, attn_mask=attn_mask)
+                layer_output = attn_layer(x, attn_mask=attn_mask)
+                # Handle different return signatures (2 or 3 values)
+                if isinstance(layer_output, tuple) and len(layer_output) == 3:
+                    x, attn, _ = layer_output  # Ignore aux_loss for now
+                else:
+                    x, attn = layer_output
                 x = conv_layer(x)
                 attns.append(attn)
                 layer_outputs.append(x)
-            x, attn = self.attn_layers[-1](x)
+            layer_output = self.attn_layers[-1](x)
+            # Handle different return signatures for last layer too
+            if isinstance(layer_output, tuple) and len(layer_output) == 3:
+                x, attn, _ = layer_output
+            else:
+                x, attn = layer_output
             attns.append(attn)
         else:
             for i, attn_layer in enumerate(self.attn_layers):
-                x, attn = attn_layer(x, attn_mask=attn_mask)
+                layer_output = attn_layer(x, attn_mask=attn_mask)
+                # Handle different return signatures (2 or 3 values)
+                if isinstance(layer_output, tuple) and len(layer_output) == 3:
+                    x, attn, _ = layer_output  # Ignore aux_loss for now
+                else:
+                    x, attn = layer_output
                 attns.append(attn)
                 layer_outputs.append(x)
 
@@ -270,9 +285,10 @@ class EnhancedDecoderLayer(nn.Module):
         x = residual + y
         x, trend3 = self.decomp3(x)
 
-        # Enhanced trend aggregation
+        # Enhanced trend aggregation - keep in d_model space for hierarchical fusion
         residual_trend = trend1 + trend2 + trend3
-        residual_trend = self.projection(residual_trend.permute(0, 2, 1)).transpose(1, 2)
+        # Don't project trend here - let hierarchical fusion work in d_model space
+        # residual_trend = self.projection(residual_trend.permute(0, 2, 1)).transpose(1, 2)
         
         return x, residual_trend
 
@@ -303,11 +319,14 @@ class EnhancedDecoder(nn.Module):
         
         for layer in self.layers:
             x, residual_trend = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
-            trend = trend + residual_trend
+            if trend is not None:
+                trend = trend + residual_trend
+            else:
+                trend = residual_trend
             accumulated_trends.append(residual_trend)
 
         # Enhanced trend integration
-        if hasattr(self, 'trend_integration') and len(accumulated_trends) > 1:
+        if hasattr(self, 'trend_integration') and len(accumulated_trends) > 1 and trend is not None:
             # Integrate trends from all layers
             stacked_trends = torch.stack(accumulated_trends, dim=-1)  # [B, L, D, num_layers]
             integrated_trend = torch.mean(stacked_trends, dim=-1)  # [B, L, D]

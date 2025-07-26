@@ -31,8 +31,14 @@ class HierarchicalFusion(nn.Module):
 
     def forward(self, features, target_len=None):
         if len(features) == 1: return features[0]
-        target_len = target_len or max(f.size(1) for f in features)
-        aligned = [self._align(f, target_len) for f in features]
+        target_len = target_len or max(f.size(1) for f in features if f is not None)
+        
+        # Filter out None values and align features
+        aligned = [self._align(f, target_len) for f in features if f is not None]
+        
+        if not aligned:
+            # If all features are None, return None
+            return None
         
         if self.fusion_strategy == 'weighted_concat':
             weighted = [f * w for f, w in zip(aligned, torch.nn.functional.softmax(self.fusion_weights, dim=0))]
@@ -49,4 +55,6 @@ class HierarchicalFusion(nn.Module):
             return self.fusion_projection(fused)
 
     def _align(self, t, target_len):
+        if t is None:
+            return None
         return F.interpolate(t.transpose(1, 2), size=target_len, mode='linear', align_corners=False).transpose(1, 2)
