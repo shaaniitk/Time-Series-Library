@@ -30,6 +30,16 @@ class HierarchicalFusion(nn.Module):
             self.fusion_projection = nn.Identity()
 
     def forward(self, features, target_len=None):
+        from utils.logger import logger
+        debug_enabled = logger.isEnabledFor(10)  # DEBUG level is 10
+        
+        if debug_enabled:
+            logger.debug(f"HierarchicalFusion Forward - {self.fusion_strategy}")
+            logger.debug(f"  Input features: {len(features)} levels")
+            for i, feat in enumerate(features):
+                feat_shape = feat.shape if feat is not None else "None"
+                logger.debug(f"    Level {i}: {feat_shape}")
+        
         if len(features) == 1: return features[0]
         target_len = target_len or max(f.size(1) for f in features if f is not None)
         
@@ -38,13 +48,20 @@ class HierarchicalFusion(nn.Module):
         
         if not aligned:
             # If all features are None, return None
+            if debug_enabled:
+                logger.debug("  All features are None, returning None")
             return None
+        
+        if debug_enabled:
+            logger.debug(f"  After alignment: {len(aligned)} features, target_len: {target_len}")
+            for i, feat in enumerate(aligned):
+                logger.debug(f"    Aligned {i}: {feat.shape}")
         
         if self.fusion_strategy == 'weighted_concat':
             weighted = [f * w for f, w in zip(aligned, torch.nn.functional.softmax(self.fusion_weights, dim=0))]
-            return self.fusion_projection(torch.cat(weighted, dim=-1))
+            result = self.fusion_projection(torch.cat(weighted, dim=-1))
         elif self.fusion_strategy == 'weighted_sum':
-            return torch.sum(torch.stack([f * w for f, w in zip(aligned, torch.nn.functional.softmax(self.fusion_weights, dim=0))]), dim=0)
+            result = torch.sum(torch.stack([f * w for f, w in zip(aligned, torch.nn.functional.softmax(self.fusion_weights, dim=0))]), dim=0)
         elif self.fusion_strategy == 'attention_fusion':
             stacked_features = torch.stack(aligned, dim=2)  # [B, L, n_levels, D]
             B, L, N, D = stacked_features.shape
@@ -52,7 +69,12 @@ class HierarchicalFusion(nn.Module):
             query = self.fusion_query.expand(B * L, -1, -1)
             fused, _ = self.attention_fusion(query, key_value, key_value)
             fused = fused.view(B, L, D)
-            return self.fusion_projection(fused)
+            result = self.fusion_projection(fused)
+        
+        if debug_enabled:
+            logger.debug(f"  Fusion output: {result.shape}")
+        
+        return result
 
     def _align(self, t, target_len):
         if t is None:

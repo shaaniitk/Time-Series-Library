@@ -111,6 +111,16 @@ class HierarchicalEnhancedAutoformer(nn.Module):
             Model output tensor of shape [B, pred_len, c_out].
         """
         seasonal_init, trend_init = self.decomp(x_dec)
+        
+        # Debug logging
+        from utils.logger import logger
+        debug_enabled = logger.isEnabledFor(10)  # DEBUG level is 10
+        
+        if debug_enabled:
+            logger.debug(f"HierarchicalEnhancedAutoformer Forward - Input shapes:")
+            logger.debug(f"  x_enc: {x_enc.shape}, x_mark_enc: {x_mark_enc.shape}")
+            logger.debug(f"  x_dec: {x_dec.shape}, x_mark_dec: {x_mark_dec.shape}")
+            logger.debug(f"Series decomposition - seasonal: {seasonal_init.shape}, trend: {trend_init.shape}")
 
         if self.is_quantile_mode:
             # Expand trend_init for quantile dimension: [B, L, num_target_variables] -> [B, L, num_target_variables, num_quantiles]
@@ -146,20 +156,57 @@ class HierarchicalEnhancedAutoformer(nn.Module):
         
         # Also embed the trend component for hierarchical processing
         trend_emb = self.dec_embedding(trend_arg, x_mark_dec)
+        
+        if debug_enabled:
+            logger.debug(f"Embeddings - enc: {enc_emb.shape}, dec: {dec_emb.shape}, trend: {trend_emb.shape}")
 
         multi_res_enc = self.decomposer(enc_emb)
         encoded_features, enc_aux_loss = self.encoder(multi_res_enc, attn_mask=enc_self_mask)
 
         cross_attended = self.cross_attention(encoded_features) if self.cross_attention else encoded_features
+        
+        if debug_enabled:
+            logger.debug(f"Encoder output - encoded_features len: {len(encoded_features)}, aux_loss: {enc_aux_loss}")
+            for i, feat in enumerate(encoded_features):
+                logger.debug(f"  Level {i}: {feat.shape}")
 
         # Process both seasonal and trend through hierarchical decoder
-        s_levels, _, dec_aux_loss_s = self.decoder(dec_emb, cross_attended, dec_self_mask, dec_enc_mask, trend=None)
-        _, t_levels, dec_aux_loss_t = self.decoder(trend_emb, cross_attended, dec_self_mask, dec_enc_mask, trend=None)
+        # For hierarchical processing, we want both components to generate outputs
+        # Initialize proper trend for accumulation
+        initial_trend = torch.zeros_like(trend_emb)
         
+        # Pass the embedded components as decoder inputs with proper trend initialization
+        s_levels, s_trends, dec_aux_loss_s = self.decoder(dec_emb, cross_attended, dec_self_mask, dec_enc_mask, trend=initial_trend)
+        t_levels, t_trends, dec_aux_loss_t = self.decoder(trend_emb, cross_attended, dec_self_mask, dec_enc_mask, trend=initial_trend)
+        
+        if debug_enabled:
+            logger.debug(f"Decoder output - s_levels len: {len(s_levels)}, t_levels len: {len(t_levels)}")
+            for i, (s, t, s_tr, t_tr) in enumerate(zip(s_levels, t_levels, s_trends, t_trends)):
+                s_shape = s.shape if s is not None else "None"
+                t_shape = t.shape if t is not None else "None"
+                s_tr_shape = s_tr.shape if s_tr is not None else "None"
+                t_tr_shape = t_tr.shape if t_tr is not None else "None"
+                logger.debug(f"  Level {i}: seasonal={s_shape}, trend={t_shape}, s_trend={s_tr_shape}, t_trend={t_tr_shape}")
+        
+        # Use the seasonal outputs for seasonal fusion and trend outputs for trend fusion
+        # The key insight: s_levels contains seasonal components, s_trends contains trend components from seasonal processing
+        # Similarly: t_levels contains seasonal-like processing of trend input, t_trends contains trend components
         dec_aux_loss = dec_aux_loss_s + dec_aux_loss_t
 
         fused_seasonal = self.seasonal_fusion(s_levels, self.pred_len)
-        fused_trend = self.trend_fusion(t_levels, self.pred_len)
+        # Use the trend components from both decoders - combine s_trends and t_trends
+        combined_trends = []
+        for s_tr, t_tr in zip(s_trends, t_trends):
+            if s_tr is not None and t_tr is not None:
+                combined_trends.append(s_tr + t_tr)  # Combine trend components
+            elif s_tr is not None:
+                combined_trends.append(s_tr)
+            elif t_tr is not None:
+                combined_trends.append(t_tr)
+            else:
+                combined_trends.append(None)
+        
+        fused_trend = self.trend_fusion(combined_trends, self.pred_len)
 
         # Handle None fusion outputs (can happen when all levels are None)
         if fused_seasonal is None:
