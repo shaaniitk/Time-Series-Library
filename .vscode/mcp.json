@@ -73,7 +73,22 @@
 				"OPENAI_API_KEY": "your-openai-api-key",
 				"OPENAI_EMBEDDING_MODEL": "text-embedding-3-small"
 			}
+		},
+		"smart-tree": {
+			"command": "D:\\workspace\\smart-tree\\target\\release\\st.exe",
+			"args": [
+				"--mcp"
+			],
+			"env": {
+				"name": "analyze_directory",
+				"arguments": {
+					"path": "D:\\workspace\\Time-Series-Library",
+					"mode": "ai",
+					"stream": true
+				}
+			}
 		}
 	},
+
 	"inputs": []
 }

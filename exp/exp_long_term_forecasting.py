@@ -252,10 +252,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         for epoch in range(self.args.train_epochs):
             iter_count = 0
-            train_loss_epoch_list = []
+            main_loss_epoch_list = []
+            aux_loss_epoch_list = []
 
             self.model.train()
             epoch_time = time.time()
+            print(f"\n=== Starting Epoch {epoch + 1}/{self.args.train_epochs} ===")
+            print(f"Expected training steps: {train_steps}")
+            
             for i, (batch_x, batch_y_unscaled_all_features, batch_x_mark, batch_y_mark) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
@@ -314,14 +318,35 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 else:
                     y_pred_for_loss_train = outputs_raw_train[:, -self.args.pred_len:, :c_out_evaluation_train]
                 
-                loss_train = criterion(y_pred_for_loss_train, y_true_for_loss_train)
+                main_loss = criterion(y_pred_for_loss_train, y_true_for_loss_train)
                 
+                # Debug: Print tensor statistics for first batch
+                if i == 0:
+                    print(f"\n=== TRAINING DEBUG (Batch {i}, Epoch {epoch + 1}) ===")
+                    print(f"y_pred shape: {y_pred_for_loss_train.shape}, mean: {y_pred_for_loss_train.mean().item():.6f}, std: {y_pred_for_loss_train.std().item():.6f}")
+                    print(f"y_true shape: {y_true_for_loss_train.shape}, mean: {y_true_for_loss_train.mean().item():.6f}, std: {y_true_for_loss_train.std().item():.6f}")
+                    diff = y_pred_for_loss_train - y_true_for_loss_train
+                    print(f"difference mean: {diff.mean().item():.6f}, std: {diff.std().item():.6f}")
+                    # Updated print statement
+                    print(f"Batch Main Loss: {main_loss.item():.7f}, Aux Loss: {(aux_loss_train.item() if hasattr(aux_loss_train, 'item') else aux_loss_train):.7f}")
+                    print("===========================\n")
+                
+                loss_train = main_loss
                 # Add auxiliary loss if present
                 if aux_loss_train != 0:
-                    aux_loss_weight = getattr(self.args, 'aux_loss_weight', 0.01)
-                    loss_train = loss_train + (aux_loss_weight * aux_loss_train)
+                    # Fixed: Use consistent parameter naming and reduced default weight
+                    aux_loss_weight = getattr(self.args, 'aux_weight', getattr(self.args, 'aux_loss_weight', 0.01))
+                    weighted_aux_loss = aux_loss_weight * aux_loss_train
+                    loss_train = loss_train + weighted_aux_loss
+                    
+                    # Enhanced debug logging for auxiliary loss
+                    if i == 0:  # Log for first batch of each epoch
+                        print(f"Auxiliary Loss Details - Raw: {aux_loss_train:.6f}, Weight: {aux_loss_weight}, Weighted: {weighted_aux_loss:.6f}")
+                        print(f"Loss Ratio - Main: {main_loss.item():.6f}, Aux: {weighted_aux_loss:.6f}, Total: {loss_train.item():.6f}")
                 
-                train_loss_epoch_list.append(loss_train.item())
+                # Store all losses
+                main_loss_epoch_list.append(main_loss.item())
+                aux_loss_epoch_list.append(aux_loss_train.item() if hasattr(aux_loss_train, 'item') else aux_loss_train)
 
                 if (i + 1) % 100 == 0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss_train.item()))
@@ -330,6 +355,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
+                
+                # Progress indicator every 10 iterations for more granular feedback
+                if (i + 1) % 10 == 0:
+                    progress_pct = ((i + 1) / train_steps) * 100
+                    print(f"\t[Epoch {epoch + 1}] Progress: {i + 1}/{train_steps} ({progress_pct:.1f}%) | Current Loss: {loss_train.item():.7f}")
+                
+                # Debug every 50 iterations if debug is enabled
+                if (i + 1) % 50 == 0 and logger.isEnabledFor(10):
+                    logger.debug(f"Training Step {i + 1}: batch_x={batch_x.shape}, outputs={outputs_raw_train.shape}")
+                    logger.debug(f"  aux_loss: {aux_loss_train}, main_loss: {main_loss.item():.7f}")
 
                 if self.args.use_amp:
                     scaler_amp.scale(loss_train).backward()
@@ -340,12 +375,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     model_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
-            train_loss_avg = np.average(train_loss_epoch_list)
+            main_loss_avg = np.average(main_loss_epoch_list)
+            aux_loss_avg = np.average(aux_loss_epoch_list)
+            train_loss_avg = main_loss_avg + aux_loss_avg
             vali_loss = self.vali(vali_loader, criterion)
             test_loss = self.vali(test_loader, criterion) # Using vali for test as placeholder
 
-            print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
-                epoch + 1, train_steps, train_loss_avg, vali_loss, test_loss))
+            print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} (Main: {5:.7f}, Aux: {6:.7f}) | Vali Loss: {3:.7f} | Test Loss: {4:.7f}".format(
+                epoch + 1, train_steps, train_loss_avg, vali_loss, test_loss, main_loss_avg, aux_loss_avg))
             early_stopping(vali_loss, self.model, path, epoch)
             if early_stopping.early_stop:
                 print("Early stopping")

@@ -31,21 +31,40 @@ class CrossResolutionAttention(nn.Module):
         self.cross_projections = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(n_levels - 1)])
 
     def forward(self, multi_res_features):
-        if len(multi_res_features) < 2: return multi_res_features
+        if len(multi_res_features) < 2:
+            return multi_res_features
+        
+        # The coarsest level has no prior, so it passes through unchanged.
         attended_features = [multi_res_features[0]]
+        
+        # Iterate from the second-coarsest level to the finest.
         for i in range(len(multi_res_features) - 1):
-            coarse_features = multi_res_features[i]
-            fine_features = multi_res_features[i + 1]
+            # The key/value comes from the previously processed (coarser) level.
+            coarse_kv = attended_features[i]
+            # The query comes from the current (finer) level's original features.
+            fine_q = multi_res_features[i + 1]
+            
+            # Align the coarser features to the finer features' sequence length for attention.
+            coarse_kv_aligned = self._align_features(coarse_kv, fine_q)
+            
             try:
                 if self.use_multiwavelet:
-                    cross_attended = self._apply_multiwavelet_cross(fine_features, coarse_features, i)
+                    # Query: fine, Key/Value: coarse_aligned
+                    cross_attended = self._apply_multiwavelet_cross(fine_q, coarse_kv_aligned, i)
                 else:
-                    cross_attended = self._apply_standard_attention(fine_features, coarse_features, i)
+                    cross_attended = self._apply_standard_attention(fine_q, coarse_kv_aligned, i)
             except (AttributeError, RuntimeError) as e:
                 logger.error(f"Cross-attention failed with a critical error: {e}", exc_info=True)
-                cross_attended = self._apply_standard_attention(fine_features, coarse_features, i)
+                # Fallback to standard attention
+                cross_attended = self._apply_standard_attention(fine_q, coarse_kv_aligned, i)
+                
             projected = self.cross_projections[i](cross_attended)
-            attended_features.append(fine_features + projected)
+            
+            # Update the fine-grained features with information from the coarse level.
+            # This is a residual connection.
+            updated_fine_features = fine_q + projected
+            attended_features.append(updated_fine_features)
+            
         return attended_features
 
     def _align_features(self, source, target):

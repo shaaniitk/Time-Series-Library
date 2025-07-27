@@ -298,13 +298,14 @@ class EnhancedDecoder(nn.Module):
     Enhanced Autoformer decoder with improved trend-seasonal integration.
     """
     
-    def __init__(self, layers, c_out, norm_layer=None, projection=None):
+    def __init__(self, layers, c_out, norm_layer=None, projection=None, use_moe_ffn=False):
         super(EnhancedDecoder, self).__init__()
-        logger.info("Initializing EnhancedDecoder")
+        logger.info(f"Initializing EnhancedDecoder (MoE enabled: {use_moe_ffn})")
         
         self.layers = nn.ModuleList(layers)
         self.norm = norm_layer
         self.projection = projection
+        self.use_moe_ffn = use_moe_ffn
         
         # Trend integration module
         if len(layers) > 0:
@@ -316,9 +317,19 @@ class EnhancedDecoder(nn.Module):
 
     def forward(self, x, cross, x_mask=None, cross_mask=None, trend=None):
         accumulated_trends = []
+        total_aux_loss = 0.0
         
         for layer in self.layers:
-            x, residual_trend = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
+            layer_output = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
+            
+            # Handle different return signatures from MoE vs. standard layers
+            if len(layer_output) == 3:
+                x, residual_trend, aux_loss = layer_output
+                if isinstance(aux_loss, torch.Tensor):
+                    total_aux_loss += aux_loss
+            else:
+                x, residual_trend = layer_output
+
             if trend is not None:
                 trend = trend + residual_trend
             else:
@@ -339,7 +350,7 @@ class EnhancedDecoder(nn.Module):
         if self.projection is not None:
             x = self.projection(x)
             
-        return x, trend
+        return x, trend, total_aux_loss
 
 
 class EnhancedAutoformer(nn.Module):

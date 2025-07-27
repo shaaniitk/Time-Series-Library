@@ -19,34 +19,39 @@ class MoEDecoderLayer(nn.Module):
         self.self_attention = self_attention
         self.cross_attention = cross_attention
         self.moe_ffn = GatedMoEFFN(d_model, d_ff, num_experts, dropout)
+        
         # Use LearnableSeriesDecomp from EnhancedAutoformer
         from models.EnhancedAutoformer import LearnableSeriesDecomp
         self.decomp1 = LearnableSeriesDecomp(d_model)
         self.decomp2 = LearnableSeriesDecomp(d_model)
         self.decomp3 = LearnableSeriesDecomp(d_model)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
+        
         self.dropout = nn.Dropout(dropout)
+        
+        # Attention scaling parameters (like EnhancedDecoderLayer)
+        self.self_attn_scale = nn.Parameter(torch.ones(1) * 0.1)
+        self.cross_attn_scale = nn.Parameter(torch.ones(1) * 0.1)
 
     def forward(self, x, cross, x_mask=None, cross_mask=None):
-        # Self-attention and first decomposition
-        x = x + self.dropout(self.self_attention(x, x, x, attn_mask=x_mask)[0])
-        x = self.norm1(x)
+        # Enhanced self-attention with residual connection
+        residual = x
+        new_x = self.self_attention(x, x, x, attn_mask=x_mask)[0]
+        x = residual + self.dropout(self.self_attn_scale * new_x)
         x, trend1 = self.decomp1(x)
 
-        # Cross-attention and second decomposition
-        x = x + self.dropout(self.cross_attention(x, cross, cross, attn_mask=cross_mask)[0])
-        x = self.norm2(x)
+        # Enhanced cross-attention with residual connection
+        residual = x
+        new_x = self.cross_attention(x, cross, cross, attn_mask=cross_mask)[0]
+        x = residual + self.dropout(self.cross_attn_scale * new_x)
         x, trend2 = self.decomp2(x)
 
-        # MoE FFN and third decomposition
-        y = x
-        y, aux_loss = self.moe_ffn(y)
-        x = self.norm3(x + y)
+        # MoE FFN with residual connection and third decomposition
+        residual = x
+        y, aux_loss = self.moe_ffn(x)
+        x = residual + y
         x, trend3 = self.decomp3(x)
         
-        # Aggregate trends
+        # Aggregate trends (keep in d_model space like EnhancedDecoderLayer)
         total_trend = trend1 + trend2 + trend3
         
         # Return seasonal, trend, and aux_loss
@@ -68,7 +73,7 @@ class HierarchicalDecoder(nn.Module):
             if self.use_moe_ffn:
                 # MoEDecoderLayer now handles its own decomposition
                 layer = MoEDecoderLayer(self_attn, cross_attn, configs.d_model, configs.d_ff, getattr(configs, 'num_experts', 4), configs.dropout)
-                # The wrapper decoder no longer needs projection, as fusion happens later
+                # Use the existing EnhancedDecoder which already handles 3-tuple returns
                 return EnhancedDecoder([layer], configs.d_model, norm_layer=get_norm_layer('LayerNorm', configs.d_model))
             else:
                 layer = EnhancedDecoderLayer(self_attn, cross_attn, configs.d_model, trend_dim, configs.d_ff, configs.dropout)
@@ -83,19 +88,15 @@ class HierarchicalDecoder(nn.Module):
             x_aligned = self._align(x, target_len)
             trend_aligned = self._align(trend, target_len)
             
-            # The decoder's forward call now has a consistent signature
-            output = decoder(x_aligned, cross_feats, x_mask, cross_mask, trend=trend_aligned)
-
-            if self.use_moe_ffn:
-                # Unpack the 3 return values from the MoE path
-                s, t, loss = output
-                aux_loss += loss
-            else:
-                # Unpack the 2 return values from the standard path
-                s, t = output
-
+            # EnhancedDecoder now consistently returns three values
+            s, t, loss = decoder(x_aligned, cross_feats, x_mask, cross_mask, trend=trend_aligned)
+            
+            # Accumulate results from the current resolution level
             seasonals.append(s)
             trends.append(t)
+            if isinstance(loss, torch.Tensor):
+                aux_loss += loss
+                
         return seasonals, trends, aux_loss
 
     def _align(self, t, target_len):
