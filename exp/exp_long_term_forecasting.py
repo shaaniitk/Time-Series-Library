@@ -318,7 +318,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 # Add auxiliary loss if present
                 if aux_loss_train != 0:
-                    loss_train = loss_train + aux_loss_train
+                    aux_loss_weight = getattr(self.args, 'aux_loss_weight', 0.01)
+                    loss_train = loss_train + (aux_loss_weight * aux_loss_train)
                 
                 train_loss_epoch_list.append(loss_train.item())
 
