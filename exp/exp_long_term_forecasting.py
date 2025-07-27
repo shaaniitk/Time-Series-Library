@@ -320,16 +320,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 main_loss = criterion(y_pred_for_loss_train, y_true_for_loss_train)
                 
-                # Debug: Print tensor statistics for first batch
-                if i == 0:
-                    print(f"\n=== TRAINING DEBUG (Batch {i}, Epoch {epoch + 1}) ===")
-                    print(f"y_pred shape: {y_pred_for_loss_train.shape}, mean: {y_pred_for_loss_train.mean().item():.6f}, std: {y_pred_for_loss_train.std().item():.6f}")
-                    print(f"y_true shape: {y_true_for_loss_train.shape}, mean: {y_true_for_loss_train.mean().item():.6f}, std: {y_true_for_loss_train.std().item():.6f}")
+                # Debug: Log tensor statistics for first batch
+                if i == 0 and logger.isEnabledFor(10):
+                    logger.debug(f"=== TRAINING DEBUG (Batch {i}, Epoch {epoch + 1}) ===")
+                    logger.debug(f"y_pred shape: {y_pred_for_loss_train.shape}, mean: {y_pred_for_loss_train.mean().item():.6f}, std: {y_pred_for_loss_train.std().item():.6f}")
+                    logger.debug(f"y_true shape: {y_true_for_loss_train.shape}, mean: {y_true_for_loss_train.mean().item():.6f}, std: {y_true_for_loss_train.std().item():.6f}")
                     diff = y_pred_for_loss_train - y_true_for_loss_train
-                    print(f"difference mean: {diff.mean().item():.6f}, std: {diff.std().item():.6f}")
-                    # Updated print statement
-                    print(f"Batch Main Loss: {main_loss.item():.7f}, Aux Loss: {(aux_loss_train.item() if hasattr(aux_loss_train, 'item') else aux_loss_train):.7f}")
-                    print("===========================\n")
+                    logger.debug(f"difference mean: {diff.mean().item():.6f}, std: {diff.std().item():.6f}")
+                    logger.debug(f"Batch Main Loss: {main_loss.item():.7f}, Aux Loss: {(aux_loss_train.item() if hasattr(aux_loss_train, 'item') else aux_loss_train):.7f}")
+                    logger.debug("===========================\n")
                 
                 loss_train = main_loss
                 # Add auxiliary loss if present
@@ -338,12 +337,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     aux_loss_weight = getattr(self.args, 'aux_weight', getattr(self.args, 'aux_loss_weight', 0.01))
                     weighted_aux_loss = aux_loss_weight * aux_loss_train
                     loss_train = loss_train + weighted_aux_loss
-                    
-                    # Enhanced debug logging for auxiliary loss
-                    if i == 0:  # Log for first batch of each epoch
-                        print(f"Auxiliary Loss Details - Raw: {aux_loss_train:.6f}, Weight: {aux_loss_weight}, Weighted: {weighted_aux_loss:.6f}")
-                        print(f"Loss Ratio - Main: {main_loss.item():.6f}, Aux: {weighted_aux_loss:.6f}, Total: {loss_train.item():.6f}")
-                
+                # Enhanced debug logging for auxiliary loss
+                    if i == 0 and logger.isEnabledFor(10):
+                        logger.debug(f"MoE FFN Auxiliary Loss Details - Raw: {aux_loss_train:.6f}, Weight: {aux_loss_weight}, Weighted: {weighted_aux_loss:.6f}")
+                        logger.debug(f"Loss Ratio - Main: {main_loss.item():.6f}, Aux: {weighted_aux_loss:.6f}, Total: {loss_train.item():.6f}")
+
                 # Store all losses
                 main_loss_epoch_list.append(main_loss.item())
                 aux_loss_epoch_list.append(aux_loss_train.item() if hasattr(aux_loss_train, 'item') else aux_loss_train)

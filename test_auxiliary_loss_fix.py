@@ -110,9 +110,6 @@ def test_auxiliary_loss_scaling():
         print(f"Batch: {batch_size:2d}x{seq_len:3d} | Aux Loss: {aux_loss.item():.6f}")
 
 if __name__ == "__main__":
-    # Setup logging
-    setup_logger(level="DEBUG")
-    
     try:
         test_moe_auxiliary_loss()
         test_auxiliary_loss_scaling()

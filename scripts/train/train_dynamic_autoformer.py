@@ -53,71 +53,69 @@ def main():
     parser = argparse.ArgumentParser(description='Train DLinear model')
     parser.add_argument('--config', type=str, default='configs/config_DLinear_M_light.yaml', help='Path to the config file')
     parser.add_argument('--model_type', type=str, default='enhanced', help='Type of model to run [enhanced, bayesian, hierarchical]')
-    
+
     # Parse command-line arguments first
     cmd_args = parser.parse_args()
-    
+
+    # --- Custom logging setup for debug mode ---
+    import re
+    import logging
+    from datetime import datetime
+    config_path = cmd_args.config
+    config_base = os.path.basename(config_path)
+    # Example: config_HierarchicalEnhancedAutoformer_MS_light_sl96_pl24.yaml
+    match = re.match(r"config_([A-Za-z0-9]+)_([A-Za-z0-9]+).*\.ya?ml", config_base)
+    model_name = match.group(1) if match else "model"
+    complexity = match.group(2) if match else "complexity"
+    # Create log directory if it doesn't exist
+    log_dir = os.path.join(project_root, "log")
+    os.makedirs(log_dir, exist_ok=True)
+    # Add date and time to log filename (YYMMDDHHMM)
+    now = datetime.now()
+    log_time = now.strftime("%y%m%d%H%M")
+    log_filename = os.path.join(log_dir, f"{model_name}.{complexity}.{log_time}.log")
+
+    # Temporarily set up a basic logger to read config
     log.info(f"Loading config from {cmd_args.config}")
     try:
         with open(cmd_args.config, 'r') as f:
             config = yaml.safe_load(f)
             log.info(f"Config loaded successfully: {config}")
-        
+
         # Convert config to SimpleNamespace for compatibility
         args = SimpleNamespace(**config) # This 'args' now contains config file parameters
-        
+
+        # --- Set up logging handlers based on debug flag ---
+        debug_enabled = getattr(args, 'debug', False)
+        root_logger = logging.getLogger()
+        # Remove all handlers
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+        if debug_enabled:
+            # File handler for debug logs
+            file_handler = logging.FileHandler(log_filename, mode='w')
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            # Console handler for info/warning/error only
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.INFO)
+            console_handler.setFormatter(logging.Formatter('%(message)s'))
+            root_logger.addHandler(file_handler)
+            root_logger.addHandler(console_handler)
+            log.info(f"Debug mode enabled. Debug logs will be saved to {log_filename}")
+        else:
+            # Only console handler for info/warning/error
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.INFO)
+            console_handler.setFormatter(logging.Formatter('%(message)s'))
+            root_logger.addHandler(console_handler)
+
         # Merge command-line arguments into the 'args' object
         # This ensures model_type (and other cmd-line specific args) are preserved
         args.model_type = cmd_args.model_type
         args.config = cmd_args.config # Also preserve the config path if needed later
-        
-        # Override model from config if model_type is specified
-        if args.model_type == 'bayesian':
-            args.model = 'BayesianEnhancedAutoformer'
-        
-        # Add any missing default attributes
-        if not hasattr(args, 'use_amp'):
-            args.use_amp = False
-        if not hasattr(args, 'augmentation_ratio'):
-            args.augmentation_ratio = 0
-        if not hasattr(args, 'use_multi_gpu'):
-            args.use_multi_gpu = False
-        if not hasattr(args, 'devices'):
-            args.devices = '0'
-        if not hasattr(args, 'quantile_levels'):
-            args.quantile_levels = []
-        if not hasattr(args, 'embed'):
-            args.embed = 'timeF'  # Default embedding type
-        if not hasattr(args, 'activation'):
-            args.activation = 'gelu'  # Default activation
-        if not hasattr(args, 'output_attention'):
-            args.output_attention = False  # Default output_attention
-        if not hasattr(args, 'scale'):
-            args.scale = True # Default to True as the pipeline is designed for it
-        
-        # Add common missing architectural/task defaults if not present in config
-        if not hasattr(args, 'task_name'):
-            args.task_name = 'long_term_forecast'
-        if not hasattr(args, 'seq_len'):
-            args.seq_len = 96
-        if not hasattr(args, 'label_len'):
-            args.label_len = 48
-        if not hasattr(args, 'pred_len'):
-            args.pred_len = 24
-        if not hasattr(args, 'd_model'):
-            args.d_model = 512
-        if not hasattr(args, 'freq'):
-            args.freq = 'h'
-        if not hasattr(args, 'dropout'):
-            args.dropout = 0.1
-        if not hasattr(args, 'factor'):
-            args.factor = 1
-        if not hasattr(args, 'n_heads'):
-            args.n_heads = 8
-        if not hasattr(args, 'd_ff'):
-            args.d_ff = 2048
-        
-        # Dynamically set use_gpu if not specified in config
+
+        # ...existing code...
         if not hasattr(args, 'use_gpu'):
             if torch.cuda.is_available():
                 args.use_gpu = True

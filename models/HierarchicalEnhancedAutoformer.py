@@ -122,29 +122,19 @@ class HierarchicalEnhancedAutoformer(nn.Module):
             logger.debug(f"  x_dec: {x_dec.shape}, x_mark_dec: {x_mark_dec.shape}")
             logger.debug(f"Series decomposition - seasonal: {seasonal_init.shape}, trend: {trend_init.shape}")
 
-        if self.is_quantile_mode:
-            # Expand trend_init for quantile dimension: [B, L, num_target_variables] -> [B, L, num_target_variables, num_quantiles]
-            trend_init_expanded = trend_init.unsqueeze(-1).repeat(1, 1, 1, self.num_quantiles)
-            # Compute mean trend for prediction window, expand for quantiles
-            mean_trend = torch.mean(x_dec, dim=1, keepdim=True)  # [B, 1, num_target_variables]
-            mean_trend_expanded = mean_trend.unsqueeze(-1).repeat(1, self.pred_len, 1, self.num_quantiles)  # [B, pred_len, num_target_variables, num_quantiles]
-            # Concatenate along time (label + pred), then flatten last two dims for decoder
-            trend_arg = torch.cat([
-                trend_init_expanded[:, :self.label_len, :, :],
-                mean_trend_expanded
-            ], dim=1)
-            trend_arg = trend_arg.reshape(trend_arg.size(0), self.label_len + self.pred_len, -1)
-        else:
-            # Standard mode: [B, L, num_target_variables]
-            # Fix: Use expand() instead of repeat() to avoid dimension multiplication
-            mean_trend = torch.mean(x_dec, dim=1, keepdim=True)  # [B, 1, dec_in]
-            mean_trend = mean_trend.expand(-1, self.pred_len, -1)  # [B, pred_len, dec_in]
-            
-            trend_arg = torch.cat([
-                trend_init[:, :self.label_len, :],
-                mean_trend
-            ], dim=1)
+        # The logic for preparing trend and seasonal arguments is the same for both quantile and standard modes.
+        # The quantile dimension is introduced by the final projection layer, not by manipulating the input to the embedding.
+        # The embedding layer expects an input with `dec_in` features.
 
+        # Prepare trend argument for the decoder's trend processing path
+        mean_trend = torch.mean(x_dec, dim=1, keepdim=True)
+        mean_trend = mean_trend.expand(-1, self.pred_len, -1)
+        trend_arg = torch.cat([
+            trend_init[:, :self.label_len, :],
+            mean_trend
+        ], dim=1)
+
+        # Prepare seasonal argument for the decoder's seasonal processing path
         seasonal_arg = torch.cat([
             seasonal_init[:, :self.label_len, :],
             torch.zeros_like(seasonal_init[:, :self.pred_len, :])

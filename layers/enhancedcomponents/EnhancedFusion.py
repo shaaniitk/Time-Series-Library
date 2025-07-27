@@ -24,7 +24,11 @@ class HierarchicalFusion(nn.Module):
             )
         elif fusion_strategy == 'attention_fusion':
             self.attention_fusion = CustomMultiHeadAttention(d_model, n_heads, dropout=0.1)
-            self.fusion_query = nn.Parameter(torch.randn(1, 1, d_model)) # Learnable query for fusion
+            # The original implementation used a static, learnable query.
+            # A more dynamic approach is to generate the query from the input data itself.
+            # We'll generate it from the finest-resolution features.
+            # self.fusion_query = nn.Parameter(torch.randn(1, 1, d_model)) # Learnable query for fusion
+            self.query_projection = nn.Linear(d_model, d_model) # Project finest level to get query
             self.fusion_projection = nn.Linear(d_model, d_model)
         else: # weighted_sum
             self.fusion_projection = nn.Identity()
@@ -65,9 +69,12 @@ class HierarchicalFusion(nn.Module):
         elif self.fusion_strategy == 'attention_fusion':
             stacked_features = torch.stack(aligned, dim=2)  # [B, L, n_levels, D]
             B, L, N, D = stacked_features.shape
+            # Use the finest resolution level (last in the list) to generate a dynamic query.
+            # The original features are ordered from coarsest to finest.
+            finest_level_features = aligned[-1] # [B, L, D]
             key_value = stacked_features.view(B * L, N, D)
-            query = self.fusion_query.expand(B * L, -1, -1)
-            fused, _ = self.attention_fusion(query, key_value, key_value)
+            query = self.query_projection(finest_level_features).view(B * L, 1, D)
+            fused, _ = self.attention_fusion(query=query, key=key_value, value=key_value)
             fused = fused.view(B, L, D)
             result = self.fusion_projection(fused)
         
