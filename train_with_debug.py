@@ -11,20 +11,20 @@ import logging
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 def setup_debug_logging():
-    """Setup clean training logging with epoch progress."""
+    """Setup comprehensive debug logging."""
     from utils.logger import logger
     
-    # Set to INFO level for clean output
-    logger.setLevel(logging.INFO)
+    # Set to DEBUG level
+    logger.setLevel(logging.DEBUG)
     
-    # Create clean formatter for training progress
+    # Create detailed formatter
     formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s'
+        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
     )
     
     # Create console handler
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(formatter)
     
     # Remove existing handlers
@@ -33,14 +33,15 @@ def setup_debug_logging():
     
     logger.addHandler(console_handler)
     
-    print("� TRAINING MODE ENABLED")
-    print("=" * 50)
-    print("Clean training progress with:")
-    print("- Epoch progress tracking")
-    print("- Loss monitoring")
-    print("- Validation metrics")
-    print("- Component status updates")
-    print("=" * 50)
+    print("🔍 DEBUG LOGGING ENABLED")
+    print("=" * 60)
+    print("You will now see detailed logs including:")
+    print("- Input/output tensor shapes at each stage")
+    print("- Hierarchical fusion processing details")
+    print("- Encoder/decoder component analysis")
+    print("- Progress tracking every 10 iterations")
+    print("- Component-level debugging information")
+    print("=" * 60)
 
 def main():
     """Main training function with debug support."""

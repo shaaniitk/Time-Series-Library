@@ -88,14 +88,21 @@ class HierarchicalDecoder(nn.Module):
             x_aligned = self._align(x, target_len)
             trend_aligned = self._align(trend, target_len)
             
-            # EnhancedDecoder now consistently returns three values
-            s, t, loss = decoder(x_aligned, cross_feats, x_mask, cross_mask, trend=trend_aligned)
+            # Handle different return signatures: MoE layers return 3, standard EnhancedDecoder returns 2
+            decoder_output = decoder(x_aligned, cross_feats, x_mask, cross_mask, trend=trend_aligned)
+            
+            if len(decoder_output) == 3:
+                # MoE decoder returns (seasonal, trend, aux_loss)
+                s, t, loss = decoder_output
+                if isinstance(loss, torch.Tensor):
+                    aux_loss += loss
+            else:
+                # Standard EnhancedDecoder returns (seasonal, trend)
+                s, t = decoder_output
             
             # Accumulate results from the current resolution level
             seasonals.append(s)
             trends.append(t)
-            if isinstance(loss, torch.Tensor):
-                aux_loss += loss
                 
         return seasonals, trends, aux_loss
 

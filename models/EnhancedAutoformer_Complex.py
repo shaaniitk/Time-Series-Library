@@ -287,8 +287,8 @@ class EnhancedDecoderLayer(nn.Module):
 
         # Enhanced trend aggregation - keep in d_model space for hierarchical fusion
         residual_trend = trend1 + trend2 + trend3
-        # Project trend to output space for proper accumulation
-        residual_trend = self.projection(residual_trend.permute(0, 2, 1)).transpose(1, 2)
+        # Don't project trend here - let hierarchical fusion work in d_model space
+        # residual_trend = self.projection(residual_trend.permute(0, 2, 1)).transpose(1, 2)
         
         return x, residual_trend
 
@@ -308,7 +308,7 @@ class EnhancedDecoder(nn.Module):
         self.use_moe_ffn = use_moe_ffn
         
         # Trend integration module
-        if len(layers) > 0 and c_out > 0:
+        if len(layers) > 0:
             self.trend_integration = nn.Sequential(
                 nn.Linear(c_out, c_out),
                 nn.ReLU(),
@@ -351,6 +351,8 @@ class EnhancedDecoder(nn.Module):
             x = self.projection(x)
             
         return x, trend, total_aux_loss
+
+
 class EnhancedAutoformer(nn.Module):
     """
     Enhanced Autoformer with adaptive autocorrelation and learnable decomposition.
@@ -502,7 +504,7 @@ class EnhancedAutoformer(nn.Module):
         dec_out = self.dec_embedding(seasonal_arg_to_dec_embedding, x_mark_dec)
 
         # `self.decoder` receives `trend_arg_to_decoder` (20 features).
-        seasonal_part, trend_part, aux_loss = self.decoder(dec_out, enc_out, x_mask=None, 
+        seasonal_part, trend_part = self.decoder(dec_out, enc_out, x_mask=None, 
                                                 cross_mask=None, trend=trend_arg_to_decoder)
 
         # Final combination
@@ -518,7 +520,7 @@ class EnhancedAutoformer(nn.Module):
             dec_out = trend_part_expanded + seasonal_part
         else:
             dec_out = trend_part + seasonal_part
-        return dec_out, aux_loss
+        return dec_out
 
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
         """Enhanced imputation with encoder-decoder architecture."""
@@ -532,11 +534,11 @@ class EnhancedAutoformer(nn.Module):
 
         # The rest of the logic is similar to forecast, but without the future prediction part
         dec_out = self.dec_embedding(seasonal_init, x_mark_enc)
-        seasonal_part, trend_part, aux_loss = self.decoder(dec_out, enc_out, x_mask=None, cross_mask=None, trend=trend_init)
+        seasonal_part, trend_part = self.decoder(dec_out, enc_out, x_mask=None, cross_mask=None, trend=trend_init)
 
         # Final combination
         dec_out = trend_part + seasonal_part
-        return dec_out, aux_loss
+        return dec_out
 
     def anomaly_detection(self, x_enc):
         """Enhanced anomaly detection with encoder-decoder architecture."""
@@ -551,11 +553,11 @@ class EnhancedAutoformer(nn.Module):
         # The rest of the logic is similar to forecast, but without the future prediction part
         # We use x_enc for both seasonal_init and x_mark_enc for dec_embedding
         dec_out = self.dec_embedding(seasonal_init, None)
-        seasonal_part, trend_part, aux_loss = self.decoder(dec_out, enc_out, x_mask=None, cross_mask=None, trend=trend_init)
+        seasonal_part, trend_part = self.decoder(dec_out, enc_out, x_mask=None, cross_mask=None, trend=trend_init)
 
         # Final combination
         dec_out = trend_part + seasonal_part
-        return dec_out, aux_loss
+        return dec_out
 
     def classification(self, x_enc, x_mark_enc):
         """Enhanced classification (same as original for now)."""
@@ -574,27 +576,18 @@ class EnhancedAutoformer(nn.Module):
         logger.debug("EnhancedAutoformer forward")
         
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
-            result = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            if isinstance(result, tuple):
-                dec_out, aux_loss = result
-            else:
-                dec_out = result
+            dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             # dec_out shape is [B, L, num_target_variables * num_quantiles]
             output = dec_out[:, -self.pred_len:, :] # Output is [B, pred_len, num_target_variables * num_quantiles]
+            # PinballLoss expects a 3D tensor and handles reshaping internally.
+            # DO NOT reshape to 4D here if PinballLoss is used.
+            # If a different loss expects 4D, that loss or the training script should handle it.
             return output
         if self.task_name == 'imputation':
-            result = self.imputation(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
-            if isinstance(result, tuple):
-                dec_out, aux_loss = result
-            else:
-                dec_out = result
+            dec_out = self.imputation(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
             return dec_out
         if self.task_name == 'anomaly_detection':
-            result = self.anomaly_detection(x_enc)
-            if isinstance(result, tuple):
-                dec_out, aux_loss = result
-            else:
-                dec_out = result
+            dec_out = self.anomaly_detection(x_enc)
             return dec_out
         if self.task_name == 'classification':
             dec_out = self.classification(x_enc, x_mark_enc)
@@ -604,6 +597,3 @@ class EnhancedAutoformer(nn.Module):
 
 # Alias for compatibility
 Model = EnhancedAutoformer
-
-# Backward compatibility alias
-StableSeriesDecomp = LearnableSeriesDecomp

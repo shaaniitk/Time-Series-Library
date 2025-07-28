@@ -75,8 +75,7 @@ class Top1Gating(nn.Module):
             dispatch_prob_per_expert = soft_weights.mean(dim=0)
             
             # Load balancing loss from the Switch Transformer paper
-            # Fixed: Remove the multiplication by num_experts which was inflating the loss
-            aux_loss = torch.sum(fraction_per_expert * dispatch_prob_per_expert)
+            aux_loss = self.gate.out_features * torch.sum(fraction_per_expert * dispatch_prob_per_expert)
 
         return top_expert_indices, combined_weights, soft_weights, aux_loss
 
@@ -114,7 +113,7 @@ class GatedMoEFFN(nn.Module):
             The output of the MoE layer and the auxiliary loss.
         """
         batch_size, seq_len, d_model = x.shape
-        x = x.reshape(-1, d_model) # Flatten to [batch*seq_len, d_model] using reshape instead of view for non-contiguous tensors
+        x = x.view(-1, d_model) # Flatten to [batch*seq_len, d_model]
         
         # Get routing decisions from the gating network
         top_indices, combined_weights, _, aux_loss = self.gating_network(x)
@@ -137,13 +136,7 @@ class GatedMoEFFN(nn.Module):
         # Sum the weighted outputs to get the final result
         final_output = weighted_outputs.sum(dim=1)
         
-        # Reshape back to the original sequence format using reshape instead of view for non-contiguous tensors
-        final_output = final_output.reshape(batch_size, seq_len, d_model)
-        
-        # Debug logging for auxiliary loss
-        if self.training and aux_loss > 0:
-            from utils.logger import logger
-            if logger.isEnabledFor(10):  # DEBUG level
-                logger.debug(f"GatedMoEFFN aux_loss: {aux_loss.item():.6f}")
+        # Reshape back to the original sequence format
+        final_output = final_output.view(batch_size, seq_len, d_model)
         
         return final_output, aux_loss
