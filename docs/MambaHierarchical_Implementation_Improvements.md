@@ -36,7 +36,7 @@ This model is the first implementation based on the plan. It processes target an
 
 ### Issue 2.2: Inefficient On-the-Fly Module Creation
 
-- **Severity**: <font color="orange">**Low**</font>
+- **Severity**: <font color="orange">**Low**</font> - <font color="green">**FIXED**</font>
 - **Description**: The `try...except` blocks for the target and covariate processors create new `nn.Linear` layers inside the `forward` pass upon failure.
   ```python
   # In MambaHierarchical.forward()
@@ -69,7 +69,7 @@ This model correctly introduces an `EnhancedTargetProcessor` and a `SequentialDe
 
 ### Issue 3.1: Fused Context from Cross-Attention is Not Used
 
-- **Severity**: <font color="red">**Critical**</font>
+- **Severity**: <font color="red">**Critical**</font> - <font color="green">**FIXED**</font>
 - **Description**: The model correctly performs dual cross-attention to create `fused_context`, `attended_target`, and `attended_covariate`. However, these tensors are **immediately discarded**. The subsequent MoE layer and the `SequentialDecoder` are fed the **original, pre-attention** `target_context` and `covariate_context`. The core purpose of fusing information between the two streams before decoding is completely bypassed.
 
   *Original Flawed Logic in `forward()`:*
@@ -146,7 +146,7 @@ This model correctly introduces an `EnhancedTargetProcessor` and a `SequentialDe
 
 ### Issue 3.2: Inconsistent Application of Mixture-of-Experts (MoE)
 
-- **Severity**: <font color="blue">**Medium**</font>
+- **Severity**: <font color="blue">**Medium**</font> - <font color="green">**FIXED & IMPROVED**</font>
 - **Description**: The MoE layer is applied *separately* to the target and covariate contexts. The implementation plan suggests MoE is part of the "Fusion Block", implying it should operate on a *fused* representation.
 - **Impact**: The MoE layer enhances the two contexts in isolation. It misses the opportunity to learn expert pathways for the combined, fused information, which is likely the more powerful application. The critical bug (3.1) makes this worse, as it's applied to unfused contexts.
 - **Recommendation**: After fixing the critical bug (3.1), the design should be reconsidered. A better approach would be to apply a single MoE layer to the `fused_context` that results from combining `attended_target` and `attended_covariate`. This would align better with the implementation plan.
@@ -172,7 +172,40 @@ This model correctly introduces an `EnhancedTargetProcessor` and a `SequentialDe
 
 ### Issue 3.3: Inefficient Fallback Mechanism
 
-- **Severity**: <font color="orange">**Low**</font>
+- **Severity**: <font color="orange">**Low**</font> - <font color="green">**FIXED**</font>
 - **Description**: Same issue as in `MambaHierarchical.py`. The `forward` pass creates `nn.Linear` layers on-the-fly in `except` blocks.
 - **Impact**: Minor performance overhead and poor design practice.
 - **Recommendation**: Define fallback projection layers in the `__init__` method and reuse them, as recommended for the base model.
+
+---
+
+## 4. State-of-the-Art Improvements and Future Work
+
+### 4.1. Unified Context Processing with MoE
+
+- **Status**: <font color="green">**Implemented**</font>
+- **Description**: The original "improved" model applied MoE to separate target and covariate contexts *before* decoding. A more architecturally sound and powerful approach is to apply the MoE to the single, unified context vector that results from the `DualCrossAttention` fusion. This allows the MoE to learn expert pathways based on the combined information from both time series streams.
+- **Implementation**:
+  1. The `attended_target` and `attended_covariate` vectors from cross-attention are combined (e.g., via averaging) into a single `final_context`.
+  2. The `GatedMoEFFN` is applied to this `final_context`.
+  3. The `SequentialDecoder` was refactored to accept a single `context` vector, simplifying the architecture and data flow.
+- **Impact**: This change aligns the model with its theoretical design, improves architectural elegance, and likely enhances performance by allowing the MoE to operate on a richer, fused representation of the system's state.
+
+### 4.2. Future Improvement: Adaptive Context Fusion
+
+- **Status**: <font color="green">**Implemented**</font>
+- **Description**: The current fusion of `attended_target` and `attended_covariate` is a simple average. A more advanced technique would be to use a learnable gating mechanism or a small attention layer to adaptively weigh the two contexts before feeding them to the MoE and decoder.
+- **Implementation**: A gating mechanism was added to `ImprovedMambaHierarchical`. It computes a dynamic weight `gate` based on the concatenated contexts and applies it to create a weighted sum.
+  ```python
+  # In ImprovedMambaHierarchical.__init__()
+  self.adaptive_fusion_gate = nn.Sequential(
+      nn.Linear(self.d_model * 2, self.d_model),
+      nn.Sigmoid()
+  )
+  
+  # In ImprovedMambaHierarchical.forward()
+  gate = self.adaptive_fusion_gate(torch.cat([attended_target, attended_covariate], dim=-1))
+  final_context = gate * attended_target + (1 - gate) * attended_covariate
+  ```
+- **Example**:
+- **Impact**: This would allow the model to dynamically decide whether to prioritize target history or covariate information at different times, potentially leading to more robust and accurate forecasts.

@@ -112,6 +112,10 @@ class MambaHierarchical(nn.Module):
         
         # Layer normalization
         self.final_norm = nn.LayerNorm(self.d_model)
+
+        # Fallback projection layers (defined once)
+        self.target_fallback_projection = nn.Linear(self.num_targets, self.d_model)
+        self.covariate_fallback_projection = nn.Linear(self.num_covariates, self.d_model)
         
         # Comprehensive initialization logging
         logger.info(f"MambaHierarchical initialized: {self.num_targets} targets, "
@@ -313,7 +317,7 @@ class MambaHierarchical(nn.Module):
             logger.error(f"Target processing failed: {e}")
             # Fallback: use mean pooling
             target_context = targets.mean(dim=1)  # [B, num_targets]
-            target_context = nn.Linear(self.num_targets, self.d_model).to(targets.device)(target_context)
+            target_context = self.target_fallback_projection(target_context)
         
         # Step 3: Process covariates through covariate pipeline
         try:
@@ -334,7 +338,7 @@ class MambaHierarchical(nn.Module):
             logger.error(f"Covariate processing failed: {e}")
             # Fallback: use mean pooling
             covariate_context = covariates.mean(dim=1)  # [B, num_covariates]
-            covariate_context = nn.Linear(self.num_covariates, self.d_model).to(covariates.device)(covariate_context)
+            covariate_context = self.covariate_fallback_projection(covariate_context)
         
         # Step 4: Apply dual cross-attention
         try:
