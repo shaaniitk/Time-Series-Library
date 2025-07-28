@@ -1,7 +1,3 @@
-"""
-ImprovedMambaHierarchical - Enhanced version with proper trend-seasonal decomposition and sequential decoding
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -53,4 +49,428 @@ class ImprovedMambaHierarchical(nn.Module):
             attention_heads=self.attention_heads,
             dropout=self.dropout,
             trend_kernel_size=getattr(self.configs, 'trend_kernel_size', 25)
-        )\n        \n        # Covariate processing pipeline (unchanged)\n        self.covariate_processor = CovariateProcessor(\n            num_covariates=self.num_covariates,\n            family_size=self.covariate_family_size,\n            seq_len=self.seq_len,\n            d_model=self.d_model,\n            mamba_d_state=self.mamba_d_state,\n            mamba_d_conv=self.mamba_d_conv,\n            mamba_expand=self.mamba_expand,\n            hierarchical_attention_heads=self.hierarchical_attention_heads,\n            dropout=self.dropout,\n            use_family_attention=self.use_family_attention,\n            fusion_strategy=self.fusion_strategy,\n            covariate_families=getattr(self, 'covariate_families', None)\n        )\n        \n        # Dual cross-attention for context fusion\n        self.dual_cross_attention = DualCrossAttention(\n            d_model=self.d_model,\n            num_heads=self.cross_attention_heads,\n            dropout=self.dropout,\n            use_residual=True,\n            use_layer_norm=True\n        )\n        \n        # Sequential decoder with trend-seasonal reconstruction\n        self.sequential_decoder = SequentialDecoder(\n            d_model=self.d_model,\n            c_out=self.c_out,\n            pred_len=self.pred_len,\n            mamba_d_state=self.mamba_d_state,\n            mamba_d_conv=self.mamba_d_conv,\n            mamba_expand=self.mamba_expand,\n            dropout=self.dropout,\n            use_autoregressive=getattr(self.configs, 'use_autoregressive', True)\n        )\n        \n        # Mixture of Experts (optional) - applied to context before decoding\n        if self.use_moe:\n            try:\n                self.mixture_of_experts = GatedMoEFFN(\n                    d_model=self.d_model,\n                    d_ff=self.d_model * 4,\n                    num_experts=self.num_experts,\n                    dropout=self.dropout\n                )\n                logger.info(f\"Initialized MoE with {self.num_experts} experts\")\n            except Exception as e:\n                logger.warning(f\"Failed to initialize MoE: {e}, using standard FFN\")\n                self.mixture_of_experts = nn.Sequential(\n                    nn.Linear(self.d_model, self.d_model * 4),\n                    nn.ReLU(),\n                    nn.Dropout(self.dropout),\n                    nn.Linear(self.d_model * 4, self.d_model)\n                )\n        else:\n            self.mixture_of_experts = None\n        \n        # Layer normalization\n        self.context_norm = nn.LayerNorm(self.d_model)\n        \n        # Log comprehensive configuration\n        self._log_configuration()\n    \n    def _extract_config_params(self):\n        \"\"\"Extract and set parameters from config with defaults.\"\"\"\n        # Basic model parameters\n        self.task_name = getattr(self.configs, 'task_name', 'long_term_forecast')\n        self.seq_len = self.configs.seq_len\n        self.label_len = self.configs.label_len\n        self.pred_len = self.configs.pred_len\n        self.enc_in = self.configs.enc_in\n        self.dec_in = self.configs.dec_in\n        self.c_out = self.configs.c_out\n        self.d_model = self.configs.d_model\n        self.dropout = getattr(self.configs, 'dropout', 0.1)\n        self.embed = getattr(self.configs, 'embed', 'timeF')\n        self.freq = getattr(self.configs, 'freq', 'h')\n        \n        # Target and covariate configuration\n        self.num_targets = getattr(self.configs, 'num_targets', 4)\n        self.num_covariates = getattr(self.configs, 'num_covariates', 40)\n        self.covariate_family_size = getattr(self.configs, 'covariate_family_size', 4)\n        \n        # Support for custom covariate family configurations\n        self.covariate_families = getattr(self.configs, 'covariate_families', None)\n        if self.covariate_families is not None:\n            self.num_families = len(self.covariate_families)\n        else:\n            self.num_families = self.num_covariates // self.covariate_family_size\n            self.covariate_families = [self.covariate_family_size] * self.num_families\n        \n        # Wavelet decomposition parameters\n        self.wavelet_type = getattr(self.configs, 'wavelet_type', 'db4')\n        self.wavelet_levels = getattr(self.configs, 'wavelet_levels', 3)\n        \n        # Mamba parameters\n        self.mamba_d_state = getattr(self.configs, 'mamba_d_state', 64)\n        self.mamba_d_conv = getattr(self.configs, 'mamba_d_conv', 4)\n        self.mamba_expand = getattr(self.configs, 'mamba_expand', 2)\n        \n        # Attention parameters\n        self.attention_heads = getattr(self.configs, 'attention_heads', 8)\n        self.hierarchical_attention_heads = getattr(self.configs, 'hierarchical_attention_heads', 8)\n        self.cross_attention_heads = getattr(self.configs, 'cross_attention_heads', 8)\n        \n        # Fusion and MoE parameters\n        self.fusion_strategy = getattr(self.configs, 'fusion_strategy', 'weighted_concat')\n        self.use_family_attention = getattr(self.configs, 'use_family_attention', True)\n        self.use_moe = getattr(self.configs, 'use_moe', True)\n        self.num_experts = getattr(self.configs, 'num_experts', 8)\n        \n        # Validation\n        assert self.enc_in >= self.num_targets + self.num_covariates, \\\n            f\"enc_in ({self.enc_in}) must be >= num_targets + num_covariates ({self.num_targets + self.num_covariates})\"\n    \n    def _validate_config(self):\n        \"\"\"Validate configuration parameters.\"\"\"\n        if self.covariate_families is None and self.num_covariates % self.covariate_family_size != 0:\n            logger.warning(f\"Adjusting num_covariates from {self.num_covariates} to {(self.num_covariates // self.covariate_family_size) * self.covariate_family_size}\")\n            self.num_covariates = (self.num_covariates // self.covariate_family_size) * self.covariate_family_size\n        \n        if self.d_model % self.attention_heads != 0:\n            logger.warning(f\"d_model ({self.d_model}) not divisible by attention_heads ({self.attention_heads})\")\n    \n    def _log_configuration(self):\n        \"\"\"Log comprehensive configuration.\"\"\"\n        config_dump = {\n            'model_type': 'ImprovedMambaHierarchical',\n            'improvements': [\n                'Explicit trend-seasonal decomposition',\n                'Sequential decoder with autoregressive generation',\n                'Enhanced context fusion',\n                'Proper decoder input integration'\n            ],\n            'basic_params': {\n                'seq_len': self.seq_len, 'pred_len': self.pred_len, 'label_len': self.label_len,\n                'enc_in': self.enc_in, 'dec_in': self.dec_in, 'c_out': self.c_out, 'd_model': self.d_model\n            },\n            'target_covariate_split': {\n                'num_targets': self.num_targets, 'num_covariates': self.num_covariates,\n                'covariate_families': self.covariate_families\n            },\n            'decomposition_params': {\n                'wavelet_type': self.wavelet_type, 'wavelet_levels': self.wavelet_levels,\n                'explicit_trend_seasonal': True\n            },\n            'mamba_params': {\n                'd_state': self.mamba_d_state, 'd_conv': self.mamba_d_conv, 'expand': self.mamba_expand\n            },\n            'fusion_params': {\n                'fusion_strategy': self.fusion_strategy, 'use_moe': self.use_moe,\n                'num_experts': self.num_experts if self.use_moe else 0\n            }\n        }\n        logger.info(f\"ImprovedMambaHierarchical Configuration: {config_dump}\")\n    \n    def _split_input_features(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:\n        \"\"\"Split input tensor into target and covariate components.\"\"\"\n        batch_size, seq_len, total_features = x.shape\n        \n        targets = x[:, :, :self.num_targets]\n        \n        if total_features >= self.num_targets + self.num_covariates:\n            covariates = x[:, :, self.num_targets:self.num_targets + self.num_covariates]\n        else:\n            available_covariates = total_features - self.num_targets\n            if available_covariates > 0:\n                existing_covariates = x[:, :, self.num_targets:]\n                padding = torch.zeros(batch_size, seq_len, \n                                    self.num_covariates - available_covariates,\n                                    device=x.device, dtype=x.dtype)\n                covariates = torch.cat([existing_covariates, padding], dim=-1)\n            else:\n                covariates = torch.zeros(batch_size, seq_len, self.num_covariates,\n                                       device=x.device, dtype=x.dtype)\n        \n        return targets, covariates\n    \n    def _extract_initial_values(self, x_dec: torch.Tensor) -> torch.Tensor:\n        \"\"\"Extract initial values for autoregressive generation from decoder input.\"\"\"\n        # Use the last target values from decoder input as initial values\n        targets_from_dec = x_dec[:, -1, :self.num_targets]  # [B, num_targets]\n        \n        # If we need c_out values but only have num_targets, handle the difference\n        if self.c_out != self.num_targets:\n            if self.c_out > self.num_targets:\n                # Pad with zeros\n                padding = torch.zeros(targets_from_dec.size(0), self.c_out - self.num_targets,\n                                    device=targets_from_dec.device, dtype=targets_from_dec.dtype)\n                initial_values = torch.cat([targets_from_dec, padding], dim=-1)\n            else:\n                # Truncate\n                initial_values = targets_from_dec[:, :self.c_out]\n        else:\n            initial_values = targets_from_dec\n        \n        return initial_values\n    \n    def forward(\n        self,\n        x_enc: torch.Tensor,\n        x_mark_enc: torch.Tensor,\n        x_dec: torch.Tensor,\n        x_mark_dec: torch.Tensor,\n        enc_self_mask: Optional[torch.Tensor] = None,\n        dec_self_mask: Optional[torch.Tensor] = None,\n        dec_enc_mask: Optional[torch.Tensor] = None,\n        future_covariates: Optional[torch.Tensor] = None\n    ) -> torch.Tensor:\n        \"\"\"\n        Improved forward pass with proper trend-seasonal decomposition and sequential decoding.\n        \"\"\"\n        batch_size, seq_len, _ = x_enc.shape\n        \n        # Comprehensive logging\n        forward_dump = {\n            'input_shapes': {\n                'x_enc': list(x_enc.shape), 'x_dec': list(x_dec.shape),\n                'x_mark_enc': list(x_mark_enc.shape), 'x_mark_dec': list(x_mark_dec.shape)\n            },\n            'future_covariates': future_covariates is not None,\n            'improvements_active': ['trend_seasonal_decomp', 'sequential_decoder', 'proper_decoder_integration']\n        }\n        logger.info(f\"ImprovedMambaHierarchical Forward: {forward_dump}\")\n        \n        # Step 1: Split input features\n        targets, covariates = self._split_input_features(x_enc)\n        \n        # Step 2: Enhanced target processing with trend-seasonal decomposition\n        try:\n            target_outputs = self.target_processor(targets, enc_self_mask)\n            target_context = target_outputs['fused_context']  # [B, D]\n            \n            target_dump = {\n                'input_shape': list(targets.shape),\n                'trend_context_shape': list(target_outputs['trend_context'].shape),\n                'seasonal_context_shape': list(target_outputs['seasonal_context'].shape),\n                'fused_context_shape': list(target_context.shape),\n                'processing_status': 'success'\n            }\n            logger.info(f\"Enhanced Target Processing: {target_dump}\")\n            \n        except Exception as e:\n            logger.error(f\"Enhanced target processing failed: {e}\")\n            # Fallback\n            target_context = targets.mean(dim=1)\n            target_context = nn.Linear(self.num_targets, self.d_model).to(targets.device)(target_context)\n        \n        # Step 3: Covariate processing (unchanged)\n        try:\n            covariate_context = self.covariate_processor(\n                covariates, enc_self_mask, future_covariates\n            )\n            \n            covariate_dump = {\n                'input_shape': list(covariates.shape),\n                'output_shape': list(covariate_context.shape),\n                'num_families': len(self.covariate_families),\n                'family_sizes': self.covariate_families,\n                'processing_status': 'success'\n            }\n            logger.info(f\"Covariate Processing: {covariate_dump}\")\n            \n        except Exception as e:\n            logger.error(f\"Covariate processing failed: {e}\")\n            # Fallback\n            covariate_context = covariates.mean(dim=1)\n            covariate_context = nn.Linear(self.num_covariates, self.d_model).to(covariates.device)(covariate_context)\n        \n        # Step 4: Dual cross-attention fusion\n        try:\n            fused_context, attended_target, attended_covariate = self.dual_cross_attention(\n                target_context, covariate_context, enc_self_mask, enc_self_mask\n            )\n            \n            fusion_dump = {\n                'target_context_shape': list(target_context.shape),\n                'covariate_context_shape': list(covariate_context.shape),\n                'fused_context_shape': list(fused_context.shape),\n                'processing_status': 'success'\n            }\n            logger.info(f\"Dual Cross-Attention Fusion: {fusion_dump}\")\n            \n        except Exception as e:\n            logger.error(f\"Dual cross-attention failed: {e}\")\n            fused_context = (target_context + covariate_context) / 2\n        \n        # Step 5: Apply MoE to context (if enabled)\n        if self.mixture_of_experts is not None:\n            try:\n                enhanced_target_context = self.mixture_of_experts(target_context)\n                enhanced_covariate_context = self.mixture_of_experts(covariate_context)\n                \n                if isinstance(enhanced_target_context, tuple):\n                    enhanced_target_context, aux_loss_target = enhanced_target_context\n                    self._last_aux_loss_target = aux_loss_target\n                \n                if isinstance(enhanced_covariate_context, tuple):\n                    enhanced_covariate_context, aux_loss_covariate = enhanced_covariate_context\n                    self._last_aux_loss_covariate = aux_loss_covariate\n                \n                logger.debug(f\"MoE enhanced contexts: target {enhanced_target_context.shape}, covariate {enhanced_covariate_context.shape}\")\n                \n            except Exception as e:\n                logger.error(f\"MoE processing failed: {e}\")\n                enhanced_target_context = target_context\n                enhanced_covariate_context = covariate_context\n        else:\n            enhanced_target_context = target_context\n            enhanced_covariate_context = covariate_context\n        \n        # Step 6: Extract initial values from decoder input\n        initial_values = self._extract_initial_values(x_dec)\n        \n        # Step 7: Sequential decoding with trend-seasonal reconstruction\n        try:\n            decoder_outputs = self.sequential_decoder(\n                target_context=enhanced_target_context,\n                covariate_context=enhanced_covariate_context,\n                initial_values=initial_values,\n                future_covariates=future_covariates\n            )\n            \n            final_output = decoder_outputs['final']  # [B, pred_len, c_out]\n            \n            decoder_dump = {\n                'initial_values_shape': list(initial_values.shape),\n                'trend_output_shape': list(decoder_outputs['trend'].shape),\n                'seasonal_output_shape': list(decoder_outputs['seasonal'].shape),\n                'final_output_shape': list(final_output.shape),\n                'processing_status': 'success'\n            }\n            logger.info(f\"Sequential Decoder: {decoder_dump}\")\n            \n        except Exception as e:\n            logger.error(f\"Sequential decoding failed: {e}\")\n            # Fallback: simple projection and repeat\n            projected = nn.Linear(self.d_model, self.c_out).to(fused_context.device)(fused_context)\n            final_output = projected.unsqueeze(1).repeat(1, self.pred_len, 1)\n        \n        # Final output logging\n        final_dump = {\n            'final_output_shape': list(final_output.shape),\n            'expected_shape': [batch_size, self.pred_len, self.c_out],\n            'shape_match': list(final_output.shape) == [batch_size, self.pred_len, self.c_out]\n        }\n        logger.info(f\"Final Output: {final_dump}\")\n        \n        return final_output\n    \n    def get_auxiliary_loss(self) -> Optional[torch.Tensor]:\n        \"\"\"Return auxiliary loss from MoE if available.\"\"\"\n        aux_losses = []\n        \n        if hasattr(self, '_last_aux_loss_target') and self._last_aux_loss_target is not None:\n            aux_losses.append(self._last_aux_loss_target)\n        \n        if hasattr(self, '_last_aux_loss_covariate') and self._last_aux_loss_covariate is not None:\n            aux_losses.append(self._last_aux_loss_covariate)\n        \n        if aux_losses:\n            return sum(aux_losses) / len(aux_losses)\n        \n        return None\n    \n    def get_decomposition_outputs(\n        self,\n        x_enc: torch.Tensor,\n        x_mark_enc: torch.Tensor,\n        x_dec: torch.Tensor,\n        x_mark_dec: torch.Tensor\n    ) -> Dict[str, torch.Tensor]:\n        \"\"\"Get detailed decomposition outputs for analysis.\"\"\"\n        targets, covariates = self._split_input_features(x_enc)\n        \n        # Get detailed target processing outputs\n        target_outputs = self.target_processor(targets)\n        \n        # Get covariate processing outputs\n        covariate_context = self.covariate_processor(covariates)\n        \n        # Get decoder outputs\n        initial_values = self._extract_initial_values(x_dec)\n        decoder_outputs = self.sequential_decoder(\n            target_outputs['fused_context'], covariate_context, initial_values\n        )\n        \n        return {\n            'targets': targets,\n            'covariates': covariates,\n            'trend_component': target_outputs['trend_component'],\n            'seasonal_component': target_outputs['seasonal_component'],\n            'trend_context': target_outputs['trend_context'],\n            'seasonal_context': target_outputs['seasonal_context'],\n            'target_fused_context': target_outputs['fused_context'],\n            'covariate_context': covariate_context,\n            'decoder_trend': decoder_outputs['trend'],\n            'decoder_seasonal': decoder_outputs['seasonal'],\n            'final_prediction': decoder_outputs['final']\n        }\n\n\n# Alias for consistency\nModel = ImprovedMambaHierarchical
+        )
+        
+        # Covariate processing pipeline
+        self.covariate_processor = CovariateProcessor(
+            num_covariates=self.num_covariates,
+            family_size=self.covariate_family_size,
+            seq_len=self.seq_len,
+            d_model=self.d_model,
+            mamba_d_state=self.mamba_d_state,
+            mamba_d_conv=self.mamba_d_conv,
+            mamba_expand=self.mamba_expand,
+            hierarchical_attention_heads=self.hierarchical_attention_heads,
+            dropout=self.dropout,
+            use_family_attention=self.use_family_attention,
+            fusion_strategy=self.fusion_strategy,
+            covariate_families=getattr(self, 'covariate_families', None)
+        )
+        
+        # Dual cross-attention for context fusion
+        self.dual_cross_attention = DualCrossAttention(
+            d_model=self.d_model,
+            num_heads=self.cross_attention_heads,
+            dropout=self.dropout,
+            use_residual=True,
+            use_layer_norm=True
+        )
+        
+        # Adaptive fusion gate for combining attended contexts
+        self.adaptive_fusion_gate = nn.Sequential(
+            nn.Linear(self.d_model * 2, self.d_model),
+            nn.Sigmoid()
+        )
+        logger.info("Initialized Adaptive Context Fusion Gate")
+        
+        # Sequential decoder with trend-seasonal reconstruction
+        self.sequential_decoder = SequentialDecoder(
+            d_model=self.d_model,
+            c_out=self.c_out,
+            pred_len=self.pred_len,
+            mamba_d_state=self.mamba_d_state,
+            mamba_d_conv=self.mamba_d_conv,
+            mamba_expand=self.mamba_expand,
+            dropout=self.dropout,
+            use_autoregressive=getattr(self.configs, 'use_autoregressive', True)
+        )
+        
+        # Mixture of Experts (optional) - applied to context before decoding
+        if self.use_moe:
+            try:
+                self.mixture_of_experts = GatedMoEFFN(
+                    d_model=self.d_model,
+                    d_ff=self.d_model * 4,
+                    num_experts=self.num_experts,
+                    dropout=self.dropout
+                )
+                logger.info(f"Initialized MoE with {self.num_experts} experts")
+            except Exception as e:
+                logger.warning(f"Failed to initialize MoE: {e}, using standard FFN")
+                self.mixture_of_experts = nn.Sequential(
+                    nn.Linear(self.d_model, self.d_model * 4),
+                    nn.ReLU(),
+                    nn.Dropout(self.dropout),
+                    nn.Linear(self.d_model * 4, self.d_model)
+                )
+        else:
+            self.mixture_of_experts = None
+        
+        # Layer normalization
+        self.context_norm = nn.LayerNorm(self.d_model)
+
+        # Fallback projection layers (defined once)
+        self.target_fallback_projection = nn.Linear(self.num_targets, self.d_model)
+        self.covariate_fallback_projection = nn.Linear(self.num_covariates, self.d_model)
+        
+        # Log comprehensive configuration
+        self._log_configuration()
+    
+    def _extract_config_params(self):
+        """Extract and set parameters from config with defaults."""
+        # Basic model parameters
+        self.task_name = getattr(self.configs, 'task_name', 'long_term_forecast')
+        self.seq_len = self.configs.seq_len
+        self.label_len = self.configs.label_len
+        self.pred_len = self.configs.pred_len
+        self.enc_in = self.configs.enc_in
+        self.dec_in = self.configs.dec_in
+        self.c_out = self.configs.c_out
+        self.d_model = self.configs.d_model
+        self.dropout = getattr(self.configs, 'dropout', 0.1)
+        self.embed = getattr(self.configs, 'embed', 'timeF')
+        self.freq = getattr(self.configs, 'freq', 'h')
+        
+        # Target and covariate configuration
+        self.num_targets = getattr(self.configs, 'num_targets', 4)
+        self.num_covariates = getattr(self.configs, 'num_covariates', 40)
+        self.covariate_family_size = getattr(self.configs, 'covariate_family_size', 4)
+        
+        # Support for custom covariate family configurations
+        self.covariate_families = getattr(self.configs, 'covariate_families', None)
+        if self.covariate_families is not None:
+            self.num_families = len(self.covariate_families)
+        else:
+            self.num_families = self.num_covariates // self.covariate_family_size
+            self.covariate_families = [self.covariate_family_size] * self.num_families
+        
+        # Wavelet decomposition parameters
+        self.wavelet_type = getattr(self.configs, 'wavelet_type', 'db4')
+        self.wavelet_levels = getattr(self.configs, 'wavelet_levels', 3)
+        
+        # Mamba parameters
+        self.mamba_d_state = getattr(self.configs, 'mamba_d_state', 64)
+        self.mamba_d_conv = getattr(self.configs, 'mamba_d_conv', 4)
+        self.mamba_expand = getattr(self.configs, 'mamba_expand', 2)
+        
+        # Attention parameters
+        self.attention_heads = getattr(self.configs, 'attention_heads', 8)
+        self.hierarchical_attention_heads = getattr(self.configs, 'hierarchical_attention_heads', 8)
+        self.cross_attention_heads = getattr(self.configs, 'cross_attention_heads', 8)
+        
+        # Fusion and MoE parameters
+        self.fusion_strategy = getattr(self.configs, 'fusion_strategy', 'weighted_concat')
+        self.use_family_attention = getattr(self.configs, 'use_family_attention', True)
+        self.use_moe = getattr(self.configs, 'use_moe', True)
+        self.num_experts = getattr(self.configs, 'num_experts', 8)
+        
+        # Validation
+        assert self.enc_in >= self.num_targets + self.num_covariates, \
+            f"enc_in ({self.enc_in}) must be >= num_targets + num_covariates ({self.num_targets + self.num_covariates})"
+    
+    def _validate_config(self):
+        """Validate configuration parameters."""
+        if self.covariate_families is None and self.num_covariates % self.covariate_family_size != 0:
+            logger.warning(f"Adjusting num_covariates from {self.num_covariates} to {(self.num_covariates // self.covariate_family_size) * self.covariate_family_size}")
+            self.num_covariates = (self.num_covariates // self.covariate_family_size) * self.covariate_family_size
+        
+        if self.d_model % self.attention_heads != 0:
+            logger.warning(f"d_model ({self.d_model}) not divisible by attention_heads ({self.attention_heads})")
+    
+    def _log_configuration(self):
+        """Log comprehensive configuration."""
+        config_dump = {
+            'model_type': 'ImprovedMambaHierarchical',
+            'improvements': [
+                'Explicit trend-seasonal decomposition',
+                'Sequential decoder with autoregressive generation',
+                'Enhanced context fusion',
+                'Proper decoder input integration'
+            ],
+            'basic_params': {
+                'seq_len': self.seq_len, 'pred_len': self.pred_len, 'label_len': self.label_len,
+                'enc_in': self.enc_in, 'dec_in': self.dec_in, 'c_out': self.c_out, 'd_model': self.d_model
+            },
+            'target_covariate_split': {
+                'num_targets': self.num_targets, 'num_covariates': self.num_covariates,
+                'covariate_families': self.covariate_families
+            },
+            'decomposition_params': {
+                'wavelet_type': self.wavelet_type, 'wavelet_levels': self.wavelet_levels,
+                'explicit_trend_seasonal': True
+            },
+            'mamba_params': {
+                'd_state': self.mamba_d_state, 'd_conv': self.mamba_d_conv, 'expand': self.mamba_expand
+            },
+            'fusion_params': {
+                'fusion_strategy': self.fusion_strategy, 'use_moe': self.use_moe,
+                'num_experts': self.num_experts if self.use_moe else 0
+            }
+        }
+        logger.info(f"ImprovedMambaHierarchical Configuration: {config_dump}")
+    
+    def _split_input_features(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Split input tensor into target and covariate components."""
+        batch_size, seq_len, total_features = x.shape
+        
+        targets = x[:, :, :self.num_targets]
+        
+        if total_features >= self.num_targets + self.num_covariates:
+            covariates = x[:, :, self.num_targets:self.num_targets + self.num_covariates]
+        else:
+            available_covariates = total_features - self.num_targets
+            if available_covariates > 0:
+                existing_covariates = x[:, :, self.num_targets:]
+                padding = torch.zeros(batch_size, seq_len, 
+                                    self.num_covariates - available_covariates,
+                                    device=x.device, dtype=x.dtype)
+                covariates = torch.cat([existing_covariates, padding], dim=-1)
+            else:
+                covariates = torch.zeros(batch_size, seq_len, self.num_covariates,
+                                       device=x.device, dtype=x.dtype)
+        
+        return targets, covariates
+    
+    def _extract_initial_values(self, x_dec: torch.Tensor) -> torch.Tensor:
+        """Extract initial values for autoregressive generation from decoder input."""
+        # Use the last target values from decoder input as initial values
+        targets_from_dec = x_dec[:, -1, :self.num_targets]  # [B, num_targets]
+        
+        # If we need c_out values but only have num_targets, handle the difference
+        if self.c_out != self.num_targets:
+            if self.c_out > self.num_targets:
+                # Pad with zeros
+                padding = torch.zeros(targets_from_dec.size(0), self.c_out - self.num_targets,
+                                    device=targets_from_dec.device, dtype=targets_from_dec.dtype)
+                initial_values = torch.cat([targets_from_dec, padding], dim=-1)
+            else:
+                # Truncate
+                initial_values = targets_from_dec[:, :self.c_out]
+        else:
+            initial_values = targets_from_dec
+        
+        return initial_values
+    
+    def forward(
+        self,
+        x_enc: torch.Tensor,
+        x_mark_enc: torch.Tensor,
+        x_dec: torch.Tensor,
+        x_mark_dec: torch.Tensor,
+        enc_self_mask: Optional[torch.Tensor] = None,
+        dec_self_mask: Optional[torch.Tensor] = None,
+        dec_enc_mask: Optional[torch.Tensor] = None,
+        future_covariates: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Improved forward pass with proper trend-seasonal decomposition and sequential decoding.
+        """
+        batch_size, seq_len, _ = x_enc.shape
+        
+        # Comprehensive logging
+        forward_dump = {
+            'input_shapes': {
+                'x_enc': list(x_enc.shape), 'x_dec': list(x_dec.shape),
+                'x_mark_enc': list(x_mark_enc.shape), 'x_mark_dec': list(x_mark_dec.shape)
+            },
+            'future_covariates': future_covariates is not None,
+            'improvements_active': ['trend_seasonal_decomp', 'sequential_decoder', 'proper_decoder_integration']
+        }
+        logger.info(f"ImprovedMambaHierarchical Forward: {forward_dump}")
+        
+        # Step 1: Split input features
+        targets, covariates = self._split_input_features(x_enc)
+        
+        # Step 2: Enhanced target processing with trend-seasonal decomposition
+        try:
+            target_outputs = self.target_processor(targets, enc_self_mask)
+            target_context = target_outputs['fused_context']  # [B, D]
+            
+            target_dump = {
+                'input_shape': list(targets.shape),
+                'trend_context_shape': list(target_outputs['trend_context'].shape),
+                'seasonal_context_shape': list(target_outputs['seasonal_context'].shape),
+                'fused_context_shape': list(target_context.shape),
+                'processing_status': 'success'
+            }
+            logger.info(f"Enhanced Target Processing: {target_dump}")
+            
+        except Exception as e:
+            logger.error(f"Enhanced target processing failed: {e}")
+            # Fallback
+            target_context = self.target_fallback_projection(targets.mean(dim=1))
+        
+        # Step 3: Covariate processing (unchanged)
+        try:
+            covariate_context = self.covariate_processor(
+                covariates, enc_self_mask, future_covariates
+            )
+            
+            covariate_dump = {
+                'input_shape': list(covariates.shape),
+                'output_shape': list(covariate_context.shape),
+                'num_families': len(self.covariate_families),
+                'family_sizes': self.covariate_families,
+                'processing_status': 'success'
+            }
+            logger.info(f"Covariate Processing: {covariate_dump}")
+            
+        except Exception as e:
+            logger.error(f"Covariate processing failed: {e}")
+            # Fallback
+            covariate_context = covariates.mean(dim=1)  # [B, num_covariates]
+            covariate_context = self.covariate_fallback_projection(covariate_context)
+        
+        # Step 4: Dual cross-attention fusion
+        try:
+            fused_context, attended_target, attended_covariate = self.dual_cross_attention(
+                target_context, covariate_context, enc_self_mask, enc_self_mask
+            )
+            
+            fusion_dump = {
+                'target_context_shape': list(target_context.shape),
+                'covariate_context_shape': list(covariate_context.shape),
+                'fused_context_shape': list(fused_context.shape),
+                'processing_status': 'success'
+            }
+            logger.info(f"Dual Cross-Attention Fusion: {fusion_dump}")
+            
+        except Exception as e:
+            logger.error(f"Dual cross-attention failed: {e}")
+            # Fallback for attended contexts if cross-attention fails
+            attended_target, attended_covariate = target_context, covariate_context
+
+        # Combine attended contexts using the adaptive fusion gate
+        try:
+            gate = self.adaptive_fusion_gate(torch.cat([attended_target, attended_covariate], dim=-1))
+            final_context = gate * attended_target + (1 - gate) * attended_covariate
+        except Exception as e:
+            logger.error(f"Adaptive context fusion failed: {e}")
+            final_context = (attended_target + attended_covariate) / 2
+        
+        # Step 5: Apply MoE to the single, fused context (if enabled)
+        if self.mixture_of_experts is not None:
+            try:
+                enhanced_context = self.mixture_of_experts(final_context)
+                
+                if isinstance(enhanced_context, tuple):
+                    enhanced_context, aux_loss = enhanced_context
+                    self._last_aux_loss = aux_loss
+                
+                logger.debug(f"MoE enhanced context shape: {enhanced_context.shape}")
+                
+            except Exception as e:
+                logger.error(f"MoE processing failed: {e}")
+                enhanced_context = final_context
+        else:
+            enhanced_context = final_context
+        
+        # Step 6: Extract initial values from decoder input
+        initial_values = self._extract_initial_values(x_dec)
+        
+        # Step 7: Sequential decoding with trend-seasonal reconstruction
+        try:
+            decoder_outputs = self.sequential_decoder(
+                context=enhanced_context,
+                initial_values=initial_values,
+                future_covariates=future_covariates
+            )
+            
+            final_output = decoder_outputs['final']  # [B, pred_len, c_out]
+            
+            decoder_dump = {
+                'initial_values_shape': list(initial_values.shape),
+                'final_output_shape': list(final_output.shape),
+                'processing_status': 'success'
+            }
+            logger.info(f"Sequential Decoder: {decoder_dump}")
+            
+        except Exception as e:
+            logger.error(f"Sequential decoding failed: {e}")
+            # Fallback: simple projection and repeat from the enhanced context
+            projected = nn.Linear(self.d_model, self.c_out).to(enhanced_context.device)(enhanced_context)
+            final_output = projected.unsqueeze(1).repeat(1, self.pred_len, 1)
+        
+        # Final output logging
+        final_dump = {
+            'final_output_shape': list(final_output.shape),
+            'expected_shape': [batch_size, self.pred_len, self.c_out],
+            'shape_match': list(final_output.shape) == [batch_size, self.pred_len, self.c_out]
+        }
+        logger.info(f"Final Output: {final_dump}")
+        
+        return final_output
+    
+    def get_auxiliary_loss(self) -> Optional[torch.Tensor]:
+        """Return auxiliary loss from MoE if available."""
+        # With a single MoE, we only have one potential auxiliary loss.
+        return getattr(self, '_last_aux_loss', None)
+    
+    def get_decomposition_outputs(
+        self,
+        x_enc: torch.Tensor,
+        x_mark_enc: torch.Tensor,
+        x_dec: torch.Tensor,
+        x_mark_dec: torch.Tensor
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Get detailed intermediate outputs for analysis using forward hooks.
+        This is a more powerful and flexible way to inspect the model's state.
+
+        Example modules to inspect: 'target_processor', 'covariate_processor', 
+                                   'dual_cross_attention', 'mixture_of_experts'
+        """
+        self.eval()  # Ensure model is in eval mode
+        intermediate_outputs = {}
+
+        # Define a hook function
+        def get_hook(name):
+            def hook(model, input, output):
+                intermediate_outputs[name] = output
+            return hook
+
+        # Register hooks to desired modules
+        hooks = []
+        modules_to_inspect = {
+            'target_processor': self.target_processor,
+            'covariate_processor': self.covariate_processor,
+            'dual_cross_attention': self.dual_cross_attention,
+            'mixture_of_experts': self.mixture_of_experts
+        }
+
+        for name, module in modules_to_inspect.items():
+            if module is not None:
+                hooks.append(module.register_forward_hook(get_hook(name)))
+
+        # Run a forward pass to trigger the hooks
+        with torch.no_grad():
+            _ = self.forward(x_enc, x_mark_enc, x_dec, x_mark_dec)
+
+        # Remove the hooks to avoid affecting subsequent passes
+        for hook in hooks:
+            hook.remove()
+
+        # Post-process outputs for clarity
+        if 'dual_cross_attention' in intermediate_outputs:
+            # Unpack the tuple output from DualCrossAttention
+            fused, attended_t, attended_c = intermediate_outputs['dual_cross_attention']
+            intermediate_outputs['fused_context_from_attention'] = fused
+            intermediate_outputs['attended_target_context'] = attended_t
+            intermediate_outputs['attended_covariate_context'] = attended_c
+            del intermediate_outputs['dual_cross_attention']
+
+        return intermediate_outputs
+
+
+# Alias for consistency
+Model = ImprovedMambaHierarchical

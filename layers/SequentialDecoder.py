@@ -34,77 +34,54 @@ class SequentialDecoder(nn.Module):
         self.c_out = c_out
         self.pred_len = pred_len
         self.use_autoregressive = use_autoregressive
-        
-        # Context fusion layer
-        self.context_fusion = nn.Sequential(
-            nn.Linear(d_model * 2, d_model),  # Fuse target + covariate contexts
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.LayerNorm(d_model)
-        )
-        
+                
         # Sequential generation Mamba block
         self.sequential_mamba = MambaBlock(
-            input_dim=d_model + c_out if use_autoregressive else d_model,
+            input_dim=d_model + c_out if use_autoregressive else d_model, # Input is context + previous output
             d_model=d_model,
             d_state=mamba_d_state,
             d_conv=mamba_d_conv,
             expand=mamba_expand,
             dropout=dropout
         )
-        
-        # Trend and seasonal projection heads
-        self.trend_projection = nn.Linear(d_model, c_out)
-        self.seasonal_projection = nn.Linear(d_model, c_out)
-        
-        # Final combination layer
-        self.final_projection = nn.Sequential(
-            nn.Linear(c_out * 2, c_out),  # Combine trend + seasonal
-            nn.Dropout(dropout)
-        )
+
+        # Final projection head
+        self.projection = nn.Linear(d_model, c_out)
         
         logger.info(f"SequentialDecoder initialized: pred_len={pred_len}, autoregressive={use_autoregressive}")
     
     def forward(
         self,
-        target_context: torch.Tensor,
-        covariate_context: torch.Tensor,
+        context: torch.Tensor,
         initial_values: Optional[torch.Tensor] = None,
-        future_covariates: Optional[torch.Tensor] = None
+        future_covariates: Optional[torch.Tensor] = None,
+        teacher_forcing_targets: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
         """
         Sequential decoding with trend-seasonal decomposition.
         
         Args:
-            target_context: [B, D] - Target context vector
-            covariate_context: [B, D] - Covariate context vector
+            context: [B, D] - Fused context vector
             initial_values: [B, c_out] - Initial values for autoregressive generation
             future_covariates: [B, pred_len, num_covariates] - Future covariate information
+            teacher_forcing_targets: [B, pred_len, c_out] - Ground-truth targets for teacher forcing during training.
             
         Returns:
             Dictionary with trend, seasonal, and combined predictions
         """
-        batch_size = target_context.size(0)
-        device = target_context.device
-        
-        # Fuse target and covariate contexts
-        fused_context = self.context_fusion(
-            torch.cat([target_context, covariate_context], dim=-1)
-        )  # [B, D]
+        batch_size = context.size(0)
+        device = context.device
         
         # Initialize outputs
-        trend_predictions = []
-        seasonal_predictions = []
-        combined_predictions = []
+        predictions = []
         
         # Initialize current input
         if self.use_autoregressive and initial_values is not None:
-            current_input = torch.cat([fused_context, initial_values], dim=-1)  # [B, D + c_out]
+            current_input = torch.cat([context, initial_values], dim=-1)  # [B, D + c_out]
         else:
-            current_input = fused_context  # [B, D]
+            current_input = context  # [B, D]
         
         # Sequential generation
-        hidden_state = None
         for t in range(self.pred_len):
             # Add sequence dimension for Mamba
             mamba_input = current_input.unsqueeze(1)  # [B, 1, D] or [B, 1, D + c_out]
@@ -113,68 +90,111 @@ class SequentialDecoder(nn.Module):
             mamba_output = self.sequential_mamba(mamba_input)  # [B, 1, D]
             mamba_output = mamba_output.squeeze(1)  # [B, D]
             
-            # Generate trend and seasonal components
-            trend_t = self.trend_projection(mamba_output)  # [B, c_out]
-            seasonal_t = self.seasonal_projection(mamba_output)  # [B, c_out]
-            
-            # Combine trend and seasonal
-            combined_input = torch.cat([trend_t, seasonal_t], dim=-1)  # [B, 2*c_out]
-            combined_t = self.final_projection(combined_input)  # [B, c_out]
+            # Generate prediction for this step
+            pred_t = self.projection(mamba_output) # [B, c_out]
             
             # Store predictions
-            trend_predictions.append(trend_t)
-            seasonal_predictions.append(seasonal_t)
-            combined_predictions.append(combined_t)
+            predictions.append(pred_t)
             
             # Update input for next step (autoregressive)
             if self.use_autoregressive:
-                current_input = torch.cat([fused_context, combined_t], dim=-1)
+                # Use teacher forcing if targets are provided (i.e., during training)
+                if teacher_forcing_targets is not None and t < self.pred_len - 1:
+                    current_input = torch.cat([context, teacher_forcing_targets[:, t, :]], dim=-1)
+                else: # Use its own prediction for the next step (inference or last step)
+                    current_input = torch.cat([context, pred_t], dim=-1)
             else:
-                # Non-autoregressive: use time-varying context if available
-                if future_covariates is not None and t < future_covariates.size(1) - 1:
-                    # Update context with future covariate information
-                    # This is a simplified approach - could be more sophisticated
-                    current_input = fused_context
-                else:
-                    current_input = fused_context
+                # Non-autoregressive: context remains the same
+                current_input = context
         
         # Stack predictions
-        trend_output = torch.stack(trend_predictions, dim=1)  # [B, pred_len, c_out]
-        seasonal_output = torch.stack(seasonal_predictions, dim=1)  # [B, pred_len, c_out]
-        combined_output = torch.stack(combined_predictions, dim=1)  # [B, pred_len, c_out]
+        final_output = torch.stack(predictions, dim=1)  # [B, pred_len, c_out]
         
         outputs = {
-            'trend': trend_output,
-            'seasonal': seasonal_output,
-            'combined': combined_output,
-            'final': combined_output  # Main output
+            'final': final_output  # Main output
         }
         
-        logger.debug(f"Sequential decoding complete: output shape {combined_output.shape}")
+        logger.debug(f"Sequential decoding complete: output shape {final_output.shape}")
         
         return outputs
     
     def generate_with_beam_search(
         self,
-        target_context: torch.Tensor,
-        covariate_context: torch.Tensor,
-        beam_size: int = 3,
-        initial_values: Optional[torch.Tensor] = None
+        context: torch.Tensor,
+        beam_size: int = 5,
+        initial_values: Optional[torch.Tensor] = None,
+        temperature: float = 0.5
     ) -> torch.Tensor:
         """
         Generate predictions using beam search for better quality.
         
+        Since this is a regression model, beam search is adapted by sampling
+        from a Gaussian distribution centered on the model's output at each step.
+        This allows exploring multiple candidate sequences.
+        
         Args:
-            target_context: [B, D]
-            covariate_context: [B, D]
+            context: [B, D] - Fused context vector
             beam_size: Number of beams
             initial_values: [B, c_out]
+            temperature: Standard deviation for sampling. Higher values lead to more diversity.
             
         Returns:
             Best predictions [B, pred_len, c_out]
         """
-        # Simplified beam search implementation
-        # For now, just return regular forward pass
-        # TODO: Implement proper beam search
-        outputs = self.forward(target_context, covariate_context, initial_values)
-        return outputs['final']
+        B, D = context.shape
+        k = beam_size
+        device = context.device
+
+        if initial_values is None:
+            initial_values = torch.zeros(B, self.c_out, device=device)
+
+        # Expand context for all beams: [B, D] -> [B*k, D]
+        expanded_context = context.unsqueeze(1).expand(-1, k, -1).reshape(B * k, D)
+
+        # Initialize sequences [B, k, pred_len, c_out] and scores [B, k]
+        sequences = torch.zeros(B, k, self.pred_len, self.c_out, device=device)
+        scores = torch.zeros(B, k, device=device)
+        
+        # First input is the initial_values, expanded for each beam
+        last_preds = initial_values.unsqueeze(1).expand(-1, k, -1)  # [B, k, c_out]
+
+        for t in range(self.pred_len):
+            # Prepare input for all beams at once: [B*k, D+c_out]
+            current_input = torch.cat([expanded_context, last_preds.reshape(B * k, self.c_out)], dim=-1)
+            
+            # Get model output (means of distributions): [B*k, c_out]
+            mamba_output = self.sequential_mamba(current_input.unsqueeze(1)).squeeze(1)
+            means = self.projection(mamba_output)
+            
+            # Reshape means to separate batches and beams: [B, k, c_out]
+            means = means.view(B, k, self.c_out)
+            
+            # Create a normal distribution centered at the means
+            dist = torch.distributions.Normal(means, temperature)
+            
+            # Sample k candidates for each of the k beams: [B, k, k, c_out]
+            candidates = dist.sample((k,)).permute(1, 2, 0, 3)
+            
+            # Calculate log probabilities and add to existing scores
+            log_probs = dist.log_prob(candidates).sum(dim=-1)  # [B, k, k]
+            combined_scores = scores.unsqueeze(-1) + log_probs  # [B, k, k]
+
+            # Flatten scores to find the top k across all candidates
+            flat_scores, top_indices = torch.topk(combined_scores.view(B, -1), k, dim=-1) # [B, k]
+            
+            # Determine the source beam and candidate index for each of the top k scores
+            beam_indices = top_indices // k
+            candidate_indices = top_indices % k
+            
+            # Gather the best candidates and update sequences
+            batch_indices = torch.arange(B, device=device).unsqueeze(-1)
+            sequences = sequences[batch_indices, beam_indices]
+            last_preds = candidates[batch_indices, beam_indices, candidate_indices]
+            sequences[:, :, t, :] = last_preds
+            scores = flat_scores
+
+        # Select the best sequence (highest score) for each item in the batch
+        best_beam_indices = torch.argmax(scores, dim=1)
+        best_sequences = sequences[torch.arange(B, device=device), best_beam_indices]
+        
+        return best_sequences
