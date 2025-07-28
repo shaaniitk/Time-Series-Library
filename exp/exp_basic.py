@@ -5,6 +5,10 @@ from models import Autoformer, Transformer, TimesNet, Nonstationary_Transformer,
     Koopa, TiDE, FreTS, TimeMixer, TSMixer, SegRNN, MambaSimple, TemporalFusionTransformer, SCINet, PAttn, TimeXer, \
     WPMixer, MultiPatchFormer, EnhancedAutoformer, BayesianEnhancedAutoformer, HierarchicalEnhancedAutoformer
 
+# Import new models
+from models.HierarchicalEnhancedAutoformer_Fixed import HierarchicalEnhancedAutoformerFixed
+from models.MambaHierarchical import MambaHierarchical
+
 # Import HF models and factory
 from models.HFEnhancedAutoformer import HFEnhancedAutoformer
 from models.HFAdvancedFactory import (
@@ -25,6 +29,8 @@ class Exp_Basic(object):
             'EnhancedAutoformer': EnhancedAutoformer,
             'BayesianEnhancedAutoformer': BayesianEnhancedAutoformer,
             'HierarchicalEnhancedAutoformer': HierarchicalEnhancedAutoformer,
+            'HierarchicalEnhancedAutoformerFixed': HierarchicalEnhancedAutoformerFixed,
+            'MambaHierarchical': MambaHierarchical,
             'HFEnhancedAutoformer': HFEnhancedAutoformer,
             'HFBayesianEnhancedAutoformer': HFBayesianEnhancedAutoformer,
             'HFHierarchicalEnhancedAutoformer': HFHierarchicalEnhancedAutoformer,

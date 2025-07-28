@@ -20,24 +20,24 @@
 			"args": [
 				"-y",
 				"@modelcontextprotocol/server-filesystem",
-				"D:\\workspace"
+				"/Users/shantanumisra/workspace/"
 			],
 			"type": "stdio"
 		},
 		"zen": {
-			"command": "C:\\Users\\mishr\\.local\\bin\\uv.exe",
+			"command": "uv",
 			"args": [
 				"--directory",
-				"D:\\workspace\\zen-mcp-server",
+				"/Users/shantanumisra/workspace/zen-mcp-server",
 				"run",
 				"server.py"
 			]
 		},
 		"serena": {
-			"command": "C:\\Users\\mishr\\.local\\bin\\uv.exe",
+			"command": "uv",
 			"args": [
 				"--directory",
-				"D:\\workspace\\serena",
+				"/Users/shantanumisra/workspace/serena",
 				"run",
 				"serena-mcp-server"
 			]
@@ -50,7 +50,7 @@
 				"@modelcontextprotocol/server-memory@latest"
 			],
 			"env": {
-				"MEMORY_FILE_PATH": "D:\\workspace\\memory_banks.json"
+				"MEMORY_FILE_PATH": "/Users/shantanumisra/workspace/MCP/memort-bank/memory.json"
 			},
 			"autoApprove": [
 			"memory_bank_read",
@@ -62,7 +62,7 @@
 			"gallery": true
 		},
 		 "smart-tree": {
-					"command": "D:\\workspace\\smart-tree\\target\\release\\st.exe",
+					"command": "st",
 					"args": ["--mcp"],
 					"env": {},
 					"mode": "ai",

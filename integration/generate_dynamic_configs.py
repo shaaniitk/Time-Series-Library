@@ -14,6 +14,8 @@ ALL_FORECASTING_MODELS = [
     'EnhancedAutoformer',
     'BayesianEnhancedAutoformer',
     'HierarchicalEnhancedAutoformer',
+    'HierarchicalEnhancedAutoformerFixed',
+    'MambaHierarchical',
 ]
 
 # --- Complexity Variations ---
@@ -156,7 +158,17 @@ def get_user_input():
     fusion_strategy = 'weighted_concat'
     use_moe_ffn = True
     num_experts = 4
-    if model_name == 'HierarchicalEnhancedAutoformer':
+    
+    # MambaHierarchical specific parameters
+    num_targets = 4
+    num_covariates = 40
+    covariate_family_size = 4
+    mamba_d_state = 64
+    mamba_d_conv = 4
+    mamba_expand = 2
+    wavelet_levels = 3
+    
+    if model_name in ['HierarchicalEnhancedAutoformer', 'HierarchicalEnhancedAutoformerFixed']:
         print("\n--- Hierarchical Model Settings ---")
         try:
             n_levels = int(input("Enter number of hierarchy levels (e.g., 1, 2, 3): ").strip() or 3)
@@ -181,6 +193,31 @@ def get_user_input():
                 except ValueError:
                     logger.warning("Invalid input for num_experts. Using default (4).")
             # else keep default
+    
+    elif model_name == 'MambaHierarchical':
+        print("\n--- MambaHierarchical Model Settings ---")
+        try:
+            num_targets = int(input(f"Enter number of target variables (default: {num_targets}): ").strip() or num_targets)
+        except ValueError:
+            logger.warning("Invalid input. Using default.")
+        
+        try:
+            num_covariates = int(input(f"Enter number of covariates (default: {num_covariates}): ").strip() or num_covariates)
+        except ValueError:
+            logger.warning("Invalid input. Using default.")
+        
+        try:
+            covariate_family_size = int(input(f"Enter covariate family size (default: {covariate_family_size}): ").strip() or covariate_family_size)
+        except ValueError:
+            logger.warning("Invalid input. Using default.")
+        
+        try:
+            wavelet_levels = int(input(f"Enter wavelet decomposition levels (default: {wavelet_levels}): ").strip() or wavelet_levels)
+        except ValueError:
+            logger.warning("Invalid input. Using default.")
+        
+        use_moe_input = input("Enable MoE in fusion? (y/n, default: y): ").strip().lower()
+        use_moe = use_moe_input != 'n'
 
     # --- GPU prompt ---
     use_gpu_input = input("\nUse GPU for training? (y/n, default: y): ").strip().lower()
@@ -255,11 +292,22 @@ def generate_configurations():
         config['quantile_levels'] = quantile_levels
     if enable_kl:
         config['kl_weight'] = kl_weight
-    if model_name == 'HierarchicalEnhancedAutoformer':
+    if model_name in ['HierarchicalEnhancedAutoformer', 'HierarchicalEnhancedAutoformerFixed']:
         config['n_levels'] = n_levels
         config['fusion_strategy'] = fusion_strategy
         config['use_moe_ffn'] = use_moe_ffn
         config['num_experts'] = num_experts
+    
+    elif model_name == 'MambaHierarchical':
+        config['num_targets'] = num_targets
+        config['num_covariates'] = num_covariates
+        config['covariate_family_size'] = covariate_family_size
+        config['mamba_d_state'] = mamba_d_state
+        config['mamba_d_conv'] = mamba_d_conv
+        config['mamba_expand'] = mamba_expand
+        config['wavelet_levels'] = wavelet_levels
+        config['use_moe'] = use_moe
+        config['num_experts'] = num_experts if use_moe else 0
 
     # --- Dynamic Dimension Calculation ---
     data_analysis = analyze_dataset(
