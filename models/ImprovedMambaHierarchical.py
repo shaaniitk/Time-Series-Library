@@ -357,7 +357,7 @@ class ImprovedMambaHierarchical(nn.Module):
         except Exception as e:
             logger.error(f"Adaptive context fusion failed: {e}")
             final_context = (attended_target + attended_covariate) / 2
-        
+
         # Step 5: Apply MoE to the single, fused context (if enabled)
         if self.mixture_of_experts is not None:
             try:
@@ -383,7 +383,8 @@ class ImprovedMambaHierarchical(nn.Module):
             decoder_outputs = self.sequential_decoder(
                 context=enhanced_context,
                 initial_values=initial_values,
-                future_covariates=future_covariates
+                future_covariates=future_covariates,
+                teacher_forcing_targets=x_dec[:, -self.pred_len:, :] if self.training else None
             )
             
             final_output = decoder_outputs['final']  # [B, pred_len, c_out]
@@ -397,7 +398,7 @@ class ImprovedMambaHierarchical(nn.Module):
             
         except Exception as e:
             logger.error(f"Sequential decoding failed: {e}")
-            # Fallback: simple projection and repeat from the enhanced context
+            # Fallback: simple projection and repeat
             projected = nn.Linear(self.d_model, self.c_out).to(enhanced_context.device)(enhanced_context)
             final_output = projected.unsqueeze(1).repeat(1, self.pred_len, 1)
         

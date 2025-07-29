@@ -100,18 +100,12 @@ class EnhancedTargetProcessor(nn.Module):
             for _ in range(wavelet_levels + 1)
         ])
         
-        # Multi-head attention for trend-seasonal fusion
-        self.trend_seasonal_attention = nn.MultiheadAttention(
-            embed_dim=d_model, num_heads=attention_heads, dropout=dropout, batch_first=True
-        )
-        
-        # Context aggregation
-        self.context_aggregator = nn.Sequential(
-            nn.Linear(d_model * 2, d_model * 2),  # *2 for trend + seasonal
+        # Gated fusion for combining trend and seasonal contexts
+        self.context_fusion_gate = nn.Sequential(
+            nn.Linear(d_model * 2, d_model),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(d_model * 2, d_model),
-            nn.LayerNorm(d_model)
+            nn.Sigmoid()
         )
         
         logger.info(f"EnhancedTargetProcessor initialized with explicit trend-seasonal decomposition")
@@ -198,26 +192,13 @@ class EnhancedTargetProcessor(nn.Module):
         else:
             seasonal_context = seasonal_component.mean(dim=1)
         
-        # Step 7: Cross-attention between trend and seasonal
-        trend_context_expanded = trend_context.unsqueeze(1)  # [B, 1, D]
-        seasonal_context_expanded = seasonal_context.unsqueeze(1)  # [B, 1, D]
+        # Step 7: Gated fusion of trend and seasonal contexts
+        combined_context = torch.cat([trend_context, seasonal_context], dim=-1)  # [B, 2*D]
+        gate = self.context_fusion_gate(combined_context)
         
-        # Trend attends to seasonal
-        attended_trend, _ = self.trend_seasonal_attention(
-            trend_context_expanded, seasonal_context_expanded, seasonal_context_expanded
-        )
-        
-        # Seasonal attends to trend
-        attended_seasonal, _ = self.trend_seasonal_attention(
-            seasonal_context_expanded, trend_context_expanded, trend_context_expanded
-        )
-        
-        # Step 8: Fuse trend and seasonal contexts
-        combined_context = torch.cat([
-            attended_trend.squeeze(1), attended_seasonal.squeeze(1)
-        ], dim=-1)  # [B, 2*D]
-        
-        fused_context = self.context_aggregator(combined_context)  # [B, D]
+        # The gate decides the weight of the trend context.
+        # (1 - gate) will be the weight for the seasonal context.
+        fused_context = gate * trend_context + (1 - gate) * seasonal_context
         
         # Return detailed outputs
         outputs = {

@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple
+from layers.Normalization import get_norm_layer
 from utils.logger import logger
 
 
@@ -22,7 +23,8 @@ class DualCrossAttention(nn.Module):
         dropout: float = 0.1,
         use_residual: bool = True,
         use_layer_norm: bool = True,
-        attention_temperature: float = 1.0
+        attention_temperature: float = 1.0,
+        norm_type: str = 'layernorm'
     ):
         super(DualCrossAttention, self).__init__()
         
@@ -53,7 +55,6 @@ class DualCrossAttention(nn.Module):
         
         # Layer normalization
         if use_layer_norm:
-            self.target_norm1 = nn.LayerNorm(d_model)
             self.target_norm2 = nn.LayerNorm(d_model)
             self.covariate_norm1 = nn.LayerNorm(d_model)
             self.covariate_norm2 = nn.LayerNorm(d_model)
@@ -74,15 +75,6 @@ class DualCrossAttention(nn.Module):
             nn.Linear(d_model * 4, d_model),
             nn.Dropout(dropout)
         )
-        
-        # Fusion mechanism for combining attended contexts
-        self.fusion_gate = nn.Sequential(
-            nn.Linear(d_model * 2, d_model),
-            nn.Sigmoid()
-        )
-        
-        self.fusion_projection = nn.Linear(d_model * 2, d_model)
-        
         logger.info(f"DualCrossAttention initialized: d_model={d_model}, num_heads={num_heads}")
     
     def forward(
@@ -91,7 +83,7 @@ class DualCrossAttention(nn.Module):
         covariate_context: torch.Tensor,
         target_mask: Optional[torch.Tensor] = None,
         covariate_mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Apply dual cross-attention between target and covariate contexts.
         
@@ -102,7 +94,7 @@ class DualCrossAttention(nn.Module):
             covariate_mask: Optional mask for covariate context
             
         Returns:
-            Tuple of (fused_context, attended_target_context, attended_covariate_context)
+            Tuple of (attended_target_context, attended_covariate_context)
         """
         batch_size = target_context.size(0)
         
@@ -177,43 +169,11 @@ class DualCrossAttention(nn.Module):
             covariate_attended_final = covariate_context
             covariate_attention_weights = None
         
-        # Fusion: Combine the two attended contexts
-        try:
-            # Pool sequence dimension if present
-            if target_attended_final.size(1) > 1:
-                target_pooled = target_attended_final.mean(dim=1)  # [B, D]
-            else:
-                target_pooled = target_attended_final.squeeze(1)  # [B, D]
-            
-            if covariate_attended_final.size(1) > 1:
-                covariate_pooled = covariate_attended_final.mean(dim=1)  # [B, D]
-            else:
-                covariate_pooled = covariate_attended_final.squeeze(1)  # [B, D]
-            
-            # Concatenate for fusion
-            concatenated = torch.cat([target_pooled, covariate_pooled], dim=-1)  # [B, 2*D]
-            
-            # Gated fusion
-            fusion_gate = self.fusion_gate(concatenated)  # [B, D]
-            fused_context = self.fusion_projection(concatenated)  # [B, D]
-            
-            # Apply gate
-            fused_context = fusion_gate * fused_context + (1 - fusion_gate) * target_pooled
-            
-            logger.debug(f"Fused context shape: {fused_context.shape}")
-            
-        except Exception as e:
-            logger.error(f"Context fusion failed: {e}")
-            # Fallback: simple average
-            target_pooled = target_attended_final.mean(dim=1) if target_attended_final.dim() == 3 else target_attended_final
-            covariate_pooled = covariate_attended_final.mean(dim=1) if covariate_attended_final.dim() == 3 else covariate_attended_final
-            fused_context = (target_pooled + covariate_pooled) / 2
-        
         # Return pooled versions for consistency
         target_output = target_attended_final.mean(dim=1) if target_attended_final.dim() == 3 else target_attended_final
         covariate_output = covariate_attended_final.mean(dim=1) if covariate_attended_final.dim() == 3 else covariate_attended_final
         
-        return fused_context, target_output, covariate_output
+        return target_output, covariate_output
     
     def get_attention_weights(self) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
         """

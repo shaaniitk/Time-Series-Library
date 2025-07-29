@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple
+from layers.Normalization import get_norm_layer
 from utils.logger import logger
 
 # Safe Mamba import with fallback
@@ -14,11 +15,14 @@ try:
     MAMBA_AVAILABLE = True
 except ImportError:
     MAMBA_AVAILABLE = False
-    logger.warning("mamba_ssm not available, using LSTM fallback")
+    logger.warning("mamba_ssm not found. This is normal on non-GPU systems (like macOS). "
+                   "Using a standard LSTM as a fallback. Performance will differ.")
     
     class MambaFallback(nn.Module):
+        """A fallback implementation using LSTM when mamba_ssm is not available."""
         def __init__(self, d_model, d_state=64, d_conv=4, expand=2):
             super().__init__()
+            logger.info(f"Initializing MambaFallback (LSTM) with d_model={d_model}")
             self.lstm = nn.LSTM(d_model, d_model, batch_first=True)
             
         def forward(self, x):
@@ -43,7 +47,8 @@ class MambaBlock(nn.Module):
         expand: int = 2,
         dropout: float = 0.1,
         normalize_input: bool = True,
-        use_projection: bool = True
+        use_projection: bool = True,
+        norm_type: str = 'layernorm'
     ):
         super(MambaBlock, self).__init__()
         
@@ -60,7 +65,7 @@ class MambaBlock(nn.Module):
             
         # Input normalization
         if normalize_input:
-            self.input_norm = nn.LayerNorm(d_model)
+            self.input_norm = get_norm_layer(norm_type, d_model)
         
         # Core Mamba block
         self.mamba = Mamba(
