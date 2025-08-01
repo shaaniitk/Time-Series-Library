@@ -197,5 +197,13 @@
 	
 	// Disable telemetry for performance
 	"telemetry.telemetryLevel": "off",
-	"python-envs.pythonProjects": []
+	"python-envs.pythonProjects": [],
+	"chat.mcp.serverSampling": {
+		"Time-Series-Library/.vscode/mcp.json: zen": {
+			"allowedModels": [
+				"github.copilot-chat/gpt-4.1",
+				"github.copilot-chat/claude-sonnet-4"
+			]
+		}
+	}
 }

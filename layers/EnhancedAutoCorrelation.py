@@ -18,7 +18,7 @@ class AdaptiveAutoCorrelation(nn.Module):
 
     def __init__(self, mask_flag=True, factor=1, scale=None, attention_dropout=0.1, 
                  output_attention=False, adaptive_k=True, multi_scale=True, 
-                 scales=[1, 2, 4], eps=1e-8):
+                 scales=[1, 2, 4], eps=1e-8, temperature=1.0, learnable_temp=False):
         super(AdaptiveAutoCorrelation, self).__init__()
         logger.info("Initializing AdaptiveAutoCorrelation with enhanced features")
         
@@ -38,6 +38,12 @@ class AdaptiveAutoCorrelation(nn.Module):
         if self.multi_scale:
             self.scale_weights = nn.Parameter(torch.ones(len(scales)) / len(scales))
             
+        # Temperature for softmax scaling in aggregation
+        if learnable_temp:
+            self.temperature = nn.Parameter(torch.tensor(temperature))
+        else:
+            self.register_buffer('temperature', torch.tensor(temperature))
+        self.learnable_temp = learnable_temp
         # Frequency filter for noise reduction
         self.frequency_filter = nn.Parameter(torch.ones(1))
         
@@ -182,8 +188,11 @@ class AdaptiveAutoCorrelation(nn.Module):
         weights, delays = torch.topk(mean_corr, top_k, dim=-1)  # [B, top_k]
         
         # Normalize weights with temperature scaling for better control
-        temperature = 1.0  # Could be learnable
-        normalized_weights = F.softmax(weights / temperature, dim=-1)
+        temp = self.temperature
+        if self.learnable_temp:
+            # Use softplus to ensure temperature is always positive
+            temp = F.softplus(self.temperature) + 1e-6
+        normalized_weights = F.softmax(weights / temp, dim=-1)
         
         # Efficient vectorized aggregation
         delays_agg = torch.zeros_like(values)

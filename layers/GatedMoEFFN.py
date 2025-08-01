@@ -30,16 +30,19 @@ class GatedExpert(nn.Module):
         hidden = self.activation(x_1) * x_2  # Gated Linear Unit
         return self.w_3(self.dropout(hidden))
 
-class Top1Gating(nn.Module):
+class TopKGating(nn.Module):
     """
-    Top-1 Gating mechanism (router).
+    Top-k Gating mechanism (router).
     
-    Selects the single best expert for each token in the sequence.
+    Selects the top-k experts for each token and computes their weights.
+    Includes optional noise for improved load balancing during training.
     """
-    def __init__(self, d_model, num_experts, use_aux_loss=True):
+    def __init__(self, d_model, num_experts, top_k=2, use_aux_loss=True, noise_epsilon=1e-2):
         super().__init__()
         self.gate = nn.Linear(d_model, num_experts)
         self.use_aux_loss = use_aux_loss
+        self.top_k = top_k
+        self.noise_epsilon = noise_epsilon
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x):
@@ -47,38 +50,47 @@ class Top1Gating(nn.Module):
         Determines which expert to route each token to.
         
         Returns:
-            A tuple of (indices, combined_weights, separate_weights, aux_loss).
+            A tuple of (combined_weights, top_indices, aux_loss).
         """
         logits = self.gate(x)
         
-        # Get the index of the top expert
-        top_expert_indices = logits.argmax(dim=-1)
+        # Add noise for load balancing during training
+        if self.training and self.noise_epsilon > 0:
+            noise = torch.randn_like(logits) * self.noise_epsilon
+            logits += noise
         
-        # Create a one-hot mask for the chosen experts
-        one_hot_mask = F.one_hot(top_expert_indices, num_classes=self.gate.out_features).float()
+        # Get the top-k experts and their logits
+        top_k_logits, top_indices = torch.topk(logits, self.top_k, dim=-1)
         
-        # Calculate soft weights for combining expert outputs
-        soft_weights = self.softmax(logits)
+        # The weights are the softmax of the top-k logits
+        top_k_weights = self.softmax(top_k_logits)
         
-        # The final weight for combining outputs is the product of the hard mask and soft weights
-        combined_weights = (one_hot_mask * soft_weights).unsqueeze(-1)
+        # Create a sparse tensor for the combined weights
+        # This will have shape [num_tokens, num_experts]
+        combined_weights = torch.zeros_like(logits)
+        combined_weights.scatter_(1, top_indices, top_k_weights)
         
         # Optional: Auxiliary load balancing loss
-        # This encourages the router to use all experts roughly equally.
         aux_loss = 0.0
         if self.use_aux_loss and self.training:
+            # Use the full softmax over all experts for the loss calculation
+            full_softmax_probs = self.softmax(logits)
+            
             # Calculate the fraction of tokens routed to each expert
-            tokens_per_expert = one_hot_mask.sum(dim=0)
-            fraction_per_expert = tokens_per_expert / x.size(0)
+            # We count how many times each expert was in the top-k
+            top_k_one_hot = F.one_hot(top_indices, num_classes=self.gate.out_features).float()
+            tokens_per_expert = top_k_one_hot.sum(dim=(0, 1))
+            fraction_per_expert = tokens_per_expert / x.size(0) # Changed from x.size(0) to top_k_one_hot.size(0)
             
             # Calculate the router's dispatch probability for each expert
-            dispatch_prob_per_expert = soft_weights.mean(dim=0)
+            dispatch_prob_per_expert = full_softmax_probs.mean(dim=0)
             
             # Load balancing loss from the Switch Transformer paper
-            # Fixed: Remove the multiplication by num_experts which was inflating the loss
-            aux_loss = torch.sum(fraction_per_expert * dispatch_prob_per_expert)
+            # The loss is the dot product of the fraction of tokens and the dispatch probability
+            # We multiply by num_experts to keep the loss scale consistent with the original paper
+            aux_loss = self.gate.out_features * torch.sum(fraction_per_expert * dispatch_prob_per_expert)
 
-        return top_expert_indices, combined_weights, soft_weights, aux_loss
+        return combined_weights.unsqueeze(-1), top_indices, aux_loss
 
 class GatedMoEFFN(nn.Module):
     """
@@ -89,19 +101,20 @@ class GatedMoEFFN(nn.Module):
         d_ff (int): Dimension of the feed-forward layer in each expert.
         num_experts (int): The number of expert networks to use.
         dropout (float): Dropout probability.
+        top_k (int): The number of experts to route each token to.
     """
-    def __init__(self, d_model, d_ff, num_experts=4, dropout=0.1):
+    def __init__(self, d_model, d_ff, num_experts=4, top_k=2, dropout=0.1):
         super().__init__()
         self.d_model = d_model
         self.num_experts = num_experts
-        
+        self.top_k = top_k
         # Create the expert networks
         self.experts = nn.ModuleList([
             GatedExpert(d_model, d_ff, dropout) for _ in range(num_experts)
         ])
         
         # Create the gating network
-        self.gating_network = Top1Gating(d_model, num_experts)
+        self.gating_network = TopKGating(d_model, num_experts, top_k)
 
     def forward(self, x):
         """
@@ -116,26 +129,29 @@ class GatedMoEFFN(nn.Module):
         batch_size, seq_len, d_model = x.shape
         x = x.reshape(-1, d_model) # Flatten to [batch*seq_len, d_model] using reshape instead of view for non-contiguous tensors
         
-        # Get routing decisions from the gating network
-        top_indices, combined_weights, _, aux_loss = self.gating_network(x)
+        # Get routing decisions: gating_weights are [B*L, num_experts, 1], top_indices are [B*L, top_k]
+        gating_weights, top_indices, aux_loss = self.gating_network(x)
         
-        # Initialize a tensor to store the outputs of all experts
-        expert_outputs = torch.zeros(x.shape[0], self.num_experts, d_model, device=x.device)
+        # Initialize final output tensor
+        final_output = torch.zeros_like(x)
         
-        # Pass tokens through their assigned experts
-        for i, expert in enumerate(self.experts):
-            # Find which tokens are assigned to this expert
-            expert_mask = (top_indices == i)
-            if expert_mask.any():
-                # Process only the relevant tokens
-                expert_outputs[expert_mask, i] = expert(x[expert_mask])
-        
-        # Combine the expert outputs using the weights from the gating network
-        # (B*L, num_experts, d_model) * (B*L, num_experts, 1) -> (B*L, num_experts, d_model)
-        weighted_outputs = expert_outputs * combined_weights
-        
-        # Sum the weighted outputs to get the final result
-        final_output = weighted_outputs.sum(dim=1)
+        # Iterate over experts to process tokens in batches. This is a clear and correct approach.
+        for i in range(self.num_experts):
+            # Find all tokens that should be routed to this expert (i.e., it is in their top_k)
+            token_indices_for_expert = (top_indices == i).any(dim=1)
+
+            if token_indices_for_expert.any():
+                # Get the tokens for this expert
+                tokens_for_expert = x[token_indices_for_expert]
+
+                # Process them through the expert
+                expert_output = self.experts[i](tokens_for_expert)
+
+                # Get the gating weights for these specific tokens and this expert
+                expert_weights = gating_weights[token_indices_for_expert, i]
+
+                # Weight the expert output and add it to the final output (scatter-like operation)
+                final_output[token_indices_for_expert] += expert_output * expert_weights
         
         # Reshape back to the original sequence format using reshape instead of view for non-contiguous tensors
         final_output = final_output.reshape(batch_size, seq_len, d_model)

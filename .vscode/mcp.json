@@ -16,16 +16,14 @@
 			"type": "stdio"
 		},
 		
-	
-		"serena": {
-				"command": "uv",
-				"args": [
+	"serena": {
+			"command": "uv",
+			"args": [
 				"--directory",
-				"D:\\workspace\\serena",
+				"/Users/shantanumisra/workspace/MCP/serena",
 				"run",
 				"serena-mcp-server"
 			]
-				
 		},
 		"memory": {
 			"type": "stdio",
@@ -35,7 +33,7 @@
 				"@modelcontextprotocol/server-memory@latest"
 			],
 			"env": {
-				"MEMORY_FILE_PATH": "D:\\workspace\\memory_banks"
+				"MEMORY_FILE_PATH": "/Users/shantanumisra/workspace/MCP/memory-bank/memory.json"
 			},
 			"autoApprove": [
 			"memory_bank_read",
@@ -50,7 +48,7 @@
 			"command": "uv",
 			"args": [
 				"--directory",
-				"D:\\workspace\\zen-mcp-server",
+				"/Users/shantanumisra/workspace/MCP/zen-mcp-server",
 				"run",
 				"server.py"
 			]
@@ -74,20 +72,14 @@
 				"OPENAI_EMBEDDING_MODEL": "text-embedding-3-small"
 			}
 		},
-		"smart-tree": {
-			"command": "D:\\workspace\\smart-tree\\target\\release\\st.exe",
-			"args": [
-				"--mcp"
-			],
-			"env": {
-				"name": "analyze_directory",
-				"arguments": {
-					"path": "D:\\workspace\\Time-Series-Library",
+		 "smart-tree": {
+					"command": "st",
+					"args": ["--mcp"],
+					"env": {},
 					"mode": "ai",
-					"stream": true
-				}
-			}
-		}
+					"stream": true,
+					"compress": true
+					}
 	},
 
 	"inputs": []

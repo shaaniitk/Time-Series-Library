@@ -410,7 +410,7 @@ if __name__ == "__main__":
         
         f.write("3. Verify GPU is available:\n")
         f.write("   python -c \"import torch; print(f'CUDA available: {torch.cuda.is_available()}')\"\n\n")
-          f.write("4. Run TimesNet training:\n")
+        f.write("4. Run TimesNet training:\n")
         f.write("   # Option 1: Use the automated runner (RECOMMENDED)\n")
         f.write("   python run_timesnet_training.py\n")
         f.write("   # Or specify configuration directly:\n")
