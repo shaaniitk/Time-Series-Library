@@ -69,6 +69,40 @@ class AttentionRegistry:
             logger.error(f"Attention component '{name}' not found.")
             raise ValueError(f"Attention component '{name}' not found.")
         return component
+    
+    @classmethod
+    def create(cls, name, **kwargs):
+        """Create an attention component instance with given parameters"""
+        component_class = cls.get(name)
+        
+        # For most attention components, we need d_model and n_heads
+        d_model = kwargs.get('d_model', 64)
+        n_heads = kwargs.get('n_heads', 4)
+        
+        try:
+            # Try to instantiate with common parameters
+            if name in ['fourier_attention', 'wavelet_attention', 'bayesian_attention']:
+                return component_class(d_model, n_heads, **{k: v for k, v in kwargs.items() if k not in ['d_model', 'n_heads']})
+            elif name == 'enhanced_autocorrelation':
+                # This one has different parameter structure
+                return component_class(**kwargs)
+            elif name == 'meta_learning_adapter':
+                return component_class(d_model, n_heads, **{k: v for k, v in kwargs.items() if k not in ['d_model', 'n_heads']})
+            else:
+                # Try generic instantiation
+                return component_class(**kwargs)
+        except Exception as e:
+            logger.warning(f"Failed to create {name} with provided kwargs: {e}")
+            # Fallback: try with minimal parameters
+            try:
+                return component_class()
+            except:
+                raise ValueError(f"Could not instantiate {name} with any parameter combination")
+
+    @classmethod
+    def list_available(cls):
+        """List all available attention component names"""
+        return list(cls._registry.keys())
 
     @classmethod
     def list_components(cls):

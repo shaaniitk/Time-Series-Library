@@ -106,8 +106,11 @@ class TemporalEmbedding(BaseEmbedding):
     def _process_temporal_features(self, temporal_features: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Process temporal features into embeddings"""
         temporal_embs = []
+        first_feat: Optional[torch.Tensor] = None
         
         for feature_name, feature_values in temporal_features.items():
+            if first_feat is None:
+                first_feat = feature_values
             if feature_name in self.temporal_embeddings:
                 emb = self.temporal_embeddings[feature_name](feature_values.long())
                 temporal_embs.append(emb)
@@ -126,20 +129,27 @@ class TemporalEmbedding(BaseEmbedding):
             
             return combined
         
-        return torch.zeros_like(input_embeddings)
+        # If no recognized features, return zeros with correct shape
+        if first_feat is not None:
+            b, l = first_feat.shape[:2]
+            return torch.zeros(b, l, self.d_model, device=first_feat.device)
+        return torch.zeros(1, 1, self.d_model)
+    
+    def embed_sequence(self, x: torch.Tensor, x_mark: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Alias to forward using x as base embeddings; x_mark ignored."""
+        return self.forward(input_embeddings=x, temporal_features=None, positions=None)
+    
+    def get_embedding_type(self) -> str:
+        return "temporal"
     
     def get_output_dim(self) -> int:
-        """Get output embedding dimension"""
         return self.d_model
     
     def get_capabilities(self) -> Dict[str, Any]:
-        """Get embedding capabilities"""
         return {
             'type': 'temporal',
-            'supports_positional': True,
-            'supports_temporal_features': True,
+            'max_sequence_length': self.max_len,
             'temporal_features': list(self.temporal_embeddings.keys()),
-            'max_sequence_length': self.max_len
         }
 
 
@@ -212,19 +222,22 @@ class ValueEmbedding(BaseEmbedding):
         
         return embeddings
     
+    def embed_sequence(self, x: torch.Tensor, x_mark: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Embed values sequence (alias to forward)."""
+        return self.forward(values=x)
+    
+    def get_embedding_type(self) -> str:
+        return "value"
+    
     def get_output_dim(self) -> int:
-        """Get output embedding dimension"""
         return self.d_model
     
     def get_capabilities(self) -> Dict[str, Any]:
-        """Get embedding capabilities"""
         return {
             'type': 'value',
             'uses_binning': self.use_binning,
-            'num_bins': self.num_bins if self.use_binning else None,
+            'num_bins': self.num_bins,
             'num_features': self.num_features,
-            'supports_continuous': not self.use_binning,
-            'supports_discrete': self.use_binning
         }
 
 
@@ -322,18 +335,21 @@ class CovariateEmbedding(BaseEmbedding):
         
         return embeddings
     
+    def embed_sequence(self, x: torch.Tensor, x_mark: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Embed covariates; treat x as numerical covariates."""
+        return self.forward(categorical_data=None, numerical_data=x)
+    
+    def get_embedding_type(self) -> str:
+        return "covariate"
+    
     def get_output_dim(self) -> int:
-        """Get output embedding dimension"""
         return self.d_model
     
     def get_capabilities(self) -> Dict[str, Any]:
-        """Get embedding capabilities"""
         return {
             'type': 'covariate',
             'categorical_features': list(self.categorical_features.keys()),
             'numerical_features': self.numerical_features,
-            'supports_categorical': len(self.categorical_features) > 0,
-            'supports_numerical': self.numerical_features > 0
         }
 
 
@@ -469,6 +485,13 @@ class HybridEmbedding(BaseEmbedding):
         combined = self.layer_norm(combined)
         
         return combined
+    
+    def embed_sequence(self, x: torch.Tensor, x_mark: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Embed sequence; treat x as base values."""
+        return self.forward(values=x)
+    
+    def get_embedding_type(self) -> str:
+        return "hybrid"
     
     def get_output_dim(self) -> int:
         """Get output embedding dimension"""

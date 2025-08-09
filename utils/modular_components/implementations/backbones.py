@@ -168,6 +168,57 @@ class ChronosBackbone(BaseBackbone):
             'max_sequence_length': getattr(self.chronos_config, 'max_position_embeddings', 512)
         }
 
+    # ---------------- Recommendation / Metadata Extensions ---------------- #
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:  # type: ignore[override]
+        return [
+            'transformer_encoder',
+            'time_series',
+            'forecasting',
+            'seq2seq',
+            'uncertainty_ready'
+        ]
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
+        return {
+            'model_name': 'Chronos model identifier (str, default=amazon/chronos-t5-small)',
+            'd_model': 'Target internal model dimension (int, required)',
+            'dropout': 'Dropout rate (float, default=0.1)',
+            'pretrained': 'Load pretrained weights (bool, default=True)'
+        }
+
+    @classmethod
+    def recommend(cls, need_forecasting: bool = True, offline: bool = False, need_seq2seq: bool = True) -> bool:
+        """Return whether this backbone is recommended for given constraints."""
+        if offline:
+            return False  # Requires model download unless cached
+        if need_forecasting:
+            return True
+        return need_seq2seq
+
+    def get_info(self) -> Dict[str, Any]:  # type: ignore[override]
+        info = super().get_info()
+        info.update({
+            'name': 'ChronosBackbone',
+            'model_name': self.model_name,
+            'capabilities': self.get_capabilities(),
+            'compatibility': self.get_compatibility_tags(),
+            'usage_recommendations': {
+                'ideal_scenarios': [
+                    'High-quality probabilistic forecasting',
+                    'Need pretrained time-series specific representations',
+                    'Seq2Seq forecasting tasks'
+                ],
+                'avoid_if': [
+                    'Offline environment with no cached weights',
+                    'Ultra low-latency micro edge deployment'
+                ],
+                'selection_logic': 'Choose when forecasting performance and seq2seq support outweigh download cost'
+            }
+        })
+        return info
+
 
 class T5Backbone(BaseBackbone):
     """
@@ -265,6 +316,55 @@ class T5Backbone(BaseBackbone):
             'max_sequence_length': getattr(self.t5_config, 'max_position_embeddings', 512)
         }
 
+    # ---------------- Recommendation / Metadata Extensions ---------------- #
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:  # type: ignore[override]
+        return [
+            'transformer',
+            'seq2seq',
+            'general_purpose',
+            'encoder_decoder',
+            'pretrained'
+        ]
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
+        return {
+            'model_name': 'T5 model identifier (str, default=t5-small)',
+            'd_model': 'Target internal model dimension (int, required)',
+            'dropout': 'Dropout rate (float, default=0.1)',
+            'pretrained': 'Load pretrained weights (bool, default=True)'
+        }
+
+    @classmethod
+    def recommend(cls, need_seq2seq: bool = True, offline: bool = False, need_pretrained: bool = True) -> bool:
+        if offline:
+            return False
+        if need_seq2seq or need_pretrained:
+            return True
+        return False  # Prefer simpler backbone if neither is required
+
+    def get_info(self) -> Dict[str, Any]:  # type: ignore[override]
+        info = super().get_info()
+        info.update({
+            'name': 'T5Backbone',
+            'model_name': self.model_name,
+            'capabilities': self.get_capabilities(),
+            'compatibility': self.get_compatibility_tags(),
+            'usage_recommendations': {
+                'ideal_scenarios': [
+                    'Seq2Seq adaptation for time-series',
+                    'Need flexible encoder-decoder framework'
+                ],
+                'avoid_if': [
+                    'Offline with no cached weights',
+                    'Pure encoder-only representation tasks'
+                ],
+                'selection_logic': 'Choose when seq2seq or general pretrained semantics are needed'
+            }
+        })
+        return info
+
 
 class BERTBackbone(BaseBackbone):
     """
@@ -361,6 +461,54 @@ class BERTBackbone(BaseBackbone):
             'supports_representation_learning': True,
             'max_sequence_length': getattr(self.bert_config, 'max_position_embeddings', 512)
         }
+
+    # ---------------- Recommendation / Metadata Extensions ---------------- #
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:  # type: ignore[override]
+        return [
+            'transformer_encoder',
+            'representation_learning',
+            'contextual_embeddings',
+            'pretrained'
+        ]
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
+        return {
+            'model_name': 'BERT model identifier (str, default=bert-base-uncased)',
+            'd_model': 'Target internal model dimension (int, required)',
+            'dropout': 'Dropout rate (float, default=0.1)',
+            'pretrained': 'Load pretrained weights (bool, default=True)'
+        }
+
+    @classmethod
+    def recommend(cls, need_representation: bool = True, offline: bool = False, need_seq2seq: bool = False) -> bool:
+        if offline:
+            return False
+        if need_seq2seq:
+            return False  # Use T5/Chronos instead
+        return need_representation
+
+    def get_info(self) -> Dict[str, Any]:  # type: ignore[override]
+        info = super().get_info()
+        info.update({
+            'name': 'BERTBackbone',
+            'model_name': self.model_name,
+            'capabilities': self.get_capabilities(),
+            'compatibility': self.get_compatibility_tags(),
+            'usage_recommendations': {
+                'ideal_scenarios': [
+                    'Feature extraction / representation learning',
+                    'Encoder-only forecasting pipelines with rich embeddings'
+                ],
+                'avoid_if': [
+                    'Need seq2seq generation',
+                    'Offline without cached weights'
+                ],
+                'selection_logic': 'Choose when contextual embeddings matter more than generative decoding'
+            }
+        })
+        return info
 
 
 class SimpleTransformerBackbone(BaseBackbone):

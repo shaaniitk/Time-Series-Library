@@ -59,7 +59,7 @@ class FourierAttention(BaseAttention):
     
     def forward(self, queries, keys, values, attn_mask=None, tau=None, delta=None):
         """
-        Forward pass using Fourier-domain attention with complex filtering.
+        Forward pass using clean Fourier-domain attention with complex filtering.
         
         Args:
             queries: [B, L, D] query tensor
@@ -74,126 +74,48 @@ class FourierAttention(BaseAttention):
         """
         B, L, D = queries.shape
         
-        # Ensure input is contiguous for FFT operations
-        queries = queries.contiguous()
-        
+        # Transform to frequency domain with proper error handling
         try:
-            # Use alternative FFT approach to avoid Intel MKL issues
-            queries = queries.contiguous()
-            
-            # Check if sequence length is compatible with FFT
-            if L < 2:
-                raise RuntimeError("Sequence length too short for FFT")
-            
-            # Try multiple FFT approaches
-            queries_freq = None
-            approaches = [
-                lambda x: torch.fft.rfft(x, dim=1, norm='ortho'),  # Orthogonal normalization
-                lambda x: torch.fft.fft(x, dim=1)[:, :L//2+1],    # Manual truncation
-                lambda x: self._manual_dft(x)                      # Manual DFT implementation
-            ]
-            
-            for i, approach in enumerate(approaches):
-                try:
-                    queries_freq = approach(queries)
-                    freq_dim = queries_freq.shape[1]
-                    logger.debug(f"FFT approach {i+1} succeeded with freq_dim={freq_dim}")
-                    break
-                except Exception as e:
-                    logger.debug(f"FFT approach {i+1} failed: {e}")
-                    continue
-            
-            if queries_freq is None:
-                raise RuntimeError("All FFT approaches failed")
-                
-            # Validate frequency dimensions
-            if freq_dim <= 0:
-                raise RuntimeError("Invalid frequency dimension")
-                
-        except (RuntimeError, Exception) as e:
-            logger.warning(f"All FFT operations failed: {e}, using fallback frequency simulation")
-            # Fallback: simulate frequency filtering using conv1d
-            queries_filtered = self._frequency_fallback(queries)
-            return self._standard_attention(queries_filtered, attn_mask)
-        
-        try:
-            
-            # Adaptive frequency selection if enabled
-            if self.frequency_selection == 'adaptive':
-                freq_weights_input = queries.mean(dim=1)  # [B, D]
-                
-                # Ensure freq_selector output matches frequency dimensions
-                if hasattr(self, 'freq_selector'):
-                    freq_logits = self.freq_selector(freq_weights_input)  # [B, max_freq_dim]
-                    # Trim to actual frequency dimension
-                    freq_logits = freq_logits[:, :freq_dim]
-                    freq_selection_weights = F.softmax(freq_logits, dim=-1)  # [B, freq_dim]
-                else:
-                    # Fallback: uniform weights
-                    freq_selection_weights = torch.ones(B, freq_dim, device=queries.device) / freq_dim
-                
-                # Create frequency filter with proper dimensions
-                phase_weights = self.phase_weights[:freq_dim].unsqueeze(0)  # [1, freq_dim]
-                freq_weights = self.freq_weights[:freq_dim].unsqueeze(0)    # [1, freq_dim]
-                
-                # Complex frequency filter with adaptive selection
-                freq_filter = torch.complex(
-                    torch.cos(phase_weights) * freq_weights * freq_selection_weights,
-                    torch.sin(phase_weights) * freq_weights * freq_selection_weights
-                )  # [B, freq_dim]
-            else:
-                # Create frequency filter with proper dimensions
-                phase_weights = self.phase_weights[:freq_dim]  # [freq_dim]
-                freq_weights = self.freq_weights[:freq_dim]    # [freq_dim]
-                
-                freq_filter = torch.complex(
-                    torch.cos(phase_weights) * freq_weights,
-                    torch.sin(phase_weights) * freq_weights
-                )  # [freq_dim]
-                freq_filter = freq_filter.unsqueeze(0)  # [1, freq_dim]
-            
-            # Apply complex frequency filtering with correct broadcasting
-            freq_filter = freq_filter.unsqueeze(-1)  # [B, freq_dim, 1] or [1, freq_dim, 1]
-            queries_freq_filtered = queries_freq * freq_filter  # [B, freq_dim, D]
-            
-            # Transform back to time domain with error handling and multiple approaches
-            try:
-                inverse_approaches = [
-                    lambda x: torch.fft.irfft(x, n=L, dim=1, norm='ortho'),
-                    lambda x: torch.real(torch.fft.ifft(F.pad(x, (0, 0, 0, L-x.shape[1])), dim=1)),
-                    lambda x: self._manual_idft(x, L)
-                ]
-                
-                for i, inv_approach in enumerate(inverse_approaches):
-                    try:
-                        queries_filtered = inv_approach(queries_freq_filtered)
-                        logger.debug(f"Inverse FFT approach {i+1} succeeded")
-                        break
-                    except Exception as e:
-                        logger.debug(f"Inverse FFT approach {i+1} failed: {e}")
-                        continue
-                        
-                if 'queries_filtered' not in locals():
-                    raise RuntimeError("All inverse FFT approaches failed")
-                    
-            except Exception as e:
-                logger.warning(f"Inverse FFT failed: {e}, using frequency fallback")
-                queries_filtered = self._frequency_fallback(queries)
-                return self._standard_attention(queries_filtered, attn_mask)
-            
-            # Ensure correct output length
-            if queries_filtered.shape[1] != L:
-                queries_filtered = F.interpolate(
-                    queries_filtered.transpose(1, 2), 
-                    size=L, 
-                    mode='linear', 
-                    align_corners=False
-                ).transpose(1, 2)
-                
+            queries_freq = torch.fft.rfft(queries, dim=1)  # [B, freq_dim, D]
+            freq_dim = queries_freq.shape[1]
         except Exception as e:
-            logger.warning(f"FFT operation failed: {e}, falling back to standard attention")
-            # Fallback to standard processing without FFT
-            queries_filtered = queries
+            logger.warning(f"FFT failed: {e}, using standard attention")
+            return self._standard_attention(queries, attn_mask)
+        
+        # Adaptive frequency selection
+        if self.frequency_selection == 'adaptive' and hasattr(self, 'freq_selector'):
+            freq_weights_input = queries.mean(dim=1)  # [B, D] - global pool for selection
+            freq_logits = self.freq_selector(freq_weights_input)[:, :freq_dim]  # [B, freq_dim]
+            freq_selection = F.softmax(freq_logits, dim=-1)  # [B, freq_dim]
+        else:
+            freq_selection = torch.ones(B, freq_dim, device=queries.device) / freq_dim
+        
+        # Create learnable complex frequency filter - ensure correct dimensions
+        phase_weights = self.phase_weights[:freq_dim]  # [freq_dim]
+        magnitude_weights = self.freq_weights[:freq_dim]  # [freq_dim]
+        
+        # Complex filter: magnitude * e^(i*phase) with adaptive selection
+        freq_filter = torch.complex(
+            torch.cos(phase_weights) * magnitude_weights,
+            torch.sin(phase_weights) * magnitude_weights
+        )  # [freq_dim]
+        
+        # Apply adaptive selection and broadcasting - fix dimension mismatch
+        if self.frequency_selection == 'adaptive':
+            freq_filter = freq_filter.unsqueeze(0) * freq_selection  # [B, freq_dim]
+            freq_filter = freq_filter.unsqueeze(-1)  # [B, freq_dim, 1]
+        else:
+            freq_filter = freq_filter.unsqueeze(0).unsqueeze(-1)  # [1, freq_dim, 1]
+        
+        # Apply complex frequency filtering
+        queries_freq_filtered = queries_freq * freq_filter  # [B, freq_dim, D]
+        
+        # Transform back to time domain
+        try:
+            queries_filtered = torch.fft.irfft(queries_freq_filtered, n=L, dim=1)  # [B, L, D]
+        except Exception as e:
+            logger.warning(f"Inverse FFT failed: {e}, using standard attention")
+            return self._standard_attention(queries, attn_mask)
         
         # Standard multi-head attention on filtered signal
         qkv = self.qkv(queries_filtered).reshape(B, L, 3, self.n_heads, self.head_dim)

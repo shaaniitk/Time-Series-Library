@@ -10,11 +10,12 @@
 			],
 			"type": "stdio"
 		},
-		"huggingface": {
-			"type": "http",
-			"url": "https://hf.co/mcp",
-			"gallery": true
-		},
+		"huggingface":{
+				"url": "https://huggingface.co/mcp",
+				"headers": {
+					"Authorization": "${env:HUGGINGFACE_API_KEY}"
+      }
+    },
 		"filesystem": {
 			"command": "npx",
 			"args": [

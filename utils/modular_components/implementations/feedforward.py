@@ -128,6 +128,59 @@ class StandardFFN(BaseFeedForward):
             'dropout': self.dropout_rate
         }
 
+    # ---------------- Recommendation / Metadata Extensions ---------------- #
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:  # type: ignore[override]
+        return ['baseline', 'deterministic', 'stable']
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
+        return {
+            'd_model': 'Model dimension (int, required)',
+            'd_ff': 'Hidden expansion dimension (int, default=4*d_model)',
+            'dropout': 'Dropout rate (float)',
+            'activation': 'Activation function name (relu|gelu|swish|tanh|leaky_relu)',
+            'use_bias': 'Use bias in linear layers (bool)',
+            'layer_norm': 'Apply final layer norm (bool)'
+        }
+
+        # Select top-k experts per token (sparse activation)
+        top_k_weights, top_k_indices = torch.topk(gate_weights, self.num_selected, dim=-1)
+        top_k_weights = F.softmax(top_k_weights, dim=-1)  # Renormalize within selected experts
+
+        # Vectorized routing implementation:
+        # Flatten (token, selected_expert) pairs so we can group by expert id once.
+        num_tokens = x_flat.shape[0]
+        flat_expert_indices = top_k_indices.reshape(-1)                       # [num_tokens * num_selected]
+        flat_weights = top_k_weights.reshape(-1)                              # [num_tokens * num_selected]
+        flat_token_indices = torch.arange(num_tokens, device=x.device) \
+            .unsqueeze(1).expand(num_tokens, self.num_selected).reshape(-1)   # [num_tokens * num_selected]
+
+        # Sort by expert to obtain contiguous blocks per expert (enables single forward per group)
+        sort_order = torch.argsort(flat_expert_indices)
+        sorted_expert_ids = flat_expert_indices[sort_order]
+        sorted_token_indices = flat_token_indices[sort_order]
+        sorted_weights = flat_weights[sort_order]
+
+        # Count tokens per expert and compute start offsets
+        counts = torch.bincount(sorted_expert_ids, minlength=self.num_experts)  # [num_experts]
+        cumsum = torch.cumsum(counts, dim=0)
+        starts = cumsum - counts
+
+        # Initialize output tensor
+        output = torch.zeros_like(x_flat)
+
+        # Iterate only over experts that were actually selected (skip empty)
+        active_experts = (counts > 0).nonzero(as_tuple=True)[0]
+        for expert_id in active_experts.tolist():
+            start = starts[expert_id].item()
+            end = cumsum[expert_id].item()
+            token_slice = sorted_token_indices[start:end]
+            weight_slice = sorted_weights[start:end].unsqueeze(1)  # [M, 1]
+            expert_input = x_flat[token_slice]
+            expert_output = self.experts[expert_id](expert_input)
+            # Weighted accumulation (allows multiple tokens routed here)
+            output.index_add_(0, token_slice, weight_slice * expert_output)
 
 class GatedFFN(BaseFeedForward):
     """
@@ -235,6 +288,35 @@ class GatedFFN(BaseFeedForward):
             'dropout': self.dropout_rate
         }
 
+    # ---------------- Recommendation / Metadata Extensions ---------------- #
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:  # type: ignore[override]
+        return ['gated', 'stabilized', 'information_control']
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
+        return StandardFFN.get_config_schema()
+
+    @classmethod
+    def recommend(cls, need_information_control: bool = True, strict_latency: bool = False) -> bool:
+        if strict_latency:
+            return False  # Slightly higher cost than standard
+        return need_information_control
+
+    def get_info(self) -> Dict[str, Any]:  # type: ignore[override]
+        info = super().get_info()
+        info.update({
+            'name': 'GatedFFN',
+            'capabilities': self.get_capabilities(),
+            'compatibility': self.get_compatibility_tags(),
+            'usage_recommendations': {
+                'ideal_scenarios': ['Need dynamic gating', 'Control over information flow'],
+                'avoid_if': ['Ultra low latency requirement'],
+                'selection_logic': 'Choose when gating improves expressivity without full MoE complexity'
+            }
+        })
+        return info
+
 
 class MoEFFN(BaseFeedForward):
     """
@@ -257,6 +339,10 @@ class MoEFFN(BaseFeedForward):
         self.num_experts = num_experts
         self.num_selected = num_selected
         self.dropout_rate = config.dropout
+    # Container for any auxiliary MoE-specific losses computed during forward
+    self.last_auxiliary_losses: Dict[str, torch.Tensor] = {}
+    # Lazy parameter count cache (populated on first get_capabilities call)
+    self._parameter_count_cache: Optional[Dict[str, int]] = None
         
         # Gating network
         self.gate = nn.Linear(config.d_model, num_experts, bias=False)
@@ -356,6 +442,19 @@ class MoEFFN(BaseFeedForward):
     
     def get_capabilities(self) -> Dict[str, Any]:
         """Get FFN capabilities"""
+        if self._parameter_count_cache is None:
+            total_params = sum(p.numel() for p in self.parameters())
+            # Active params per token approximate: gate + selected experts (num_selected / num_experts proportion)
+            # We approximate active FFN expert params as (num_selected / num_experts) * expert_params_total + gate params
+            expert_params_total = sum(p.numel() for e in self.experts for p in e.parameters())
+            gate_params = sum(p.numel() for p in self.gate.parameters())
+            active_params_estimate = int(gate_params + expert_params_total * (self.num_selected / self.num_experts))
+            self._parameter_count_cache = {
+                'total_parameters': int(total_params),
+                'active_parameters_estimate': active_params_estimate,
+                'gate_parameters': int(gate_params),
+                'expert_parameters_total': int(expert_params_total)
+            }
         return {
             'type': 'moe_ffn',
             'd_model': self.d_model,
@@ -365,8 +464,101 @@ class MoEFFN(BaseFeedForward):
             'mixture_of_experts': True,
             'activation': self.config.activation,
             'supports_layer_norm': self.config.layer_norm,
-            'dropout': self.dropout_rate
+            'dropout': self.dropout_rate,
+            'parameter_counts': self._parameter_count_cache
         }
+
+    # ---------------- Recommendation / Metadata Extensions ---------------- #
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:  # type: ignore[override]
+        return [
+            'sparse_activation',
+            'scaling',
+            'conditional_computation',
+            'expert_specialization'
+        gate_logits = self.gate(x_flat)  # [batch_size * seq_len, num_experts]
+        gate_weights = F.softmax(gate_logits, dim=-1)
+        # ---- Auxiliary statistics & losses (stored, not applied) ----
+        with torch.no_grad():
+            # Usage per expert (mean probability mass)
+            token_count = gate_weights.shape[0]
+            expert_usage = gate_weights.sum(dim=0) / max(1, token_count)  # [num_experts]
+            # Load balancing: encourage uniform usage. Simplified: L = num_experts * sum(p_i^2)
+            load_balancing_loss = (self.num_experts * (expert_usage ** 2).sum()).detach()
+            # Entropy (higher is more uniform) -- we expose negative entropy as a regularization candidate
+            entropy = -(gate_weights * (gate_weights + 1e-9).log()).sum(dim=-1).mean().detach()
+            # Store for external collection
+            self.last_auxiliary_losses = {
+                'moe_load_balancing_loss': load_balancing_loss,
+                # Provide both entropy and negative entropy for flexibility
+                'moe_gate_entropy': entropy,
+                'moe_negative_entropy': (-entropy)
+            }
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
+        base = StandardFFN.get_config_schema().copy()
+        base.update({
+            'num_experts': 'Total experts (int, default=8)',
+            'num_selected': 'Experts selected per token (int, default=2)'
+        })
+        return base
+
+    @classmethod
+    def recommend(
+        cls,
+        large_model: bool = True,
+        resource_constrained: bool = False,
+        need_sparse_computation: bool = True,
+        small_batch: bool = False
+    ) -> bool:
+        """Heuristic recommendation for MoE usage.
+
+        Args:
+            large_model: Overall architecture aims for higher capacity.
+            resource_constrained: If True, MoE may not be ideal unless sparsity outweighs overhead.
+            need_sparse_computation: Desire conditional activation for efficiency.
+            small_batch: Very small batches reduce routing efficiency.
+        """
+        if small_batch:
+            return False
+        if resource_constrained and not need_sparse_computation:
+            return False
+        return large_model and need_sparse_computation
+
+    def get_info(self) -> Dict[str, Any]:  # type: ignore[override]
+        info = super().get_info()
+        info.update({
+            'name': 'MoEFFN',
+            'capabilities': self.get_capabilities(),
+            'compatibility': self.get_compatibility_tags(),
+            'usage_recommendations': {
+                'ideal_scenarios': [
+                    'Scaling model capacity efficiently',
+                    'Large dataset training',
+                    'Need conditional computation'
+                ],
+                'avoid_if': [
+                    'Very small batch sizes',
+                    'Severely resource constrained with no sparsity gains'
+                ],
+                'selection_logic': 'Use when you need higher capacity per parameter via sparse expert routing'
+                        },
+                        'auxiliary_losses_available': list(self.last_auxiliary_losses.keys()) if self.last_auxiliary_losses else [
+                                'moe_load_balancing_loss', 'moe_gate_entropy', 'moe_negative_entropy']
+        })
+        return info
+
+        # ---------------- Public Helper API ---------------- #
+        def get_auxiliary_losses(self) -> Dict[str, torch.Tensor]:
+                """Return last computed auxiliary MoE losses/statistics.
+
+                These are NOT automatically added to the model's loss; the training loop can
+                retrieve them and apply weighting as desired. Keys:
+                    - moe_load_balancing_loss: scalar encouraging uniform expert usage (lower better)
+                    - moe_gate_entropy: average entropy of gate distribution (higher means more uniform routing)
+                    - moe_negative_entropy: convenience negative entropy (lower better if used as loss)
+                """
+                return self.last_auxiliary_losses
 
 
 class ConvFFN(BaseFeedForward):
@@ -479,3 +671,34 @@ class ConvFFN(BaseFeedForward):
             'supports_layer_norm': self.config.layer_norm,
             'dropout': self.dropout_rate
         }
+
+    # ---------------- Recommendation / Metadata Extensions ---------------- #
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:  # type: ignore[override]
+        return ['local_context', 'temporal_bias', 'stable']
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
+        base = StandardFFN.get_config_schema().copy()
+        base.update({'kernel_size': 'Temporal convolution kernel size (int, default=3)'})
+        return base
+
+    @classmethod
+    def recommend(cls, strong_local_patterns: bool = True, latency_sensitive: bool = False) -> bool:
+        if latency_sensitive and cls == ConvFFN:
+            return False  # Slightly more cost than pure linear
+        return strong_local_patterns
+
+    def get_info(self) -> Dict[str, Any]:  # type: ignore[override]
+        info = super().get_info()
+        info.update({
+            'name': 'ConvFFN',
+            'capabilities': self.get_capabilities(),
+            'compatibility': self.get_compatibility_tags(),
+            'usage_recommendations': {
+                'ideal_scenarios': ['Strong local temporal patterns', 'Desire convolutional inductive bias'],
+                'avoid_if': ['Need pure global mixing only'],
+                'selection_logic': 'Choose when local context augmentation benefits representation'
+            }
+        })
+        return info

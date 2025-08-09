@@ -20,7 +20,7 @@ class LearnableSeriesDecomp(nn.Module):
     3. Feature-specific decomposition parameters
     """
     
-    def __init__(self, input_dim, init_kernel_size=25, max_kernel_size=50):
+    def __init__(self, input_dim: int, init_kernel_size: int = 25, max_kernel_size: int = 50) -> None:
         super(LearnableSeriesDecomp, self).__init__()
         logger.info("Initializing LearnableSeriesDecomp")
         
@@ -48,7 +48,7 @@ class LearnableSeriesDecomp(nn.Module):
         if self.init_kernel_size > 0 and self.init_kernel_size <= self.max_kernel_size:
             nn.init.constant_(self.feature_specific_trend_weights[:, :, :self.init_kernel_size], 1.0 / self.init_kernel_size)
         
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Vectorized implementation of the forward pass.
         Groups samples by predicted kernel size to avoid looping over the batch.
@@ -119,7 +119,7 @@ class EnhancedEncoderLayer(nn.Module):
     Enhanced Autoformer encoder layer with improved decomposition and attention.
     """
     
-    def __init__(self, attention, d_model, d_ff=None, dropout=0.1, activation="relu"):
+    def __init__(self, attention: nn.Module, d_model: int, d_ff: Optional[int] = None, dropout: float = 0.1, activation: str = "relu") -> None:
         super(EnhancedEncoderLayer, self).__init__()
         logger.info("Initializing EnhancedEncoderLayer")
         
@@ -147,7 +147,7 @@ class EnhancedEncoderLayer(nn.Module):
         self.attention_scale = nn.Parameter(torch.ones(1) * 0.1)
         self.ffn_scale = nn.Parameter(torch.ones(1) * 0.1)
 
-    def forward(self, x, attn_mask=None):
+    def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
         # Enhanced attention with scaling
         new_x, attn = self.attention(x, x, x, attn_mask=attn_mask)
         x = x + self.dropout(self.attention_scale * new_x)
@@ -179,7 +179,7 @@ class EnhancedEncoder(nn.Module):
     Enhanced Autoformer encoder with hierarchical processing.
     """
     
-    def __init__(self, attn_layers, conv_layers=None, norm_layer=None):
+    def __init__(self, attn_layers: List[nn.Module], conv_layers: Optional[List[nn.Module]] = None, norm_layer: Optional[nn.Module] = None) -> None:
         super(EnhancedEncoder, self).__init__()
         logger.info("Initializing EnhancedEncoder")
         
@@ -187,7 +187,7 @@ class EnhancedEncoder(nn.Module):
         self.conv_layers = nn.ModuleList(conv_layers) if conv_layers is not None else None
         self.norm = norm_layer
 
-    def forward(self, x, attn_mask=None):
+    def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, list[torch.Tensor]]:
         attns = []
         layer_outputs = []
         
@@ -231,16 +231,14 @@ class EnhancedDecoderLayer(nn.Module):
     Enhanced Autoformer decoder layer with advanced decomposition.
     """
     
-    def __init__(self, self_attention, cross_attention, d_model, c_out, d_ff=None,
-                 dropout=0.1, activation="relu"):
+    def __init__(self, self_attention: nn.Module, cross_attention: nn.Module, d_model: int, c_out: int, d_ff: Optional[int] = None,
+                 dropout: float = 0.1, activation: str = "relu") -> None:
         super(EnhancedDecoderLayer, self).__init__()
         logger.info("Initializing EnhancedDecoderLayer")
         
         d_ff = d_ff or 4 * d_model
         self.self_attention = self_attention
         self.cross_attention = cross_attention
-        
-        # Enhanced feed-forward network
         self.conv1 = nn.Conv1d(in_channels=d_model, out_channels=d_ff, kernel_size=1, bias=False)
         self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1, bias=False)
         
@@ -253,7 +251,7 @@ class EnhancedDecoderLayer(nn.Module):
         
         # Enhanced projection with residual connections
         self.projection = nn.Sequential(
-            nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=3, 
+            nn.Conv1d(in_channels=d_model, out_channels=d_model, kernel_size=3,
                      stride=1, padding=1, padding_mode='circular', bias=False),
             nn.ReLU(),
             nn.Conv1d(in_channels=d_model, out_channels=c_out, kernel_size=1, bias=False)
@@ -265,7 +263,7 @@ class EnhancedDecoderLayer(nn.Module):
         self.self_attn_scale = nn.Parameter(torch.ones(1) * 0.1)
         self.cross_attn_scale = nn.Parameter(torch.ones(1) * 0.1)
 
-    def forward(self, x, cross, x_mask=None, cross_mask=None):
+    def forward(self, x: torch.Tensor, cross: torch.Tensor, x_mask: Optional[torch.Tensor] = None, cross_mask: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
         # Enhanced self-attention
         residual = x
         new_x = self.self_attention(x, x, x, attn_mask=x_mask)[0]
@@ -287,8 +285,8 @@ class EnhancedDecoderLayer(nn.Module):
 
         # Enhanced trend aggregation - keep in d_model space for hierarchical fusion
         residual_trend = trend1 + trend2 + trend3
-        # Project trend to output space for proper accumulation
-        residual_trend = self.projection(residual_trend.permute(0, 2, 1)).transpose(1, 2)
+        # Don't project trend here - let hierarchical fusion work in d_model space
+        # residual_trend = self.projection(residual_trend.permute(0, 2, 1)).transpose(1, 2)
         
         return x, residual_trend
 
@@ -298,38 +296,66 @@ class EnhancedDecoder(nn.Module):
     Enhanced Autoformer decoder with improved trend-seasonal integration.
     """
     
-    def __init__(self, layers, c_out, norm_layer=None, projection=None, use_moe_ffn=False):
+    def __init__(self, layers: List[nn.Module], c_out: int, norm_layer: Optional[nn.Module] = None, projection: Optional[nn.Module] = None) -> None:
         super(EnhancedDecoder, self).__init__()
-        logger.info(f"Initializing EnhancedDecoder (MoE enabled: {use_moe_ffn})")
+        logger.info("Initializing EnhancedDecoder")
         
         self.layers = nn.ModuleList(layers)
         self.norm = norm_layer
         self.projection = projection
-        self.use_moe_ffn = use_moe_ffn
+        self.c_out = c_out
         
-        # Trend integration module
-        if len(layers) > 0 and c_out > 0:
+        # Debug logging
+        logger.info(f"EnhancedDecoder init - c_out: {c_out}, num_layers: {len(layers)}")
+        
+        # Trend projection to convert from d_model to c_out space
+        # Get d_model from first layer
+        if len(layers) > 0:
+            # Get d_model from the first layer's decomposition
+            self.d_model = layers[0].decomp1.input_dim if hasattr(layers[0], 'decomp1') else 512
+            
+            logger.info(f"EnhancedDecoder d_model: {self.d_model}, c_out: {c_out}, equal: {self.d_model == c_out}")
+            
+            # Only create trend projection if dimensions differ
+            if self.d_model != c_out:
+                self.trend_projection = nn.Linear(self.d_model, c_out)
+                logger.info(f"Created trend_projection: {self.d_model} -> {c_out}")
+            else:
+                self.trend_projection = None
+                logger.info(f"No trend_projection needed: d_model ({self.d_model}) == c_out ({c_out})")
+                
             self.trend_integration = nn.Sequential(
                 nn.Linear(c_out, c_out),
                 nn.ReLU(),
                 nn.Linear(c_out, c_out)
             )
+        else:
+            self.d_model = 512  # Default fallback
+            self.trend_projection = None
+            self.trend_integration = None
 
-    def forward(self, x, cross, x_mask=None, cross_mask=None, trend=None):
+    def forward(self, x: torch.Tensor, cross: torch.Tensor, x_mask: Optional[torch.Tensor] = None, cross_mask: Optional[torch.Tensor] = None, trend: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor, float]:
         accumulated_trends = []
         total_aux_loss = 0.0
         
         for layer in self.layers:
             layer_output = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask)
             
-            # Handle different return signatures from MoE vs. standard layers
+            # Handle different layer return signatures (MoE vs standard)
             if len(layer_output) == 3:
+                # MoE layer returns (x, residual_trend, aux_loss)
                 x, residual_trend, aux_loss = layer_output
                 if isinstance(aux_loss, torch.Tensor):
                     total_aux_loss += aux_loss
             else:
+                # Standard layer returns (x, residual_trend)
                 x, residual_trend = layer_output
-
+            
+            # CRITICAL FIX: Project residual_trend from d_model to c_out space
+            # residual_trend is in d_model space (512), but trend is in c_out space (7)
+            if self.trend_projection is not None:
+                residual_trend = self.trend_projection(residual_trend)
+            
             if trend is not None:
                 trend = trend + residual_trend
             else:
@@ -350,7 +376,10 @@ class EnhancedDecoder(nn.Module):
         if self.projection is not None:
             x = self.projection(x)
             
+        # Always return 3 values for consistency
         return x, trend, total_aux_loss
+
+
 class EnhancedAutoformer(nn.Module):
     """
     Enhanced Autoformer with adaptive autocorrelation and learnable decomposition.
@@ -362,7 +391,7 @@ class EnhancedAutoformer(nn.Module):
     4. Improved numerical stability and memory efficiency
     """
 
-    def __init__(self, configs, quantile_levels: Optional[List[float]] = None):
+    def __init__(self, configs: object, quantile_levels: Optional[List[float]] = None) -> None:
         super().__init__()
         logger.info(f"Initializing EnhancedAutoformer with configs: {configs}")
 
@@ -460,7 +489,7 @@ class EnhancedAutoformer(nn.Module):
             self.dropout = nn.Dropout(configs.dropout)
             self.projection = nn.Linear(configs.d_model * configs.seq_len, configs.num_class)
 
-    def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+    def forecast(self, x_enc: torch.Tensor, x_mark_enc: torch.Tensor, x_dec: torch.Tensor, x_mark_dec: torch.Tensor) -> torch.Tensor:
         """Enhanced forecasting with improved decomposition and correlation."""
         # x_dec is the pre-constructed decoder input from Exp_Long_Term_Forecast
         # It contains historical targets (scaled) + historical covariates (scaled)
@@ -502,8 +531,16 @@ class EnhancedAutoformer(nn.Module):
         dec_out = self.dec_embedding(seasonal_arg_to_dec_embedding, x_mark_dec)
 
         # `self.decoder` receives `trend_arg_to_decoder` (20 features).
+        # EnhancedDecoder always returns 3 values: (seasonal_part, trend_part, aux_loss)
         seasonal_part, trend_part, aux_loss = self.decoder(dec_out, enc_out, x_mask=None, 
-                                                cross_mask=None, trend=trend_arg_to_decoder)
+                                                         cross_mask=None, trend=trend_arg_to_decoder)
+        
+        # Store aux_loss for potential use in training
+        if isinstance(aux_loss, torch.Tensor) and aux_loss > 0:
+            if hasattr(self, '_aux_loss'):
+                self._aux_loss += aux_loss
+            else:
+                self._aux_loss = aux_loss
 
         # Final combination
         # The output of the decoder is the seasonal part. The trend part is added to it.
@@ -518,9 +555,9 @@ class EnhancedAutoformer(nn.Module):
             dec_out = trend_part_expanded + seasonal_part
         else:
             dec_out = trend_part + seasonal_part
-        return dec_out, aux_loss
+        return dec_out
 
-    def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
+    def imputation(self, x_enc: torch.Tensor, x_mark_enc: torch.Tensor, x_dec: torch.Tensor, x_mark_dec: torch.Tensor, mask: Optional[torch.Tensor]) -> torch.Tensor:
         """Enhanced imputation with encoder-decoder architecture."""
         # Encoder
         enc_out = self.enc_embedding(x_enc, x_mark_enc)
@@ -534,11 +571,18 @@ class EnhancedAutoformer(nn.Module):
         dec_out = self.dec_embedding(seasonal_init, x_mark_enc)
         seasonal_part, trend_part, aux_loss = self.decoder(dec_out, enc_out, x_mask=None, cross_mask=None, trend=trend_init)
 
+        # Store aux_loss if present
+        if isinstance(aux_loss, torch.Tensor) and aux_loss > 0:
+            if hasattr(self, '_aux_loss'):
+                self._aux_loss += aux_loss
+            else:
+                self._aux_loss = aux_loss
+
         # Final combination
         dec_out = trend_part + seasonal_part
-        return dec_out, aux_loss
+        return dec_out
 
-    def anomaly_detection(self, x_enc):
+    def anomaly_detection(self, x_enc: torch.Tensor) -> torch.Tensor:
         """Enhanced anomaly detection with encoder-decoder architecture."""
         # Encoder
         enc_out = self.enc_embedding(x_enc, None)
@@ -553,11 +597,18 @@ class EnhancedAutoformer(nn.Module):
         dec_out = self.dec_embedding(seasonal_init, None)
         seasonal_part, trend_part, aux_loss = self.decoder(dec_out, enc_out, x_mask=None, cross_mask=None, trend=trend_init)
 
+        # Store aux_loss if present
+        if isinstance(aux_loss, torch.Tensor) and aux_loss > 0:
+            if hasattr(self, '_aux_loss'):
+                self._aux_loss += aux_loss
+            else:
+                self._aux_loss = aux_loss
+
         # Final combination
         dec_out = trend_part + seasonal_part
-        return dec_out, aux_loss
+        return dec_out
 
-    def classification(self, x_enc, x_mark_enc):
+    def classification(self, x_enc: torch.Tensor, x_mark_enc: torch.Tensor) -> torch.Tensor:
         """Enhanced classification (same as original for now)."""
         enc_out = self.enc_embedding(x_enc, None)
         enc_out, attns = self.encoder(enc_out, attn_mask=None)
@@ -569,41 +620,36 @@ class EnhancedAutoformer(nn.Module):
         output = self.projection(output)
         return output
 
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+    def forward(self, x_enc: torch.Tensor, x_mark_enc: torch.Tensor, x_dec: torch.Tensor, x_mark_dec: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Optional[torch.Tensor]:
         """Enhanced forward pass."""
         logger.debug("EnhancedAutoformer forward")
         
+        # Reset auxiliary loss
+        self._aux_loss = 0.0
+        
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
-            result = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            if isinstance(result, tuple):
-                dec_out, aux_loss = result
-            else:
-                dec_out = result
+            dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             # dec_out shape is [B, L, num_target_variables * num_quantiles]
             output = dec_out[:, -self.pred_len:, :] # Output is [B, pred_len, num_target_variables * num_quantiles]
+            # PinballLoss expects a 3D tensor and handles reshaping internally.
+            # DO NOT reshape to 4D here if PinballLoss is used.
+            # If a different loss expects 4D, that loss or the training script should handle it.
             return output
         if self.task_name == 'imputation':
-            result = self.imputation(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
-            if isinstance(result, tuple):
-                dec_out, aux_loss = result
-            else:
-                dec_out = result
+            dec_out = self.imputation(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
             return dec_out
         if self.task_name == 'anomaly_detection':
-            result = self.anomaly_detection(x_enc)
-            if isinstance(result, tuple):
-                dec_out, aux_loss = result
-            else:
-                dec_out = result
+            dec_out = self.anomaly_detection(x_enc)
             return dec_out
         if self.task_name == 'classification':
             dec_out = self.classification(x_enc, x_mark_enc)
             return dec_out
         return None
 
+    def get_auxiliary_loss(self) -> float:
+        """Get accumulated auxiliary loss from MoE layers."""
+        return getattr(self, '_aux_loss', 0.0)
+
 
 # Alias for compatibility
 Model = EnhancedAutoformer
-
-# Backward compatibility alias
-StableSeriesDecomp = LearnableSeriesDecomp

@@ -51,6 +51,69 @@ class SimpleTransformerBackbone(BaseBackbone):
         
         logger.info(f"Simple transformer backbone initialized with d_model={self.d_model}, layers={self.num_layers}")
     
+    # NEW: Implement abstract BaseBackbone methods
+    def get_d_model(self) -> int:
+        return self.d_model
+    
+    def supports_seq2seq(self) -> bool:
+        # Encoder-only fallback
+        return False
+    
+    def get_backbone_type(self) -> str:
+        return "simple_transformer"
+    
+    # ---------------- Recommendation / Metadata Extensions ---------------- #
+    @classmethod
+    def get_capabilities(cls) -> List[str]:  # type: ignore[override]
+        """Capabilities provided by this backbone.
+        
+        Returns:
+            List of capability tags describing operational characteristics.
+        """
+        return [
+            "encoder_only",
+            "lightweight",
+            "no_external_dependencies",
+            "deterministic",
+            "robust_fallback",
+            "forecasting_ready"
+        ]
+
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:  # type: ignore[override]
+        return [
+            "transformer_encoder",
+            "time_series",
+            "seq_len_preserving",
+            "cpu_friendly",
+            "low_memory"
+        ]
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
+        return {
+            "d_model": "Model dimensionality (int, required)",
+            "dropout": "Dropout rate (float, default=0.1)",
+            "nhead": "Number of attention heads (int, default=8)",
+            "num_layers": "Encoder layers (int, default=6)",
+            "input_dim": "Input feature dimension before projection (int, default=d_model)"
+        }
+
+    @classmethod
+    def recommend(cls, need_seq2seq: bool = False, offline: bool = True, low_resource: bool = True) -> bool:
+        """Return whether this backbone is recommended under the provided constraints.
+
+        Args:
+            need_seq2seq: If sequence-to-sequence generation is required.
+            offline: Environment has no external model download capability.
+            low_resource: Constrained CPU / memory environment.
+        """
+        if need_seq2seq:
+            return False  # Lacks decoder
+        if offline or low_resource:
+            return True
+        return True  # Generally safe default
+    
     def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Forward pass through simple transformer
@@ -79,13 +142,29 @@ class SimpleTransformerBackbone(BaseBackbone):
         return self.d_model
     
     def get_info(self) -> Dict[str, Any]:
-        return {
+        info = {
             "name": "SimpleTransformerBackbone",
             "d_model": self.d_model,
             "num_layers": self.num_layers,
             "num_heads": self.nhead,
-            "dropout": self.dropout
+            "dropout": self.dropout,
+            "capabilities": self.get_capabilities(),
+            "compatibility": self.get_compatibility_tags(),
+            "usage_recommendations": {
+                "ideal_scenarios": [
+                    "Baseline benchmarking",
+                    "CPU-only or offline environments",
+                    "Fast iteration / prototyping",
+                    "Deterministic reproducible runs"
+                ],
+                "avoid_if": [
+                    "You require seq2seq generation",
+                    "You need pretrained language semantics"
+                ],
+                "selection_logic": "Pick when environment is offline OR resources are constrained OR simplicity preferred"
+            }
         }
+        return info
 
 
 class RobustHFBackbone(BaseBackbone):
@@ -112,6 +191,59 @@ class RobustHFBackbone(BaseBackbone):
             # 2. Fall back to simple transformer
             logger.warning("HuggingFace models not available, using simple transformer")
             self._init_simple_transformer()
+    
+    # NEW: Implement abstract BaseBackbone methods
+    def get_d_model(self) -> int:
+        return self.d_model
+    
+    def supports_seq2seq(self) -> bool:
+        # HF models can support seq2seq; simple fallback is encoder-only
+        return True if self.backend_type == "huggingface" else False
+    
+    def get_backbone_type(self) -> str:
+        return "robust_hf"
+
+    # ---------------- Recommendation / Metadata Extensions ---------------- #
+    @classmethod
+    def get_capabilities(cls) -> List[str]:  # type: ignore[override]
+        return [
+            "adaptive",
+            "seq2seq_optional",
+            "pretrained_support",
+            "scalable",
+            "fallback_chain",
+            "forecasting_ready"
+        ]
+
+    @classmethod
+    def get_compatibility_tags(cls) -> List[str]:  # type: ignore[override]
+        return [
+            "transformer",
+            "time_series",
+            "seq2seq",
+            "encoder_decoder_or_encoder",
+            "gpu_acceleration_optional"
+        ]
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
+        return {
+            "model_name": "HF model identifier (str, default=google/flan-t5-small)",
+            "d_model": "Target internal model dimension (int, required)",
+            "dropout": "Dropout rate (float, default=0.1)",
+            "input_dim": "Input feature dimension when providing embeddings (int, default=d_model)"
+        }
+
+    @classmethod
+    def recommend(cls, need_seq2seq: bool = True, offline: bool = False, low_resource: bool = False) -> bool:
+        """Return whether this backbone is recommended under provided constraints."""
+        if offline:
+            return False  # Needs download unless cached
+        if low_resource and need_seq2seq:
+            return True  # Still okay, can adapt smaller model
+        if need_seq2seq:
+            return True
+        return not low_resource  # Prefer simple backbone for very low resource encoder-only cases
     
     def _try_hf_model(self) -> bool:
         """Try to initialize HuggingFace model"""
@@ -198,6 +330,22 @@ class RobustHFBackbone(BaseBackbone):
         
         if hasattr(self.backend, 'get_info'):
             base_info.update(self.backend.get_info())
+        base_info.update({
+            "capabilities": self.get_capabilities(),
+            "compatibility": self.get_compatibility_tags(),
+            "usage_recommendations": {
+                "ideal_scenarios": [
+                    "Need seq2seq generation",
+                    "Leverage pretrained representations",
+                    "Scalable forecasting with richer language/time context"
+                ],
+                "avoid_if": [
+                    "Completely offline with no cached models",
+                    "Ultra low-latency CPU micro-deployments"
+                ],
+                "selection_logic": "Choose when seq2seq or pretrained benefits outweigh resource cost; falls back automatically otherwise"
+            }
+        })
         
         return base_info
 

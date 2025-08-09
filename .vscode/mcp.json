@@ -7,6 +7,12 @@
 				"@wonderwhy-er/desktop-commander@latest"
 			]
 		},
+		"huggingface":{
+				"url": "https://huggingface.co/mcp",
+				"headers": {
+					"Authorization": "${env:HUGGINGFACE_API_KEY}"
+      }
+    },
 		"sequentialthinking": {
 			"command": "npx",
 			"args": [
@@ -79,16 +85,10 @@
 			"args": [
 				"--mcp"
 			],
-			"env": {
-				"name": "analyze_directory",
-				"arguments": {
-					"path": "D:\\workspace\\Time-Series-Library",
-					"mode": "ai",
-					"stream": true
-				}
+			"env": {}
 			}
-		}
-	},
+		},
+
 
 	"inputs": []
 }

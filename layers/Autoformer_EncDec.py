@@ -200,7 +200,13 @@ class Decoder(nn.Module):
             x = self.norm(x)
 
         if self.projection is not None:
-            x = self.projection(x)
+            # Support both Conv1d (expects channels-first) and Linear/Sequential on last dim
+            if isinstance(self.projection, nn.Conv1d) or (
+                isinstance(self.projection, nn.Sequential) and any(isinstance(m, nn.Conv1d) for m in self.projection.modules())
+            ):
+                x = self.projection(x.permute(0, 2, 1)).transpose(1, 2)
+            else:
+                x = self.projection(x)
         return x, trend
 
 

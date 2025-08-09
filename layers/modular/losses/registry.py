@@ -44,6 +44,23 @@ class LossRegistry:
         if component is None:
             raise ValueError(f"Loss component '{name}' not found.")
         return component
+    
+    @classmethod
+    def create(cls, name, **kwargs):
+        """Create a loss component instance with given parameters"""
+        component_class = cls.get(name)
+        
+        # Handle lambda functions (wrapper cases)
+        if callable(component_class) and hasattr(component_class, '__name__') and component_class.__name__ == '<lambda>':
+            return component_class(**kwargs)
+        
+        # Handle regular class instantiation
+        return component_class(**kwargs)
+    
+    @classmethod
+    def list_available(cls):
+        """List all available loss component names"""
+        return list(cls._registry.keys())
 
 def get_loss_component(name, **kwargs):
     """
