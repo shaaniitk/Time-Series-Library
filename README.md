@@ -187,6 +187,57 @@ Note:
 
 (2) About anomaly detection: Some discussion about the adjustment strategy in anomaly detection can be found [here](https://github.com/thuml/Anomaly-Transformer/issues/14). The key point is that the adjustment strategy corresponds to an event-level metric.
 
+## Test Suite & Marker Policy
+
+We use a pragmatic layered pytest marker strategy to keep iteration fast:
+
+Markers:
+- `@pytest.mark.smoke` – tiny (<2s) instantiation & shape/value checks. Always run in CI.
+- `@pytest.mark.extended` – broader functional coverage (default CI selection includes these unless filtered).
+- `@pytest.mark.perf` – performance / benchmark; excluded from default CI (`-m "not perf and not quarantine"`).
+- `@pytest.mark.quarantine` – flaky or temporarily high‑cost tests; excluded until stabilized.
+- `@pytest.mark.legacy` – pre‑modular migration tests gated behind `--include-legacy` or `INCLUDE_LEGACY_TESTS=1`.
+
+Marker Enforcement:
+During collection we require every test to have at least one classification marker. By default unmarked tests are auto‑classified heuristically (directory / node id hints). To fail hard instead, run with:
+```
+pytest --enforce-classification --auto-classify-missing=0
+```
+Disable enforcement entirely (not recommended) via env:
+```
+set DISABLE_MARKER_ENFORCEMENT=1
+```
+
+Inventory Snapshot:
+Smoke tests maintain a component registry snapshot (`.test_baseline/component_inventory.json`). On first run it is created and XFAILs; subsequent removals fail the smoke suite. Additions can be approved by updating the snapshot:
+```
+ALLOW_COMPONENT_SNAPSHOT_UPDATE=1 pytest -m smoke
+```
+Strict mode (fail on additions too):
+```
+STRICT_COMPONENT_DIFF=1 pytest -m smoke
+```
+
+Typical CI command (fast path):
+```
+pytest -m "smoke or (extended and not perf and not quarantine)" -q
+```
+
+Local developer quick check:
+```
+pytest -m smoke -q
+```
+
+To sample extra smoke candidates while curating:
+```
+pytest --smoke-sample=25 -m extended
+```
+
+Virtual Environment Guard:
+Tests expect to run inside the project venv (`tsl-env`). Override with `--enforce-venv=0` if necessary.
+
+See `conftest.py` for implementation details.
+
 ## Citation
 
 If you find this repo useful, please cite our paper.

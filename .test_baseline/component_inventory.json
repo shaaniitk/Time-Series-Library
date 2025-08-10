@@ -1,0 +1,17 @@
+{
+  "backbone": [
+    "backbone"
+  ],
+  "attention": [
+    "attention"
+  ],
+  "processor": [
+    "processor"
+  ],
+  "loss": [
+    "loss"
+  ],
+  "output": [
+    "output"
+  ]
+}

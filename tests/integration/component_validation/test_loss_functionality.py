@@ -1,122 +1,19 @@
 #!/usr/bin/env python3
+"""Deprecated monolithic loss functionality tests.
+
+Replaced by split TestsModule integration tests:
+    - TestsModule/integration/test_loss_functionality_loss.py
+    - TestsModule/integration/test_loss_functionality_quantile.py
+    - TestsModule/integration/test_loss_functionality_output.py
+    - TestsModule/integration/test_loss_functionality_registry.py
+
+Kept as a tiny shim to avoid re-collection & preserve git history. Remove
+after migration sign-off.
 """
-Comprehensive Loss Function Component Functionality Tests
+import pytest
 
-This test suite validates that each loss function component not only computes
-loss values but produces mathematically correct and expected behaviors.
-"""
+pytest.skip("Deprecated loss monolith replaced by split tests", allow_module_level=True)
 
-import sys
-import os
-import torch
-import torch.nn as nn
-import numpy as np
-from pathlib import Path
-
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent.parent
-sys.path.insert(0, str(project_root))
-
-try:
-    from utils.modular_components.registry import create_component, get_global_registry
-    from utils.modular_components.implementations import get_integration_status
-    COMPONENTS_AVAILABLE = True
-except ImportError as e:
-    print(f"WARN Could not import modular components: {e}")
-    COMPONENTS_AVAILABLE = False
-
-class MockBayesianModel(nn.Module):
-    """Mock Bayesian model for testing KL divergence"""
-    def __init__(self, input_size=10, hidden_size=20):
-        super().__init__()
-        # Bayesian layers with priors
-        self.fc1_mean = nn.Linear(input_size, hidden_size)
-        self.fc1_logvar = nn.Linear(input_size, hidden_size)
-        self.fc2_mean = nn.Linear(hidden_size, 1)
-        self.fc2_logvar = nn.Linear(hidden_size, 1)
-        
-        # Initialize priors
-        self.prior_mean = 0.0
-        self.prior_var = 1.0
-        
-    def forward(self, x):
-        # Sample from variational distribution
-        h_mean = self.fc1_mean(x)
-        h_logvar = self.fc1_logvar(x)
-        h_std = torch.exp(0.5 * h_logvar)
-        h = h_mean + h_std * torch.randn_like(h_mean)
-        
-        out_mean = self.fc2_mean(h)
-        out_logvar = self.fc2_logvar(h)
-        out_std = torch.exp(0.5 * out_logvar)
-        output = out_mean + out_std * torch.randn_like(out_mean)
-        
-        return output
-    
-    def get_kl_divergence(self):
-        """Compute KL divergence for Bayesian layers"""
-        kl_div = 0.0
-        
-        for layer in [self.fc1_mean, self.fc1_logvar, self.fc2_mean, self.fc2_logvar]:
-            for param in layer.parameters():
-                # Simplified KL divergence calculation
-                posterior_var = param.var()
-                posterior_mean = param.mean()
-                
-                kl = 0.5 * (
-                    torch.log(self.prior_var / posterior_var) +
-                    (posterior_var + (posterior_mean - self.prior_mean)**2) / self.prior_var - 1
-                )
-                kl_div += kl.sum()
-        
-        return kl_div
-
-def create_sample_predictions_and_targets(batch_size=4, seq_len=24, features=7):
-    """Create sample predictions and targets for loss testing"""
-    predictions = torch.randn(batch_size, seq_len, features)
-    targets = torch.randn(batch_size, seq_len, features)
-    return predictions, targets
-
-def test_mse_loss_functionality():
-    """Test MSE loss actual functionality"""
-    print("TEST Testing MSE Loss Functionality...")
-    
-    try:
-        loss_fn = create_component('loss', 'mse', {'reduction': 'mean'})
-        if loss_fn is None:
-            print("    WARN MSE loss not available, skipping...")
-            return True
-        
-        pred, target = create_sample_predictions_and_targets()
-        
-        # Test basic loss computation
-        loss = loss_fn(pred, target)
-        assert isinstance(loss, torch.Tensor), "Loss should be a tensor"
-        assert loss.dim() == 0, "Loss should be a scalar"
-        assert loss.item() >= 0, "MSE loss should be non-negative"
-        
-        # Test perfect prediction (loss should be 0)
-        loss_perfect = loss_fn(target, target)
-        assert abs(loss_perfect.item()) < 1e-6, f"Perfect prediction loss should be ~0, got {loss_perfect.item()}"
-        
-        # Test that larger errors give larger loss
-        pred_worse = target + 2 * torch.randn_like(target)
-        loss_worse = loss_fn(pred_worse, target)
-        assert loss_worse.item() > loss.item(), "Larger errors should give larger loss"
-        
-        # Test different reduction modes
-        for reduction in ['mean', 'sum', 'none']:
-            try:
-                loss_fn_red = create_component('loss', 'mse', {'reduction': reduction})
-                loss_red = loss_fn_red(pred, target)
-                
-                if reduction == 'none':
-                    assert loss_red.shape == pred.shape, f"'none' reduction should preserve shape"
-                else:
-                    assert loss_red.dim() == 0, f"'{reduction}' reduction should be scalar"
-                    
-            except Exception as e:
-                print(f"    WARN Reduction mode '{reduction}' failed: {e}")
         
         # Test gradient flow
         pred_grad = pred.clone().requires_grad_(True)
