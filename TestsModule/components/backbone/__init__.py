@@ -1,0 +1,1 @@
+"""Backbone component tests namespace."""

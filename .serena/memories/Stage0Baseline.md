@@ -1,0 +1,1 @@
+Stage 0 complete: 153 test files; classifications - KEEP 103, SPLIT 16, EXTEND 15, PERF 2, DELETE 17; exact duplicate groups 5; semantic duplicate groups 5. Inventory saved as internal_test_inventory.json.

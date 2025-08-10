@@ -1,0 +1,1 @@
+Metrics: LOC, assert_count, unique_assert_signatures, runtime_estimate, domain_keywords count, parametrization breadth, tensor_size. Rules: SPLIT if assert>80 or domains>3 & runtime>2s; PERF if large tensors or timing; EXTENDED if param cases>20 or large horizon>512; DELETE if signatures subset; SMOKE if runtime<0.3s & critical path; QUARANTINE if flaky.

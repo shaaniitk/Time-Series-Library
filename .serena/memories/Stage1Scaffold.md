@@ -1,0 +1,1 @@
+Stage 1 partial: Created TestsModule/ tree (helpers, smoke, components/backbone), added conftest, helper stubs, smoke backbone test, run scripts (run_all.py, run_smoke.py), README scaffold. Next: add integration/, extended/, perf/ dirs and per-folder run scripts.

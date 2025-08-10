@@ -1,0 +1,3806 @@
+{
+  "summary": {
+    "total_test_files": 154,
+    "exact_duplicate_groups": 5,
+    "name_collision_groups": 12,
+    "line_size_threshold": 400
+  },
+  "category_counts": {
+    "registry": 8,
+    "integration": 31,
+    "misc": 62,
+    "model": 18,
+    "chronosx": 8,
+    "modular_framework": 7,
+    "migration": 3,
+    "performance": 3,
+    "core_algorithms": 3,
+    "training": 3,
+    "unit": 5,
+    "utilities": 3
+  },
+  "classification_counts": {
+    "DELETE": 18,
+    "EXTEND": 15,
+    "KEEP": 103,
+    "PERF": 2,
+    "SPLIT": 16
+  },
+  "semantic_duplicate_groups": 5,
+  "semantic_duplicates": [
+    [
+      "tests\\test_autocorrelation_comprehensive.py",
+      "tests\\core_algorithms\\test_autocorrelation_mechanism.py"
+    ],
+    [
+      "tests\\test_series_decomposition.py",
+      "tests\\core_algorithms\\test_series_decomposition.py"
+    ],
+    [
+      "tests\\core_algorithms\\test_attention_mechanisms.py",
+      "tests\\unit\\components\\test_attention_layer.py"
+    ],
+    [
+      "tests\\integration\\test_workflow_forecasting.py",
+      "tests\\integration\\test_workflow_imputation.py"
+    ],
+    [
+      "tests\\modular_framework\\components\\test_cross_resolution_attention.py",
+      "tests\\modular_framework\\components\\test_hierarchical_encoder.py"
+    ]
+  ],
+  "file_summaries": [
+    {
+      "rel_path": "test_advanced_components.py",
+      "lines": 153,
+      "asserts": 0,
+      "test_functions": 2,
+      "import_domains": 1,
+      "heavy_indicators": 0,
+      "category": "registry",
+      "runtime_sample_seconds": 0.00196,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_advanced_integration.py",
+      "lines": 338,
+      "asserts": 0,
+      "test_functions": 6,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00345,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "loss",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_advanced_modular_combinations.py",
+      "lines": 349,
+      "asserts": 0,
+      "test_functions": 7,
+      "import_domains": 4,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00331,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "backbone",
+        "embedding",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_algorithmic_sophistication.py",
+      "lines": 409,
+      "asserts": 0,
+      "test_functions": 6,
+      "import_domains": 2,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00451,
+      "classification": "SPLIT",
+      "assert_signature": "",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "decomposition",
+        "fusion",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_algorithm_restoration.py",
+      "lines": 175,
+      "asserts": 15,
+      "test_functions": 3,
+      "import_domains": 1,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.0017,
+      "classification": "KEEP",
+      "assert_signature": "4f75c885465f56cf791f3ffffa7d7d64",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "encoder",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_all_hf_covariates.py",
+      "lines": 355,
+      "asserts": 0,
+      "test_functions": 2,
+      "import_domains": 7,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00471,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "forecast",
+        "hierarchical",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_attention_components.py",
+      "lines": 99,
+      "asserts": 4,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "registry",
+      "runtime_sample_seconds": 0.00129,
+      "classification": "KEEP",
+      "assert_signature": "b6c15985e043d42ec82414772c081374",
+      "domain_keywords": [
+        "attention",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "test_auxiliary_loss_fix.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00016,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_bayesian_fix.py",
+      "lines": 120,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "model",
+      "runtime_sample_seconds": 0.00132,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "embedding",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "test_chronosx_simple.py",
+      "lines": 294,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 8,
+      "heavy_indicators": 0,
+      "category": "chronosx",
+      "runtime_sample_seconds": 0.00275,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "backbone",
+        "decoder",
+        "embedding",
+        "encoder",
+        "forecast",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_chronos_x_comprehensive.py",
+      "lines": 143,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "model",
+      "runtime_sample_seconds": 0.00122,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "forecast",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_chronos_x_model_sizes.py",
+      "lines": 501,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 9,
+      "heavy_indicators": 1,
+      "category": "model",
+      "runtime_sample_seconds": 0.0059,
+      "classification": "SPLIT",
+      "assert_signature": "",
+      "domain_keywords": [
+        "forecast"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_chronos_x_real_data.py",
+      "lines": 564,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 8,
+      "heavy_indicators": 0,
+      "category": "model",
+      "runtime_sample_seconds": 0.00692,
+      "classification": "EXTEND",
+      "assert_signature": "",
+      "domain_keywords": [
+        "backbone",
+        "forecast",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "test_chronos_x_simple.py",
+      "lines": 218,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "model",
+      "runtime_sample_seconds": 0.0024,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "loss",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_complete_framework.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00017,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_complete_hf_suite.py",
+      "lines": 327,
+      "asserts": 0,
+      "test_functions": 4,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00365,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "forecast",
+        "fusion",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_complete_modular_framework.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "modular_framework",
+      "runtime_sample_seconds": 0.00016,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_comprehensive_modularization.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00014,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_core_components.py",
+      "lines": 257,
+      "asserts": 16,
+      "test_functions": 1,
+      "import_domains": 1,
+      "heavy_indicators": 1,
+      "category": "registry",
+      "runtime_sample_seconds": 0.00265,
+      "classification": "KEEP",
+      "assert_signature": "4f84e97238d0aad84cf5f54b3b0ee4c4",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_covariate_wavelet_integration.py",
+      "lines": 339,
+      "asserts": 4,
+      "test_functions": 3,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00483,
+      "classification": "KEEP",
+      "assert_signature": "1cfea1bde5e44e76cb8752350e0cbe8d",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "backbone",
+        "decomposition",
+        "embedding",
+        "forecast",
+        "fusion",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_debug_cpu.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00021,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_decomposition_components.py",
+      "lines": 101,
+      "asserts": 6,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "registry",
+      "runtime_sample_seconds": 0.00118,
+      "classification": "KEEP",
+      "assert_signature": "328043b18d2ed434b5fd85ce9c08f711",
+      "domain_keywords": [
+        "decomposition",
+        "registry"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "test_enhanced_bayesian_model.py",
+      "lines": 206,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "model",
+      "runtime_sample_seconds": 0.00195,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_enhanced_hf_core.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00016,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_fft_isolated.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00014,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_gcli_architecture.py",
+      "lines": 315,
+      "asserts": 0,
+      "test_functions": 6,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00303,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "hierarchical",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_gcli_simple.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00018,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_hf_covariates.py",
+      "lines": 459,
+      "asserts": 0,
+      "test_functions": 3,
+      "import_domains": 8,
+      "heavy_indicators": 3,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00483,
+      "classification": "SPLIT",
+      "assert_signature": "",
+      "domain_keywords": [
+        "decoder",
+        "embedding",
+        "encoder",
+        "forecast",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_hf_enhanced_models.py",
+      "lines": 407,
+      "asserts": 0,
+      "test_functions": 7,
+      "import_domains": 5,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00655,
+      "classification": "SPLIT",
+      "assert_signature": "",
+      "domain_keywords": [
+        "backbone",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_hf_flexibility.py",
+      "lines": 204,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 7,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00229,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "embedding",
+        "forecast",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_hf_migration_simple.py",
+      "lines": 291,
+      "asserts": 0,
+      "test_functions": 3,
+      "import_domains": 4,
+      "heavy_indicators": 0,
+      "category": "migration",
+      "runtime_sample_seconds": 0.00253,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "forecast",
+        "hierarchical",
+        "quantile",
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_hf_model.py",
+      "lines": 155,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00168,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "forecast",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_hf_models_fixed.py",
+      "lines": 137,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00137,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "embedding",
+        "hierarchical",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_hf_modular_corrected.py",
+      "lines": 298,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00299,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "decoder",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_hf_modular_training.py",
+      "lines": 291,
+      "asserts": 0,
+      "test_functions": 2,
+      "import_domains": 2,
+      "heavy_indicators": 3,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00343,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "decoder",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_hf_real_data.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00027,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_input.py",
+      "lines": 21,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00044,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_migration.py",
+      "lines": 91,
+      "asserts": 4,
+      "test_functions": 1,
+      "import_domains": 1,
+      "heavy_indicators": 0,
+      "category": "migration",
+      "runtime_sample_seconds": 0.00117,
+      "classification": "KEEP",
+      "assert_signature": "ee5c577082cc4531499a688503df9172",
+      "domain_keywords": [
+        "forecast",
+        "output"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "test_models_direct.py",
+      "lines": 193,
+      "asserts": 22,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00205,
+      "classification": "KEEP",
+      "assert_signature": "9784e7eefe3e5dc921c4fb286e9124b2",
+      "domain_keywords": [
+        "anomaly",
+        "classification",
+        "decomposition",
+        "forecast",
+        "imputation",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_modular_autoformer_chronosx.py",
+      "lines": 454,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 8,
+      "heavy_indicators": 0,
+      "category": "chronosx",
+      "runtime_sample_seconds": 0.0046,
+      "classification": "EXTEND",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "decoder",
+        "decomposition",
+        "embedding",
+        "encoder",
+        "forecast",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "test_modular_system.py",
+      "lines": 123,
+      "asserts": 4,
+      "test_functions": 2,
+      "import_domains": 1,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00115,
+      "classification": "KEEP",
+      "assert_signature": "9805cad7ef6cdb9ddfc81994de0befa3",
+      "domain_keywords": [
+        "attention",
+        "decomposition",
+        "encoder",
+        "loss",
+        "registry"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "test_moe_compatibility.py",
+      "lines": 121,
+      "asserts": 7,
+      "test_functions": 1,
+      "import_domains": 1,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00159,
+      "classification": "KEEP",
+      "assert_signature": "304d6fd79218199be6274acd3203bbe8",
+      "domain_keywords": [
+        "decoder",
+        "forecast",
+        "loss",
+        "moe",
+        "output"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "test_moe_integration.py",
+      "lines": 114,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00177,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "decoder",
+        "expert",
+        "forecast",
+        "hierarchical",
+        "loss",
+        "moe",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "test_new_hf_models.py",
+      "lines": 556,
+      "asserts": 23,
+      "test_functions": 3,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00124,
+      "classification": "EXTEND",
+      "assert_signature": "a6aa17ccdf7d95fbd19cce58805d89e8",
+      "domain_keywords": [
+        "attention",
+        "decomposition",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "test_phase1_integration.py",
+      "lines": 145,
+      "asserts": 0,
+      "test_functions": 2,
+      "import_domains": 1,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00283,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "loss",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_phase2_attention.py",
+      "lines": 128,
+      "asserts": 7,
+      "test_functions": 1,
+      "import_domains": 1,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00179,
+      "classification": "KEEP",
+      "assert_signature": "b08ca85e06f595cc1c4b5f9273f465b1",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "test_phase2_basic.py",
+      "lines": 114,
+      "asserts": 6,
+      "test_functions": 1,
+      "import_domains": 1,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00143,
+      "classification": "KEEP",
+      "assert_signature": "d5d3edac61fa1481e4ec8f953929f951",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "output"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "test_phase2_validation.py",
+      "lines": 328,
+      "asserts": 23,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00329,
+      "classification": "KEEP",
+      "assert_signature": "994760172b20f627508a827edcd930f6",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "decomposition",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_production_bayesian.py",
+      "lines": 214,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "model",
+      "runtime_sample_seconds": 0.00244,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "embedding",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_runner_comprehensive.py",
+      "lines": 232,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00257,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "hierarchical",
+        "output",
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_step1_enhanced.py",
+      "lines": 173,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00216,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "backbone",
+        "decoder",
+        "encoder",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_step2_bayesian.py",
+      "lines": 301,
+      "asserts": 35,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 2,
+      "category": "model",
+      "runtime_sample_seconds": 0.00515,
+      "classification": "KEEP",
+      "assert_signature": "3794af258a0dda152b18dc4e3561990e",
+      "domain_keywords": [
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_step3_hierarchical.py",
+      "lines": 334,
+      "asserts": 32,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 2,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00465,
+      "classification": "KEEP",
+      "assert_signature": "8907ce355c93fd1db5d65af2d227fba8",
+      "domain_keywords": [
+        "attention",
+        "fusion",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_step4_quantile.py",
+      "lines": 378,
+      "asserts": 41,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 2,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00565,
+      "classification": "KEEP",
+      "assert_signature": "d274b5a7925252395176a41cec704ce6",
+      "domain_keywords": [
+        "backbone",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_unified_factory.py",
+      "lines": 177,
+      "asserts": 13,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00217,
+      "classification": "KEEP",
+      "assert_signature": "a3397a69296220b67c4c643c2f724d46",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_utils_compatibility.py",
+      "lines": 289,
+      "asserts": 2,
+      "test_functions": 2,
+      "import_domains": 1,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00451,
+      "classification": "KEEP",
+      "assert_signature": "4dcb7294095cfcf1c24b8a51e050ca96",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "test_working_dependencies.py",
+      "lines": 419,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00456,
+      "classification": "EXTEND",
+      "assert_signature": "",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "backbone",
+        "decomposition",
+        "encoder",
+        "expert",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\test_all_enhanced_models.py",
+      "lines": 146,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 1,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00279,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "hierarchical",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_autocorrelation_comprehensive.py",
+      "lines": 282,
+      "asserts": 30,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 2,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00296,
+      "classification": "KEEP",
+      "assert_signature": "af483a7bbf8edc8fceaa9b114d2873ec",
+      "domain_keywords": [
+        "attention",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_autocorrelation_core.py",
+      "lines": 148,
+      "asserts": 12,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00256,
+      "classification": "KEEP",
+      "assert_signature": "7fb472f3decae4e50fd62244dd5f2fb4",
+      "domain_keywords": [
+        "attention",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_autoformer_fixed.py",
+      "lines": 242,
+      "asserts": 25,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 2,
+      "category": "model",
+      "runtime_sample_seconds": 0.00354,
+      "classification": "KEEP",
+      "assert_signature": "fb7e0d5e5a00a935f589a4013b95ad93",
+      "domain_keywords": [
+        "anomaly",
+        "classification",
+        "decomposition",
+        "forecast",
+        "imputation",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_autoformer_implementations.py",
+      "lines": 130,
+      "asserts": 13,
+      "test_functions": 8,
+      "import_domains": 5,
+      "heavy_indicators": 1,
+      "category": "model",
+      "runtime_sample_seconds": 0.00169,
+      "classification": "KEEP",
+      "assert_signature": "da43d9f2f9d80ec843a16087f11733e9",
+      "domain_keywords": [
+        "anomaly",
+        "attention",
+        "decomposition",
+        "forecast",
+        "imputation",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_bayesian_loss_architecture.py",
+      "lines": 141,
+      "asserts": 1,
+      "test_functions": 1,
+      "import_domains": 4,
+      "heavy_indicators": 0,
+      "category": "model",
+      "runtime_sample_seconds": 0.00156,
+      "classification": "KEEP",
+      "assert_signature": "36be40f86ce2a7425f4f1745774976d3",
+      "domain_keywords": [
+        "attention",
+        "forecast",
+        "hierarchical",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_component_registry.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "registry",
+      "runtime_sample_seconds": 0.00017,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_end_to_end_workflows.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00014,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_enhanced_autoformer.py",
+      "lines": 421,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 7,
+      "heavy_indicators": 2,
+      "category": "model",
+      "runtime_sample_seconds": 0.00411,
+      "classification": "SPLIT",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decomposition",
+        "encoder",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_enhanced_autoformer_fixed.py",
+      "lines": 273,
+      "asserts": 31,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 1,
+      "category": "model",
+      "runtime_sample_seconds": 0.00295,
+      "classification": "KEEP",
+      "assert_signature": "937af0d46842a54b5e7b552e0b67c2bf",
+      "domain_keywords": [
+        "anomaly",
+        "attention",
+        "classification",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "forecast",
+        "imputation",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_enhanced_features.py",
+      "lines": 113,
+      "asserts": 0,
+      "test_functions": 2,
+      "import_domains": 4,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00187,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decomposition",
+        "encoder",
+        "forecast",
+        "output"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\test_enhanced_models_ultralight.py",
+      "lines": 154,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 5,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00288,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "hierarchical"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_enhanced_modular_architecture.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00021,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_fft_lengths.py",
+      "lines": 106,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00144,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\test_integration.py",
+      "lines": 294,
+      "asserts": 22,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 3,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00348,
+      "classification": "KEEP",
+      "assert_signature": "f8ab812bcf0425285d686dd01a509bbb",
+      "domain_keywords": [
+        "forecast",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_kl_integration.py",
+      "lines": 239,
+      "asserts": 0,
+      "test_functions": 2,
+      "import_domains": 4,
+      "heavy_indicators": 2,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00271,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "forecast",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_kl_training.py",
+      "lines": 106,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 4,
+      "heavy_indicators": 4,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00136,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "forecast",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_migration_strategy.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "migration",
+      "runtime_sample_seconds": 0.00017,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_mode_aware_losses.py",
+      "lines": 221,
+      "asserts": 0,
+      "test_functions": 3,
+      "import_domains": 3,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00241,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "hierarchical",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_modular_framework_comprehensive.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "modular_framework",
+      "runtime_sample_seconds": 0.00013,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_multiwavelet_integration.py",
+      "lines": 126,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00124,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "hierarchical",
+        "output"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\test_performance_benchmarks.py",
+      "lines": 1,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "performance",
+      "runtime_sample_seconds": 0.00022,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_quantile_bayesian.py",
+      "lines": 193,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 6,
+      "heavy_indicators": 1,
+      "category": "model",
+      "runtime_sample_seconds": 0.00398,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "forecast",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_quantile_kl.py",
+      "lines": 159,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 5,
+      "heavy_indicators": 4,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00225,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "forecast",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_runner.py",
+      "lines": 315,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00266,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "output",
+        "registry",
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_runner_comprehensive.py",
+      "lines": 496,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00469,
+      "classification": "EXTEND",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decomposition",
+        "loss",
+        "output",
+        "quantile",
+        "registry",
+        "workflow"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\test_series_decomposition.py",
+      "lines": 429,
+      "asserts": 57,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00521,
+      "classification": "SPLIT",
+      "assert_signature": "bbfecd338a4180517ed1944f3afeaad3",
+      "domain_keywords": [
+        "decomposition",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_simple_quantile_bayesian.py",
+      "lines": 111,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "model",
+      "runtime_sample_seconds": 0.00156,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "forecast",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\test_summary.py",
+      "lines": 282,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00408,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile",
+        "registry",
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_training_dynamics.py",
+      "lines": 255,
+      "asserts": 9,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 3,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00345,
+      "classification": "KEEP",
+      "assert_signature": "4f72eb94847a493b42aeb548bb4bf8c6",
+      "domain_keywords": [
+        "decomposition",
+        "forecast",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\test_unified_architecture.py",
+      "lines": 572,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00522,
+      "classification": "EXTEND",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "encoder",
+        "forecast",
+        "hierarchical",
+        "output",
+        "quantile",
+        "registry",
+        "workflow"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\test_unified_framework.py",
+      "lines": 349,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00475,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "forecast",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronosx_simple.py",
+      "lines": 295,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 8,
+      "heavy_indicators": 0,
+      "category": "chronosx",
+      "runtime_sample_seconds": 0.00358,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "backbone",
+        "decoder",
+        "embedding",
+        "encoder",
+        "forecast",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronos_x_comprehensive.py",
+      "lines": 143,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "chronosx",
+      "runtime_sample_seconds": 0.0014,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "forecast",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronos_x_model_sizes.py",
+      "lines": 501,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 9,
+      "heavy_indicators": 1,
+      "category": "chronosx",
+      "runtime_sample_seconds": 0.00703,
+      "classification": "SPLIT",
+      "assert_signature": "",
+      "domain_keywords": [
+        "forecast"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronos_x_real_data.py",
+      "lines": 564,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 8,
+      "heavy_indicators": 0,
+      "category": "chronosx",
+      "runtime_sample_seconds": 0.0072,
+      "classification": "EXTEND",
+      "assert_signature": "",
+      "domain_keywords": [
+        "backbone",
+        "forecast",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronos_x_simple.py",
+      "lines": 218,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "chronosx",
+      "runtime_sample_seconds": 0.00239,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "loss",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_modular_autoformer_chronosx.py",
+      "lines": 455,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 8,
+      "heavy_indicators": 0,
+      "category": "chronosx",
+      "runtime_sample_seconds": 0.00451,
+      "classification": "EXTEND",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "decoder",
+        "decomposition",
+        "embedding",
+        "encoder",
+        "forecast",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\components\\test_attention_components.py",
+      "lines": 47,
+      "asserts": 4,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 1,
+      "category": "registry",
+      "runtime_sample_seconds": 0.00066,
+      "classification": "KEEP",
+      "assert_signature": "067fa17542bb130ce9a86c67dc4d4b7e",
+      "domain_keywords": [
+        "attention",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\components\\test_loss_components.py",
+      "lines": 42,
+      "asserts": 3,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 1,
+      "category": "registry",
+      "runtime_sample_seconds": 0.00066,
+      "classification": "KEEP",
+      "assert_signature": "a1ca5ffd075a95d4db1550fe37574c54",
+      "domain_keywords": [
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\components\\test_moe_aux_metrics.py",
+      "lines": 45,
+      "asserts": 6,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00068,
+      "classification": "KEEP",
+      "assert_signature": "0ea03f29fe72d09ba63e9be6ef3d4ae9",
+      "domain_keywords": [
+        "expert",
+        "loss",
+        "moe"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\core_algorithms\\test_attention_mechanisms.py",
+      "lines": 147,
+      "asserts": 22,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 1,
+      "category": "core_algorithms",
+      "runtime_sample_seconds": 0.00265,
+      "classification": "KEEP",
+      "assert_signature": "84e1edb3c9f63c10c271fed929de5e2c",
+      "domain_keywords": [
+        "attention",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\core_algorithms\\test_autocorrelation_mechanism.py",
+      "lines": 282,
+      "asserts": 30,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 2,
+      "category": "core_algorithms",
+      "runtime_sample_seconds": 0.00323,
+      "classification": "KEEP",
+      "assert_signature": "af483a7bbf8edc8fceaa9b114d2873ec",
+      "domain_keywords": [
+        "attention",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\core_algorithms\\test_series_decomposition.py",
+      "lines": 433,
+      "asserts": 57,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 1,
+      "category": "core_algorithms",
+      "runtime_sample_seconds": 0.00405,
+      "classification": "SPLIT",
+      "assert_signature": "bbfecd338a4180517ed1944f3afeaad3",
+      "domain_keywords": [
+        "decomposition",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\data\\test_format_fallback.py",
+      "lines": 122,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00144,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\data\\test_inverse_transform.py",
+      "lines": 103,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00123,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\data\\test_parquet_handling.py",
+      "lines": 106,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 4,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00139,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\data\\test_selective_scaling.py",
+      "lines": 88,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 4,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00131,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\data\\test_target_order.py",
+      "lines": 172,
+      "asserts": 0,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00304,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "forecast",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\test_end_to_end_workflows.py",
+      "lines": 5,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 0,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00067,
+      "classification": "DELETE",
+      "assert_signature": "",
+      "domain_keywords": [
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\test_model_build_and_forward.py",
+      "lines": 53,
+      "asserts": 2,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00093,
+      "classification": "KEEP",
+      "assert_signature": "5c3375348aefdcbb7b194bf94f6dc70e",
+      "domain_keywords": [
+        "backbone",
+        "forecast",
+        "output"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\integration\\test_model_comparison.py",
+      "lines": 340,
+      "asserts": 2,
+      "test_functions": 0,
+      "import_domains": 6,
+      "heavy_indicators": 4,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00401,
+      "classification": "KEEP",
+      "assert_signature": "d531b40ad579303fd70fafb2735c575f",
+      "domain_keywords": [
+        "decoder",
+        "forecast",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\test_workflow_anomaly_detection.py",
+      "lines": 53,
+      "asserts": 1,
+      "test_functions": 1,
+      "import_domains": 4,
+      "heavy_indicators": 2,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00088,
+      "classification": "KEEP",
+      "assert_signature": "594fa7aa376ed2e11039f5fcf487864d",
+      "domain_keywords": [
+        "anomaly",
+        "loss",
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\test_workflow_classification.py",
+      "lines": 49,
+      "asserts": 2,
+      "test_functions": 1,
+      "import_domains": 4,
+      "heavy_indicators": 2,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00081,
+      "classification": "KEEP",
+      "assert_signature": "48dc3ce97f946a0a20210f1708ac8f2b",
+      "domain_keywords": [
+        "classification",
+        "loss",
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\test_workflow_forecasting.py",
+      "lines": 42,
+      "asserts": 2,
+      "test_functions": 1,
+      "import_domains": 4,
+      "heavy_indicators": 2,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00066,
+      "classification": "KEEP",
+      "assert_signature": "4e265ed9409425106156d3e0f2c1000a",
+      "domain_keywords": [
+        "forecast",
+        "loss",
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\test_workflow_imputation.py",
+      "lines": 50,
+      "asserts": 2,
+      "test_functions": 1,
+      "import_domains": 4,
+      "heavy_indicators": 2,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00079,
+      "classification": "KEEP",
+      "assert_signature": "4e265ed9409425106156d3e0f2c1000a",
+      "domain_keywords": [
+        "imputation",
+        "loss",
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\test_workflow_persistence.py",
+      "lines": 42,
+      "asserts": 1,
+      "test_functions": 1,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00071,
+      "classification": "KEEP",
+      "assert_signature": "48de923e0f7eb2a547ae1cb85172837e",
+      "domain_keywords": [
+        "persistence",
+        "workflow"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_attention_functionality.py",
+      "lines": 843,
+      "asserts": 41,
+      "test_functions": 13,
+      "import_domains": 2,
+      "heavy_indicators": 2,
+      "category": "integration",
+      "runtime_sample_seconds": 0.01177,
+      "classification": "SPLIT",
+      "assert_signature": "d57793b9b443df3e1007ef036f1eff94",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "decomposition",
+        "hierarchical",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_backbone_functionality.py",
+      "lines": 382,
+      "asserts": 19,
+      "test_functions": 5,
+      "import_domains": 2,
+      "heavy_indicators": 2,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00435,
+      "classification": "KEEP",
+      "assert_signature": "a5f162796dfd8811111508d5f6f70bec",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "decoder",
+        "encoder",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_integration_functionality.py",
+      "lines": 805,
+      "asserts": 33,
+      "test_functions": 8,
+      "import_domains": 2,
+      "heavy_indicators": 2,
+      "category": "integration",
+      "runtime_sample_seconds": 0.01167,
+      "classification": "SPLIT",
+      "assert_signature": "71b800ca3465249fc4cb5dbd42c5dd13",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "fusion",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_loss_functionality.py",
+      "lines": 767,
+      "asserts": 43,
+      "test_functions": 14,
+      "import_domains": 2,
+      "heavy_indicators": 2,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00914,
+      "classification": "SPLIT",
+      "assert_signature": "877c2be0e13ad7f5a7c6d584b1716757",
+      "domain_keywords": [
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_processor_functionality.py",
+      "lines": 721,
+      "asserts": 23,
+      "test_functions": 7,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00985,
+      "classification": "SPLIT",
+      "assert_signature": "7c8fb2995f1f28f039e4c1fab5e24ea9",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "decomposition",
+        "fusion",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\dimension_tests\\test_dimension_manager_integration.py",
+      "lines": 510,
+      "asserts": 50,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00481,
+      "classification": "EXTEND",
+      "assert_signature": "2a0ea737a587e6184bd50773d939edfd",
+      "domain_keywords": [
+        "decoder",
+        "encoder",
+        "forecast",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\integration\\dimension_tests\\test_model_dimensions.py",
+      "lines": 835,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.01541,
+      "classification": "SPLIT",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "encoder",
+        "forecast",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_end_to_end_workflows.py",
+      "lines": 914,
+      "asserts": 76,
+      "test_functions": 0,
+      "import_domains": 8,
+      "heavy_indicators": 4,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00978,
+      "classification": "SPLIT",
+      "assert_signature": "992455076f2a7f8ec8f9da2489f3d18b",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "loss",
+        "output",
+        "workflow"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_hf_autoformer_dimensions.py",
+      "lines": 549,
+      "asserts": 16,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00669,
+      "classification": "EXTEND",
+      "assert_signature": "15c2873682fef5fb8a2f4eee7f49ff63",
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "decoder",
+        "encoder",
+        "forecast",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_multi_timeseries_dimensions.py",
+      "lines": 589,
+      "asserts": 15,
+      "test_functions": 0,
+      "import_domains": 6,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00657,
+      "classification": "EXTEND",
+      "assert_signature": "2a0869352ddbf610db2375dafeb6213d",
+      "domain_keywords": [
+        "backbone",
+        "decoder",
+        "embedding",
+        "encoder",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_performance_benchmarks.py",
+      "lines": 813,
+      "asserts": 19,
+      "test_functions": 0,
+      "import_domains": 10,
+      "heavy_indicators": 1,
+      "category": "performance",
+      "runtime_sample_seconds": 0.00962,
+      "classification": "PERF",
+      "assert_signature": "cfd269468646420ac453c593020274c8",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "output",
+        "registry"
+      ],
+      "suggested_marker": "perf"
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_component_registry.py",
+      "lines": 892,
+      "asserts": 79,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00753,
+      "classification": "SPLIT",
+      "assert_signature": "e8744d53a5b17c68e60628159cdade5d",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "embedding",
+        "encoder",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_migration_strategy.py",
+      "lines": 694,
+      "asserts": 51,
+      "test_functions": 0,
+      "import_domains": 7,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00705,
+      "classification": "EXTEND",
+      "assert_signature": "f6bc9d4a9b8aaa130e8447e45cb69ffd",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "forecast",
+        "hierarchical",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_modular_framework_comprehensive.py",
+      "lines": 796,
+      "asserts": 49,
+      "test_functions": 0,
+      "import_domains": 6,
+      "heavy_indicators": 1,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00772,
+      "classification": "SPLIT",
+      "assert_signature": "b0aa3bc999f42c3df9204e489352b9a3",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "backbone",
+        "decoder",
+        "decomposition",
+        "embedding",
+        "encoder",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\models\\test_bayesian_enhanced_autoformer_sine.py",
+      "lines": 46,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 1,
+      "category": "model",
+      "runtime_sample_seconds": 0.00089,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "loss",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\models\\test_enhanced_autoformer_sine.py",
+      "lines": 58,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 1,
+      "category": "model",
+      "runtime_sample_seconds": 0.00103,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "loss",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\models\\test_enhanced_models.py",
+      "lines": 343,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 6,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00452,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decomposition",
+        "encoder",
+        "forecast",
+        "hierarchical",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\models\\test_hierarchical_enhanced_autoformer_sine.py",
+      "lines": 43,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 1,
+      "category": "model",
+      "runtime_sample_seconds": 0.00078,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "hierarchical",
+        "loss",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\modular_framework\\test_components.py",
+      "lines": 179,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "modular_framework",
+      "runtime_sample_seconds": 0.00267,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "hierarchical",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\modular_framework\\test_integration.py",
+      "lines": 75,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00101,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\modular_framework\\components\\test_cross_resolution_attention.py",
+      "lines": 30,
+      "asserts": 3,
+      "test_functions": 2,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "modular_framework",
+      "runtime_sample_seconds": 0.00066,
+      "classification": "KEEP",
+      "assert_signature": "26f5bce9ac50ef360e7bcf489be99a5e",
+      "domain_keywords": [
+        "attention"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\modular_framework\\components\\test_hierarchical_encoder.py",
+      "lines": 38,
+      "asserts": 3,
+      "test_functions": 2,
+      "import_domains": 4,
+      "heavy_indicators": 0,
+      "category": "modular_framework",
+      "runtime_sample_seconds": 0.00061,
+      "classification": "KEEP",
+      "assert_signature": "26f5bce9ac50ef360e7bcf489be99a5e",
+      "domain_keywords": [
+        "encoder",
+        "hierarchical"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\modular_framework\\components\\test_hierarchical_fusion.py",
+      "lines": 27,
+      "asserts": 2,
+      "test_functions": 2,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "modular_framework",
+      "runtime_sample_seconds": 0.00054,
+      "classification": "KEEP",
+      "assert_signature": "db57172a49263f32d8b52dc05f305ea9",
+      "domain_keywords": [
+        "fusion",
+        "hierarchical"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\modular_framework\\components\\test_wavelet_decomposition.py",
+      "lines": 30,
+      "asserts": 3,
+      "test_functions": 2,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "modular_framework",
+      "runtime_sample_seconds": 0.00052,
+      "classification": "KEEP",
+      "assert_signature": "43c30ff6b52c34b3e01a873bc66a2236",
+      "domain_keywords": [
+        "decomposition",
+        "hierarchical"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\perf\\test_attention_perf.py",
+      "lines": 44,
+      "asserts": 2,
+      "test_functions": 1,
+      "import_domains": 4,
+      "heavy_indicators": 1,
+      "category": "misc",
+      "runtime_sample_seconds": 0.00066,
+      "classification": "KEEP",
+      "assert_signature": "444af847cfd7c46c417d69363f77e827",
+      "domain_keywords": [
+        "attention",
+        "registry"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\scripts\\test_all_components.py",
+      "lines": 574,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "registry",
+      "runtime_sample_seconds": 0.00814,
+      "classification": "EXTEND",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "embedding",
+        "encoder",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\scripts\\test_all_integrations.py",
+      "lines": 548,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "integration",
+      "runtime_sample_seconds": 0.00639,
+      "classification": "EXTEND",
+      "assert_signature": "",
+      "domain_keywords": [
+        "hierarchical",
+        "output",
+        "quantile",
+        "workflow"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\training_validation\\test_performance_benchmarks.py",
+      "lines": 264,
+      "asserts": 7,
+      "test_functions": 0,
+      "import_domains": 8,
+      "heavy_indicators": 1,
+      "category": "performance",
+      "runtime_sample_seconds": 0.00296,
+      "classification": "PERF",
+      "assert_signature": "952798a2eed791729bc29f3c153f2d72",
+      "domain_keywords": [
+        "forecast",
+        "output"
+      ],
+      "suggested_marker": "perf"
+    },
+    {
+      "rel_path": "tests\\training_validation\\test_robustness.py",
+      "lines": 301,
+      "asserts": 24,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "training",
+      "runtime_sample_seconds": 0.00372,
+      "classification": "KEEP",
+      "assert_signature": "1c4bd82b85c6cb57b4cec8c404532834",
+      "domain_keywords": [
+        "forecast",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\training_validation\\test_simple_training.py",
+      "lines": 119,
+      "asserts": 7,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 3,
+      "category": "training",
+      "runtime_sample_seconds": 0.00276,
+      "classification": "KEEP",
+      "assert_signature": "a2443af833a67e29964fd2f8b4d21c39",
+      "domain_keywords": [
+        "forecast",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\training_validation\\test_training_dynamics.py",
+      "lines": 284,
+      "asserts": 8,
+      "test_functions": 0,
+      "import_domains": 7,
+      "heavy_indicators": 4,
+      "category": "training",
+      "runtime_sample_seconds": 0.00363,
+      "classification": "KEEP",
+      "assert_signature": "b6f171387834410eb5729031f59311a5",
+      "domain_keywords": [
+        "decoder",
+        "decomposition",
+        "embedding",
+        "encoder",
+        "forecast",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\unit\\components\\test_attention_layer.py",
+      "lines": 147,
+      "asserts": 22,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 1,
+      "category": "unit",
+      "runtime_sample_seconds": 0.00175,
+      "classification": "KEEP",
+      "assert_signature": "84e1edb3c9f63c10c271fed929de5e2c",
+      "domain_keywords": [
+        "attention",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\unit\\components\\test_embedding_layers.py",
+      "lines": 352,
+      "asserts": 34,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 1,
+      "category": "unit",
+      "runtime_sample_seconds": 0.00359,
+      "classification": "KEEP",
+      "assert_signature": "7bf521381186eb60e4415eb6ccba8f6f",
+      "domain_keywords": [
+        "embedding",
+        "loss",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\unit\\models\\test_autoformer.py",
+      "lines": 138,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "unit",
+      "runtime_sample_seconds": 0.00176,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "attention",
+        "forecast",
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\unit\\models\\test_timesnet.py",
+      "lines": 75,
+      "asserts": 0,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0,
+      "category": "unit",
+      "runtime_sample_seconds": 0.00116,
+      "classification": "KEEP",
+      "assert_signature": "",
+      "domain_keywords": [
+        "forecast"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\unit\\utils\\test_dimension_manager.py",
+      "lines": 426,
+      "asserts": 64,
+      "test_functions": 0,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "unit",
+      "runtime_sample_seconds": 0.00444,
+      "classification": "EXTEND",
+      "assert_signature": "876cb412002742a903cc99e7b35a8b11",
+      "domain_keywords": [
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "suggested_marker": "extended"
+    },
+    {
+      "rel_path": "tests\\utilities\\test_configuration_robustness.py",
+      "lines": 95,
+      "asserts": 11,
+      "test_functions": 0,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "utilities",
+      "runtime_sample_seconds": 0.00121,
+      "classification": "KEEP",
+      "assert_signature": "9fabb867c1a80b6fa0de06f1367ea100",
+      "domain_keywords": [
+        "attention"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "tests\\utilities\\test_modular_components.py",
+      "lines": 67,
+      "asserts": 3,
+      "test_functions": 0,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "utilities",
+      "runtime_sample_seconds": 0.00088,
+      "classification": "KEEP",
+      "assert_signature": "010183fd9511f059f3255b787c7ae446",
+      "domain_keywords": [
+        "registry"
+      ],
+      "suggested_marker": "smoke"
+    },
+    {
+      "rel_path": "tests\\utilities\\test_simple_interfaces.py",
+      "lines": 154,
+      "asserts": 9,
+      "test_functions": 0,
+      "import_domains": 2,
+      "heavy_indicators": 0,
+      "category": "utilities",
+      "runtime_sample_seconds": 0.00182,
+      "classification": "KEEP",
+      "assert_signature": "d44604e3c7e01d4bcb00aedd9ec11dfc",
+      "domain_keywords": [
+        "output"
+      ],
+      "suggested_marker": ""
+    },
+    {
+      "rel_path": "TestsModule\\smoke\\test_smoke_backbone.py",
+      "lines": 22,
+      "asserts": 1,
+      "test_functions": 1,
+      "import_domains": 3,
+      "heavy_indicators": 0,
+      "category": "misc",
+      "runtime_sample_seconds": 0.0005,
+      "classification": "DELETE",
+      "assert_signature": "b887730289e44a31d47227959978a691",
+      "domain_keywords": [
+        "backbone"
+      ],
+      "suggested_marker": ""
+    }
+  ],
+  "scoring_notes": "heavy_indicators>0 suggest slow/integration style test (training loops, optimizer, cuda, etc.)",
+  "top_line_count": [
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_end_to_end_workflows.py",
+      "lines": 914,
+      "test_functions": 0,
+      "import_domains": 8,
+      "asserts": 76,
+      "heavy_indicators": 4
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_component_registry.py",
+      "lines": 892,
+      "test_functions": 0,
+      "import_domains": 5,
+      "asserts": 79,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_attention_functionality.py",
+      "lines": 843,
+      "test_functions": 13,
+      "import_domains": 2,
+      "asserts": 41,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\integration\\dimension_tests\\test_model_dimensions.py",
+      "lines": 835,
+      "test_functions": 0,
+      "import_domains": 3,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_performance_benchmarks.py",
+      "lines": 813,
+      "test_functions": 0,
+      "import_domains": 10,
+      "asserts": 19,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_integration_functionality.py",
+      "lines": 805,
+      "test_functions": 8,
+      "import_domains": 2,
+      "asserts": 33,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_modular_framework_comprehensive.py",
+      "lines": 796,
+      "test_functions": 0,
+      "import_domains": 6,
+      "asserts": 49,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_loss_functionality.py",
+      "lines": 767,
+      "test_functions": 14,
+      "import_domains": 2,
+      "asserts": 43,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_processor_functionality.py",
+      "lines": 721,
+      "test_functions": 7,
+      "import_domains": 2,
+      "asserts": 23,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_migration_strategy.py",
+      "lines": 694,
+      "test_functions": 0,
+      "import_domains": 7,
+      "asserts": 51,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_multi_timeseries_dimensions.py",
+      "lines": 589,
+      "test_functions": 0,
+      "import_domains": 6,
+      "asserts": 15,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\scripts\\test_all_components.py",
+      "lines": 574,
+      "test_functions": 0,
+      "import_domains": 5,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\test_unified_architecture.py",
+      "lines": 572,
+      "test_functions": 0,
+      "import_domains": 5,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_chronos_x_real_data.py",
+      "lines": 564,
+      "test_functions": 0,
+      "import_domains": 8,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronos_x_real_data.py",
+      "lines": 564,
+      "test_functions": 0,
+      "import_domains": 8,
+      "asserts": 0,
+      "heavy_indicators": 0
+    }
+  ],
+  "top_test_functions": [
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_loss_functionality.py",
+      "test_functions": 14,
+      "lines": 767,
+      "import_domains": 2,
+      "asserts": 43,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_attention_functionality.py",
+      "test_functions": 13,
+      "lines": 843,
+      "import_domains": 2,
+      "asserts": 41,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\test_autoformer_implementations.py",
+      "test_functions": 8,
+      "lines": 130,
+      "import_domains": 5,
+      "asserts": 13,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_integration_functionality.py",
+      "test_functions": 8,
+      "lines": 805,
+      "import_domains": 2,
+      "asserts": 33,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "test_advanced_modular_combinations.py",
+      "test_functions": 7,
+      "lines": 349,
+      "import_domains": 4,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_hf_enhanced_models.py",
+      "test_functions": 7,
+      "lines": 407,
+      "import_domains": 5,
+      "asserts": 0,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_processor_functionality.py",
+      "test_functions": 7,
+      "lines": 721,
+      "import_domains": 2,
+      "asserts": 23,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_advanced_integration.py",
+      "test_functions": 6,
+      "lines": 338,
+      "import_domains": 3,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_algorithmic_sophistication.py",
+      "test_functions": 6,
+      "lines": 409,
+      "import_domains": 2,
+      "asserts": 0,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "test_gcli_architecture.py",
+      "test_functions": 6,
+      "lines": 315,
+      "import_domains": 5,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_backbone_functionality.py",
+      "test_functions": 5,
+      "lines": 382,
+      "import_domains": 2,
+      "asserts": 19,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "test_complete_hf_suite.py",
+      "test_functions": 4,
+      "lines": 327,
+      "import_domains": 3,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_algorithm_restoration.py",
+      "test_functions": 3,
+      "lines": 175,
+      "import_domains": 1,
+      "asserts": 15,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "test_covariate_wavelet_integration.py",
+      "test_functions": 3,
+      "lines": 339,
+      "import_domains": 3,
+      "asserts": 4,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_hf_covariates.py",
+      "test_functions": 3,
+      "lines": 459,
+      "import_domains": 8,
+      "asserts": 0,
+      "heavy_indicators": 3
+    }
+  ],
+  "top_import_domains": [
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_performance_benchmarks.py",
+      "import_domains": 10,
+      "lines": 813,
+      "test_functions": 0,
+      "asserts": 19,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "test_chronos_x_model_sizes.py",
+      "import_domains": 9,
+      "lines": 501,
+      "test_functions": 0,
+      "asserts": 0,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronos_x_model_sizes.py",
+      "import_domains": 9,
+      "lines": 501,
+      "test_functions": 0,
+      "asserts": 0,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "test_chronosx_simple.py",
+      "import_domains": 8,
+      "lines": 294,
+      "test_functions": 1,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_chronos_x_real_data.py",
+      "import_domains": 8,
+      "lines": 564,
+      "test_functions": 0,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_hf_covariates.py",
+      "import_domains": 8,
+      "lines": 459,
+      "test_functions": 3,
+      "asserts": 0,
+      "heavy_indicators": 3
+    },
+    {
+      "rel_path": "test_modular_autoformer_chronosx.py",
+      "import_domains": 8,
+      "lines": 454,
+      "test_functions": 0,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronosx_simple.py",
+      "import_domains": 8,
+      "lines": 295,
+      "test_functions": 1,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronos_x_real_data.py",
+      "import_domains": 8,
+      "lines": 564,
+      "test_functions": 0,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_modular_autoformer_chronosx.py",
+      "import_domains": 8,
+      "lines": 455,
+      "test_functions": 0,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_end_to_end_workflows.py",
+      "import_domains": 8,
+      "lines": 914,
+      "test_functions": 0,
+      "asserts": 76,
+      "heavy_indicators": 4
+    },
+    {
+      "rel_path": "tests\\training_validation\\test_performance_benchmarks.py",
+      "import_domains": 8,
+      "lines": 264,
+      "test_functions": 0,
+      "asserts": 7,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "test_all_hf_covariates.py",
+      "import_domains": 7,
+      "lines": 355,
+      "test_functions": 2,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_hf_flexibility.py",
+      "import_domains": 7,
+      "lines": 204,
+      "test_functions": 0,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\test_enhanced_autoformer.py",
+      "import_domains": 7,
+      "lines": 421,
+      "test_functions": 0,
+      "asserts": 0,
+      "heavy_indicators": 2
+    }
+  ],
+  "top_asserts": [
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_component_registry.py",
+      "asserts": 79,
+      "lines": 892,
+      "test_functions": 0,
+      "import_domains": 5,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_end_to_end_workflows.py",
+      "asserts": 76,
+      "lines": 914,
+      "test_functions": 0,
+      "import_domains": 8,
+      "heavy_indicators": 4
+    },
+    {
+      "rel_path": "tests\\unit\\utils\\test_dimension_manager.py",
+      "asserts": 64,
+      "lines": 426,
+      "test_functions": 0,
+      "import_domains": 2,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\test_series_decomposition.py",
+      "asserts": 57,
+      "lines": 429,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\core_algorithms\\test_series_decomposition.py",
+      "asserts": 57,
+      "lines": 433,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_migration_strategy.py",
+      "asserts": 51,
+      "lines": 694,
+      "test_functions": 0,
+      "import_domains": 7,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\dimension_tests\\test_dimension_manager_integration.py",
+      "asserts": 50,
+      "lines": 510,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_modular_framework_comprehensive.py",
+      "asserts": 49,
+      "lines": 796,
+      "test_functions": 0,
+      "import_domains": 6,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_loss_functionality.py",
+      "asserts": 43,
+      "lines": 767,
+      "test_functions": 14,
+      "import_domains": 2,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "test_step4_quantile.py",
+      "asserts": 41,
+      "lines": 378,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_attention_functionality.py",
+      "asserts": 41,
+      "lines": 843,
+      "test_functions": 13,
+      "import_domains": 2,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "test_step2_bayesian.py",
+      "asserts": 35,
+      "lines": 301,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\unit\\components\\test_embedding_layers.py",
+      "asserts": 34,
+      "lines": 352,
+      "test_functions": 0,
+      "import_domains": 4,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_integration_functionality.py",
+      "asserts": 33,
+      "lines": 805,
+      "test_functions": 8,
+      "import_domains": 2,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "test_step3_hierarchical.py",
+      "asserts": 32,
+      "lines": 334,
+      "test_functions": 1,
+      "import_domains": 2,
+      "heavy_indicators": 2
+    }
+  ],
+  "large_scripts": [
+    {
+      "rel_path": "test_algorithmic_sophistication.py",
+      "lines": 409,
+      "test_functions": 6,
+      "import_domains": 2,
+      "asserts": 0,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "test_chronos_x_model_sizes.py",
+      "lines": 501,
+      "test_functions": 0,
+      "import_domains": 9,
+      "asserts": 0,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "test_chronos_x_real_data.py",
+      "lines": 564,
+      "test_functions": 0,
+      "import_domains": 8,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_hf_covariates.py",
+      "lines": 459,
+      "test_functions": 3,
+      "import_domains": 8,
+      "asserts": 0,
+      "heavy_indicators": 3
+    },
+    {
+      "rel_path": "test_hf_enhanced_models.py",
+      "lines": 407,
+      "test_functions": 7,
+      "import_domains": 5,
+      "asserts": 0,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "test_modular_autoformer_chronosx.py",
+      "lines": 454,
+      "test_functions": 0,
+      "import_domains": 8,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_new_hf_models.py",
+      "lines": 556,
+      "test_functions": 3,
+      "import_domains": 5,
+      "asserts": 23,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "test_working_dependencies.py",
+      "lines": 419,
+      "test_functions": 1,
+      "import_domains": 0,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\test_enhanced_autoformer.py",
+      "lines": 421,
+      "test_functions": 0,
+      "import_domains": 7,
+      "asserts": 0,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\test_runner_comprehensive.py",
+      "lines": 496,
+      "test_functions": 0,
+      "import_domains": 3,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\test_series_decomposition.py",
+      "lines": 429,
+      "test_functions": 0,
+      "import_domains": 4,
+      "asserts": 57,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\test_unified_architecture.py",
+      "lines": 572,
+      "test_functions": 0,
+      "import_domains": 5,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronos_x_model_sizes.py",
+      "lines": 501,
+      "test_functions": 0,
+      "import_domains": 9,
+      "asserts": 0,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_chronos_x_real_data.py",
+      "lines": 564,
+      "test_functions": 0,
+      "import_domains": 8,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\chronosx\\test_modular_autoformer_chronosx.py",
+      "lines": 455,
+      "test_functions": 0,
+      "import_domains": 8,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\core_algorithms\\test_series_decomposition.py",
+      "lines": 433,
+      "test_functions": 0,
+      "import_domains": 4,
+      "asserts": 57,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_attention_functionality.py",
+      "lines": 843,
+      "test_functions": 13,
+      "import_domains": 2,
+      "asserts": 41,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_integration_functionality.py",
+      "lines": 805,
+      "test_functions": 8,
+      "import_domains": 2,
+      "asserts": 33,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_loss_functionality.py",
+      "lines": 767,
+      "test_functions": 14,
+      "import_domains": 2,
+      "asserts": 43,
+      "heavy_indicators": 2
+    },
+    {
+      "rel_path": "tests\\integration\\component_validation\\test_processor_functionality.py",
+      "lines": 721,
+      "test_functions": 7,
+      "import_domains": 2,
+      "asserts": 23,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\dimension_tests\\test_dimension_manager_integration.py",
+      "lines": 510,
+      "test_functions": 0,
+      "import_domains": 4,
+      "asserts": 50,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\dimension_tests\\test_model_dimensions.py",
+      "lines": 835,
+      "test_functions": 0,
+      "import_domains": 3,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_end_to_end_workflows.py",
+      "lines": 914,
+      "test_functions": 0,
+      "import_domains": 8,
+      "asserts": 76,
+      "heavy_indicators": 4
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_hf_autoformer_dimensions.py",
+      "lines": 549,
+      "test_functions": 0,
+      "import_domains": 5,
+      "asserts": 16,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_multi_timeseries_dimensions.py",
+      "lines": 589,
+      "test_functions": 0,
+      "import_domains": 6,
+      "asserts": 15,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\end_to_end\\test_performance_benchmarks.py",
+      "lines": 813,
+      "test_functions": 0,
+      "import_domains": 10,
+      "asserts": 19,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_component_registry.py",
+      "lines": 892,
+      "test_functions": 0,
+      "import_domains": 5,
+      "asserts": 79,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_migration_strategy.py",
+      "lines": 694,
+      "test_functions": 0,
+      "import_domains": 7,
+      "asserts": 51,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\integration\\modular_framework\\test_modular_framework_comprehensive.py",
+      "lines": 796,
+      "test_functions": 0,
+      "import_domains": 6,
+      "asserts": 49,
+      "heavy_indicators": 1
+    },
+    {
+      "rel_path": "tests\\scripts\\test_all_components.py",
+      "lines": 574,
+      "test_functions": 0,
+      "import_domains": 5,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\scripts\\test_all_integrations.py",
+      "lines": 548,
+      "test_functions": 0,
+      "import_domains": 5,
+      "asserts": 0,
+      "heavy_indicators": 0
+    },
+    {
+      "rel_path": "tests\\unit\\utils\\test_dimension_manager.py",
+      "lines": 426,
+      "test_functions": 0,
+      "import_domains": 2,
+      "asserts": 64,
+      "heavy_indicators": 0
+    }
+  ],
+  "suggested_canonicalization": [
+    {
+      "keep": "tests\\test_component_registry.py",
+      "remove": [
+        "tests\\test_migration_strategy.py",
+        "tests\\test_end_to_end_workflows.py",
+        "tests\\test_performance_benchmarks.py",
+        "tests\\test_enhanced_modular_architecture.py",
+        "tests\\test_modular_framework_comprehensive.py",
+        "test_debug_cpu.py",
+        "test_gcli_simple.py",
+        "test_fft_isolated.py",
+        "test_hf_real_data.py",
+        "test_enhanced_hf_core.py",
+        "test_auxiliary_loss_fix.py",
+        "test_complete_framework.py",
+        "test_complete_modular_framework.py",
+        "test_comprehensive_modularization.py"
+      ]
+    },
+    {
+      "keep": "tests\\chronosx\\test_chronos_x_comprehensive.py",
+      "remove": [
+        "test_chronos_x_comprehensive.py"
+      ]
+    },
+    {
+      "keep": "tests\\chronosx\\test_chronos_x_model_sizes.py",
+      "remove": [
+        "test_chronos_x_model_sizes.py"
+      ]
+    },
+    {
+      "keep": "tests\\chronosx\\test_chronos_x_real_data.py",
+      "remove": [
+        "test_chronos_x_real_data.py"
+      ]
+    },
+    {
+      "keep": "tests\\chronosx\\test_chronos_x_simple.py",
+      "remove": [
+        "test_chronos_x_simple.py"
+      ]
+    }
+  ]
+}
+
+SPLIT_RECOMMENDATIONS
+ - tests\integration\end_to_end\test_end_to_end_workflows.py: 914 lines, asserts=76, heavy=4 -> SPLIT CANDIDATE
+ - tests\integration\modular_framework\test_component_registry.py: 892 lines, asserts=79, heavy=0 -> SPLIT CANDIDATE
+ - tests\integration\component_validation\test_attention_functionality.py: 843 lines, asserts=41, heavy=2 -> SPLIT CANDIDATE
+ - tests\integration\dimension_tests\test_model_dimensions.py: 835 lines, asserts=0, heavy=0 -> SPLIT CANDIDATE
+ - tests\integration\component_validation\test_integration_functionality.py: 805 lines, asserts=33, heavy=2 -> SPLIT CANDIDATE
+ - tests\integration\modular_framework\test_modular_framework_comprehensive.py: 796 lines, asserts=49, heavy=1 -> SPLIT CANDIDATE
+ - tests\integration\component_validation\test_loss_functionality.py: 767 lines, asserts=43, heavy=2 -> SPLIT CANDIDATE
+ - tests\integration\component_validation\test_processor_functionality.py: 721 lines, asserts=23, heavy=0 -> SPLIT CANDIDATE
+
+DELETE_CANDIDATES
+ - test_auxiliary_loss_fix.py: lines=1, asserts=0, tests=0
+ - test_complete_framework.py: lines=1, asserts=0, tests=0
+ - test_complete_modular_framework.py: lines=1, asserts=0, tests=0
+ - test_comprehensive_modularization.py: lines=1, asserts=0, tests=0
+ - test_debug_cpu.py: lines=1, asserts=0, tests=0
+ - test_enhanced_hf_core.py: lines=1, asserts=0, tests=0
+ - test_fft_isolated.py: lines=1, asserts=0, tests=0
+ - test_gcli_simple.py: lines=1, asserts=0, tests=0
+ - test_hf_real_data.py: lines=1, asserts=0, tests=0
+ - test_input.py: lines=21, asserts=0, tests=0
+ - tests\test_component_registry.py: lines=1, asserts=0, tests=0
+ - tests\test_end_to_end_workflows.py: lines=1, asserts=0, tests=0
+ - tests\test_enhanced_modular_architecture.py: lines=1, asserts=0, tests=0
+ - tests\test_migration_strategy.py: lines=1, asserts=0, tests=0
+ - tests\test_modular_framework_comprehensive.py: lines=1, asserts=0, tests=0
+ - tests\test_performance_benchmarks.py: lines=1, asserts=0, tests=0
+ - tests\integration\test_end_to_end_workflows.py: lines=5, asserts=0, tests=0
+ - TestsModule\smoke\test_smoke_backbone.py: lines=22, asserts=1, tests=1
+
+SEMANTIC_DUPLICATE_GROUPS (assert_signature based)
+ - GROUP:
+    * tests\test_autocorrelation_comprehensive.py
+    * tests\core_algorithms\test_autocorrelation_mechanism.py
+ - GROUP:
+    * tests\test_series_decomposition.py
+    * tests\core_algorithms\test_series_decomposition.py
+ - GROUP:
+    * tests\core_algorithms\test_attention_mechanisms.py
+    * tests\unit\components\test_attention_layer.py
+ - GROUP:
+    * tests\integration\test_workflow_forecasting.py
+    * tests\integration\test_workflow_imputation.py
+ - GROUP:
+    * tests\modular_framework\components\test_cross_resolution_attention.py
+    * tests\modular_framework\components\test_hierarchical_encoder.py
+
+DONE

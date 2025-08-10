@@ -1,0 +1,1 @@
+Next concrete actions: 1) Execute analyzer to persist inventory JSON. 2) Auto-tag tests with markers based on heuristics. 3) Start splitting test_modular_framework_comprehensive.py into focused files using helpers. 4) Implement tests/helpers modules. 5) Update manifest after each refactor.

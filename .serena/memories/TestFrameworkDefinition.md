@@ -1,0 +1,1 @@
+Framework: layered markers (smoke, core default, extended, perf, quarantine). Principles: single responsibility per file, shared helpers for data/registry/assertions, parametrization, deterministic seeds, semantic assertions. Goals: <=60s smoke, low duplication, easy component onboarding.

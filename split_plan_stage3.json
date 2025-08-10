@@ -1,0 +1,532 @@
+{
+  "plan_version": 1,
+  "entries": [
+    {
+      "source": "test_algorithmic_sophistication.py",
+      "lines": 409,
+      "asserts": 0,
+      "heavy_indicators": 1,
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "decomposition",
+        "fusion",
+        "output"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_algorithmic_sophistication_adapter.py",
+          "focus": "adapter",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_algorithmic_sophistication_attention.py",
+          "focus": "attention",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File test_algorithmic_sophistication.py has 409 lines, 0 asserts, heavy_indicators=1. Split into 2 focused files to improve maintainability."
+    },
+    {
+      "source": "test_chronos_x_model_sizes.py",
+      "lines": 501,
+      "asserts": 0,
+      "heavy_indicators": 1,
+      "domain_keywords": [
+        "forecast"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_chronos_x_model_sizes_forecast.py",
+          "focus": "forecast",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_chronos_x_model_sizes_basics.py",
+          "focus": "basics",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_chronos_x_model_sizes_configurations.py",
+          "focus": "configurations",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_chronos_x_model_sizes_edge_cases.py",
+          "focus": "edge_cases",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File test_chronos_x_model_sizes.py has 501 lines, 0 asserts, heavy_indicators=1. Split into 4 focused files to improve maintainability."
+    },
+    {
+      "source": "test_hf_covariates.py",
+      "lines": 459,
+      "asserts": 0,
+      "heavy_indicators": 3,
+      "domain_keywords": [
+        "decoder",
+        "embedding",
+        "encoder",
+        "forecast",
+        "loss",
+        "output"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_hf_covariates_decoder.py",
+          "focus": "decoder",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_hf_covariates_embedding.py",
+          "focus": "embedding",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File test_hf_covariates.py has 459 lines, 0 asserts, heavy_indicators=3. Split into 2 focused files to improve maintainability."
+    },
+    {
+      "source": "test_hf_enhanced_models.py",
+      "lines": 407,
+      "asserts": 0,
+      "heavy_indicators": 1,
+      "domain_keywords": [
+        "backbone",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_hf_enhanced_models_backbone.py",
+          "focus": "backbone",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_hf_enhanced_models_decoder.py",
+          "focus": "decoder",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File test_hf_enhanced_models.py has 407 lines, 0 asserts, heavy_indicators=1. Split into 2 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/test_enhanced_autoformer.py",
+      "lines": 421,
+      "asserts": 0,
+      "heavy_indicators": 2,
+      "domain_keywords": [
+        "attention",
+        "decomposition",
+        "encoder",
+        "loss",
+        "output"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_enhanced_autoformer_attention.py",
+          "focus": "attention",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_enhanced_autoformer_decomposition.py",
+          "focus": "decomposition",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\test_enhanced_autoformer.py has 421 lines, 0 asserts, heavy_indicators=2. Split into 2 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/test_series_decomposition.py",
+      "lines": 429,
+      "asserts": 57,
+      "heavy_indicators": 1,
+      "domain_keywords": [
+        "decomposition",
+        "loss",
+        "output"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_series_decomposition_decomposition.py",
+          "focus": "decomposition",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_series_decomposition_loss.py",
+          "focus": "loss",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\test_series_decomposition.py has 429 lines, 57 asserts, heavy_indicators=1. Split into 2 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/chronosx/test_chronos_x_model_sizes.py",
+      "lines": 501,
+      "asserts": 0,
+      "heavy_indicators": 1,
+      "domain_keywords": [
+        "forecast"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_chronos_x_model_sizes_forecast.py",
+          "focus": "forecast",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_chronos_x_model_sizes_basics.py",
+          "focus": "basics",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_chronos_x_model_sizes_configurations.py",
+          "focus": "configurations",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_chronos_x_model_sizes_edge_cases.py",
+          "focus": "edge_cases",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\chronosx\\test_chronos_x_model_sizes.py has 501 lines, 0 asserts, heavy_indicators=1. Split into 4 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/core_algorithms/test_series_decomposition.py",
+      "lines": 433,
+      "asserts": 57,
+      "heavy_indicators": 1,
+      "domain_keywords": [
+        "decomposition",
+        "loss",
+        "output"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_series_decomposition_decomposition.py",
+          "focus": "decomposition",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_series_decomposition_loss.py",
+          "focus": "loss",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\core_algorithms\\test_series_decomposition.py has 433 lines, 57 asserts, heavy_indicators=1. Split into 2 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/integration/component_validation/test_attention_functionality.py",
+      "lines": 843,
+      "asserts": 41,
+      "heavy_indicators": 2,
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "decomposition",
+        "hierarchical",
+        "loss",
+        "output",
+        "registry"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_attention_functionality_adapter.py",
+          "focus": "adapter",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_attention_functionality_attention.py",
+          "focus": "attention",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_attention_functionality_decomposition.py",
+          "focus": "decomposition",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_attention_functionality_hierarchical.py",
+          "focus": "hierarchical",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\integration\\component_validation\\test_attention_functionality.py has 843 lines, 41 asserts, heavy_indicators=2. Split into 4 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/integration/component_validation/test_integration_functionality.py",
+      "lines": 805,
+      "asserts": 33,
+      "heavy_indicators": 2,
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "fusion",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_integration_functionality_attention.py",
+          "focus": "attention",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_integration_functionality_backbone.py",
+          "focus": "backbone",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_integration_functionality_fusion.py",
+          "focus": "fusion",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_integration_functionality_hierarchical.py",
+          "focus": "hierarchical",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\integration\\component_validation\\test_integration_functionality.py has 805 lines, 33 asserts, heavy_indicators=2. Split into 4 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/integration/component_validation/test_loss_functionality.py",
+      "lines": 767,
+      "asserts": 43,
+      "heavy_indicators": 2,
+      "domain_keywords": [
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_loss_functionality_loss.py",
+          "focus": "loss",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_loss_functionality_output.py",
+          "focus": "output",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_loss_functionality_quantile.py",
+          "focus": "quantile",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_loss_functionality_registry.py",
+          "focus": "registry",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\integration\\component_validation\\test_loss_functionality.py has 767 lines, 43 asserts, heavy_indicators=2. Split into 4 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/integration/component_validation/test_processor_functionality.py",
+      "lines": 721,
+      "asserts": 23,
+      "heavy_indicators": 0,
+      "domain_keywords": [
+        "attention",
+        "backbone",
+        "decomposition",
+        "fusion",
+        "output",
+        "registry"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_processor_functionality_attention.py",
+          "focus": "attention",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_processor_functionality_backbone.py",
+          "focus": "backbone",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_processor_functionality_decomposition.py",
+          "focus": "decomposition",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_processor_functionality_fusion.py",
+          "focus": "fusion",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\integration\\component_validation\\test_processor_functionality.py has 721 lines, 23 asserts, heavy_indicators=0. Split into 4 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/integration/dimension_tests/test_model_dimensions.py",
+      "lines": 835,
+      "asserts": 0,
+      "heavy_indicators": 0,
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "encoder",
+        "forecast",
+        "loss",
+        "output"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_model_dimensions_attention.py",
+          "focus": "attention",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_model_dimensions_decoder.py",
+          "focus": "decoder",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_model_dimensions_encoder.py",
+          "focus": "encoder",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_model_dimensions_forecast.py",
+          "focus": "forecast",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\integration\\dimension_tests\\test_model_dimensions.py has 835 lines, 0 asserts, heavy_indicators=0. Split into 4 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/integration/end_to_end/test_end_to_end_workflows.py",
+      "lines": 914,
+      "asserts": 76,
+      "heavy_indicators": 4,
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "encoder",
+        "loss",
+        "output",
+        "workflow"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_end_to_end_workflows_attention.py",
+          "focus": "attention",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_end_to_end_workflows_decoder.py",
+          "focus": "decoder",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_end_to_end_workflows_decomposition.py",
+          "focus": "decomposition",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_end_to_end_workflows_encoder.py",
+          "focus": "encoder",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\integration\\end_to_end\\test_end_to_end_workflows.py has 914 lines, 76 asserts, heavy_indicators=4. Split into 4 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/integration/modular_framework/test_component_registry.py",
+      "lines": 892,
+      "asserts": 79,
+      "heavy_indicators": 0,
+      "domain_keywords": [
+        "attention",
+        "decoder",
+        "decomposition",
+        "embedding",
+        "encoder",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_component_registry_attention.py",
+          "focus": "attention",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_component_registry_decoder.py",
+          "focus": "decoder",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_component_registry_decomposition.py",
+          "focus": "decomposition",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_component_registry_embedding.py",
+          "focus": "embedding",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\integration\\modular_framework\\test_component_registry.py has 892 lines, 79 asserts, heavy_indicators=0. Split into 4 focused files to improve maintainability."
+    },
+    {
+      "source": "tests/integration/modular_framework/test_modular_framework_comprehensive.py",
+      "lines": 796,
+      "asserts": 49,
+      "heavy_indicators": 1,
+      "domain_keywords": [
+        "adapter",
+        "attention",
+        "backbone",
+        "decoder",
+        "decomposition",
+        "embedding",
+        "encoder",
+        "hierarchical",
+        "loss",
+        "output",
+        "quantile",
+        "registry"
+      ],
+      "recommended_splits": [
+        {
+          "rel_path": "TestsModule/integration/test_modular_framework_comprehensive_adapter.py",
+          "focus": "adapter",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_modular_framework_comprehensive_attention.py",
+          "focus": "attention",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_modular_framework_comprehensive_backbone.py",
+          "focus": "backbone",
+          "marker": "extended"
+        },
+        {
+          "rel_path": "TestsModule/integration/test_modular_framework_comprehensive_decoder.py",
+          "focus": "decoder",
+          "marker": "extended"
+        }
+      ],
+      "rationale": "File tests\\integration\\modular_framework\\test_modular_framework_comprehensive.py has 796 lines, 49 asserts, heavy_indicators=1. Split into 4 focused files to improve maintainability."
+    }
+  ]
+}

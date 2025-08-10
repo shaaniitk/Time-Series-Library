@@ -1,0 +1,1 @@
+Core goals: Modularize Autoformer/ChronosX codebase; introduce recommendation metadata for components; enhance MoE (aux losses, metrics, perf); rationalize & layer test suite (smoke/standard/extended/perf/quarantine); maintain high coverage while reducing redundancy & runtime.

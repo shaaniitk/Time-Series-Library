@@ -1,0 +1,1 @@
+Stage 1 complete: TestsModule scaffold fully created (helpers, smoke, components/backbone, integration, extended, perf, quarantine, meta) plus per-folder run scripts and helper stubs (registry_builders, sampling). Updated README. Ready for Stage 2 classification enhancement.

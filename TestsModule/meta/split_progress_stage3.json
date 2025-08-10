@@ -1,0 +1,76 @@
+{
+  "stage": 3,
+  "batches": [
+    {
+      "batch": 1,
+      "sources_split": [
+        "tests/integration/end_to_end/test_end_to_end_workflows.py",
+        "tests/integration/modular_framework/test_component_registry.py",
+        "tests/integration/component_validation/test_attention_functionality.py",
+        "tests/integration/dimension_tests/test_model_dimensions.py"
+      ],
+      "new_files": [
+        "TestsModule/integration/test_end_to_end_workflows_attention.py",
+        "TestsModule/integration/test_end_to_end_workflows_decoder.py",
+        "TestsModule/integration/test_end_to_end_workflows_decomposition.py",
+        "TestsModule/integration/test_end_to_end_workflows_encoder.py",
+        "TestsModule/integration/test_component_registry_attention.py",
+        "TestsModule/integration/test_component_registry_decoder.py",
+        "TestsModule/integration/test_component_registry_decomposition.py",
+        "TestsModule/integration/test_component_registry_embedding.py",
+        "TestsModule/integration/test_attention_functionality_adapter.py",
+        "TestsModule/integration/test_attention_functionality_attention.py",
+        "TestsModule/integration/test_attention_functionality_decomposition.py",
+        "TestsModule/integration/test_attention_functionality_hierarchical.py",
+        "TestsModule/integration/test_model_dimensions_attention.py",
+        "TestsModule/integration/test_model_dimensions_decoder.py",
+        "TestsModule/integration/test_model_dimensions_encoder.py",
+        "TestsModule/integration/test_model_dimensions_forecast.py"
+      ],
+      "notes": "Initial batch of split stubs created. Original monoliths retained; future passes will migrate logic and then retire originals."
+    },
+    {
+      "batch": 2,
+      "sources_split": [
+        "test_algorithmic_sophistication.py",
+        "test_chronos_x_model_sizes.py (and duplicate tests/chronosx/test_chronos_x_model_sizes.py)",
+        "test_hf_covariates.py",
+        "test_hf_enhanced_models.py",
+        "tests/test_enhanced_autoformer.py",
+        "tests/test_series_decomposition.py (and duplicate tests/core_algorithms/test_series_decomposition.py)",
+        "tests/integration/component_validation/test_loss_functionality.py",
+        "tests/integration/component_validation/test_processor_functionality.py"
+      ],
+      "new_files": [
+        "TestsModule/integration/test_algorithmic_sophistication_adapter.py",
+        "TestsModule/integration/test_algorithmic_sophistication_attention.py",
+        "TestsModule/integration/test_chronos_x_model_sizes_forecast.py",
+        "TestsModule/integration/test_chronos_x_model_sizes_basics.py",
+        "TestsModule/integration/test_chronos_x_model_sizes_configurations.py",
+        "TestsModule/integration/test_chronos_x_model_sizes_edge_cases.py",
+        "TestsModule/integration/test_hf_covariates_decoder.py",
+        "TestsModule/integration/test_hf_covariates_embedding.py",
+        "TestsModule/integration/test_hf_enhanced_models_backbone.py",
+        "TestsModule/integration/test_hf_enhanced_models_decoder.py",
+        "TestsModule/integration/test_enhanced_autoformer_attention.py",
+        "TestsModule/integration/test_enhanced_autoformer_decomposition.py",
+        "TestsModule/integration/test_series_decomposition_decomposition.py",
+        "TestsModule/integration/test_series_decomposition_loss.py",
+        "TestsModule/integration/test_loss_functionality_loss.py",
+        "TestsModule/integration/test_loss_functionality_output.py",
+        "TestsModule/integration/test_loss_functionality_quantile.py",
+        "TestsModule/integration/test_loss_functionality_registry.py",
+        "TestsModule/integration/test_processor_functionality_attention.py",
+        "TestsModule/integration/test_processor_functionality_backbone.py",
+        "TestsModule/integration/test_processor_functionality_decomposition.py",
+        "TestsModule/integration/test_processor_functionality_fusion.py"
+      ],
+      "notes": "Second batch completes all split plan stubs; ready for logic migration phase."
+    }
+  ],
+  "summary": {
+    "total_batches": 2,
+    "total_new_files": 38,
+    "status": "All split stubs scaffolded; originals remain for migration."
+  }
+}
