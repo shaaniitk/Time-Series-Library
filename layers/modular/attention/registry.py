@@ -113,11 +113,14 @@ def get_attention_component(name, **kwargs):
     
     # Legacy components
     if name == "autocorrelation_layer":
+        # Default to output_attention=True so downstream diagnostics/metrics can uniformly access
+        # attention (correlation) weights without every caller remembering to opt-in.
+        # Callers can still disable explicitly via output_attention=False.
         autocorrelation = AutoCorrelation(
             mask_flag=kwargs.get('mask_flag', True),
             factor=kwargs.get('factor', 1),
             attention_dropout=kwargs.get('dropout', 0.1),
-            output_attention=kwargs.get('output_attention', False)
+            output_attention=kwargs.get('output_attention', True)
         )
         return component_class(
             autocorrelation,
@@ -125,11 +128,12 @@ def get_attention_component(name, **kwargs):
             n_heads=kwargs.get('n_heads')
         )
     elif name == "adaptive_autocorrelation_layer":
+        # Same rationale as above: expose attention weights for metrics by default.
         autocorrelation = AdaptiveAutoCorrelation(
             mask_flag=kwargs.get('mask_flag', True),
             factor=kwargs.get('factor', 1),
             attention_dropout=kwargs.get('dropout', 0.1),
-            output_attention=kwargs.get('output_attention', False)
+            output_attention=kwargs.get('output_attention', True)
         )
         return component_class(
             autocorrelation,

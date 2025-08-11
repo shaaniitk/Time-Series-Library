@@ -1,6 +1,8 @@
 """Pytest configuration & fixtures for TestsModule.
 
 Fixtures here are local to new modular test hierarchy until migration completes.
+Legacy unittest-based directories under tests/ are intentionally excluded; a
+guard below raises if old monolithic path resurfaces in collection.
 """
 from __future__ import annotations
 import os
@@ -10,6 +12,12 @@ from typing import Iterator
 import numpy as np
 import pytest
 import torch
+
+
+def pytest_collection_modifyitems(config, items):  # pragma: no cover - collection hook
+    for item in list(items):
+        if "tests/modular_framework/test_components.py" in str(item.fspath).replace("\\", "/"):
+            raise RuntimeError("Legacy monolithic unittest file should be removed but was collected")
 
 _SEED = int(os.environ.get("TS_TEST_SEED", 1337))
 

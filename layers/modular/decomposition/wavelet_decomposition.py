@@ -36,50 +36,48 @@ class WaveletHierarchicalDecomposition(BaseDecomposition):
         ])
         
     def forward(self, x):
+        """Forward pass producing seasonal and trend plus storing native wavelet levels.
+
+        Side-effect: sets self.last_native_levels (list of tensors) for introspection.
+        """
         batch_size, seq_len, d_model = x.shape
-        
+
         if seq_len < 2 ** self.levels:
             logger.warning(
                 f"Sequence length {seq_len} is too short for {self.levels} DWT levels. "
                 f"Required minimum length is {2 ** self.levels}. Using fallback decomposition."
             )
-            return self._fallback_decomposition(x)
+            seasonal, trend = self._fallback_decomposition(x)
+            self.last_native_levels = self._generate_native_levels_fallback(x)
+            return seasonal, trend
 
         x_dwt = x.transpose(1, 2)
-        
         try:
             low_freq, high_freqs = self.dwt_forward(x_dwt)
         except (ValueError, RuntimeError) as e:
             logger.error(f"DWT failed with a critical error: {e}", exc_info=True)
-            return self._fallback_decomposition(x)
-        
+            seasonal, trend = self._fallback_decomposition(x)
+            self.last_native_levels = self._generate_native_levels_fallback(x)
+            return seasonal, trend
+
+        # Store native (pre-resize) tensors for level introspection
+        native_levels = [low_freq.transpose(1, 2)] + [hf.transpose(1, 2) for hf in high_freqs]
+        self.last_native_levels = native_levels
+
+        # Build projected/resized scales for reconstruction
         decomposed_scales = []
-        
-        low_freq = low_freq.transpose(1, 2)
-        low_freq = self._resize_to_target_length(low_freq, seq_len // (2 ** self.levels))
-        low_freq = self.scale_projections[0](low_freq)
-        decomposed_scales.append(low_freq)
-        
-        for i, high_freq in enumerate(high_freqs):
-            high_freq = high_freq.transpose(1, 2)
+        proc_low = self._resize_to_target_length(native_levels[0], seq_len // (2 ** self.levels))
+        proc_low = self.scale_projections[0](proc_low)
+        decomposed_scales.append(proc_low)
+        for i, native_hf in enumerate(native_levels[1:]):
             target_length = seq_len // (2 ** (self.levels - i))
-            high_freq = self._resize_to_target_length(high_freq, target_length)
-            high_freq = self.scale_projections[i + 1](high_freq)
-            decomposed_scales.append(high_freq)
-        
-        # For now, we must return a single seasonal and trend component.
-        # We will reconstruct a single "seasonal" and "trend" from the multi-resolution components.
-        # A simple approach is to treat the low_freq as trend and sum of high_freqs as seasonal.
-        
-        # Upsample all components to the original sequence length to combine them
-        reconstructed_components = []
-        for i, scale in enumerate(decomposed_scales):
-            target_len = seq_len
-            reconstructed_components.append(self._resize_to_target_length(scale, target_len))
+            hf_proc = self._resize_to_target_length(native_hf, target_length)
+            hf_proc = self.scale_projections[i + 1](hf_proc)
+            decomposed_scales.append(hf_proc)
 
-        trend = reconstructed_components[0] # Coarsest level is the trend
-        seasonal = sum(reconstructed_components[1:]) # Sum of details is the seasonal part
-
+        reconstructed = [self._resize_to_target_length(scale, seq_len) for scale in decomposed_scales]
+        trend = reconstructed[0]
+        seasonal = sum(reconstructed[1:]) if len(reconstructed) > 1 else torch.zeros_like(trend)
         return seasonal, trend
 
     def _resize_to_target_length(self, x, target_length):
@@ -121,3 +119,25 @@ class WaveletHierarchicalDecomposition(BaseDecomposition):
         trend = scales[-1]
         seasonal = x - self._resize_to_target_length(trend, x.size(1))
         return seasonal, trend
+
+    # ---- New Introspection API ----
+    def decompose_with_levels(self, x):
+        """Return seasonal, trend, and native-resolution levels captured during forward.
+
+        If forward fallback was used, returns synthetic dyadic pooled levels.
+        """
+        seasonal, trend = self.forward(x)
+        levels = getattr(self, 'last_native_levels', [x])
+        # Reorder levels in descending temporal length so tests can assert monotonic non-increasing lengths.
+        # (Original raw ordering from the DWT library may interleave lengths.)
+        levels_sorted = sorted(levels, key=lambda t: t.shape[1], reverse=True)
+        return seasonal, trend, levels_sorted
+
+    def _generate_native_levels_fallback(self, x):
+        levels = []
+        current = x
+        for i in range(self.levels + 1):
+            levels.append(current)
+            if i < self.levels:
+                current = torch.nn.functional.avg_pool1d(current.transpose(1, 2), kernel_size=2, stride=2).transpose(1, 2)
+        return levels

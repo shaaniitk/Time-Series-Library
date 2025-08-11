@@ -1,10 +1,7 @@
 import torch
 import torch.nn as nn
 from .base import BaseEncoder
-from models.HierarchicalEnhancedAutoformer import HierarchicalEncoder as HierarchicalAutoformerEncoder
-from models.EnhancedAutoformer import EnhancedEncoder, EnhancedEncoderLayer
 from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelationLayer, AdaptiveAutoCorrelation
-from layers.MultiWaveletCorrelation import MultiWaveletTransform
 from utils.logger import logger
 
 class HierarchicalEncoder(BaseEncoder):
@@ -23,31 +20,51 @@ class HierarchicalEncoder(BaseEncoder):
             dropout=dropout, activation=activation, factor=1
         )
 
-        def attention_factory():
-            return get_attention_component(attention_type, d_model=d_model, n_heads=n_heads, dropout=dropout)
+        # Build per-level encoder stack manually (lightweight) to avoid depending on enhancedcomponents version
+        self.levels = n_levels
+        self.share_weights = share_weights
+        self.decomp_params = decomp_params
+        self.attention_type = attention_type
+        self.attention_kwargs = dict(d_model=d_model, n_heads=n_heads, dropout=dropout)
+        self.activation = activation
+        self.d_model = d_model
+        self.d_ff = d_ff
 
-        self.encoder = HierarchicalAutoformerEncoder(
-            configs=mock_configs, 
-            n_levels=n_levels, 
-            share_weights=share_weights,
-            _attention_factory=attention_factory,
-            decomp_params=decomp_params
-        )
+        attention_comp = get_attention_component(attention_type, **self.attention_kwargs)
+        from ..decomposition import get_decomposition_component
+        decomp_comp = get_decomposition_component(decomp_type, **decomp_params)
+
+        from ..layers.enhanced_layers import EnhancedEncoderLayer
+        layer = EnhancedEncoderLayer(attention_comp, decomp_comp, d_model, d_ff, dropout=dropout, activation=activation)
+        self.layer = layer  # base layer
+        self.encoders = nn.ModuleList([layer] if share_weights else [
+            EnhancedEncoderLayer(
+                get_attention_component(attention_type, **self.attention_kwargs),
+                get_decomposition_component(decomp_type, **decomp_params),
+                d_model,
+                d_ff,
+                dropout=dropout,
+                activation=activation
+            ) for _ in range(n_levels)
+        ])
 
     def forward(self, x, attn_mask=None):
         # The original hierarchical encoder expects a list of tensors
         if not isinstance(x, list):
             x = [x]
-        multi_res_output = self.encoder(x, attn_mask)
-        
-        # For compatibility with standard decoder interface, 
-        # we need to return a single tensor for cross-attention
-        # We'll concatenate or take the finest resolution
-        if isinstance(multi_res_output, list) and len(multi_res_output) > 0:
-            # Use the finest resolution (last one) as the main output
-            output = multi_res_output[-1]
-        else:
-            output = multi_res_output
-            
-        # Return output and None for attention weights to match standard encoder interface
-        return output, None
+        # Simple placeholder multi-resolution processing: progressively average pool
+        outputs = []
+        current = x[0]
+        for enc in self.encoders:
+            enc_out, _ = enc(current, attn_mask=attn_mask)
+            outputs.append(enc_out)
+            if enc_out.size(1) > 2:
+                current = torch.nn.functional.avg_pool1d(enc_out.transpose(1, 2), kernel_size=2, stride=2).transpose(1, 2)
+            else:
+                current = enc_out
+        # Return finest resolution output for interface compatibility
+        finest = outputs[-1]
+        # Upsample if sequence length shrank due to pooling to maintain interface compatibility
+        if finest.size(1) != x[0].size(1):
+            finest = torch.nn.functional.interpolate(finest.transpose(1, 2), size=x[0].size(1), mode="linear", align_corners=False).transpose(1, 2)
+        return finest, None

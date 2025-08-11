@@ -37,6 +37,19 @@ class EncoderRegistry:
 
 def get_encoder_component(name, **kwargs):
     component_class = EncoderRegistry.get(name)
+    # Support two hierarchical pathways:
+    # 1) Modular hierarchical encoder defined in layers/modular/encoder/hierarchical_encoder.py expecting
+    #    (e_layers, d_model, n_heads, d_ff, dropout, activation, attention_type, decomp_type, decomp_params,...)
+    # 2) Enhancedcomponents HierarchicalEncoder variant expecting (configs, n_levels, share_weights)
     if name == 'hierarchical':
-        return component_class(**kwargs)
+        try:
+            return component_class(**kwargs)
+        except TypeError:
+            # Attempt configs-based signature fallback if provided
+            configs = kwargs.get('configs')
+            n_levels = kwargs.get('n_levels', 2)
+            share_weights = kwargs.get('share_weights', False)
+            if configs is None:
+                raise
+            return component_class(configs, n_levels, share_weights)
     return component_class(**kwargs)
