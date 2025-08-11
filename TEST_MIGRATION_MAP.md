@@ -22,7 +22,7 @@ Legend:
 Metrics (current snapshot):
 - Legacy root test files detected: (dynamic; see audit script output)
 - Modular regression baseline present: YES (`tests/modular/regression/test_end_to_end_regressions_modular.py`)
-- Files fully migrated & pruned: 6 (Batch A + runners/models_direct) (attention/decomposition legacy files still exist — earlier doc overstated deletions)
+- Files fully migrated & pruned: 9 (Batch A set + runner + models_direct + attention_components + loss_components + decomposition_components)
 - Files partially migrated: algorithmic sophistication (core ideas envisioned, not yet ported)
 
 Priority Batches:
@@ -56,9 +56,12 @@ Current Detailed Table (excerpt — will be machine-refreshed by audit script la
 | test_runner_comprehensive.py | legacy_redundant | none | prune | pruned | Replaced by pytest discovery + unified param grid |
 | test_models_direct.py | legacy_redundant | none | prune | pruned | Direct instantiation smoke redundant with regression suite |
 | test_migration.py | legacy_redundant | none | prune | pending | Decomposition & enhanced autoformer covered elsewhere |
-| test_attention_components.py | components | tests/modular/components/test_attention_components_modular.py | migrate | pending | Still present; create lean version then prune |
-| test_decomposition_components.py | components | tests/modular/components/test_decomposition_components_modular.py | migrate | pending | Ditto |
-| test_advanced_components.py | integration | tests/modular/integration/test_advanced_components_modular.py | migrate | pending | Focused param integration |
+| test_attention_components.py | components | tests/modular/components/test_attention_components_modular.py | migrate -> prune | pruned | Replaced by modular attention param test |
+| test_decomposition_components.py | components | tests/modular/components/test_decomposition_components_modular.py | migrate -> prune | pruned | Legacy file removed after modular param test confirmed |
+| bayesian_sanity_test.py | probabilistic | tests/modular/probabilistic/test_bayesian_quantile_modular.py (subset) + future slow training perf test | review -> split | pending | Long-running training harness; core Bayesian loss/shape semantics migrated; perf aspects to optional slow suite |
+| test_loss_components.py | components | (covered via registry + category count assertions) | migrate -> prune | pruned | Loss registry smoke superseded by advanced/components suites |
+| test_advanced_components.py | integration | tests/modular/integration/test_advanced_components_modular.py | migrate | migrated | Advanced components modular test present |
+| test_moe_integration_modular.py | components | tests/modular/components/test_moe_integration_modular.py | expand | in_progress | Parametrized (d_model,n_heads,n_samples) variability checks added |
 
 Subsequent rows (HF, ChronosX, etc.) will be appended post-audit.
 
