@@ -22,7 +22,7 @@ Legend:
 Metrics (current snapshot):
 - Legacy root test files detected: (dynamic; see audit script output)
 - Modular regression baseline present: YES (`tests/modular/regression/test_end_to_end_regressions_modular.py`)
-- Files fully migrated & pruned: 9 (Batch A set + runner + models_direct + attention_components + loss_components + decomposition_components)
+- Files fully migrated & pruned: 10 (added `test_working_dependencies.py`)
 - Files partially migrated: algorithmic sophistication (core ideas envisioned, not yet ported)
 
 Priority Batches:
@@ -32,6 +32,21 @@ Batch C (Probabilistic & Advanced): production_bayesian, enhanced_bayesian_model
 Batch D (ChronosX): chronos_x_simple, chronosx_simple, modular_autoformer_chronosx (merge), chronos_x_model_sizes (parameterize sizes), chronos_x_real_data (mark slow), chronos_x_comprehensive (split fast vs slow)
 Batch E (HF Migration): consolidate all HF tests into 3–4 focused suites (variants, training smoke, covariates, enhanced features)
 Batch F (Validation / Dependency Harness): phase1_integration, phase2_* scripts, utils_compatibility, working_dependencies (extract genuinely still-relevant dependency checks; prune rest)
+Batch D Status:
+- Added tests/modular/chronosx/test_chronosx_smoke.py (tiny uncertainty toggle)
+- Added tests/modular/chronosx/test_chronosx_scaling.py (tiny & mini sizes)
+- Legacy ChronosX root scripts queued for prune (assertion parity confirmed)
+
+Batch E Status:
+- Added tests/modular/hf/test_hf_variants_smoke.py (Enhanced + Bayesian)
+- Added tests/modular/hf/test_hf_training_smoke.py (single backward/optim step)
+- Remaining HF covariate/enhanced feature coverage deferred until post Batch F
+
+Batch F Status:
+- Added tests/modular/config/test_dependency_validation_modular.py (valid config, capability alignment, adapter suggestions)
+- Pruned legacy `test_working_dependencies.py` (verbose harness)
+- Validator transient requirement parsing issue documented in test expectations (to tighten once fixed)
+- Remaining review: bayesian_sanity_test.py (long training) — classify next
 
 Accelerated Migration Strategy (overview):
 1. Automated Audit (script) — classify legacy tests by regex heuristics (prints, Namespace usage, phased naming) and emit a JSON/Markdown summary.
@@ -58,6 +73,7 @@ Current Detailed Table (excerpt — will be machine-refreshed by audit script la
 | test_migration.py | legacy_redundant | none | prune | pending | Decomposition & enhanced autoformer covered elsewhere |
 | test_attention_components.py | components | tests/modular/components/test_attention_components_modular.py | migrate -> prune | pruned | Replaced by modular attention param test |
 | test_decomposition_components.py | components | tests/modular/components/test_decomposition_components_modular.py | migrate -> prune | pruned | Legacy file removed after modular param test confirmed |
+| test_working_dependencies.py | validation | tests/modular/config/test_dependency_validation_modular.py | migrate -> prune | pruned | Replaced by lean dependency & adapter suggestion tests |
 | bayesian_sanity_test.py | probabilistic | tests/modular/probabilistic/test_bayesian_quantile_modular.py (subset) + future slow training perf test | review -> split | pending | Long-running training harness; core Bayesian loss/shape semantics migrated; perf aspects to optional slow suite |
 | test_loss_components.py | components | (covered via registry + category count assertions) | migrate -> prune | pruned | Loss registry smoke superseded by advanced/components suites |
 | test_advanced_components.py | integration | tests/modular/integration/test_advanced_components_modular.py | migrate | migrated | Advanced components modular test present |

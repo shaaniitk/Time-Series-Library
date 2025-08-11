@@ -84,9 +84,13 @@ class ComponentType(str, Enum):
     # Loss components
     MSE = "mse"
     MAE = "mae"
-    QUANTILE_LOSS = "quantile"
-    BAYESIAN_MSE = "bayesian"
-    BAYESIAN_QUANTILE = "bayesian_quantile"
+    # Use distinct string values for loss component types to avoid Enum aliasing collisions
+    # with similarly named sampling/output head types (previous duplicates caused the
+    # registry to overwrite BayesianSampling with BayesianMSELoss because both shared
+    # the value "bayesian").
+    QUANTILE_LOSS = "quantile_loss"
+    BAYESIAN_MSE = "bayesian_mse_loss"
+    BAYESIAN_QUANTILE = "bayesian_quantile_loss"
     ADAPTIVE_AUTOFORMER_LOSS = "adaptive_autoformer_loss"
     
     # Advanced metric losses
@@ -181,6 +185,8 @@ class SamplingConfig(BaseModel):
     # Bayesian-specific
     dropout_rate: Optional[float] = 0.1
     temperature: Optional[float] = 1.0
+    # Some sampling components access kl_weight; provide lightweight default
+    kl_weight: Optional[float] = 1e-5
 
 
 class OutputHeadConfig(BaseModel):
@@ -461,8 +467,9 @@ def create_hierarchical_config(num_targets: int, num_covariates: int, **kwargs) 
     config.attention.n_levels = n_levels
     config.decomposition.type = ComponentType.WAVELET_DECOMP
     config.decomposition.levels = n_levels
-    config.encoder.type = ComponentType.HIERARCHICAL
+    config.encoder.type = ComponentType.HIERARCHICAL_ENCODER
     config.encoder.n_levels = n_levels
-    config.decoder.type = ComponentType.ENHANCED  # Keep decoder standard
+    # Keep decoder enhanced unless a hierarchical decoder is later introduced
+    config.decoder.type = ComponentType.ENHANCED_DECODER  # maintain consistency with encoder variant naming
     
     return config

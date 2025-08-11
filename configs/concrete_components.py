@@ -568,11 +568,13 @@ class BayesianSampling(SamplingComponent):
     
     def __init__(self, config: SamplingConfig, **kwargs):
         super().__init__(config, **kwargs)
+        # quantile_levels should only be required when used alongside a quantile head;
+        # treat it as optional for generic Bayesian sampling.
         self.metadata = ComponentMetadata(
             name="BayesianSampling",
             component_type=ComponentType.BAYESIAN,
-            required_params=['n_samples', 'quantile_levels'],
-            optional_params=['dropout_rate', 'temperature'],
+            required_params=['n_samples'],
+            optional_params=['quantile_levels', 'dropout_rate', 'temperature'],
             description="Bayesian sampling for uncertainty quantification"
         )
     
@@ -581,6 +583,21 @@ class BayesianSampling(SamplingComponent):
         self.quantile_levels = self.config.quantile_levels
         self.dropout_rate = self.config.dropout_rate
         self.temperature = self.config.temperature
+        # Some downstream utilities expect a kl_weight attribute on the sampling component;
+        # SamplingConfig does not define it, so provide a safe fallback sourced from:
+        # 1. explicit kwarg, 2. parent structured config.loss.kl_weight, 3. bayesian config, 4. default 1e-5.
+        parent_config = kwargs.get('parent_config') or getattr(self, 'parent_config', None)
+        kl_fallback = 1e-5
+        if 'kl_weight' in kwargs:
+            kl_fallback = kwargs['kl_weight']
+        elif parent_config is not None:
+            try:
+                kl_fallback = getattr(getattr(parent_config, 'loss', object()), 'kl_weight', kl_fallback)
+                if kl_fallback is None:
+                    kl_fallback = getattr(getattr(parent_config, 'bayesian', object()), 'kl_weight', kl_fallback)
+            except Exception:
+                pass
+        self.kl_weight = kl_fallback
         
     def forward(self, model_fn, *args, **kwargs):
         """Perform Bayesian sampling"""

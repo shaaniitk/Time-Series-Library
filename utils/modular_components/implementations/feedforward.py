@@ -339,14 +339,14 @@ class MoEFFN(BaseFeedForward):
         self.num_experts = num_experts
         self.num_selected = num_selected
         self.dropout_rate = config.dropout
-    # Container for any auxiliary MoE-specific losses computed during forward
-    self.last_auxiliary_losses: Dict[str, torch.Tensor] = {}
-    # Lazy parameter count cache (populated on first get_capabilities call)
-    self._parameter_count_cache: Optional[Dict[str, int]] = None
-        
+        # Container for any auxiliary MoE-specific losses computed during forward
+        self.last_auxiliary_losses: Dict[str, torch.Tensor] = {}
+        # Lazy parameter count cache (populated on first get_capabilities call)
+        self._parameter_count_cache: Optional[Dict[str, int]] = None
+
         # Gating network
         self.gate = nn.Linear(config.d_model, num_experts, bias=False)
-        
+
         # Expert networks
         self.experts = nn.ModuleList([
             nn.Sequential(
@@ -476,24 +476,7 @@ class MoEFFN(BaseFeedForward):
             'scaling',
             'conditional_computation',
             'expert_specialization'
-        gate_logits = self.gate(x_flat)  # [batch_size * seq_len, num_experts]
-        gate_weights = F.softmax(gate_logits, dim=-1)
-        # ---- Auxiliary statistics & losses (stored, not applied) ----
-        with torch.no_grad():
-            # Usage per expert (mean probability mass)
-            token_count = gate_weights.shape[0]
-            expert_usage = gate_weights.sum(dim=0) / max(1, token_count)  # [num_experts]
-            # Load balancing: encourage uniform usage. Simplified: L = num_experts * sum(p_i^2)
-            load_balancing_loss = (self.num_experts * (expert_usage ** 2).sum()).detach()
-            # Entropy (higher is more uniform) -- we expose negative entropy as a regularization candidate
-            entropy = -(gate_weights * (gate_weights + 1e-9).log()).sum(dim=-1).mean().detach()
-            # Store for external collection
-            self.last_auxiliary_losses = {
-                'moe_load_balancing_loss': load_balancing_loss,
-                # Provide both entropy and negative entropy for flexibility
-                'moe_gate_entropy': entropy,
-                'moe_negative_entropy': (-entropy)
-            }
+        ]
     @classmethod
     def get_config_schema(cls) -> Dict[str, Any]:  # type: ignore[override]
         base = StandardFFN.get_config_schema().copy()

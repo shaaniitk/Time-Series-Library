@@ -518,8 +518,25 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
     
     def supports_quantiles(self) -> bool:
         """Check if model supports quantile predictions."""
-        loss_type = getattr(self.configs, 'loss_function_type', '')
-        return 'quantile' in loss_type
+        # Prefer structured configuration if available
+        try:
+            if hasattr(self, 'structured_config'):
+                from configs.schemas import ComponentType
+                sc = self.structured_config
+                # Quantile support if quantile output head or quantile-aware loss is configured
+                if sc.output_head.type == ComponentType.QUANTILE:
+                    return True
+                if sc.loss.type in {ComponentType.QUANTILE_LOSS, ComponentType.BAYESIAN_QUANTILE}:
+                    return True
+                # Fallback: explicit quantile_levels attribute
+                if getattr(sc, 'quantile_levels', None):
+                    return True
+            # Legacy fallback uses original string attribute
+            loss_type = getattr(self.configs, 'loss_function_type', '')
+            return 'quantile' in str(loss_type)
+        except Exception:
+            loss_type = getattr(self.configs, 'loss_function_type', '')
+            return 'quantile' in str(loss_type)
     
     def get_uncertainty_results(self):
         """Get uncertainty results from backbone if available"""

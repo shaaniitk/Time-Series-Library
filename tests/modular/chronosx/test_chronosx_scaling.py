@@ -13,6 +13,7 @@ from configs.autoformer.chronosx_config import create_chronosx_config
 from models.chronosx_autoformer import ChronosXAutoformer
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("model_size", ["tiny", "mini"])  # keep small for CI speed
 def test_chronosx_forward_scaling(model_size: str) -> None:
     """Test forward pass for selected ChronosX sizes."""
