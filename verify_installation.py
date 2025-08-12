@@ -341,7 +341,7 @@ def main():
     # Final recommendations
     print(f"\n{Color.BOLD}Quick Start:{Color.END}")
     if chronosx_works:
-        print(f"🚀 Try: python chronos_x_simple_demo.py")
+        print(f"🚀 Try: python demo_models/chronos_x_simple_demo.py --smoke")
     else:
         print(f"🚀 Try: python scripts/TimesNet_ETTh1.sh")
     

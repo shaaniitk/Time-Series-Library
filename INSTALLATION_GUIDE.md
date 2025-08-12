@@ -109,7 +109,7 @@ python -c "from chronos import ChronosPipeline; print('✅ ChronosX ready')"
 python -c "from utils.modular_components.registry import create_global_registry; print('✅ Modular components ready')"
 
 # Run quick test
-python chronos_x_simple_demo.py
+python demo_models/chronos_x_simple_demo.py --smoke
 ```
 
 ## Configuration for Different Use Cases

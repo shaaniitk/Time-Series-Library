@@ -11,7 +11,11 @@ import os
 import sys
 from pathlib import Path
 import random
+from typing import List
+
+import numpy as np
 import pytest
+import torch
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:  # type: ignore[name-defined]
@@ -46,6 +50,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:  # type: ignore[name-define
         action="store_true",
         default=True,
         help="Automatically assign a marker (heuristic) to unmarked tests instead of failing",
+    )
+    parser.addoption(
+        "--global-timeout",
+        action="store",
+        default=os.environ.get("PYTEST_GLOBAL_TIMEOUT", "60"),
+        help="Default per-test timeout in seconds (requires pytest-timeout)",
+    )
+    parser.addoption(
+        "--reruns",
+        action="store",
+        default=os.environ.get("PYTEST_RERUNS", "0"),
+        help="Reruns on failure for extended tests (requires pytest-rerunfailures)",
     )
 
 
@@ -163,6 +179,47 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             "Add appropriate @pytest.mark.<marker> or disable enforcement with --enforce-classification=0.",
             returncode=3,
         )
+
+    # Deterministic seeding across entire session
+    seed_env = os.environ.get("TSL_TEST_SEED")
+    try:
+        seed = int(seed_env) if seed_env is not None else 1337
+    except ValueError:
+        seed = 1337
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> None:  # type: ignore[name-defined]
+    """Apply timeout and reruns defaults based on plugins and CLI/env.
+
+    - Timeout to all tests if pytest-timeout installed.
+    - Reruns to tests with @extended if pytest-rerunfailures installed.
+    """
+    # Timeout
+    timeout_val = None
+    try:
+        import pytest_timeout  # noqa: F401
+
+        timeout_val = int(item.config.getoption("global_timeout"))
+    except Exception:
+        timeout_val = None
+    if timeout_val:
+        item.add_marker(pytest.mark.timeout(timeout_val))  # type: ignore[attr-defined]
+
+    # Reruns for extended tests only
+    try:
+        import pytest_rerunfailures  # noqa: F401
+
+        reruns = int(item.config.getoption("reruns"))
+    except Exception:
+        reruns = 0
+    if reruns and any(m.name == "extended" for m in item.iter_markers()):
+        item.add_marker(pytest.mark.flaky(reruns=reruns, reruns_delay=1))  # type: ignore[attr-defined]
 
 
 def pytest_terminal_summary(config: pytest.Config, terminalreporter):  # type: ignore[no-untyped-def]

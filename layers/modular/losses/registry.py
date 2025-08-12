@@ -62,6 +62,15 @@ class LossRegistry:
         """List all available loss component names"""
         return list(cls._registry.keys())
 
+    # Backwards-compatible alias expected by some tests / scripts
+    @classmethod
+    def list_components(cls):  # type: ignore[override]
+        """Alias for list_available() retained for backward compatibility.
+
+        Some migrated tests still reference list_components; prefer list_available in new code.
+        """
+        return cls.list_available()
+
 def get_loss_component(name, **kwargs):
     """
     Factory to get a loss component and its required output dimension multiplier.

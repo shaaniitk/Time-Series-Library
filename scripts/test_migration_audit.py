@@ -1,53 +1,98 @@
 """Test Migration Audit Script
 
-Scans legacy root-level test_*.py files (those NOT under tests/modular/) and emits:
-1. A Markdown summary table (stdout)
-2. A JSON artifact written to reports/test_migration_audit.json (created if missing)
+Provides two complementary audit views to support the migration:
 
-Heuristic Classification (non-invasive):
- - Category inference based on keyword density:
-     * probabilistic: 'quantile' or 'uncertainty' or 'bayesian'
-     * hierarchical: 'hierarchical' or 'wavelet' or 'multi_scale'
-     * phased_upgrade: filename starts with 'test_step' or 'test_phase'
-     * hf_migration: 'hf_' or 'huggingface' in file content
-     * chronosx: 'chronosx' or 'chronos_x'
-     * legacy_redundant: heavy print usage (>25 print statements) or custom runner constructs
- - Multiple matches -> semicolon-joined categories
+1) Mapping summary between legacy TestsModule and tests/modular (heuristic by stem)
+2) Root-level legacy tests (not under tests/modular) classified for actions
 
-Fields Collected:
- - file
- - size (lines)
- - prints
- - keywords (matched set)
- - categories
- - suggested_action (migrate|merge|prune|review)
+Usage:
+  python -m scripts.test_migration_audit [--markdown reports/test_migration_audit.md]
 
-Does NOT modify repository; pure analysis aid for migration batching.
+Outputs:
+  - Prints a human-readable summary to stdout
+  - Writes JSON to reports/test_migration_audit.json
+  - Optionally writes a Markdown table when --markdown is provided
 """
 from __future__ import annotations
 
-import json
-import re
 import argparse
-from dataclasses import dataclass, asdict
+import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Set
+from typing import Dict, List, Set
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+# Paths
+REPO_ROOT = Path(__file__).resolve().parents[1]
+LEGACY_DIR = REPO_ROOT / "TestsModule"
 MODULAR_DIR = REPO_ROOT / "tests" / "modular"
 REPORTS_DIR = REPO_ROOT / "reports"
 OUTPUT_JSON = REPORTS_DIR / "test_migration_audit.json"
 
+# Heuristic classification for root-level tests
 KEYWORD_MAP = {
     "probabilistic": {"quantile", "uncertainty", "bayesian"},
     "hierarchical": {"hierarchical", "wavelet", "multi_scale"},
     "hf_migration": {"huggingface", "hf_"},
     "chronosx": {"chronosx", "chronos_x"},
 }
-
 RUNNER_HINTS = {"test_sequence", "run_all_tests", "run_test_file"}
 
 
+# ---------- Mapping between TestsModule and tests/modular ----------
+def _collect_tests(base: Path) -> List[str]:
+    return sorted(
+        str(p.relative_to(base)).replace("\\", "/")
+        for p in base.rglob("test_*.py")
+        if p.is_file()
+    )
+
+
+def _heuristic_match(legacy_paths: List[str], modular_paths: List[str]) -> Dict[str, List[str]]:
+    from collections import defaultdict
+
+    modular_index: Dict[str, List[str]] = defaultdict(list)
+    for m in modular_paths:
+        stem = Path(m).stem
+        modular_index[stem].append(m)
+
+    mapping: Dict[str, List[str]] = {}
+    for l in legacy_paths:
+        stem = Path(l).stem
+        candidates = modular_index.get(stem, [])
+        parent = Path(l).parts[0] if len(Path(l).parts) > 0 else ""
+        ordered = sorted(
+            candidates,
+            key=lambda x: (0 if parent and parent in x else 1, len(x)),
+        )
+        mapping[l] = ordered
+    return mapping
+
+
+def build_mapping_summary() -> Dict[str, object]:
+    if not LEGACY_DIR.exists():
+        return {
+            "legacy_total": 0,
+            "modular_total": len(_collect_tests(MODULAR_DIR)) if MODULAR_DIR.exists() else 0,
+            "legacy_without_match": 0,
+            "estimated_coverage_percent": 100.0,
+            "examples": {},
+        }
+
+    legacy = _collect_tests(LEGACY_DIR)
+    modular = _collect_tests(MODULAR_DIR) if MODULAR_DIR.exists() else []
+    mapping = _heuristic_match(legacy, modular)
+    orphans = [k for k, v in mapping.items() if not v]
+    coverage = 100.0 * (1.0 - (len(orphans) / max(1, len(legacy))))
+    return {
+        "legacy_total": len(legacy),
+        "modular_total": len(modular),
+        "legacy_without_match": len(orphans),
+        "estimated_coverage_percent": round(coverage, 1),
+        "examples": {k: mapping[k][:3] for k in legacy[:10]},
+    }
+
+
+# ---------- Root-level legacy tests classification ----------
 @dataclass
 class TestFileInfo:
     file: str
@@ -57,13 +102,13 @@ class TestFileInfo:
     categories: List[str]
     suggested_action: str
 
-    def to_row(self) -> str:  # Markdown row helper
+    def to_row(self) -> str:
         return (
             f"| {self.file} | {','.join(self.categories)} | {self.size} | {self.prints} | "
             f"{','.join(sorted(self.keywords))} | {self.suggested_action} |"
         )
 
-    def to_json(self) -> dict:  # JSON-safe serialization (sets -> sorted lists)
+    def to_json(self) -> dict:
         return {
             "file": self.file,
             "size": self.size,
@@ -133,8 +178,9 @@ def emit_markdown(infos: List[TestFileInfo]) -> str:
     rows = [info.to_row() for info in infos]
     return "\n".join([header, *rows])
 
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Audit legacy test files for migration planning")
+    parser = argparse.ArgumentParser(description="Audit legacy test files and migration mapping")
     parser.add_argument(
         "--markdown",
         dest="markdown_path",
@@ -144,17 +190,34 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover
     args = parse_args()
+
+    # Build mapping summary
+    mapping_summary = build_mapping_summary()
+
+    # Classify root-level legacy tests
     legacy_files = discover_legacy_tests()
     infos = [classify(p) for p in legacy_files]
+
+    # Ensure reports dir and write JSON
     REPORTS_DIR.mkdir(exist_ok=True)
+    payload = {
+        "mapping_summary": mapping_summary,
+        "root_tests_audit": [i.to_json() for i in infos],
+    }
     with OUTPUT_JSON.open("w", encoding="utf-8") as f:
-        json.dump([i.to_json() for i in infos], f, indent=2)
-    md = emit_markdown(infos)
+        json.dump(payload, f, indent=2)
+
+    # Emit human-readable output
     print("# Test Migration Audit\n")
     print(f"Repository Root: {REPO_ROOT}")
+    print("\n[Mapping Summary: TestsModule -> tests/modular]")
+    print(json.dumps(mapping_summary, indent=2))
+
+    print("\n[Root-level Legacy Tests Classification]\n")
     print(f"Legacy root-level tests detected: {len(infos)}\n")
+    md = emit_markdown(infos)
     print(md)
     print("\n(JSON written to reports/test_migration_audit.json)")
     if args.markdown_path:
@@ -164,5 +227,5 @@ def main() -> None:
         print(f"(Markdown table also written to {md_path})")
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     main()

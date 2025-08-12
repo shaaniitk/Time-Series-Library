@@ -42,9 +42,8 @@ class TestRunner:
                     "tests/chronosx/test_modular_autoformer_chronosx.py"
                 ],
                 "demos": [
-                    "tests/chronosx/demo_chronosx_modular.py",
-                    "tests/chronosx/chronos_x_simple_demo.py",
-                    "tests/chronosx/chronos_x_demo.py"
+                    "demo_models/chronos_x_simple_demo.py --smoke",
+                    "demo_models/chronos_x_demo.py --smoke"
                 ]
             },
             "modular_framework": {
@@ -251,12 +250,33 @@ class TestRunner:
             'failed': 0
         }
         
-        existing_demos = self.find_existing_tests(test_info['demos'])
+        existing_demos = self.find_existing_tests([d.split()[0] for d in test_info['demos']])
         
-        for demo_file in existing_demos:
-            print(f"      🎬 Running demo: {demo_file}")
+        for demo_entry in test_info['demos']:
+            parts = demo_entry.split()
+            demo_file = parts[0]
+            demo_args = parts[1:]
+            if demo_file not in existing_demos:
+                continue
+            print(f"      🎬 Running demo: {' '.join(parts)}")
             
-            success, output, duration = self.run_test_file(demo_file, timeout=120)  # Shorter timeout for demos
+            # Build command with extra args (like --smoke)
+            start_time = time.time()
+            try:
+                result = subprocess.run(
+                    [sys.executable, demo_file, *demo_args],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    cwd=self.project_root
+                )
+                duration = time.time() - start_time
+                success = result.returncode == 0
+                output = result.stdout + result.stderr
+            except subprocess.TimeoutExpired:
+                duration = time.time() - start_time
+                success = False
+                output = f"Demo timed out after 120 seconds"
             
             demo_results['demos'].append({
                 'file': demo_file,

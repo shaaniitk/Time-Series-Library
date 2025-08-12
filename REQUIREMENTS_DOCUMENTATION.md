@@ -268,7 +268,7 @@ python verify_installation.py
 python -c "from chronos import ChronosPipeline; print('✅ ChronosX ready')"
 
 # Quick demo
-python chronos_x_simple_demo.py
+python demo_models/chronos_x_simple_demo.py --smoke
 ```
 
 ## 🔄 Upgrade Path

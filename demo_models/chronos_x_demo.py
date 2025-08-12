@@ -3,13 +3,15 @@ ChronosX Real Time Series Forecasting Demonstration
 
 This script shows ChronosX in action with real time series data,
 demonstrating the power of Amazon's Chronos models for forecasting.
+Use --smoke for a quick offline run without model downloads.
 """
 
+import argparse
+import os
 import torch
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from chronos import ChronosPipeline
 import time
 import logging
 
@@ -39,8 +41,10 @@ def load_and_prepare_data():
         data = 100 + trend + seasonal + noise
         return data
 
-def forecast_with_chronos(data, model_size="small", context_length=96, forecast_length=24):
-    """Forecast using ChronosX"""
+def forecast_with_chronos(
+    data, model_size: str = "small", context_length: int = 96, forecast_length: int = 24, smoke: bool = False
+):
+    """Forecast using ChronosX (or simulate in smoke mode)."""
     
     model_names = {
         'tiny': 'amazon/chronos-t5-tiny',
@@ -48,39 +52,51 @@ def forecast_with_chronos(data, model_size="small", context_length=96, forecast_
         'base': 'amazon/chronos-t5-base'
     }
     
-    logger.info(f"Loading ChronosX {model_size} model...")
-    
-    # Load model
-    start_time = time.time()
-    pipeline = ChronosPipeline.from_pretrained(
-        model_names[model_size],
-        device_map="cpu",
-        torch_dtype=torch.float32,
-    )
-    load_time = time.time() - start_time
-    logger.info(f"Model loaded in {load_time:.2f} seconds")
-    
-    # Prepare data
     context = torch.tensor(data[-context_length:], dtype=torch.float32).unsqueeze(0)
-    
-    logger.info(f"Forecasting {forecast_length} steps ahead...")
-    
-    # Generate forecast
-    start_time = time.time()
-    forecast = pipeline.predict(
-        context=context,
-        prediction_length=forecast_length,
-        num_samples=20
-    )
-    forecast_time = time.time() - start_time
-    
-    logger.info(f"Forecast generated in {forecast_time:.2f} seconds")
+
+    if smoke or os.environ.get("DEMO_SMOKE") == "1":
+        logger.info("Smoke mode: simulating forecast without downloading models")
+        start_time = time.time()
+        rng = np.random.default_rng(0)
+        last = context.squeeze().numpy()[-1]
+        mean_forecast = last + np.cumsum(0.01 * rng.standard_normal(forecast_length))
+        std_forecast = np.full_like(mean_forecast, 0.06, dtype=np.float64)
+        samples = np.stack([mean_forecast + 0.06 * rng.standard_normal(forecast_length) for _ in range(20)], axis=0)
+        load_time = 0.0
+        forecast_time = time.time() - start_time
+        forecast_np = samples.astype(np.float32)
+    else:
+        logger.info(f"Loading ChronosX {model_size} model...")
+        # Load model
+        start_time = time.time()
+        # Local import to avoid dependency in smoke mode
+        from chronos import ChronosPipeline
+        pipeline = ChronosPipeline.from_pretrained(
+            model_names[model_size],
+            device_map="cpu",
+            torch_dtype=torch.float32,
+        )
+        load_time = time.time() - start_time
+        logger.info(f"Model loaded in {load_time:.2f} seconds")
+
+        logger.info(f"Forecasting {forecast_length} steps ahead...")
+        # Generate forecast
+        start_time = time.time()
+        forecast = pipeline.predict(
+            context=context,
+            prediction_length=forecast_length,
+            num_samples=20
+        )
+        forecast_time = time.time() - start_time
+        
+        logger.info(f"Forecast generated in {forecast_time:.2f} seconds")
     
     # Process results
-    if isinstance(forecast, torch.Tensor):
-        forecast_np = forecast.cpu().numpy()
-    else:
-        forecast_np = np.array(forecast)
+    if not (smoke or os.environ.get("DEMO_SMOKE") == "1"):
+        if isinstance(forecast, torch.Tensor):
+            forecast_np = forecast.cpu().numpy()
+        else:
+            forecast_np = np.array(forecast)
     
     # Calculate statistics
     mean_forecast = np.mean(forecast_np, axis=0)
@@ -161,7 +177,7 @@ def visualize_forecast(data, results, save_plot=True):
     
     plt.show()
 
-def compare_models(data):
+def compare_models(data, smoke: bool = False):
     """Compare different ChronosX model sizes"""
     logger.info("🔍 Comparing ChronosX model sizes...")
     
@@ -171,7 +187,7 @@ def compare_models(data):
     for model_size in models_to_test:
         logger.info(f"\n📊 Testing {model_size} model...")
         try:
-            result = forecast_with_chronos(data, model_size=model_size)
+            result = forecast_with_chronos(data, model_size=model_size, smoke=smoke)
             results[model_size] = result
             
             # Calculate accuracy if we have recent data to compare
@@ -180,7 +196,7 @@ def compare_models(data):
                 val_context = data[-120:-24]
                 val_target = data[-24:]
                 
-                val_result = forecast_with_chronos(val_context, model_size=model_size)
+                val_result = forecast_with_chronos(val_context, model_size=model_size, smoke=smoke)
                 mae = np.mean(np.abs(val_result['forecast_mean'] - val_target))
                 results[model_size]['validation_mae'] = mae
                 
@@ -208,12 +224,17 @@ def main():
     
     # Single model demonstration
     print("\n📈 Single Model Forecasting Demo...")
-    result = forecast_with_chronos(data, model_size="small")
+    # Parse --smoke
+    parser = argparse.ArgumentParser(description="ChronosX demo")
+    parser.add_argument("--smoke", action="store_true", help="Run in fast offline mode")
+    args, _ = parser.parse_known_args()
+
+    result = forecast_with_chronos(data, model_size="small", smoke=args.smoke)
     visualize_forecast(data, result)
     
     # Model comparison
     print("\n🔍 Model Comparison...")
-    comparison_results = compare_models(data)
+    comparison_results = compare_models(data, smoke=args.smoke)
     
     # Summary report
     print("\n📊 FINAL RESULTS SUMMARY")

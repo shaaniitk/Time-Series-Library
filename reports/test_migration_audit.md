@@ -16,7 +16,6 @@
 | test_complete_hf_suite.py | hf_migration,hierarchical,legacy_redundant,probabilistic | 326 | 86 | bayesian,hf_,hierarchical,quantile,uncertainty | prune |
 | test_core_components.py | hierarchical,legacy_redundant,probabilistic | 256 | 42 | bayesian,multi_scale,wavelet | prune |
 | test_covariate_wavelet_integration.py | hierarchical,legacy_redundant | 338 | 63 | wavelet | prune |
-| test_decomposition_components.py | hierarchical | 100 | 7 | wavelet | merge |
 | test_enhanced_bayesian_model.py | probabilistic | 205 | 0 | bayesian,quantile,uncertainty | merge |
 | test_gcli_architecture.py | hierarchical,legacy_redundant,probabilistic | 314 | 42 | bayesian,hierarchical,quantile | prune |
 | test_hf_covariates.py | hf_migration,legacy_redundant | 458 | 74 | hf_ | prune |
@@ -28,7 +27,6 @@
 | test_hf_modular_corrected.py | hf_migration,legacy_redundant,probabilistic | 297 | 43 | bayesian,hf_,quantile | prune |
 | test_hf_modular_training.py | hf_migration,hierarchical,legacy_redundant,probabilistic | 290 | 39 | bayesian,hf_,hierarchical,multi_scale,quantile,uncertainty | prune |
 | test_migration.py | integration | 91 | 7 |  | review |
-| test_models_direct.py | legacy_redundant,probabilistic | 193 | 34 | quantile | prune |
 | test_modular_autoformer_chronosx.py | chronosx,legacy_redundant,probabilistic | 453 | 64 | chronos_x,chronosx,uncertainty | prune |
 | test_modular_system.py | integration | 122 | 19 |  | review |
 | test_moe_compatibility.py | algorithmic | 121 | 8 |  | review |
@@ -39,11 +37,6 @@
 | test_phase2_basic.py | hierarchical,phased_upgrade,probabilistic | 113 | 13 | bayesian,wavelet | merge |
 | test_phase2_validation.py | hierarchical,legacy_redundant,phased_upgrade | 327 | 39 | multi_scale | merge |
 | test_production_bayesian.py | legacy_redundant,probabilistic | 213 | 73 | bayesian,quantile,uncertainty | prune |
-| test_runner_comprehensive.py | hierarchical,legacy_redundant | 231 | 24 | hierarchical | prune |
-| test_step1_enhanced.py | legacy_redundant,phased_upgrade,probabilistic | 172 | 61 | bayesian | merge |
-| test_step2_bayesian.py | hierarchical,legacy_redundant,phased_upgrade,probabilistic | 300 | 77 | bayesian,hierarchical,quantile,uncertainty | merge |
-| test_step3_hierarchical.py | hierarchical,legacy_redundant,phased_upgrade,probabilistic | 333 | 90 | hierarchical,multi_scale,quantile | merge |
-| test_step4_quantile.py | hierarchical,legacy_redundant,phased_upgrade,probabilistic | 377 | 99 | bayesian,hierarchical,quantile,uncertainty | merge |
 | test_unified_factory.py | hf_migration | 176 | 22 | hf_ | review |
 | test_utils_compatibility.py | legacy_redundant | 288 | 65 |  | prune |
 | test_working_dependencies.py | hierarchical,legacy_redundant,probabilistic | 418 | 121 | uncertainty,wavelet | prune |

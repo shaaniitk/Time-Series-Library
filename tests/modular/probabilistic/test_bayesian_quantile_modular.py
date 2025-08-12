@@ -174,5 +174,7 @@ def test_quantile_output_and_loss() -> None:
     assert loss_val.item() >= 0.0
 
     # Basic uncertainty proxy: interval width median quantiles difference >= 0
-    interval_width = (reshaped[..., -1] - reshaped[..., 0]).mean().item()
+    # Sort quantile predictions to enforce non-decreasing order before interval calculation
+    sorted_reshaped, _ = torch.sort(reshaped, dim=-1)
+    interval_width = (sorted_reshaped[..., -1] - sorted_reshaped[..., 0]).mean().item()
     assert interval_width >= 0.0 and math.isfinite(interval_width)

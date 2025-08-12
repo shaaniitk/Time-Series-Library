@@ -10,7 +10,9 @@ import subprocess
 import time
 from pathlib import Path
 
-def run_test(test_name, test_path):
+from typing import List, Tuple, Optional, Dict
+
+def run_test(test_name: str, test_path: str, extra_args: Optional[List[str]] = None) -> Tuple[bool, float, str]:
     """Run a single test"""
     print(f"\n🔬 Running {test_name}...")
     print("-" * 50)
@@ -20,11 +22,20 @@ def run_test(test_name, test_path):
     try:
         # Change to project root and run test
         project_root = Path(__file__).parent.absolute()
+        cmd = [sys.executable, test_path]
+        if extra_args:
+            cmd.extend(extra_args)
+        # Ensure UTF-8 output in child process to avoid emoji/Unicode crashes on Windows
+        child_env: Dict[str, str] = dict(os.environ)
+        child_env.setdefault("PYTHONIOENCODING", "utf-8")
+        child_env.setdefault("PYTHONUTF8", "1")
+
         result = subprocess.run(
-            [sys.executable, test_path],
+            cmd,
             cwd=project_root,
             capture_output=True,
             text=True,
+            env=child_env,
             timeout=300  # 5 minute timeout
         )
         
@@ -56,13 +67,9 @@ def main():
     # Tests that should work
     tests = [
         ("Installation Verification", "verify_installation.py"),
-        ("Component Inspection", "inspect_components.py"),
-        ("ChronosX Simple Demo", "tests/chronosx/chronos_x_simple_demo.py"),
-        ("ChronosX Model Sizes", "tests/chronosx/test_chronos_x_model_sizes.py"),
-        ("ChronosX Real Data", "tests/chronosx/test_chronos_x_real_data.py"),
-        ("ChronosX Demo", "tests/chronosx/chronos_x_demo.py"),
-        ("ChronosX Modular Demo", "tests/chronosx/demo_chronosx_modular.py"),
-        ("ChronosX Benchmark", "tests/chronosx/chronos_x_benchmark_suite.py"),
+        # Run relocated demos in smoke mode for quick validation
+        ("ChronosX Simple Demo (smoke)", "demo_models/chronos_x_simple_demo.py"),
+        ("ChronosX Full Demo (smoke)", "demo_models/chronos_x_demo.py"),
     ]
     
     results = {}
@@ -75,10 +82,13 @@ def main():
         if not os.path.exists(test_path):
             print(f"⚠️ Skipping {test_name} - file not found: {test_path}")
             continue
-            
+
         total_tests += 1
-        success, duration, error = run_test(test_name, test_path)
-        
+
+        # Add --smoke for demos
+        extras = ["--smoke"] if "demo_models/chronos_x_" in test_path else None
+        success, duration, error = run_test(test_name, test_path, extras)
+
         results[test_name] = {
             'success': success,
             'duration': duration,

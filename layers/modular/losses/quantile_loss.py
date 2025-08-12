@@ -15,14 +15,40 @@ class PinballLoss(nn.Module):
 
     def forward(self, preds, target):
         """
-        preds: [Batch, Seq_Len, N_Targets * N_Quantiles]
-        target: [Batch, Seq_Len, N_Targets]
-        """
-        # Reshape predictions to separate quantiles
-        preds = preds.view(*target.shape[:-1], -1, len(self.quantiles))
-        # Expand targets to match quantile structure
-        target = target.unsqueeze(-1).expand_as(preds)
+        Compute mean pinball (quantile) loss.
 
-        error = target - preds
-        loss = torch.max((torch.tensor(self.quantiles, device=preds.device) - 1) * error, torch.tensor(self.quantiles, device=preds.device) * error)
+        Parameters
+        ----------
+        preds : torch.Tensor
+            Either shape [B, L, T * Q] (flattened quantiles) or [B, L, T, Q].
+        target : torch.Tensor
+            Shape [B, L, T].
+        """
+        if preds.ndim == 3:
+            # Flattened layout: [B, L, T * Q]
+            B, L, _ = preds.shape
+            T = target.shape[-1]
+            Q = len(self.quantiles)
+            if _ != T * Q:
+                raise ValueError(f"Flattened predictions last dim {_} not equal to targets*T*Q={T*Q}")
+            preds = preds.view(B, L, T, Q)
+        elif preds.ndim == 4:
+            # Already separated quantiles: [B, L, T, Q]
+            B, L, T, Q = preds.shape
+            if Q != len(self.quantiles):
+                raise ValueError(f"Provided Q={Q} does not match configured quantiles {len(self.quantiles)}")
+        else:
+            raise ValueError(f"Unsupported prediction ndim={preds.ndim}; expected 3 or 4.")
+
+        if target.shape != preds.shape[:3]:
+            raise ValueError(f"Target shape {target.shape} not broadcastable to preds base {preds.shape[:3]}")
+
+        # Expand targets to quantile dimension
+        target_exp = target.unsqueeze(-1).expand_as(preds)
+        error = target_exp - preds  # positive if target > pred
+
+        # quantiles tensor shape [Q]
+        q = torch.tensor(self.quantiles, device=preds.device).view(1, 1, 1, -1)
+        # Pinball loss per element
+        loss = torch.maximum((q - 1) * error, q * error)
         return loss.mean()

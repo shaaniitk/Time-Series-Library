@@ -340,38 +340,60 @@ class QuantileLoss(nn.Module):
         self.output_dim_multiplier = 1
     
     def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        """
-        Compute quantile loss.
-        
+        """Compute multi-quantile loss accepting flattened or explicit quantile dimension.
+
+        Accepted prediction shapes:
+            1. [B, T, C * Q]  (legacy / flattened)
+            2. [B, T, C, Q]    (explicit quantile dim)
+
         Args:
-            predictions: [B, T, C*Q] where Q is number of quantiles
-            targets: [B, T, C] target values
-            
+            predictions: Forecast tensor in one of the accepted shapes.
+            targets: Ground truth values [B, T, C].
+
         Returns:
-            Loss value
+            Scalar quantile loss averaged over quantiles.
         """
-        batch_size, seq_len, combined_dim = predictions.shape
         num_quantiles = len(self.quantiles)
-        num_features = combined_dim // num_quantiles
-        
-        # Reshape predictions: [B, T, C, Q]
-        pred_quantiles = predictions.view(batch_size, seq_len, num_features, num_quantiles)
-        
-        # Expand targets: [B, T, C, 1] -> [B, T, C, Q]
+
+        if predictions.ndim == 4:
+            # Shape already [B, T, C, Q]
+            batch_size, seq_len, num_features, q_dim = predictions.shape
+            if q_dim != num_quantiles:
+                raise ValueError(
+                    f"Quantile dimension mismatch: got Q={q_dim}, expected {num_quantiles} "
+                    f"for quantiles {self.quantiles}"
+                )
+            pred_quantiles = predictions
+        elif predictions.ndim == 3:
+            batch_size, seq_len, combined_dim = predictions.shape
+            if combined_dim % num_quantiles != 0:
+                raise ValueError(
+                    "Predictions last dimension not divisible by number of quantiles: "
+                    f"{combined_dim} % {num_quantiles} != 0"
+                )
+            num_features = combined_dim // num_quantiles
+            pred_quantiles = predictions.view(batch_size, seq_len, num_features, num_quantiles)
+        else:  # pragma: no cover - guard for improper usage
+            raise ValueError(
+                "QuantileLoss expects predictions of shape [B,T,C*Q] or [B,T,C,Q]; "
+                f"received tensor with shape {tuple(predictions.shape)}"
+            )
+
+        # Expand targets to [B, T, C, Q]
         targets_expanded = targets.unsqueeze(-1).expand(-1, -1, -1, num_quantiles)
-        
-        # Compute quantile loss
+
         quantile_loss = 0.0
         for i, tau in enumerate(self.quantiles):
-            pred_q = pred_quantiles[:, :, :, i]  # [B, T, C]
-            target_q = targets_expanded[:, :, :, i]  # [B, T, C]
-            
+            pred_q = pred_quantiles[..., i]
+            target_q = targets_expanded[..., i]
             residual = target_q - pred_q
-            loss_q = torch.where(residual >= 0, 
-                               tau * residual, 
-                               (tau - 1) * residual)
+            loss_q = torch.where(
+                residual >= 0,
+                tau * residual,
+                (tau - 1) * residual,
+            )
             quantile_loss += loss_q.mean()
-        
+
         return quantile_loss / num_quantiles
 
 

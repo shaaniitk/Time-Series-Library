@@ -54,7 +54,7 @@ python -c "import torch; print('✅ PyTorch ready')"
 python -c "from chronos import ChronosPipeline; print('✅ ChronosX ready')"
 
 # Run quick demo
-python chronos_x_simple_demo.py
+python demo_models/chronos_x_simple_demo.py --smoke
 ```
 
 ### 📚 Detailed Installation Guide
@@ -189,6 +189,22 @@ Note:
 
 ## Test Suite & Marker Policy
 
+We run a layered pytest strategy and exclude quarantined duplicates by default.
+
+- Dual-shape QuantileLoss/PinballLoss: accepts [B,L,T*Q] and [B,L,T,Q].
+- LossRegistry: list_available() preferred; list_components() retained for back-compat.
+- Quarantine: Tests under TestsModule/quarantine are skipped by default to avoid collisions.
+
+Typical commands:
+
+```pwsh
+# Full suite (excluding quarantine/perf by config)
+python -m pytest -q
+
+# Fast path
+python -m pytest -m "smoke or (extended and not perf and not quarantine)" -q
+```
+
 We use a pragmatic layered pytest marker strategy to keep iteration fast:
 
 Markers:
@@ -231,6 +247,19 @@ pytest -m smoke -q
 To sample extra smoke candidates while curating:
 ```
 pytest --smoke-sample=25 -m extended
+```
+
+PowerShell-friendly commands and audit helper:
+
+```
+# Parallel run with coverage (excluding perf/quarantine)
+pytest -m "not quarantine and not perf" -n auto --dist loadgroup --cov=./ --cov-report=term
+
+# Include legacy tests explicitly
+pytest --include-legacy -m "not quarantine and not perf"
+
+# Generate migration audit report (JSON + optional Markdown)
+python -m scripts.test_migration_audit --markdown reports/test_migration_audit.md
 ```
 
 Virtual Environment Guard:
