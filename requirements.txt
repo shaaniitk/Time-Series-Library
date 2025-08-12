@@ -1,13 +1,19 @@
-# Core ML and Data Science
+# Unified requirements.txt
+# Consolidated from requirements.txt, requirements_dev.txt, requirements_chronosx.txt, requirements_hf_migration.txt
+# Notes:
+# - Prefer the stricter/latest lower-bounds where duplicates existed
+# - Keep production and dev/test/doc tools together for simplicity (one file)
+
+######## Core ML and Data Science ########
 einops==0.8.0
 local-attention==1.9.14
 matplotlib
-numpy<2
+numpy>=1.21,<2
 pandas==1.5.3
 patool
 reformer-pytorch==1.4.4
 scikit-learn
-scipy
+scipy>=1.7.0
 sktime
 sympy==1.11.1
 tqdm
@@ -18,61 +24,75 @@ nltk
 pyarrow
 PyYAML>=6.0
 
-# Visualization and Analysis
+######## Visualization and Analysis ########
 seaborn>=0.12.0
 plotly>=5.0.0
 
-# System Monitoring and Performance
+######## System Monitoring ########
 psutil>=5.9.0
 
-# ChronosX and Hugging Face Integration
+######## Hugging Face / ChronosX Integration ########
 chronos-forecasting>=1.5.2
-transformers>=4.30.0
-accelerate>=0.20.0
-datasets>=2.0.0
+transformers>=4.36.0
+accelerate>=0.24.0
+datasets>=2.14.0
 tokenizers>=0.13.0
+huggingface-hub>=0.19.0
 
-# Additional ML/Statistics
+# Optional acceleration (install only if applicable)
+# bitsandbytes>=0.41.0
+# flash-attn>=2.0.0
+
+######## Additional ML / Statistics ########
 xgboost>=1.7.0
 lightgbm>=3.3.0
 catboost>=1.2.0
 
-# Time Series Specific
+######## Time Series Specific ########
 pmdarima>=2.0.0
 prophet>=1.1.0
 mxnet>=1.9.0
 
-# Development and Testing
-pytest>=7.0.0
-pytest-cov>=4.0.0
-black>=23.0.0
-flake8>=6.0.0
-mypy>=1.0.0
-
-# Jupyter and Interactive Development
-jupyter>=1.0.0
-ipywidgets>=8.0.0
-
-# Data Processing
+######## Data Processing ########
 polars>=0.18.0
 dask>=2023.0.0
 
-# Configuration Management
+######## Config / Experiment Management ########
 hydra-core>=1.3.0
 omegaconf>=2.3.0
+wandb>=0.15.0
+mlflow>=2.0.0
 
-# PyTorch with CUDA support (GPU acceleration)
-# For CPU-only: torch==2.1.0
-# For GPU (CUDA 11.8): install with --index-url https://download.pytorch.org/whl/cu118
-# For GPU (CUDA 12.1): install with --index-url https://download.pytorch.org/whl/cu121
+######## PyTorch ########
+# CPU-only:       pip install torch torchvision torchaudio
+# CUDA 11.8:      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# CUDA 12.1:      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 torch>=2.1.0
 torchvision>=0.16.0
 torchaudio>=2.1.0
 
-# Installation commands:
-# CPU-only:
-#   pip install torch torchvision torchaudio
-# GPU (CUDA 11.8):
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-# GPU (CUDA 12.1):
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+######## Development / Testing Tools ########
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0
+isort>=5.12.0
+autoflake>=2.0.0
+pre-commit>=3.0.0
+
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-xdist>=3.0.0
+pytest-timeout>=2.3.1
+pytest-rerunfailures>=13.0
+pytest-benchmark>=4.0.0
+
+######## Docs / Notebooks ########
+sphinx>=6.0.0
+sphinx-rtd-theme>=1.2.0
+mkdocs>=1.4.0
+mkdocs-material>=9.0.0
+
+jupyter>=1.0.0
+jupyterlab>=4.0.0
+ipywidgets>=8.0.0
+notebook>=6.5.0
