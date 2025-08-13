@@ -1,0 +1,59 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "pytest components new suites",
+			"type": "shell",
+			"command": "python -X utf8 -m pytest -q TestsModule/components/output_heads TestsModule/components/losses -q",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "pytest components new suites (skip venv guard)",
+			"type": "shell",
+			"command": "python -X utf8 -m pytest -q TestsModule/components/output_heads TestsModule/components/losses -q --enforce-venv=0",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "pytest components new suites in venv",
+			"type": "shell",
+			"command": ".\\tsl-env\\Scripts\\python.exe -X utf8 -m pytest -q TestsModule/components/output_heads TestsModule/components/losses -q",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "pytest components new suites in venv (retry)",
+			"type": "shell",
+			"command": ".\\tsl-env\\Scripts\\python.exe -X utf8 -m pytest -q TestsModule/components/output_heads TestsModule/components/losses -q",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "pytest all components in venv",
+			"type": "shell",
+			"command": ".\\tsl-env\\Scripts\\python.exe -X utf8 -m pytest -q TestsModule/components -q",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "pytest all components in venv (confirm)",
+			"type": "shell",
+			"command": ".\\tsl-env\\Scripts\\python.exe -X utf8 -m pytest -q TestsModule/components -q",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}
