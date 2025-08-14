@@ -189,21 +189,22 @@ class AdaptiveAutoCorrelation(nn.Module):
         delays_agg = torch.zeros_like(values)
         values_padded = torch.cat([values, values], dim=-1)  # Circular padding
         
-        for k in range(top_k):
-            # Create delay indices efficiently
-            delay = delays[:, k].unsqueeze(1).unsqueeze(1).unsqueeze(1)  # [B, 1, 1, 1]
-            
-            # Advanced indexing for delayed values
-            time_indices = torch.arange(length, device=values.device).unsqueeze(0).unsqueeze(0).unsqueeze(0)
-            delayed_indices = (time_indices + delay) % (2 * length)
-            delayed_indices = delayed_indices.expand(batch, head, channel, length)
-            
-            # Gather delayed values
-            delayed_values = torch.gather(values_padded, dim=-1, index=delayed_indices)
-            
-            # Apply weights
-            weight = normalized_weights[:, k].view(batch, 1, 1, 1)
-            delays_agg += delayed_values * weight
+        # Create delay indices efficiently
+        delays_expanded = delays.unsqueeze(1).unsqueeze(1).expand(-1, head, channel, -1)
+        time_indices = torch.arange(length, device=values.device).view(1, 1, 1, length, 1)
+        
+        # Broadcasting to create the full index tensor
+        # Shape: [B, H, C, L, K]
+        delayed_indices = (time_indices + delays_expanded.unsqueeze(3)) % (2 * length)
+        
+        # Gather all delayed values at once
+        # Shape: [B, H, C, L, K]
+        gathered_values = torch.gather(values_padded.unsqueeze(-1).expand(-1, -1, -1, -1, top_k), dim=3, index=delayed_indices)
+        
+        # Apply weights and sum
+        # Shape of weights: [B, 1, 1, 1, K]
+        weights_expanded = normalized_weights.view(batch, 1, 1, 1, top_k)
+        delays_agg = torch.sum(gathered_values * weights_expanded, dim=-1)
             
         return delays_agg
 

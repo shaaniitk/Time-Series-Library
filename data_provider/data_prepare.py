@@ -9,46 +9,68 @@ from typing import Optional, Dict, Any, Tuple
 import os
 from utils.logger import logger
 from sklearn.preprocessing import StandardScaler, LabelEncoder
+from utils.normalization import TSNormalizer
 
 
 class FinancialDataManager:
+    """Custom data manager for financial time series.
+
+    Responsibilities:
+      * Load target, dynamic, and static covariate datasets.
+      * Align datasets on a common business-day date axis.
+      * Optionally apply global normalization to numeric columns (including
+        targets and covariates) via a unified TSNormalizer abstraction.
     """
-    Custom data manager for financial time series with multiple data sources:
-    - Target data: Business days (nifty50_returns.parquet)
-    - Dynamic covariates: Daily data (comprehensive_dynamic_features_nifty.csv)
-    - Static covariates: Time-invariant features (india_static_features.csv)
-    """
-    
-    def __init__(self, 
-                 data_root: str = 'data',
-                 target_file: Optional[str] = None,
-                 dynamic_cov_file: Optional[str] = None,
-                 static_cov_file: Optional[str] = None):
-        """
-        Initialize the Financial Data Manager.
-        
-        Args:
-            data_root: Root directory containing data files
-            target_file: Target data file (e.g., 'nifty50_returns.parquet')
-            dynamic_cov_file: Dynamic covariates file (e.g., 'comprehensive_dynamic_features_nifty.csv')
-            static_cov_file: Static covariates file (e.g., 'india_static_features.csv')
+
+    def __init__(
+        self,
+        data_root: str = 'data',
+        target_file: Optional[str] = None,
+        dynamic_cov_file: Optional[str] = None,
+        static_cov_file: Optional[str] = None,
+        enable_normalization: bool = False,
+        normalization_mode: str = 'standard',
+    ) -> None:
+        """Initialize the manager.
+
+        Parameters
+        ----------
+        data_root : str
+            Root directory containing data assets.
+        target_file : Optional[str]
+            Primary target series file.
+        dynamic_cov_file : Optional[str]
+            High-frequency / daily covariates file.
+        static_cov_file : Optional[str]
+            Time-invariant covariates file.
+        enable_normalization : bool
+            If True, apply normalization after alignment.
+        normalization_mode : str
+            Normalization strategy (see TSNormalizer.SUPPORTED).
         """
         self.data_root = data_root
         self.target_file = target_file
         self.dynamic_cov_file = dynamic_cov_file
         self.static_cov_file = static_cov_file
-        
+
+        # Normalization configuration
+        self.enable_normalization = enable_normalization
+        self.normalization_mode = normalization_mode
+        self.normalizer: Optional[TSNormalizer] = None
+
         # Data containers
-        self.target_data = None
-        self.dynamic_cov_data = None
-        self.static_cov_data = None
-        self.merged_data = None
-          # Metadata
-        self.target_columns = []
-        self.dynamic_cov_columns = []
-        self.static_cov_columns = []
-        self.date_column = 'date'
-        
+        self.target_data: Optional[pd.DataFrame] = None
+        self.dynamic_cov_data: Optional[pd.DataFrame] = None
+        self.static_cov_data: Optional[pd.DataFrame] = None
+        self.merged_data: Optional[pd.DataFrame] = None
+        self.merged_data_normalized: Optional[pd.DataFrame] = None
+
+        # Metadata
+        self.target_columns: list[str] = []
+        self.dynamic_cov_columns: list[str] = []
+        self.static_cov_columns: list[str] = []
+        self.date_column: str = 'date'
+
         logger.info(f"Initialized FinancialDataManager with data_root: {data_root}")
     
     def _load_file(self, file_path: str) -> pd.DataFrame:
@@ -405,6 +427,18 @@ class FinancialDataManager:
         logger.info(f"Columns: Target({len(self.target_columns)}), Dynamic({len(self.dynamic_cov_columns)}), Static({len(self.static_cov_columns)})")
         
         self.merged_data = aligned_data
+
+        # Optional normalization step (post alignment, includes targets & covariates)
+        if self.enable_normalization:
+            try:
+                self.normalizer = TSNormalizer(self.normalization_mode)
+                self.normalizer.fit(self.merged_data)
+                self.merged_data_normalized = self.normalizer.transform(self.merged_data)
+                logger.info(f"Applied normalization mode='{self.normalization_mode}' to merged data.")
+            except Exception as e:
+                logger.warning(f"Normalization skipped due to error: {e}")
+                self.merged_data_normalized = None
+
         return aligned_data
     
     def prepare_data(self, 
@@ -458,7 +492,13 @@ class FinancialDataManager:
                 "static_covariates": self.static_cov_columns
             },
             "missing_values": self.merged_data.isna().sum().to_dict(),
-            "data_types": self.merged_data.dtypes.to_dict()
+            "data_types": self.merged_data.dtypes.to_dict(),
+            "normalization": {
+                "enabled": self.enable_normalization,
+                "mode": self.normalization_mode,
+                "fitted": self.normalizer.fitted() if self.normalizer else False,
+                "stats": self.normalizer.info() if self.normalizer and self.normalizer.fitted() else {}
+            }
         }
         return info
     

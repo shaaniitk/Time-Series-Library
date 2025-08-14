@@ -70,11 +70,13 @@ class FourierBlock(nn.Module):
         x_ft = torch.fft.rfft(x, dim=-1)
         # Perform Fourier neural operations
         out_ft = torch.zeros(B, H, E, L // 2 + 1, device=x.device, dtype=torch.cfloat)
-        for wi, i in enumerate(self.index):
-            if i >= x_ft.shape[3] or wi >= out_ft.shape[3]:
-                continue
-            out_ft[:, :, :, wi] = self.compl_mul1d("bhi,hio->bho", x_ft[:, :, :, i],
-                                                   torch.complex(self.weights1, self.weights2)[:, :, :, wi])
+        
+        # Vectorized operation
+        selected_x_ft = x_ft[:, :, :, self.index]
+        multiplied_ft = self.compl_mul1d("bhie,hioe->bhoe", selected_x_ft,
+                                           torch.complex(self.weights1, self.weights2))
+        out_ft[:, :, :, self.index] = multiplied_ft
+
         # Return to time domain
         x = torch.fft.irfft(out_ft, n=x.size(-1))
         return (x, None)
@@ -128,21 +130,11 @@ class FourierCrossAttention(nn.Module):
         xv = v.permute(0, 2, 3, 1)
 
         # Compute Fourier coefficients
-        xq_ft_ = torch.zeros(B, H, E, len(self.index_q), device=xq.device, dtype=torch.cfloat)
-        xq_ft = torch.fft.rfft(xq, dim=-1)
-        for i, j in enumerate(self.index_q):
-            if j >= xq_ft.shape[3]:
-                continue
-            xq_ft_[:, :, :, i] = xq_ft[:, :, :, j]
-        xk_ft_ = torch.zeros(B, H, E, len(self.index_kv), device=xq.device, dtype=torch.cfloat)
-        xk_ft = torch.fft.rfft(xk, dim=-1)
-        for i, j in enumerate(self.index_kv):
-            if j >= xk_ft.shape[3]:
-                continue
-            xk_ft_[:, :, :, i] = xk_ft[:, :, :, j]
-
+        xq_ft = torch.fft.rfft(xq, dim=-1)[:, :, :, self.index_q]
+        xk_ft = torch.fft.rfft(xk, dim=-1)[:, :, :, self.index_kv]
+        
         # perform attention mechanism on frequency domain
-        xqk_ft = (self.compl_mul1d("bhex,bhey->bhxy", xq_ft_, xk_ft_))
+        xqk_ft = (self.compl_mul1d("bhex,bhey->bhxy", xq_ft, xk_ft))
         if self.activation == 'tanh':
             xqk_ft = torch.complex(xqk_ft.real.tanh(), xqk_ft.imag.tanh())
         elif self.activation == 'softmax':
@@ -150,13 +142,13 @@ class FourierCrossAttention(nn.Module):
             xqk_ft = torch.complex(xqk_ft, torch.zeros_like(xqk_ft))
         else:
             raise Exception('{} actiation function is not implemented'.format(self.activation))
-        xqkv_ft = self.compl_mul1d("bhxy,bhey->bhex", xqk_ft, xk_ft_)
+        
+        xqkv_ft = self.compl_mul1d("bhxy,bhey->bhex", xqk_ft, xk_ft)
         xqkvw = self.compl_mul1d("bhex,heox->bhox", xqkv_ft, torch.complex(self.weights1, self.weights2))
+        
         out_ft = torch.zeros(B, H, E, L // 2 + 1, device=xq.device, dtype=torch.cfloat)
-        for i, j in enumerate(self.index_q):
-            if i >= xqkvw.shape[3] or j >= out_ft.shape[3]:
-                continue
-            out_ft[:, :, :, j] = xqkvw[:, :, :, i]
+        out_ft[:, :, :, self.index_q] = xqkvw
+        
         # Return to time domain
         out = torch.fft.irfft(out_ft / self.in_channels / self.out_channels, n=xq.size(-1))
         return (out, None)

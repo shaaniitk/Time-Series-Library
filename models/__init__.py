@@ -1,46 +1,91 @@
-# Standard models
-from .Autoformer import Model as Autoformer
-from .Transformer import Model as Transformer
-from .TimesNet import Model as TimesNet
-from .Nonstationary_Transformer import Model as Nonstationary_Transformer
-from .DLinear import Model as DLinear
-from .FEDformer import Model as FEDformer
-from .Informer import Model as Informer
-from .LightTS import Model as LightTS
-from .Reformer import Model as Reformer
-from .ETSformer import Model as ETSformer
-from .Pyraformer import Model as Pyraformer
-from .PatchTST import Model as PatchTST
-from .MICN import Model as MICN
-from .Crossformer import Model as Crossformer
-from .FiLM import Model as FiLM
-from .iTransformer import Model as iTransformer
-from .Koopa import Model as Koopa
-from .TiDE import Model as TiDE
-from .FreTS import Model as FreTS
-from .TimeMixer import Model as TimeMixer
-from .TSMixer import Model as TSMixer
-from .SegRNN import Model as SegRNN
-from .MambaSimple import Model as MambaSimple
-from .TemporalFusionTransformer import Model as TemporalFusionTransformer
-from .SCINet import Model as SCINet
-from .PAttn import Model as PAttn
-from .TimeXer import Model as TimeXer
-from .WPMixer import Model as WPMixer
-from .MultiPatchFormer import Model as MultiPatchFormer
+"""Lightweight models package initializer with lazy loading.
 
-# Enhanced models
-from .EnhancedAutoformer import EnhancedAutoformer
-from .BayesianEnhancedAutoformer import BayesianEnhancedAutoformer
-from .HierarchicalEnhancedAutoformer import HierarchicalEnhancedAutoformer
+Previously this module eagerly imported every model variant, which cascaded into
+optional heavy dependencies (e.g., patoolib via M4 dataset utilities) even when
+only a single lightweight component (like ChronosXAutoformer) was required.
 
-# HF models
-from .HFEnhancedAutoformer import HFEnhancedAutoformer
-from .HFBayesianAutoformerProduction import HFBayesianAutoformerProduction
-from .HFAdvancedFactory import (
-    HFBayesianEnhancedAutoformer,
-    HFHierarchicalEnhancedAutoformer,
-    HFQuantileEnhancedAutoformer,
-    HFFullEnhancedAutoformer,
-    create_hf_model_from_config
-)
+To improve startup time and reduce extraneous dependency errors for scripts that
+only need a subset of models, we now expose a lazy import mechanism. Attribute
+access triggers an on-demand import of the underlying module/class.
+
+Adding a new model:
+    1. Append an entry to _MODEL_SPECS with key == public attribute name.
+    2. Value is a (module_path, attribute_name) tuple. If the class exported is
+       named ``Model`` in the module, keep attribute_name as "Model" and choose a
+       descriptive key (e.g. "Autoformer").
+    3. The class will become importable via ``from models import Autoformer``.
+
+This preserves backward compatibility while avoiding import side effects unless
+the model is actually requested.
+"""
+
+from __future__ import annotations
+
+from importlib import import_module
+from types import ModuleType
+from typing import Dict, Tuple, Any
+
+_MODEL_SPECS: Dict[str, Tuple[str, str]] = {
+    # Standard models: public name -> (module path, attribute/class name)
+    "Autoformer": (".Autoformer", "Model"),
+    "Transformer": (".Transformer", "Model"),
+    "TimesNet": (".TimesNet", "Model"),
+    "Nonstationary_Transformer": (".Nonstationary_Transformer", "Model"),
+    "DLinear": (".DLinear", "Model"),
+    "FEDformer": (".FEDformer", "Model"),
+    "Informer": (".Informer", "Model"),
+    "LightTS": (".LightTS", "Model"),
+    "Reformer": (".Reformer", "Model"),
+    "ETSformer": (".ETSformer", "Model"),
+    "Pyraformer": (".Pyraformer", "Model"),
+    "PatchTST": (".PatchTST", "Model"),
+    "MICN": (".MICN", "Model"),
+    "Crossformer": (".Crossformer", "Model"),
+    "FiLM": (".FiLM", "Model"),
+    "iTransformer": (".iTransformer", "Model"),
+    "Koopa": (".Koopa", "Model"),
+    "TiDE": (".TiDE", "Model"),
+    "FreTS": (".FreTS", "Model"),
+    "TimeMixer": (".TimeMixer", "Model"),
+    "TSMixer": (".TSMixer", "Model"),
+    "SegRNN": (".SegRNN", "Model"),
+    "MambaSimple": (".MambaSimple", "Model"),
+    "TemporalFusionTransformer": (".TemporalFusionTransformer", "Model"),
+    "SCINet": (".SCINet", "Model"),
+    "PAttn": (".PAttn", "Model"),
+    "TimeXer": (".TimeXer", "Model"),
+    "WPMixer": (".WPMixer", "Model"),
+    "MultiPatchFormer": (".MultiPatchFormer", "Model"),
+    # Enhanced models
+    "EnhancedAutoformer": (".Autoformer", "EnhancedAutoformer"),
+    "BayesianEnhancedAutoformer": (".BayesianEnhancedAutoformer", "BayesianEnhancedAutoformer"),
+    "HierarchicalEnhancedAutoformer": (".HierarchicalEnhancedAutoformer", "HierarchicalEnhancedAutoformer"),
+    # HF models / advanced factory outputs
+    "HFEnhancedAutoformer": (".HFEnhancedAutoformer", "HFEnhancedAutoformer"),
+    "HFBayesianAutoformerProduction": (".HFBayesianAutoformerProduction", "HFBayesianAutoformerProduction"),
+    "HFBayesianEnhancedAutoformer": (".HFAdvancedFactory", "HFBayesianEnhancedAutoformer"),
+    "HFHierarchicalEnhancedAutoformer": (".HFAdvancedFactory", "HFHierarchicalEnhancedAutoformer"),
+    "HFQuantileEnhancedAutoformer": (".HFAdvancedFactory", "HFQuantileEnhancedAutoformer"),
+    "HFFullEnhancedAutoformer": (".HFAdvancedFactory", "HFFullEnhancedAutoformer"),
+    "create_hf_model_from_config": (".HFAdvancedFactory", "create_hf_model_from_config"),
+}
+
+__all__ = list(_MODEL_SPECS.keys())
+
+
+def __getattr__(name: str) -> Any:  # pragma: no cover - simple delegation
+    spec = _MODEL_SPECS.get(name)
+    if spec is None:
+        raise AttributeError(f"module 'models' has no attribute '{name}'")
+    module_path, attr_name = spec
+    module: ModuleType = import_module(module_path, package=__name__)
+    try:
+        attr = getattr(module, attr_name)
+    except AttributeError as exc:  # re-raise with clearer context
+        raise AttributeError(f"Attribute '{attr_name}' not found in module '{module_path}' for '{name}'") from exc
+    globals()[name] = attr  # cache for future lookups
+    return attr
+
+
+def __dir__():  # pragma: no cover
+    return sorted(list(globals().keys()) + __all__)

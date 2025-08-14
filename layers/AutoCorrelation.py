@@ -29,23 +29,26 @@ class AutoCorrelation(nn.Module):
         SpeedUp version of Autocorrelation (a batch-normalization style design)
         This is for the training phase.
         """
-        head = values.shape[1]
-        channel = values.shape[2]
-        length = values.shape[3]
+        batch, head, channel, length = values.shape
         # find top k
         top_k = int(self.factor * math.log(length))
         mean_value = torch.mean(torch.mean(corr, dim=1), dim=1)
-        index = torch.topk(torch.mean(mean_value, dim=0), top_k, dim=-1)[1]
-        weights = torch.stack([mean_value[:, index[i]] for i in range(top_k)], dim=-1)
+        weights, delay = torch.topk(mean_value, top_k, dim=-1)
         # update corr
         tmp_corr = torch.softmax(weights, dim=-1)
+        
         # aggregation
-        tmp_values = values
-        delays_agg = torch.zeros_like(values).float()
-        for i in range(top_k):
-            pattern = torch.roll(tmp_values, -int(index[i]), -1)
-            delays_agg = delays_agg + pattern * \
-                         (tmp_corr[:, i].unsqueeze(1).unsqueeze(1).unsqueeze(1).repeat(1, head, channel, length))
+        values_padded = torch.cat([values, values], dim=-1)
+        delays_expanded = delay.unsqueeze(1).unsqueeze(1).expand(-1, head, channel, -1)
+        time_indices = torch.arange(length, device=values.device).view(1, 1, 1, length, 1)
+        
+        delayed_indices = (time_indices + delays_expanded.unsqueeze(3)) % (2 * length)
+        
+        gathered_values = torch.gather(values_padded.unsqueeze(-1).expand(-1, -1, -1, -1, top_k), dim=3, index=delayed_indices)
+        
+        weights_expanded = tmp_corr.view(batch, 1, 1, 1, top_k)
+        delays_agg = torch.sum(gathered_values * weights_expanded, dim=-1)
+        
         return delays_agg
 
     def time_delay_agg_inference(self, values, corr):
@@ -126,6 +129,7 @@ class AutoCorrelation(nn.Module):
             return (V.contiguous(), corr.permute(0, 3, 1, 2))
         else:
             return (V.contiguous(), None)
+
 
 
 class AutoCorrelationLayer(nn.Module):

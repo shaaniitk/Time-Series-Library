@@ -242,3 +242,10 @@ pic/
 *~
 .DS_Store
 Thumbs.db
+# Ignore all hidden dot-directories at any depth
+.*/
+*/.*/
+.gemini/Gemini.md
+.gemini/Gemini.md
+.gemini/Gemini.md
+.vscode/settings.json
