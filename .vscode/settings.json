@@ -2,5 +2,6 @@
     "chat.agent.maxRequests": 100, // Example value
      "files.associations": {
         ".gemini": "gemini"
-    }
+    },
+    "chat.mcp.discovery.enabled": true
 }

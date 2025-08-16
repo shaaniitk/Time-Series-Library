@@ -1,7 +1,7 @@
 
 from .base import BaseDecoder
 from ..layers.enhanced_layers import EnhancedDecoderLayer
-from models.EnhancedAutoformer_Fixed import EnhancedDecoder as StableAutoformerDecoder
+
 import torch.nn as nn
 
 class StableDecoder(BaseDecoder):
@@ -13,8 +13,7 @@ class StableDecoder(BaseDecoder):
                  norm_layer=None, projection=None):
         super(StableDecoder, self).__init__()
         
-        self.decoder = StableAutoformerDecoder(
-            [
+        self.layers = nn.ModuleList([
                 EnhancedDecoderLayer(
                     self_attention_comp,
                     cross_attention_comp,
@@ -26,10 +25,18 @@ class StableDecoder(BaseDecoder):
                     activation=activation,
                 )
                 for l in range(d_layers)
-            ],
-            norm_layer=norm_layer,
-            projection=projection
-        )
+            ])
+        self.norm_layer = norm_layer
+        self.projection = projection
 
     def forward(self, x, cross, x_mask=None, cross_mask=None, trend=None):
-        return self.decoder(x, cross, x_mask, cross_mask, trend)
+        if trend is None:
+            trend = torch.zeros_like(x)
+        for layer in self.layers:
+            x, residual_trend = layer(x, cross, x_mask, cross_mask)
+            trend = trend + residual_trend
+        if self.norm_layer is not None:
+            x = self.norm_layer(x)
+        if self.projection is not None:
+            x = self.projection(x)
+        return x + trend

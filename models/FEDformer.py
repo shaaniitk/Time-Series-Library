@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from configs.schemas import BaseModelConfig
+from pydantic import ValidationError
 import torch.nn.functional as F
 from layers.Embed import DataEmbedding
 from layers.AutoCorrelation import AutoCorrelationLayer
@@ -9,7 +11,7 @@ from layers.Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLaye
 from utils.logger import logger
 
 
-class Model(nn.Module):
+class Model(nn.Module, BaseModelConfig):
     """
     FEDformer performs the attention mechanism on frequency domain and achieved O(N) complexity
     Paper link: https://proceedings.mlr.press/v162/zhou22g.html
@@ -22,6 +24,14 @@ class Model(nn.Module):
         modes: int, modes to be selected.
         """
         super(Model, self).__init__()
+        self._validate_config(configs)
+
+    def _validate_config(self, configs):
+        """Validate configuration using BaseModelConfig schema"""
+        try:
+            validated = BaseModelConfig(**configs.__dict__)
+        except ValidationError as e:
+            raise ValueError(f"Invalid FEDformer configuration: {e}")
         logger.info(f"Initializing FEDformer model with configs: {configs}")
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len

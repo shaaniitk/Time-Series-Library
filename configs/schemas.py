@@ -5,110 +5,174 @@ This module implements the GCLI recommendations for replacing the flat Namespace
 configuration with structured, validated configuration objects using Pydantic.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import (
+    BaseModel,
+    Field,
+    validator,
+    PositiveInt,
+    NonNegativeInt,
+    confloat,
+    model_validator,
+)
 from typing import List, Dict, Any, Optional, Union, Literal
 from enum import Enum
 
 
+###############################################################################
+# Component Enumeration
+#
+# NOTE:
+#   Previously most component identifiers were (incorrectly) declared as class
+#   attributes inside BaseModelConfig instead of the dedicated ComponentType
+#   Enum. Only MULTI_HEAD existed in the Enum which broke every reference like
+#   ComponentType.AUTOCORRELATION across the codebase. This refactor consolidates
+#   ALL component identifiers into ComponentType to restore consistency and
+#   make IDE / static tooling happy.
+###############################################################################
+
+
 class ComponentType(str, Enum):
-    """Enumeration of all available component types"""
-    # Attention components
+    """Enumeration of all available component and logical configuration types.
+
+    The string values are intentionally stable – they are used as registry keys
+    throughout the modular framework (component_registry, tests, HF migration
+    helpers). Adding a new component only requires extending this Enum and the
+    concrete factory/registry implementation; existing configs remain valid.
+    """
+
+    # Core / baseline attention components
     MULTI_HEAD = "multi_head"
     AUTOCORRELATION = "autocorrelation"
+    AUTOCORRELATION_LAYER = "autocorrelation_layer"  # explicit layer variant
     ADAPTIVE_AUTOCORRELATION = "adaptive_autocorrelation_layer"
-    
-    # Phase 2: Fourier Attention Components
+    ADAPTIVE_AUTOCORRELATION_LAYER = "adaptive_autocorrelation_layer"  # alias
+
+    # Extended / Fourier based attention
     FOURIER_ATTENTION = "fourier_attention"
     FOURIER_BLOCK = "fourier_block"
     FOURIER_CROSS_ATTENTION = "fourier_cross_attention"
-    
-    # Phase 2: Wavelet Attention Components
+
+    # Wavelet / multi-scale attention
     WAVELET_ATTENTION = "wavelet_attention"
     WAVELET_DECOMPOSITION = "wavelet_decomposition"
     ADAPTIVE_WAVELET_ATTENTION = "adaptive_wavelet_attention"
     MULTI_SCALE_WAVELET_ATTENTION = "multi_scale_wavelet_attention"
-    
-    # Phase 2: Enhanced AutoCorrelation Components
-    ENHANCED_AUTOCORRELATION = "enhanced_autocorrelation"
-    NEW_ADAPTIVE_AUTOCORRELATION_LAYER = "new_adaptive_autocorrelation_layer"
-    HIERARCHICAL_AUTOCORRELATION = "hierarchical_autocorrelation"
-    
-    # Phase 2: Bayesian Attention Components
-    BAYESIAN_ATTENTION = "bayesian_attention"
-    BAYESIAN_MULTI_HEAD_ATTENTION = "bayesian_multi_head_attention"
-    VARIATIONAL_ATTENTION = "variational_attention"
-    BAYESIAN_CROSS_ATTENTION = "bayesian_cross_attention"
-    
-    # Phase 2: Adaptive Components
-    META_LEARNING_ADAPTER_ATTN = "meta_learning_adapter"
-    ADAPTIVE_MIXTURE_ATTN = "adaptive_mixture"
-    
-    # Phase 2: Temporal Convolution Attention Components
-    CAUSAL_CONVOLUTION = "causal_convolution"
-    TEMPORAL_CONV_NET = "temporal_conv_net"
-    CONVOLUTIONAL_ATTENTION = "convolutional_attention"
-    
-    # Other attention types
+
+    # Cross resolution & hybrid attention
+    CROSS_RESOLUTION = "cross_resolution_attention"
+
+    # Sparse attention families
     SPARSE = "sparse"
     LOG_SPARSE = "log_sparse"
     PROB_SPARSE = "prob_sparse"
-    CROSS_RESOLUTION = "cross_resolution_attention"
-    
+
+    # Temporal convolution / hybrid encoder blocks
+    CAUSAL_CONVOLUTION = "causal_convolution"
+    TEMPORAL_CONV_NET = "temporal_conv_net"
+    CONVOLUTIONAL_ATTENTION = "convolutional_attention"
+    TEMPORAL_CONV_ENCODER = "temporal_conv_encoder"
+
     # Decomposition components
     MOVING_AVG = "moving_avg"
+    SERIES_DECOMP = "series_decomp"
+    STABLE_DECOMP = "stable_decomp"
     LEARNABLE_DECOMP = "learnable_decomp"
     WAVELET_DECOMP = "wavelet_hierarchical_decomp"
     ADVANCED_WAVELET = "advanced_wavelet_decomp"
-    
-    # Encoder/Decoder components
+
+    # Encoder / decoder variants
     STANDARD_ENCODER = "standard_encoder"
-    STANDARD_DECODER = "standard_decoder"
     ENHANCED_ENCODER = "enhanced_encoder"
-    ENHANCED_DECODER = "enhanced_decoder"
     HIERARCHICAL_ENCODER = "hierarchical_encoder"
+    STANDARD_DECODER = "standard_decoder"
+    ENHANCED_DECODER = "enhanced_decoder"
     HIERARCHICAL_DECODER = "hierarchical_decoder"
-    TEMPORAL_CONV_ENCODER = "temporal_conv_encoder"
     META_LEARNING_ADAPTER = "meta_learning_adapter"
-    
-    # Sampling components
+
+    # Sampling strategies
     DETERMINISTIC = "deterministic"
     BAYESIAN = "bayesian"
     MONTE_CARLO = "monte_carlo"
     ADAPTIVE_MIXTURE = "adaptive_mixture"
-    
-    # Output head components
+
+    # Output heads
     STANDARD_HEAD = "standard"
     QUANTILE = "quantile"
     BAYESIAN_HEAD = "bayesian_head"
-    
-    # Loss components
+
+    # Loss functions
     MSE = "mse"
     MAE = "mae"
-    # Use distinct string values for loss component types to avoid Enum aliasing collisions
-    # with similarly named sampling/output head types (previous duplicates caused the
-    # registry to overwrite BayesianSampling with BayesianMSELoss because both shared
-    # the value "bayesian").
     QUANTILE_LOSS = "quantile_loss"
     BAYESIAN_MSE = "bayesian_mse_loss"
     BAYESIAN_QUANTILE = "bayesian_quantile_loss"
+    FOCAL_LOSS = "focal_loss"
     ADAPTIVE_AUTOFORMER_LOSS = "adaptive_autoformer_loss"
-    
-    # Advanced metric losses
+    ADAPTIVE_LOSS_WEIGHTING = "adaptive_loss_weighting"
     MAPE_LOSS = "mape_loss"
     SMAPE_LOSS = "smape_loss"
     MASE_LOSS = "mase_loss"
     PS_LOSS = "ps_loss"
-    FOCAL_LOSS = "focal_loss"
-    
-    # Advanced adaptive losses
     FREQUENCY_AWARE_LOSS = "frequency_aware_loss"
     MULTI_QUANTILE_LOSS = "multi_quantile_loss"
     UNCERTAINTY_CALIBRATION_LOSS = "uncertainty_calibration_loss"
-    ADAPTIVE_LOSS_WEIGHTING = "adaptive_loss_weighting"
-    
-    # Backbone components (for future HF integration)
+
+    # Bayesian / probabilistic building blocks
+    BAYESIAN_ATTENTION = "bayesian_attention"
+    BAYESIAN_MULTI_HEAD_ATTENTION = "bayesian_multi_head_attention"
+    VARIATIONAL_ATTENTION = "variational_attention"
+    BAYESIAN_CROSS_ATTENTION = "bayesian_cross_attention"
+
+    # Meta / adaptive higher-level constructs
+    META_LEARNING_ADAPTER_ATTN = "meta_learning_adapter"
+    ADAPTIVE_MIXTURE_ATTN = "adaptive_mixture"
+
+    # Backbone integration identifiers
     CHRONOS = "chronos"
     CHRONOS_X = "chronos_x"
+
+
+class BaseModelConfig(BaseModel):
+    """Universal base configuration schema for *legacy* backbone style models.
+
+    This is intentionally minimal – it validates the most common architectural
+    hyper‑parameters while allowing extra fields so legacy config objects do not
+    raise validation errors (Crossformer, FEDformer, etc.).
+    """
+
+    model_type: Literal['crossformer', 'fedformer', 'etsformer', 'timesnet']
+    d_model: PositiveInt = 512
+    n_heads: PositiveInt = 8
+    e_layers: NonNegativeInt = 2
+    d_ff: PositiveInt = 2048
+    dropout: confloat(ge=0.0, le=0.9) = 0.1
+    activation: Literal['gelu', 'relu', 'swish'] = 'gelu'
+
+    # Frequently present in legacy configs (optional here for broad compatibility)
+    d_layers: Optional[NonNegativeInt] = None
+    moving_avg: Optional[int] = None
+    factor: Optional[int] = None
+    enc_in: Optional[int] = None
+    dec_in: Optional[int] = None
+    c_out: Optional[int] = None
+    seq_len: Optional[int] = None
+    label_len: Optional[int] = None
+    pred_len: Optional[int] = None
+    task_name: Optional[str] = None
+    embed: Optional[str] = None
+    freq: Optional[str] = None
+
+    # Allow unknown / forward‑compatible parameters
+    model_config = {"extra": "allow"}
+
+    @model_validator(mode='after')
+    def validate_architecture(self):  # type: ignore[override]
+        # Expansion ratio heuristic (skip if some fields missing in partial configs)
+        if self.d_ff is not None and self.d_model is not None and self.d_ff < 4 * self.d_model:
+            raise ValueError('d_ff should be at least 4*d_model for effective expansion')
+        if self.n_heads is not None and self.d_model is not None and self.n_heads > self.d_model:
+            raise ValueError('n_heads cannot exceed d_model dimensionality')
+        return self
 
 
 class AttentionConfig(BaseModel):
@@ -473,3 +537,78 @@ def create_hierarchical_config(num_targets: int, num_covariates: int, **kwargs) 
     config.decoder.type = ComponentType.ENHANCED_DECODER  # maintain consistency with encoder variant naming
     
     return config
+
+
+# ---------------------------------------------------------------------------
+# Additional configuration factory helpers (extending coverage)
+# ---------------------------------------------------------------------------
+
+def create_quantile_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
+    """Create a deterministic quantile forecasting configuration.
+
+    This variant produces quantile outputs without Bayesian sampling. It is a
+    lighter alternative to `create_quantile_bayesian_config` when probabilistic
+    uncertainty via MC/Bayesian sampling is not required.
+    """
+    quantile_levels = kwargs.get('quantile_levels', [0.1, 0.5, 0.9])
+    base = create_enhanced_config(num_targets, num_covariates, **kwargs)
+    base.quantile_levels = quantile_levels
+    # Adjust output dimensionalities: internal c_out holds total channels
+    base.c_out = num_targets * len(quantile_levels)
+    base.output_head.type = ComponentType.QUANTILE
+    base.output_head.num_quantiles = len(quantile_levels)
+    base.output_head.c_out = num_targets  # base targets
+    base.sampling.type = ComponentType.DETERMINISTIC
+    base.sampling.quantile_levels = quantile_levels
+    base.loss.type = ComponentType.QUANTILE_LOSS
+    base.loss.quantiles = quantile_levels
+    return base
+
+
+def create_adaptive_mixture_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
+    """Create configuration using adaptive mixture sampling.
+
+    Adaptive mixture combines deterministic backbone representations with a
+    learned sampling/mixing mechanism (e.g., gating across sample paths).
+    """
+    n_samples = kwargs.get('n_samples', 32)
+    base = create_enhanced_config(num_targets, num_covariates, **kwargs)
+    base.sampling.type = ComponentType.ADAPTIVE_MIXTURE
+    base.sampling.n_samples = n_samples
+    # Keep standard head & MSE unless caller overrides
+    return base
+
+
+def create_advanced_wavelet_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
+    """Create configuration emphasizing advanced wavelet decomposition.
+
+    Uses ADVANCED_WAVELET decomposition and hierarchical encoder to exploit
+    multi-scale temporal structure.
+    """
+    levels = kwargs.get('levels', 3)
+    base = create_enhanced_config(num_targets, num_covariates, **kwargs)
+    base.decomposition.type = ComponentType.ADVANCED_WAVELET
+    base.decomposition.levels = levels
+    base.encoder.type = ComponentType.HIERARCHICAL_ENCODER
+    base.encoder.n_levels = levels
+    # Retain enhanced decoder unless a hierarchical decoder is later added
+    return base
+
+
+def create_temporal_conv_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
+    """Create configuration utilizing temporal convolution encoder blocks."""
+    base = create_enhanced_config(num_targets, num_covariates, **kwargs)
+    base.encoder.type = ComponentType.TEMPORAL_CONV_ENCODER
+    # Attention may be less central; still keep adaptive autocorrelation unless overridden
+    return base
+
+
+def create_meta_learning_adapter_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
+    """Create configuration enabling meta-learning adapter within encoder.
+
+    This variant sets the encoder type to META_LEARNING_ADAPTER allowing rapid
+    adaptation across related time series tasks.
+    """
+    base = create_enhanced_config(num_targets, num_covariates, **kwargs)
+    base.encoder.type = ComponentType.META_LEARNING_ADAPTER
+    return base

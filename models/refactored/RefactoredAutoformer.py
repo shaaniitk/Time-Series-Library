@@ -2,59 +2,56 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models.modular_autoformer import ModularAutoformer, ModularAutoformerConfig
-from layers.modular.decomposition.learnable_decomposition import LearnableSeriesDecomposition as LearnableSeriesDecomp
-from layers.modular.encoder.enhanced_encoder import EnhancedEncoder
-from layers.modular.decoder.enhanced_decoder import EnhancedDecoder
-from layers.modular.attention.enhanced_autocorrelation import EnhancedAutoCorrelation
-from layers.modular.output_heads.standard_output_head import StandardOutputHead
-from layers.Autoformer_EncDec import series_decomp
+from models.Autoformer import LearnableSeriesDecomp
+from layers.modular.encoder import EnhancedEncoder
+from layers.modular.decoder import EnhancedDecoder
+from layers.modular.attention import EnhancedAutoCorrelation
+from layers.modular.output_heads import StandardOutputHead
 
-class Model(ModularAutoformer):
+class RefactoredAutoformer(ModularAutoformer):
     def __init__(self, config):
         super().__init__(config)
         # Use ModularAutoformerConfig to set up components
         self.config = ModularAutoformerConfig.from_legacy(config)
         
         # Decomposition
-        self.decomp = series_decomp(config.moving_avg)
-        
-        # Create attention components
-        self_attention = EnhancedAutoCorrelation(
-            factor=config.factor, 
-            attention_dropout=config.dropout, 
-            output_attention=config.output_attention
-        )
-        cross_attention = EnhancedAutoCorrelation(
-            factor=config.factor, 
-            attention_dropout=config.dropout, 
-            output_attention=False
-        )
+        self.decomp = LearnableSeriesDecomp(moving_avg=config.moving_avg)
         
         # Encoder
         self.encoder = EnhancedEncoder(
-            e_layers=config.e_layers,
-            d_model=config.d_model,
-            n_heads=config.n_heads,
-            d_ff=config.d_ff,
-            dropout=config.dropout,
-            activation=config.activation,
-            attention_comp=self_attention,
-            decomp_comp=self.decomp,
+            [
+                EnhancedEncoderLayer(
+                    EnhancedAutoCorrelation(
+                        factor=config.factor, attention_dropout=config.dropout, output_attention=config.output_attention
+                    ),
+                    config.d_model,
+                    n_heads=config.n_heads,
+                    dim_feedforward=config.d_ff,
+                    dropout=config.dropout,
+                    activation=config.activation
+                ) for _ in range(config.e_layers)
+            ],
             norm_layer=nn.LayerNorm(config.d_model)
         )
         
         # Decoder
         self.decoder = EnhancedDecoder(
-            d_layers=config.d_layers,
-            d_model=config.d_model,
-            c_out=config.c_out,
-            n_heads=config.n_heads,
-            d_ff=config.d_ff,
-            dropout=config.dropout,
-            activation=config.activation,
-            self_attention_comp=self_attention,
-            cross_attention_comp=cross_attention,
-            decomp_comp=self.decomp,
+            [
+                EnhancedDecoderLayer(
+                    EnhancedAutoCorrelation(
+                        factor=config.factor, attention_dropout=config.dropout, output_attention=False
+                    ),
+                    EnhancedAutoCorrelation(
+                        factor=config.factor, attention_dropout=config.dropout, output_attention=False
+                    ),
+                    d_model=config.d_model,
+                    c_out=config.c_out,
+                    d_ff=config.d_ff,
+                    moving_avg=config.moving_avg,
+                    dropout=config.dropout,
+                    activation=config.activation
+                ) for _ in range(config.d_layers)
+            ],
             norm_layer=nn.LayerNorm(config.d_model),
             projection=nn.Linear(config.d_model, config.c_out, bias=True)
         )

@@ -1,7 +1,7 @@
 
 from .base import BaseEncoder
 from ..layers.enhanced_layers import EnhancedEncoderLayer
-from models.EnhancedAutoformer_Fixed import EnhancedEncoder as StableAutoformerEncoder
+from layers.modular.encoder.enhanced_encoder import EnhancedEncoder as StableAutoformerEncoder
 import torch.nn as nn
 
 class StableEncoder(BaseEncoder):

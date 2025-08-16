@@ -16,6 +16,7 @@ from typing import List
 import numpy as np
 import pytest
 import torch
+from tests.helpers.runtime_logging import build_row, append_rows  # type: ignore
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:  # type: ignore[name-defined]
@@ -75,6 +76,9 @@ def _is_legacy_path(p: Path) -> bool:
     except Exception:  # pragma: no cover
         return False
     parts = {seg.lower() for seg in path.parts}
+    # Treat dedicated invariants subpackage as non-legacy (always collect)
+    if "invariants" in parts:
+        return False
     return ("tests" in parts) and ("testsmodule" not in parts)
 
 
@@ -220,6 +224,34 @@ def pytest_runtest_setup(item: pytest.Item) -> None:  # type: ignore[name-define
         reruns = 0
     if reruns and any(m.name == "extended" for m in item.iter_markers()):
         item.add_marker(pytest.mark.flaky(reruns=reruns, reruns_delay=1))  # type: ignore[attr-defined]
+
+
+_runtime_rows: list[list[str]] = []
+
+
+def pytest_runtest_logreport(report: pytest.TestReport):  # type: ignore[name-defined]
+    if report.when == 'call':
+        nodeid = report.nodeid
+        status = 'passed' if report.passed else 'failed' if report.failed else 'skipped'
+        duration = getattr(report, 'duration', 0.0)
+        markers = []
+        # markers accessible via report keywords keys
+        for k, v in report.keywords.items():
+            if isinstance(v, bool) and v and k in {"smoke","extended","perf","quarantine","legacy","gradcheck"}:
+                markers.append(k)
+        try:
+            row = build_row(nodeid, duration, status, markers)
+            _runtime_rows.append(row)
+        except Exception:  # pragma: no cover
+            pass
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int):  # type: ignore[name-defined]
+    if _runtime_rows:
+        try:
+            append_rows(_runtime_rows)
+        except Exception:  # pragma: no cover
+            pass
 
 
 def pytest_terminal_summary(config: pytest.Config, terminalreporter):  # type: ignore[no-untyped-def]
