@@ -3,6 +3,7 @@ from .standard_encoder import StandardEncoder
 from .enhanced_encoder import EnhancedEncoder
 from .stable_encoder import StableEncoder
 from .hierarchical_encoder import HierarchicalEncoder
+from .graph_encoder import GraphTimeSeriesEncoder, HybridGraphEncoder, AdaptiveGraphEncoder
 from utils.logger import logger
 
 class EncoderRegistry:
@@ -14,6 +15,9 @@ class EncoderRegistry:
         "enhanced": EnhancedEncoder,
         "stable": StableEncoder,
         "hierarchical": HierarchicalEncoder,
+        "graph": GraphTimeSeriesEncoder,
+        "hybrid_graph": HybridGraphEncoder,
+        "adaptive_graph": AdaptiveGraphEncoder,
     }
 
     @classmethod

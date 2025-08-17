@@ -1,4 +1,5 @@
 
+import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional
@@ -12,11 +13,11 @@ class BaseDecoder(nn.Module, ABC):
 
     @abstractmethod
     def forward(self, 
-                x: nn.Module, 
-                cross: nn.Module, 
-                x_mask: Optional[nn.Module] = None, 
-                cross_mask: Optional[nn.Module] = None, 
-                trend: Optional[nn.Module] = None) -> Tuple[nn.Module, nn.Module]:
+                x: torch.Tensor, 
+                cross: torch.Tensor, 
+                x_mask: Optional[torch.Tensor] = None, 
+                cross_mask: Optional[torch.Tensor] = None, 
+                trend: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         The forward pass for the decoder.
 

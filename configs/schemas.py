@@ -114,14 +114,9 @@ class ComponentType(str, Enum):
 class AttentionConfig(BaseModel):
     """Configuration for attention mechanisms"""
     type: ComponentType
-    d_model: int
-    n_heads: int
     dropout: float = 0.1
     factor: int = 1
     output_attention: bool = False
-    
-    # Hierarchical-specific
-    n_levels: Optional[int] = None
     
     # Sparse attention specific
     local_window: Optional[int] = None
@@ -141,12 +136,16 @@ class DecompositionConfig(BaseModel):
     levels: Optional[int] = 3
 
 
+class HierarchicalConfig(BaseModel):
+    """Configuration for hierarchical components"""
+    n_levels: int = 3
+    level_configs: Optional[List[Dict[str, Any]]] = None
+
+
 class EncoderConfig(BaseModel):
     """Configuration for encoder components"""
     type: ComponentType
-    e_layers: int
-    d_model: int
-    n_heads: int
+    num_encoder_layers: int
     d_ff: int
     dropout: float = 0.1
     activation: str = "gelu"
@@ -156,16 +155,13 @@ class EncoderConfig(BaseModel):
     decomp_comp: Optional[DecompositionConfig] = None
     
     # Hierarchical-specific
-    n_levels: Optional[int] = None
-    level_configs: Optional[List[Dict[str, Any]]] = None
+    hierarchical: Optional[HierarchicalConfig] = None
 
 
 class DecoderConfig(BaseModel):
     """Configuration for decoder components"""
     type: ComponentType
-    d_layers: int
-    d_model: int
-    n_heads: int
+    num_decoder_layers: int
     d_ff: int
     dropout: float = 0.1
     activation: str = "gelu"
@@ -249,6 +245,7 @@ class ModularAutoformerConfig(BaseModel):
     c_out: int
     c_out_evaluation: int
     d_model: int = 512
+    n_heads: int = 8
     
     # Component configurations
     attention: AttentionConfig
@@ -279,12 +276,14 @@ class ModularAutoformerConfig(BaseModel):
                 raise ValueError(f"c_out ({values['c_out']}) should equal c_out_evaluation ({v}) * num_quantiles ({len(values['quantile_levels'])})")
         return v
     
-    @validator('encoder', 'decoder')
-    def validate_component_configs(cls, v, values):
-        """Ensure component configurations are consistent with parent config"""
-        if hasattr(v, 'd_model') and 'd_model' in values:
-            if v.d_model != values['d_model']:
-                raise ValueError(f"Component d_model ({v.d_model}) must match parent d_model ({values['d_model']})")
+    @validator('attention', 'encoder', 'decoder', pre=True, always=True)
+    def inject_shared_configs(cls, v, values, field):
+        """Inject shared d_model and n_heads into component configs"""
+        if isinstance(v, dict):
+            if 'd_model' not in v:
+                v['d_model'] = values.get('d_model')
+            if 'n_heads' not in v and field.name in ['attention', 'encoder', 'decoder']:
+                v['n_heads'] = values.get('n_heads')
         return v
     
     def to_namespace(self):
@@ -302,6 +301,7 @@ class ModularAutoformerConfig(BaseModel):
             'c_out': self.c_out,
             'c_out_evaluation': self.c_out_evaluation,
             'd_model': self.d_model,
+            'n_heads': self.n_heads,
             'embed': self.embed,
             'freq': self.freq,
             'dropout': self.dropout,
@@ -348,6 +348,7 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
     pred_len = kwargs.get('pred_len', 24)
     label_len = kwargs.get('label_len', 48)
     d_model = kwargs.get('d_model', 512)
+    n_heads = kwargs.get('n_heads', 8)
     
     config = ModularAutoformerConfig(
         # Basic parameters
@@ -359,12 +360,11 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
         c_out=num_targets,
         c_out_evaluation=num_targets,
         d_model=d_model,
+        n_heads=n_heads,
         
         # Component configurations
         attention=AttentionConfig(
             type=ComponentType.ADAPTIVE_AUTOCORRELATION,
-            d_model=d_model,
-            n_heads=8,
             dropout=0.1,
             factor=1,
             output_attention=False
@@ -378,9 +378,7 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
         
         encoder=EncoderConfig(
             type=ComponentType.ENHANCED_ENCODER,
-            e_layers=2,
-            d_model=d_model,
-            n_heads=8,
+            num_encoder_layers=2,
             d_ff=2048,
             dropout=0.1,
             activation="gelu"
@@ -388,9 +386,7 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
         
         decoder=DecoderConfig(
             type=ComponentType.ENHANCED_DECODER,
-            d_layers=1,
-            d_model=d_model,
-            n_heads=8,
+            num_decoder_layers=1,
             d_ff=2048,
             dropout=0.1,
             activation="gelu",
@@ -464,11 +460,10 @@ def create_hierarchical_config(num_targets: int, num_covariates: int, **kwargs) 
     
     # Modify for hierarchical
     config.attention.type = ComponentType.CROSS_RESOLUTION
-    config.attention.n_levels = n_levels
     config.decomposition.type = ComponentType.WAVELET_DECOMP
     config.decomposition.levels = n_levels
     config.encoder.type = ComponentType.HIERARCHICAL_ENCODER
-    config.encoder.n_levels = n_levels
+    config.encoder.hierarchical = HierarchicalConfig(n_levels=n_levels)
     # Keep decoder enhanced unless a hierarchical decoder is later introduced
     config.decoder.type = ComponentType.ENHANCED_DECODER  # maintain consistency with encoder variant naming
     
