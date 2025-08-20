@@ -3,6 +3,7 @@ from .series_decomposition import SeriesDecomposition
 from .stable_decomposition import StableSeriesDecomposition
 from .learnable_decomposition import LearnableSeriesDecomposition
 from .wavelet_decomposition import WaveletHierarchicalDecomposition
+from layers.LearnableWaveletDecomposition import LearnableWaveletDecomposition
 from utils.logger import logger
 
 class DecompositionRegistry:
@@ -14,6 +15,7 @@ class DecompositionRegistry:
         "stable_decomp": StableSeriesDecomposition,
         "learnable_decomp": LearnableSeriesDecomposition,
         "wavelet_decomp": WaveletHierarchicalDecomposition,
+        "learnable_wavelet_decomp": LearnableWaveletDecomposition,
     }
 
     @classmethod

@@ -10,6 +10,7 @@ from .enhanced_autocorrelation import EnhancedAutoCorrelation, AdaptiveAutoCorre
 from .bayesian_attention import BayesianAttention, BayesianMultiHeadAttention, VariationalAttention, BayesianCrossAttention
 from .adaptive_components import MetaLearningAdapter, AdaptiveMixture
 from .temporal_conv_attention import CausalConvolution, TemporalConvNet, ConvolutionalAttention
+from .graph_attention import GraphAttentionLayer, MultiGraphAttention
 
 from utils.logger import logger
 
@@ -53,6 +54,10 @@ class AttentionRegistry:
         "causal_convolution": CausalConvolution,
         "temporal_conv_net": TemporalConvNet,
         "convolutional_attention": ConvolutionalAttention,
+        
+        # Graph Attention Components
+        "graph_attention_layer": GraphAttentionLayer,
+        "multi_graph_attention": MultiGraphAttention,
     }
 
     @classmethod
@@ -314,6 +319,22 @@ def get_attention_component(name, **kwargs):
             n_heads=kwargs.get('n_heads'),
             conv_kernel_size=kwargs.get('conv_kernel_size', 3),
             pool_size=kwargs.get('pool_size', 2),
+            dropout=kwargs.get('dropout', 0.1)
+        )
+    
+    # Graph Attention Components
+    elif name == "graph_attention_layer":
+        return component_class(
+            d_model=kwargs.get('d_model'),
+            n_heads=kwargs.get('n_heads'),
+            dropout=kwargs.get('dropout', 0.1),
+            alpha=kwargs.get('alpha', 0.2),
+            concat=kwargs.get('concat', True)
+        )
+    elif name == "multi_graph_attention":
+        return component_class(
+            d_model=kwargs.get('d_model'),
+            n_heads=kwargs.get('n_heads'),
             dropout=kwargs.get('dropout', 0.1)
         )
     

@@ -1,7 +1,8 @@
 
 from .base import BaseDecoder
+from .core_decoders import CoreEnhancedDecoder
+from .decoder_output import DecoderOutput
 from ..layers.enhanced_layers import EnhancedDecoderLayer
-
 import torch.nn as nn
 
 class StableDecoder(BaseDecoder):
@@ -13,30 +14,26 @@ class StableDecoder(BaseDecoder):
                  norm_layer=None, projection=None):
         super(StableDecoder, self).__init__()
         
-        self.layers = nn.ModuleList([
-                EnhancedDecoderLayer(
-                    self_attention_comp,
-                    cross_attention_comp,
-                    decomp_comp,
-                    d_model,
-                    c_out,
-                    d_ff,
-                    dropout=dropout,
-                    activation=activation,
-                )
-                for l in range(d_layers)
-            ])
-        self.norm_layer = norm_layer
-        self.projection = projection
+        layers = [
+            EnhancedDecoderLayer(
+                self_attention_comp,
+                cross_attention_comp,
+                decomp_comp,
+                d_model,
+                c_out,
+                d_ff,
+                dropout=dropout,
+                activation=activation,
+            )
+            for l in range(d_layers)
+        ]
+        
+        self.decoder = CoreEnhancedDecoder(
+            layers=layers,
+            d_model=d_model,
+            norm_layer=norm_layer
+        )
 
     def forward(self, x, cross, x_mask=None, cross_mask=None, trend=None):
-        if trend is None:
-            trend = torch.zeros_like(x)
-        for layer in self.layers:
-            x, residual_trend = layer(x, cross, x_mask, cross_mask)
-            trend = trend + residual_trend
-        if self.norm_layer is not None:
-            x = self.norm_layer(x)
-        if self.projection is not None:
-            x = self.projection(x)
-        return x + trend
+        output = self.decoder(x, cross, x_mask, cross_mask, trend)
+        return output.seasonal, output.trend

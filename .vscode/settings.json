@@ -3,5 +3,8 @@
      "files.associations": {
         ".gemini": "gemini"
     },
+    "chat.mcp.autostart": "newAndOutdated",
+    "chat.mcp.assisted.nuget.enabled": true,
+    "github.copilot.chat.newWorkspace.useContext7": true
     "chat.mcp.discovery.enabled": true
 }

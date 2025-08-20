@@ -22,8 +22,13 @@
 		{
 			"label": "pytest components new suites in venv",
 			"type": "shell",
-			"command": ".\\tsl-env\\Scripts\\python.exe -X utf8 -m pytest -q TestsModule/components/output_heads TestsModule/components/losses -q",
-			"args": [],
+			"command": "${workspaceFolder}/tsl-env/bin/python",
+			"args": [
+				"-X", "utf8", "-m", "pytest", "-q",
+				"TestsModule/components/output_heads",
+				"TestsModule/components/losses",
+				"-q"
+			],
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
@@ -31,8 +36,13 @@
 		{
 			"label": "pytest components new suites in venv (retry)",
 			"type": "shell",
-			"command": ".\\tsl-env\\Scripts\\python.exe -X utf8 -m pytest -q TestsModule/components/output_heads TestsModule/components/losses -q",
-			"args": [],
+			"command": "${workspaceFolder}/tsl-env/bin/python",
+			"args": [
+				"-X", "utf8", "-m", "pytest", "-q",
+				"TestsModule/components/output_heads",
+				"TestsModule/components/losses",
+				"-q"
+			],
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
@@ -40,8 +50,8 @@
 		{
 			"label": "pytest all components in venv",
 			"type": "shell",
-			"command": ".\\tsl-env\\Scripts\\python.exe -X utf8 -m pytest -q TestsModule/components -q",
-			"args": [],
+			"command": "${workspaceFolder}/tsl-env/bin/python",
+			"args": ["-X", "utf8", "-m", "pytest", "-q", "TestsModule/components", "-q"],
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
@@ -49,8 +59,8 @@
 		{
 			"label": "pytest all components in venv (confirm)",
 			"type": "shell",
-			"command": ".\\tsl-env\\Scripts\\python.exe -X utf8 -m pytest -q TestsModule/components -q",
-			"args": [],
+			"command": "${workspaceFolder}/tsl-env/bin/python",
+			"args": ["-X", "utf8", "-m", "pytest", "-q", "TestsModule/components", "-q"],
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"

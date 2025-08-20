@@ -1,32 +1,24 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .base import BaseEncoderLayer, BaseDecoderLayer
+from .abstract_layers import BaseEncoderLayer, BaseDecoderLayer
+from .common import FeedForward
 
 class EnhancedEncoderLayer(BaseEncoderLayer):
     """
     Enhanced Autoformer encoder layer with improved decomposition and attention.
     """
-    def __init__(self, attention_component, decomposition_component, d_model, d_ff=None, dropout=0.1, activation="relu"):
+    def __init__(self, attention_component, decomposition_component, d_model, n_heads, d_ff, dropout=0.1, activation="relu"):
         super(EnhancedEncoderLayer, self).__init__()
-        d_ff = d_ff or 4 * d_model
         self.attention = attention_component
-        
-        self.conv1 = nn.Conv1d(in_channels=d_model, out_channels=d_ff, kernel_size=1, bias=False)
-        self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1, bias=False)
-        
+        self.decomp1 = decomposition_component
+        self.decomp2 = decomposition_component
+        self.feed_forward = FeedForward(d_model, d_ff, dropout, activation)
+        self.dropout = nn.Dropout(dropout)
         self.gate = nn.Sequential(
             nn.Conv1d(d_model, d_model, kernel_size=1),
             nn.Sigmoid()
         )
-        
-        self.decomp1 = decomposition_component
-        self.decomp2 = decomposition_component
-        
-        self.dropout = nn.Dropout(dropout)
-        self.activation = getattr(F, activation, F.relu)
-        
         self.attention_scale = nn.Parameter(torch.ones(1) * 0.1)
         self.ffn_scale = nn.Parameter(torch.ones(1) * 0.1)
 
@@ -42,8 +34,7 @@ class EnhancedEncoderLayer(BaseEncoderLayer):
         gate_values = self.gate(y)
         y = y * gate_values
         
-        y = self.dropout(self.activation(self.conv1(y)))
-        y = self.dropout(self.conv2(y)).transpose(-1, 1)
+        y = self.feed_forward(y.transpose(-1, 1))
         
         x = residual + self.ffn_scale * y
         

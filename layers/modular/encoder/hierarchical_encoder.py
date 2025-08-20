@@ -1,52 +1,47 @@
 import torch
 import torch.nn as nn
-from .base import BaseEncoder
-from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelationLayer, AdaptiveAutoCorrelation
+from .abstract_encoder import BaseEncoder
+from ..layers.enhanced_layers import EnhancedEncoderLayer
+from ..attention import get_attention_component
+from ..decomposition import get_decomposition_component
 from utils.logger import logger
 
 class HierarchicalEncoder(BaseEncoder):
     """
     The hierarchical Autoformer encoder, now properly modularized.
     """
-    def __init__(self, e_layers, d_model, n_heads, d_ff, dropout, activation, 
-                 attention_type, decomp_type, decomp_params, n_levels=3, share_weights=False, **kwargs):
+    def __init__(self, num_encoder_layers, d_model, n_heads, d_ff, dropout, activation, 
+                 attention_comp, decomp_comp, hierarchical_config, norm_layer=None):
         super(HierarchicalEncoder, self).__init__()
         
-        from argparse import Namespace
-        from ..attention import get_attention_component
+        self.levels = hierarchical_config.n_levels
+        self.share_weights = hierarchical_config.level_configs is None
 
-        mock_configs = Namespace(
-            e_layers=e_layers, d_model=d_model, n_heads=n_heads, d_ff=d_ff,
-            dropout=dropout, activation=activation, factor=1
-        )
-
-        # Build per-level encoder stack manually (lightweight) to avoid depending on enhancedcomponents version
-        self.levels = n_levels
-        self.share_weights = share_weights
-        self.decomp_params = decomp_params
-        self.attention_type = attention_type
-        self.attention_kwargs = dict(d_model=d_model, n_heads=n_heads, dropout=dropout)
-        self.activation = activation
-        self.d_model = d_model
-        self.d_ff = d_ff
-
-        attention_comp = get_attention_component(attention_type, **self.attention_kwargs)
-        from ..decomposition import get_decomposition_component
-        decomp_comp = get_decomposition_component(decomp_type, **decomp_params)
-
-        from ..layers.enhanced_layers import EnhancedEncoderLayer
-        layer = EnhancedEncoderLayer(attention_comp, decomp_comp, d_model, d_ff, dropout=dropout, activation=activation)
-        self.layer = layer  # base layer
-        self.encoders = nn.ModuleList([layer] if share_weights else [
-            EnhancedEncoderLayer(
-                get_attention_component(attention_type, **self.attention_kwargs),
-                get_decomposition_component(decomp_type, **decomp_params),
-                d_model,
-                d_ff,
-                dropout=dropout,
-                activation=activation
-            ) for _ in range(n_levels)
-        ])
+        self.encoders = nn.ModuleList()
+        for i in range(self.levels):
+            if self.share_weights:
+                layer = EnhancedEncoderLayer(
+                    attention_comp,
+                    decomp_comp,
+                    d_model,
+                    n_heads,
+                    d_ff,
+                    dropout=dropout,
+                    activation=activation
+                )
+            else:
+                # This part is not fully implemented as the level_configs is not used
+                # For now, it will create independent layers for each level
+                layer = EnhancedEncoderLayer(
+                    get_attention_component(attention_comp.type, d_model=d_model, n_heads=n_heads, dropout=dropout),
+                    get_decomposition_component(decomp_comp.type, kernel_size=decomp_comp.kernel_size),
+                    d_model,
+                    n_heads,
+                    d_ff,
+                    dropout=dropout,
+                    activation=activation
+                )
+            self.encoders.append(layer)
 
     def forward(self, x, attn_mask=None):
         # The original hierarchical encoder expects a list of tensors
