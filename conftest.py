@@ -268,3 +268,9 @@ def pytest_terminal_summary(config: pytest.Config, terminalreporter):  # type: i
         )
     if unmarked:
         terminalreporter.write_line(f"[marker-enforcement] {len(unmarked)} unmarked test(s) (enforcement disabled or auto-classify off)")
+
+# Load invariant summary plugin (Phase 4 Step 4) if present
+try:  # pragma: no cover - defensive import
+    import tests.invariants.plugin_invariant_summary  # noqa: F401
+except Exception:  # pragma: no cover
+    pass

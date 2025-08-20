@@ -417,6 +417,73 @@ class ProbabilisticForecastingHead(BaseOutput):
         }
 
 
+class QuantileForecastingHead(BaseOutput):
+    """Quantile forecasting head producing monotonic quantile predictions.
+
+    Given a list of quantiles q1 < q2 < ... < qk, outputs forecasts with shape
+    [batch, horizon, output_dim, k]. Monotonicity is enforced by cumulative
+    summation over softplus-transformed unconstrained deltas.
+    """
+
+    def __init__(self, config: OutputConfig, quantiles: List[float]):
+        from dataclasses import dataclass
+        @dataclass
+        class MockConfig:
+            pass
+        super().__init__(MockConfig())
+        assert all(0 < q < 1 for q in quantiles), "Quantiles must be in (0,1)"
+        assert all(x < y for x, y in zip(quantiles, quantiles[1:])), "Quantiles must be strictly increasing"
+        self.config = config
+        self.quantiles = quantiles
+        self.d_model = config.d_model
+        self.output_dim = config.output_dim
+        self.horizon = config.horizon
+        self.num_q = len(quantiles)
+        self.dropout = nn.Dropout(config.dropout)
+        self.layer_norm = nn.LayerNorm(config.d_model)
+        # Base location prediction (median proxy)
+        self.base_head = nn.Linear(config.d_model, config.output_dim * config.horizon, bias=config.use_bias)
+        # Positive deltas for remaining quantiles (k-1)
+        if self.num_q > 1:
+            self.delta_head = nn.Linear(config.d_model, (self.num_q - 1) * config.output_dim * config.horizon, bias=config.use_bias)
+        else:  # degenerate single quantile
+            self.delta_head = None
+        self.softplus = nn.Softplus()
+        logger.info(f"QuantileForecastingHead initialized: horizon={self.horizon}, output_dim={self.output_dim}, quantiles={quantiles}")
+
+    def forward(self, hidden_states: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:  # noqa: D401
+        last_hidden = hidden_states[:, -1, :]
+        last_hidden = self.layer_norm(last_hidden)
+        last_hidden = self.dropout(last_hidden)
+        base = self.base_head(last_hidden).view(-1, self.horizon, self.output_dim)  # baseline (approx median)
+        if self.num_q == 1:
+            q_preds = base.unsqueeze(-1)
+        else:
+            deltas_raw = self.delta_head(last_hidden)
+            deltas = self.softplus(deltas_raw).view(-1, self.horizon, self.output_dim, self.num_q - 1)
+            # Cumulative sum to ensure monotonic increments above base
+            increments = torch.cumsum(deltas, dim=-1)
+            q_stack = torch.cat([base.unsqueeze(-1), base.unsqueeze(-1) + increments], dim=-1)
+            q_preds = q_stack
+        return {"quantiles": q_preds, "q_levels": torch.tensor(self.quantiles, device=q_preds.device)}
+
+    def get_output_type(self) -> str:
+        return "quantile_forecasting"
+
+    def get_output_dim(self) -> int:
+        return self.output_dim
+
+    def get_capabilities(self) -> Dict[str, Any]:  # noqa: D401
+        return {
+            'type': 'quantile_forecasting',
+            'horizon': self.horizon,
+            'output_dim': self.output_dim,
+            'quantiles': self.quantiles,
+            'supports_multistep': True,
+            'supports_monotonic_quantiles': True,
+        }
+
+
 class MultiTaskHead(BaseOutput):
     """
     Output head for multi-task learning

@@ -78,6 +78,10 @@ class CovariateAdapter(BaseBackbone):
             self.ts_projector = nn.Linear(1, self.embedding_dim // 2)
             self.covariate_projector = nn.Linear(self.covariate_dim, self.embedding_dim // 2)
             self.fusion_projector = nn.Linear(self.embedding_dim, 1)  # Back to TS dimension
+            # Learned gating to guarantee measurable covariate effect (initialized >0)
+            self.covariate_gate = nn.Parameter(torch.tensor(0.1))
+            # Normalise in embedding space (non-degenerate) prior to projection back to dim 1
+            self.pre_fusion_norm = nn.LayerNorm(self.embedding_dim)
             
         elif self.fusion_method == 'concat':
             # Concatenate covariates with time series features
@@ -90,9 +94,13 @@ class CovariateAdapter(BaseBackbone):
             
         else:
             raise ValueError(f"Unknown fusion method: {self.fusion_method}")
-        
+
         # Optional: Add normalization and dropout
-        self.layer_norm = nn.LayerNorm(1)  # Normalize the final TS dimension
+        # NOTE: A LayerNorm over a single feature dimension collapses all variation to 0.
+        # This previously caused the covariate effect invariant delta to be exactly 0.
+        # We therefore skip final LayerNorm when the output dim is 1 and instead (for 'project')
+        # normalise in the higher-dimensional embedding space before projection.
+        self.layer_norm = nn.Identity()  # keep as Identity to preserve measurable differences
         self.dropout = nn.Dropout(0.1)
     
     def forward(self, 
@@ -150,9 +158,14 @@ class CovariateAdapter(BaseBackbone):
             # Project both to common space and combine
             ts_emb = self.ts_projector(x_ts)  # [B, L, emb_dim//2]
             cov_emb = self.covariate_projector(x_covariates)  # [B, L, emb_dim//2]
+            # Apply positive gate to enforce non-zero contribution
+            cov_emb = cov_emb * torch.relu(self.covariate_gate)  # scalar scaling
             
             # Concatenate embeddings
             combined_emb = torch.cat([ts_emb, cov_emb], dim=-1)  # [B, L, emb_dim]
+            # Pre-fusion normalization (non-degenerate) to stabilise scale
+            if hasattr(self, 'pre_fusion_norm'):
+                combined_emb = self.pre_fusion_norm(combined_emb)
             
             # Project back to time series dimension
             enhanced_ts = self.fusion_projector(combined_emb)  # [B, L, 1]
@@ -289,81 +302,59 @@ class CovariateAdapter(BaseBackbone):
 
 
 class MultiScaleAdapter(BaseBackbone):
+    """Apply the wrapped backbone at multiple temporal scales and aggregate outputs.
+
+    Provides access to the individual (upsampled) per-scale representations via
+    ``_last_scale_outputs`` after each forward pass for diagnostic / invariant tests.
     """
-    Adapter that applies multiple scales of processing to the same backbone.
-    
-    Useful for hierarchical decomposition approaches where we want to
-    process different frequency components separately.
-    """
-    
+
     def __init__(self, backbone: BaseBackbone, scale_config: Dict[str, Any]):
         super().__init__(backbone.config)
-        
         self.backbone = backbone
-        self.scales = scale_config.get('scales', [1, 2, 4])
-        self.aggregation_method = scale_config.get('aggregation', 'concat')
-        
-        # Create scale-specific processing
+        self.scales = scale_config.get("scales", [1, 2, 4])
+        self.aggregation_method = scale_config.get("aggregation", "concat")
+
+        d_model = self.backbone.get_d_model()
         self.scale_processors = nn.ModuleList([
-            nn.Linear(self.backbone.get_d_model(), self.backbone.get_d_model())
-            for _ in self.scales
+            nn.Linear(d_model, d_model) for _ in self.scales
         ])
-        
-        # Aggregation layer
-        if self.aggregation_method == 'concat':
-            self.aggregator = nn.Linear(
-                len(self.scales) * self.backbone.get_d_model(),
-                self.backbone.get_d_model()
-            )
-        elif self.aggregation_method == 'add':
+
+        if self.aggregation_method == "concat":
+            self.aggregator = nn.Linear(len(self.scales) * d_model, d_model)
+        elif self.aggregation_method == "add":
             self.aggregator = nn.Identity()
-        
+        else:  # pragma: no cover - defensive
+            raise ValueError(f"Unknown aggregation method: {self.aggregation_method}")
+
         logger.info(f"MultiScaleAdapter initialized with scales: {self.scales}")
-    
-    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
-        """Apply multi-scale processing"""
-        
-        scale_outputs = []
-        
+
+    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:  # noqa: D401
+        scale_outputs = []  # per-scale representations aligned to original length
         for i, scale in enumerate(self.scales):
-            # Apply scale-specific downsampling/processing
             if scale > 1:
-                # Simple downsampling
                 x_scaled = x[:, ::scale, :]
             else:
                 x_scaled = x
-            
-            # Process through backbone
-            scale_output = self.backbone.forward(x_scaled, **kwargs)
-            
-            # Apply scale-specific transformation
-            scale_output = self.scale_processors[i](scale_output)
-            
-            # Upsample back if needed
-            if scale > 1 and scale_output.size(1) != x.size(1):
-                scale_output = torch.nn.functional.interpolate(
-                    scale_output.transpose(1, 2),
-                    size=x.size(1),
-                    mode='linear',
-                    align_corners=False
+            h = self.backbone.forward(x_scaled, **kwargs)
+            h = self.scale_processors[i](h)
+            if scale > 1 and h.size(1) != x.size(1):
+                h = torch.nn.functional.interpolate(
+                    h.transpose(1, 2), size=x.size(1), mode="linear", align_corners=False
                 ).transpose(1, 2)
-            
-            scale_outputs.append(scale_output)
-        
-        # Aggregate multi-scale outputs
-        if self.aggregation_method == 'concat':
+            scale_outputs.append(h)
+        if self.aggregation_method == "concat":
             combined = torch.cat(scale_outputs, dim=-1)
-            output = self.aggregator(combined)
-        elif self.aggregation_method == 'add':
-            output = torch.stack(scale_outputs).sum(dim=0)
-        
-        return output
-    
+            out = self.aggregator(combined)
+        else:  # add
+            out = torch.stack(scale_outputs).sum(dim=0)
+        self._last_scale_outputs = scale_outputs  # type: ignore[attr-defined]
+        return out
+
     def get_d_model(self) -> int:
         return self.backbone.get_d_model()
-    
+
     def supports_seq2seq(self) -> bool:
         return self.backbone.supports_seq2seq()
-    
+
     def get_backbone_type(self) -> str:
         return f"multiscale_{self.backbone.get_backbone_type()}"

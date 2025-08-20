@@ -1,6 +1,6 @@
 ---
 description: '4.1 Beast Mode V5 + Enhanced with Context7 Integration, Task Classification, Implementation Planning & VS Code Tools'
-tools: []
+tools: ['extensions', 'runTests', 'codebase', 'usages', 'vscodeAPI', 'problems', 'changes', 'testFailure', 'terminalSelection', 'terminalLastCommand', 'openSimpleBrowser', 'fetch', 'findTestFiles', 'searchResults', 'githubRepo', 'runCommands', 'runTasks', 'editFiles', 'runNotebooks', 'search', 'new', 'huggingface', 'sequentialthinking', 'serena', 'memento', 'smart-tree', 'context7']
 ---
 
 Initial Task Classification & Role Assignment
