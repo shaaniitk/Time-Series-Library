@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 from typing import Tuple, List
+import math
 from layers.DynamicGraphAttention import DynamicGraphConstructor, DynamicGraphAttention
 
 
@@ -86,8 +87,10 @@ class HierarchicalSpatiotemporalBlock(nn.Module):
         # Intra-dependency learning for each wave
         self.intra_dependency = IntraDependencyLearning(wave_features, d_model)
         
-        # Dynamic topology generator
-        self.dynamic_graph_constructor = DynamicGraphConstructor(window_size, threshold)
+        # Dynamic topology generator with weighted edges and self-loops
+        self.dynamic_graph_constructor = DynamicGraphConstructor(
+            window_size, threshold, use_weighted=True, include_self_loops=True
+        )
         
         # Dynamic graph attention
         self.dynamic_graph_attention = DynamicGraphAttention(d_model, rnn_units)
@@ -153,6 +156,15 @@ class HierarchicalSpatiotemporalBlock(nn.Module):
 class HSDGNNResidualPredictor(nn.Module):
     """
     HSDGNN's residual learning approach adapted for multi-step forecasting
+    
+    WARNING: This is a highly complex model with many parameters (multiple GRUs, 
+    adaptive weights, embeddings). It requires:
+    - Large, diverse datasets (>10k samples recommended)
+    - Strong regularization (dropout, weight decay)
+    - Careful hyperparameter tuning
+    - Sufficient computational resources
+    
+    The model is prone to overfitting on small datasets.
     """
     
     def __init__(self, n_waves: int, wave_features: int, d_model: int, rnn_units: int, 
@@ -179,7 +191,13 @@ class HSDGNNResidualPredictor(nn.Module):
             for _ in range(n_blocks - 1)
         ])
         
+        # Enhanced regularization for complex model
         self.dropouts = nn.ModuleList([nn.Dropout(0.1) for _ in range(n_blocks)])
+        
+        # Add batch normalization for stability
+        self.batch_norms = nn.ModuleList([
+            nn.BatchNorm2d(1) for _ in range(n_blocks)
+        ])
         
     def forward(self, wave_data: torch.Tensor) -> torch.Tensor:
         """
@@ -194,7 +212,11 @@ class HSDGNNResidualPredictor(nn.Module):
         for i in range(self.n_blocks):
             # Process through HSDGNN block
             block_output = self.blocks[i](current_input)  # [B, L, N_waves, rnn_units]
-            block_output = self.dropouts[i](block_output[:, -1:, :, :])  # Take last timestep
+            block_output = block_output[:, -1:, :, :]  # Take last timestep
+            
+            # Apply enhanced regularization
+            block_output = self.batch_norms[i](block_output)
+            block_output = self.dropouts[i](block_output)
             
             # Generate prediction
             pred = self.output_convs[i](block_output)  # [B, pred_len, N_waves, 1]

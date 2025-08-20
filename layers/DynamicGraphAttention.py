@@ -10,12 +10,15 @@ from typing import Tuple
 class DynamicGraphConstructor(nn.Module):
     """
     Constructs time-varying adjacency matrices using rolling correlations.
-    This version is vectorized for improved efficiency.
+    Uses weighted edges instead of binary thresholding for richer information.
     """
-    def __init__(self, window_size: int = 20, threshold: float = 0.3):
+    def __init__(self, window_size: int = 20, threshold: float = 0.3, 
+                 use_weighted: bool = True, include_self_loops: bool = True):
         super().__init__()
         self.window_size = window_size
         self.threshold = threshold
+        self.use_weighted = use_weighted
+        self.include_self_loops = include_self_loops
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -41,14 +44,22 @@ class DynamicGraphConstructor(nn.Module):
         cov = torch.einsum('blwd,blwe->blde', centered, centered) / (self.window_size - 1)
         
         # Standard deviations
-        std_dev = torch.sqrt(torch.diagonal(cov, dim1=-2, dim2=-1)).unsqueeze(-1)
+        std_dev = torch.sqrt(torch.diagonal(cov, dim1=-2, dim2=-1)).unsqueeze(-1)  # [B, L, D, 1]
         
         # Correlation
-        corr = cov / (torch.einsum('bld,ble->blde', std_dev, std_dev.transpose(-1, -2)) + 1e-8)
+        corr = cov / (std_dev * std_dev.transpose(-2, -1) + 1e-8)
         
-        # Create adjacency matrix
-        adj_matrix = (torch.abs(corr) > self.threshold).float()
-        adj_matrix.diagonal(dim1=-2, dim2=-1).zero_() # Remove self-loops
+        # Create adjacency matrix with weighted edges (preserves correlation strength)
+        if self.use_weighted:
+            # Use ReLU to keep positive correlations, preserving strength information
+            adj_matrix = F.relu(torch.abs(corr) - self.threshold)
+        else:
+            # Binary thresholding (legacy mode)
+            adj_matrix = (torch.abs(corr) > self.threshold).float()
+        
+        # Handle self-loops based on configuration
+        if not self.include_self_loops:
+            adj_matrix.diagonal(dim1=-2, dim2=-1).zero_()
         
         return adj_matrix
 

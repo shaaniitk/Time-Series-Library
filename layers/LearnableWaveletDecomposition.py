@@ -34,15 +34,8 @@ class LearnableWaveletDecomposition(nn.Module):
             haar_high = haar_high[:wavelet_length]
         
         # Learnable wavelet filters initialized with Haar
-        self.low_pass_filters = nn.ParameterList([
-            nn.Parameter(haar_low.clone() + torch.randn(wavelet_length) * 0.01)
-            for _ in range(levels)
-        ])
-        
-        self.high_pass_filters = nn.ParameterList([
-            nn.Parameter(haar_high.clone() + torch.randn(wavelet_length) * 0.01)
-            for _ in range(levels)
-        ])
+        self.low_pass_filter = nn.Parameter(haar_low.clone() + torch.randn(wavelet_length) * 0.01)
+        self.high_pass_filter = nn.Parameter(haar_high.clone() + torch.randn(wavelet_length) * 0.01)
         
         # Projection layers for each decomposition level
         self.level_projections = nn.ModuleList([
@@ -67,26 +60,22 @@ class LearnableWaveletDecomposition(nn.Module):
         
         for level in range(self.levels):
             # Apply learnable filters with reflection padding for better boundary handling
-            padding = self.wavelet_length // 2
+            padding = (self.wavelet_length - 2) // 2
             
             # Apply reflection padding
             padded_signal = F.pad(current_signal.unsqueeze(1), (padding, padding), mode=self.padding_mode)
             
             low_pass = F.conv1d(
                 padded_signal, 
-                self.low_pass_filters[level].view(1, 1, -1)
+                self.low_pass_filter.view(1, 1, -1),
+                stride=2
             ).squeeze(1)
             
             high_pass = F.conv1d(
                 padded_signal,
-                self.high_pass_filters[level].view(1, 1, -1)
+                self.high_pass_filter.view(1, 1, -1),
+                stride=2
             ).squeeze(1)
-            
-            # Downsample by 2
-            if low_pass.size(1) >= 2:
-                low_pass = low_pass[:, ::2]
-            if high_pass.size(1) >= 2:
-                high_pass = high_pass[:, ::2]
             
             # Store high-frequency component
             decompositions.append(high_pass)
@@ -124,19 +113,13 @@ class LearnableWaveletDecomposition(nn.Module):
     
     def compute_orthogonality_loss(self) -> torch.Tensor:
         """Compute orthogonality regularization loss for filter constraints"""
-        total_loss = 0.0
+        # Orthogonality constraint: low and high filters should be orthogonal
+        orthogonality_loss = torch.abs(torch.dot(self.low_pass_filter, self.high_pass_filter))
         
-        for level in range(self.levels):
-            low_filter = self.low_pass_filters[level]
-            high_filter = self.high_pass_filters[level]
-            
-            # Orthogonality constraint: low and high filters should be orthogonal
-            orthogonality_loss = torch.abs(torch.dot(low_filter, high_filter))
-            
-            # Normalization constraint: filters should have unit norm
-            low_norm_loss = torch.abs(torch.norm(low_filter) - 1.0)
-            high_norm_loss = torch.abs(torch.norm(high_filter) - 1.0)
-            
-            total_loss += orthogonality_loss + low_norm_loss + high_norm_loss
+        # Normalization constraint: filters should have unit norm
+        low_norm_loss = torch.abs(torch.norm(self.low_pass_filter) - 1.0)
+        high_norm_loss = torch.abs(torch.norm(self.high_pass_filter) - 1.0)
+        
+        total_loss = orthogonality_loss + low_norm_loss + high_norm_loss
         
         return total_loss * self.orthogonality_weight
