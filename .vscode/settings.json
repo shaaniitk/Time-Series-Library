@@ -2,5 +2,8 @@
     "chat.agent.maxRequests": 100, // Example value
      "files.associations": {
         ".gemini": "gemini"
-    }
+    },
+    "chat.mcp.autostart": "newAndOutdated",
+    "chat.mcp.assisted.nuget.enabled": true,
+    "github.copilot.chat.newWorkspace.useContext7": true
 }
