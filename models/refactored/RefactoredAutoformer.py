@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models.modular_autoformer import ModularAutoformer, ModularAutoformerConfig
-from models.Autoformer import LearnableSeriesDecomp
+from layers.modular.decomposition.learnable_decomposition import LearnableSeriesDecomposition as LearnableSeriesDecomp
 from layers.modular.encoder import EnhancedEncoder
 from layers.modular.decoder import EnhancedDecoder
 from layers.modular.attention import EnhancedAutoCorrelation

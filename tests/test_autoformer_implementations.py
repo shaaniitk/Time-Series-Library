@@ -1,6 +1,6 @@
 import torch
 import pytest
-from models.Autoformer import Model as Autoformer
+from models.modular_autoformer import ModularAutoformer as Autoformer
 from models.EnhancedAutoformer import EnhancedAutoformer, LearnableSeriesDecomp
 from layers.Attention import get_attention_layer
 from utils.tools import dotdict

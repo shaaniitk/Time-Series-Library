@@ -22,7 +22,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import existing models for migration testing
 try:
-    from models.Autoformer import Model as BaseAutoformer
+    from models.modular_autoformer import ModularAutoformer as BaseAutoformer
     from models.Autoformer_Fixed import Model as AutoformerFixed
     from models.EnhancedAutoformer import EnhancedAutoformer
     from models.EnhancedAutoformer_Fixed import EnhancedAutoformer as EnhancedAutoformerFixed

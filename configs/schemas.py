@@ -178,6 +178,14 @@ class BaseModelConfig(BaseModel):
 class AttentionConfig(BaseModel):
     """Configuration for attention mechanisms"""
     type: ComponentType
+
+    # Core dimensions (optional for compatibility)
+    d_model: Optional[int] = None
+    n_heads: Optional[int] = None
+    num_heads: Optional[int] = None
+    head_dim: Optional[int] = None
+
+    # Common hyperparameters
     dropout: float = 0.1
     factor: int = 1
     output_attention: bool = False
@@ -185,6 +193,25 @@ class AttentionConfig(BaseModel):
     # Sparse attention specific
     local_window: Optional[int] = None
     global_window: Optional[int] = None
+
+    # Allow unknown / forward‑compatible parameters
+    model_config = {"extra": "allow"}
+
+    @model_validator(mode="after")
+    def _normalize_heads(self):  # type: ignore[override]
+        # Mirror between n_heads and num_heads for compatibility
+        if self.n_heads is None and self.num_heads is not None:
+            self.n_heads = self.num_heads
+        elif self.num_heads is None and self.n_heads is not None:
+            self.num_heads = self.n_heads
+        # If both provided ensure they match
+        if self.n_heads is not None and self.num_heads is not None and self.n_heads != self.num_heads:
+            raise ValueError("n_heads and num_heads must be equal if both are provided")
+        # Best-effort head_dim inference when possible
+        if self.d_model is not None and self.n_heads is not None and self.head_dim is None:
+            if self.d_model % self.n_heads == 0:
+                self.head_dim = self.d_model // self.n_heads
+        return self
 
 
 class DecompositionConfig(BaseModel):
@@ -209,10 +236,25 @@ class HierarchicalConfig(BaseModel):
 class EncoderConfig(BaseModel):
     """Configuration for encoder components"""
     type: ComponentType
-    num_encoder_layers: int
+    # Support both num_encoder_layers and e_layers for broad compatibility
+    num_encoder_layers: Optional[int] = None
+    e_layers: Optional[int] = None
+
+    # Frequently used model dimensions with attention-based encoders
+    d_model: Optional[int] = None
+    n_heads: Optional[int] = None
+
     d_ff: int
     dropout: float = 0.1
     activation: str = "gelu"
+    
+    @model_validator(mode='after')
+    def sync_layers(self):
+        if self.e_layers is None and self.num_encoder_layers is not None:
+            self.e_layers = self.num_encoder_layers
+        elif self.num_encoder_layers is None and self.e_layers is not None:
+            self.num_encoder_layers = self.e_layers
+        return self
     
     # Component configurations
     attention_comp: Optional[AttentionConfig] = None
@@ -221,19 +263,58 @@ class EncoderConfig(BaseModel):
     # Hierarchical-specific
     hierarchical: Optional[HierarchicalConfig] = None
 
+    # Allow unknown / forward‑compatible parameters
+    model_config = {"extra": "allow"}
+
+    @model_validator(mode='after')
+    def _normalize_layers(self):  # type: ignore[override]
+        # If e_layers provided, it is the source of truth
+        if self.e_layers is not None:
+            if self.num_encoder_layers is not None and self.num_encoder_layers != self.e_layers:
+                raise ValueError("num_encoder_layers and e_layers conflict")
+            self.num_encoder_layers = self.e_layers
+        return self
+
 
 class DecoderConfig(BaseModel):
     """Configuration for decoder components"""
     type: ComponentType
-    num_decoder_layers: int
+    # Support both num_decoder_layers and d_layers for broad compatibility
+    num_decoder_layers: Optional[int] = None
+    d_layers: Optional[int] = None
+
+    # Frequently used model dimensions with attention-based decoders
+    d_model: Optional[int] = None
+    n_heads: Optional[int] = None
+
     d_ff: int
     dropout: float = 0.1
     activation: str = "gelu"
     c_out: int
     
+    @model_validator(mode='after')
+    def sync_layers(self):
+        if self.d_layers is None and self.num_decoder_layers is not None:
+            self.d_layers = self.num_decoder_layers
+        elif self.num_decoder_layers is None and self.d_layers is not None:
+            self.num_decoder_layers = self.d_layers
+        return self
+    
     # Component configurations
     attention_comp: Optional[AttentionConfig] = None
     decomp_comp: Optional[DecompositionConfig] = None
+
+    # Allow unknown / forward‑compatible parameters
+    model_config = {"extra": "allow"}
+
+    @model_validator(mode='after')
+    def _normalize_layers(self):  # type: ignore[override]
+        # If d_layers provided, it is the source of truth
+        if self.d_layers is not None:
+            if self.num_decoder_layers is not None and self.num_decoder_layers != self.d_layers:
+                raise ValueError("num_decoder_layers and d_layers conflict")
+            self.num_decoder_layers = self.d_layers
+        return self
 
 
 class SamplingConfig(BaseModel):
@@ -344,6 +425,7 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
     pred_len = kwargs.get('pred_len', 24)
     label_len = kwargs.get('label_len', 48)
     d_model = kwargs.get('d_model', 512)
+    heads = kwargs.get('n_heads', kwargs.get('num_heads', None))
     
     config = ModularAutoformerConfig(
         # Basic parameters
@@ -359,38 +441,41 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
         # Component configurations
         attention=AttentionConfig(
             type=ComponentType.ADAPTIVE_AUTOCORRELATION,
-            d_model=d_model,
-            n_heads=8,
             dropout=0.1,
             factor=1,
-            output_attention=False
+            output_attention=False,
+            d_model=d_model,
+            n_heads=heads,
+            num_heads=heads,
+            seq_len=seq_len,
         ),
         
         decomposition=DecompositionConfig(
             type=ComponentType.LEARNABLE_DECOMP,
-            kernel_size=25,
-            input_dim=d_model
+            kernel_size=25
         ),
         
         encoder=EncoderConfig(
             type=ComponentType.ENHANCED_ENCODER,
+            num_encoder_layers=2,
             e_layers=2,
-            d_model=d_model,
-            n_heads=8,
             d_ff=2048,
             dropout=0.1,
-            activation="gelu"
+            activation="gelu",
+            d_model=d_model,
+            n_heads=heads,
         ),
         
         decoder=DecoderConfig(
             type=ComponentType.ENHANCED_DECODER,
+            num_decoder_layers=1,
             d_layers=1,
-            d_model=d_model,
-            n_heads=8,
             d_ff=2048,
             dropout=0.1,
             activation="gelu",
-            c_out=num_targets
+            c_out=num_targets,
+            d_model=d_model,
+            n_heads=heads,
         ),
         
         sampling=SamplingConfig(
@@ -847,6 +932,72 @@ class ModularAutoformerConfig(BaseModel):
         
         return Namespace(**flat_dict)
 
+    @classmethod
+    def from_legacy(cls, legacy_config):
+        """Create ModularAutoformerConfig from legacy Namespace or dict"""
+        if isinstance(legacy_config, dict):
+            config_dict = legacy_config
+        else:
+            config_dict = vars(legacy_config)
+        
+        # Basic parameters
+        base_params = {
+            'task_name': config_dict.get('task_name', 'long_term_forecast'),
+            'seq_len': config_dict['seq_len'],
+            'pred_len': config_dict['pred_len'],
+            'label_len': config_dict['label_len'],
+            'enc_in': config_dict['enc_in'],
+            'dec_in': config_dict['dec_in'],
+            'c_out': config_dict['c_out'],
+            'c_out_evaluation': config_dict.get('c_out_evaluation', config_dict['c_out']),
+            'd_model': config_dict.get('d_model', 512),
+            'embed': config_dict.get('embed', 'timeF'),
+            'freq': config_dict.get('freq', 'h'),
+            'dropout': config_dict.get('dropout', 0.1),
+            'quantile_levels': config_dict.get('quantile_levels')
+        }
+        
+        # Component types
+        attention_type = ComponentType(config_dict.get('attention_type', ComponentType.ADAPTIVE_AUTOCORRELATION.value))
+        decomposition_type = ComponentType(config_dict.get('decomposition_type', ComponentType.LEARNABLE_DECOMP.value))
+        encoder_type = ComponentType(config_dict.get('encoder_type', ComponentType.ENHANCED_ENCODER.value))
+        decoder_type = ComponentType(config_dict.get('decoder_type', ComponentType.ENHANCED_DECODER.value))
+        sampling_type = ComponentType(config_dict.get('sampling_type', ComponentType.DETERMINISTIC.value))
+        output_head_type = ComponentType(config_dict.get('output_head_type', ComponentType.STANDARD_HEAD.value))
+        loss_type = ComponentType(config_dict.get('loss_function_type', ComponentType.MSE.value))
+        
+        # Component configs
+        attention = AttentionConfig(type=attention_type, **config_dict.get('attention_params', {}))
+        decomposition = DecompositionConfig(type=decomposition_type, **config_dict.get('decomposition_params', {}))
+        encoder = EncoderConfig(type=encoder_type, **config_dict.get('encoder_params', {}))
+        decoder = DecoderConfig(type=decoder_type, **config_dict.get('decoder_params', {}))
+        sampling = SamplingConfig(type=sampling_type, **config_dict.get('sampling_params', {}))
+        output_head = OutputHeadConfig(type=output_head_type, **config_dict.get('output_head_params', {}))
+        loss = LossConfig(type=loss_type, **config_dict.get('loss_params', {}))
+        
+        # Special configs
+        bayesian = BayesianConfig(
+            enabled=bool(config_dict.get('bayesian_layers')),
+            layers_to_convert=config_dict.get('bayesian_layers', [])
+        )
+        backbone = BackboneConfig(
+            use_backbone=config_dict.get('use_backbone_component', False),
+            type=ComponentType(config_dict.get('backbone_type')) if config_dict.get('backbone_type') else None
+        )
+        
+        return cls(
+            **base_params,
+            attention=attention,
+            decomposition=decomposition,
+            encoder=encoder,
+            decoder=decoder,
+            sampling=sampling,
+            output_head=output_head,
+            loss=loss,
+            bayesian=bayesian,
+            backbone=backbone
+        )
+
 
 def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
     """
@@ -860,6 +1011,7 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
     pred_len = kwargs.get('pred_len', 24)
     label_len = kwargs.get('label_len', 48)
     d_model = kwargs.get('d_model', 512)
+    heads = kwargs.get('n_heads', kwargs.get('num_heads', None))
     
     config = ModularAutoformerConfig(
         # Basic parameters
@@ -875,38 +1027,41 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
         # Component configurations
         attention=AttentionConfig(
             type=ComponentType.ADAPTIVE_AUTOCORRELATION,
-            d_model=d_model,
-            n_heads=8,
             dropout=0.1,
             factor=1,
-            output_attention=False
+            output_attention=False,
+            d_model=d_model,
+            n_heads=heads,
+            num_heads=heads,
+            seq_len=seq_len,
         ),
         
         decomposition=DecompositionConfig(
             type=ComponentType.LEARNABLE_DECOMP,
-            kernel_size=25,
-            input_dim=d_model
+            kernel_size=25
         ),
         
         encoder=EncoderConfig(
             type=ComponentType.ENHANCED_ENCODER,
+            num_encoder_layers=2,
             e_layers=2,
-            d_model=d_model,
-            n_heads=8,
             d_ff=2048,
             dropout=0.1,
-            activation="gelu"
+            activation="gelu",
+            d_model=d_model,
+            n_heads=heads,
         ),
         
         decoder=DecoderConfig(
             type=ComponentType.ENHANCED_DECODER,
+            num_decoder_layers=1,
             d_layers=1,
-            d_model=d_model,
-            n_heads=8,
             d_ff=2048,
             dropout=0.1,
             activation="gelu",
-            c_out=num_targets
+            c_out=num_targets,
+            d_model=d_model,
+            n_heads=heads,
         ),
         
         sampling=SamplingConfig(
@@ -1371,6 +1526,7 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
     pred_len = kwargs.get('pred_len', 24)
     label_len = kwargs.get('label_len', 48)
     d_model = kwargs.get('d_model', 512)
+    heads = kwargs.get('n_heads', kwargs.get('num_heads', None))
     
     config = ModularAutoformerConfig(
         # Basic parameters
@@ -1386,38 +1542,41 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
         # Component configurations
         attention=AttentionConfig(
             type=ComponentType.ADAPTIVE_AUTOCORRELATION,
-            d_model=d_model,
-            n_heads=8,
             dropout=0.1,
             factor=1,
-            output_attention=False
+            output_attention=False,
+            d_model=d_model,
+            n_heads=heads,
+            num_heads=heads,
+            seq_len=seq_len,
         ),
         
         decomposition=DecompositionConfig(
             type=ComponentType.LEARNABLE_DECOMP,
-            kernel_size=25,
-            input_dim=d_model
+            kernel_size=25
         ),
         
         encoder=EncoderConfig(
             type=ComponentType.ENHANCED_ENCODER,
+            num_encoder_layers=2,
             e_layers=2,
-            d_model=d_model,
-            n_heads=8,
             d_ff=2048,
             dropout=0.1,
-            activation="gelu"
+            activation="gelu",
+            d_model=d_model,
+            n_heads=heads,
         ),
         
         decoder=DecoderConfig(
             type=ComponentType.ENHANCED_DECODER,
+            num_decoder_layers=1,
             d_layers=1,
-            d_model=d_model,
-            n_heads=8,
             d_ff=2048,
             dropout=0.1,
             activation="gelu",
-            c_out=num_targets
+            c_out=num_targets,
+            d_model=d_model,
+            n_heads=heads,
         ),
         
         sampling=SamplingConfig(
@@ -1690,6 +1849,7 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
     pred_len = kwargs.get('pred_len', 24)
     label_len = kwargs.get('label_len', 48)
     d_model = kwargs.get('d_model', 512)
+    heads = kwargs.get('n_heads', kwargs.get('num_heads', None))
     
     config = ModularAutoformerConfig(
         # Basic parameters
@@ -1705,38 +1865,39 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
         # Component configurations
         attention=AttentionConfig(
             type=ComponentType.ADAPTIVE_AUTOCORRELATION,
-            d_model=d_model,
-            n_heads=8,
             dropout=0.1,
             factor=1,
-            output_attention=False
+            output_attention=False,
+            d_model=d_model,
+            n_heads=heads,
+            num_heads=heads,
+            seq_len=seq_len,
         ),
         
         decomposition=DecompositionConfig(
             type=ComponentType.LEARNABLE_DECOMP,
-            kernel_size=25,
-            input_dim=d_model
+            kernel_size=25
         ),
         
         encoder=EncoderConfig(
             type=ComponentType.ENHANCED_ENCODER,
-            e_layers=2,
-            d_model=d_model,
-            n_heads=8,
+            num_encoder_layers=2,
             d_ff=2048,
             dropout=0.1,
-            activation="gelu"
+            activation="gelu",
+            d_model=d_model,
+            n_heads=heads,
         ),
         
         decoder=DecoderConfig(
             type=ComponentType.ENHANCED_DECODER,
-            d_layers=1,
-            d_model=d_model,
-            n_heads=8,
+            num_decoder_layers=1,
             d_ff=2048,
             dropout=0.1,
             activation="gelu",
-            c_out=num_targets
+            c_out=num_targets,
+            d_model=d_model,
+            n_heads=heads,
         ),
         
         sampling=SamplingConfig(

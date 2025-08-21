@@ -31,7 +31,7 @@ except ImportError as e:
 
 # Import existing models for comparison testing
 try:
-    from models.Autoformer import Model as BaseAutoformer
+    from models.modular_autoformer import ModularAutoformer as BaseAutoformer
     from models.EnhancedAutoformer import EnhancedAutoformer
     from models.BayesianEnhancedAutoformer import BayesianEnhancedAutoformer
     from models.HierarchicalEnhancedAutoformer import HierarchicalEnhancedAutoformer

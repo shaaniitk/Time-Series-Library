@@ -8,7 +8,7 @@ from utils.logger import logger
 from models.EnhancedAutoformer import EnhancedAutoformer
 from models.BayesianEnhancedAutoformer import BayesianEnhancedAutoformer  
 from models.HierarchicalEnhancedAutoformer import HierarchicalEnhancedAutoformer
-from models.Autoformer import Model as Autoformer
+from models.modular_autoformer import ModularAutoformer as Autoformer
 
 
 class TestEnhancedModels(unittest.TestCase, SanityTestMixin):

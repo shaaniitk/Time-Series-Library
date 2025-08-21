@@ -3,20 +3,27 @@
 # This shim re-exports symbols so existing imports continue to work.
 
 from .Autoformer import (
-    EnhancedAutoformer,
+    Model as EnhancedAutoformer,
     LearnableSeriesDecomp,
-    EnhancedEncoderLayer as EnhancedEncoderLayer,
-    EnhancedDecoderLayer as EnhancedDecoderLayer,
-    EnhancedEncoder as EnhancedEncoder,
-    EnhancedDecoder as EnhancedDecoder,
+    EnhancedEncoder,
+    EnhancedDecoder,
     Model as Model,
+)
+
+# Import layer classes from their actual modules
+from layers.modular.layers.enhanced_layers import (
+    EnhancedEncoderLayer,
+    EnhancedDecoderLayer,
 )
 
 # Expose StableSeriesDecomp if available, with fallback to LearnableSeriesDecomp
 try:  # pragma: no cover - optional import
-    from .Autoformer import StableSeriesDecomp as StableSeriesDecomp
+    from layers.modular.decomposition.stable_decomposition import (
+        StableSeriesDecomposition as StableSeriesDecomp,  # type: ignore
+    )
 except Exception:  # pragma: no cover - fallback path
-    from .Autoformer import LearnableSeriesDecomp as StableSeriesDecomp
+    # Fall back to LearnableSeriesDecomp when stable variant isn't available
+    StableSeriesDecomp = LearnableSeriesDecomp  # type: ignore
 
 __all__ = [
     "EnhancedAutoformer",

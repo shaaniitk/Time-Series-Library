@@ -22,7 +22,7 @@ sys.path.insert(0, str(project_root))
 
 # Import models and utilities
 try:
-    from models.Autoformer import Model as Autoformer
+    from models.modular_autoformer import ModularAutoformer as Autoformer
     print("✅ Successfully imported Autoformer")
 except ImportError as e:
     print(f"❌ Could not import Autoformer: {e}")

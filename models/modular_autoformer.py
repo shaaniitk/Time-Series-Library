@@ -43,13 +43,18 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
         self.framework_type = 'custom'
         self.model_type = 'modular_autoformer'
 
-        # Convert legacy Namespace to structured config if needed
+        # Convert legacy Namespace or dict to structured config if needed
         if isinstance(configs, Namespace):
             self.structured_config = self._convert_namespace_to_structured(configs)
             self.legacy_configs = configs
+        elif isinstance(configs, dict):
+            from types import SimpleNamespace
+            legacy_ns = SimpleNamespace(**configs)
+            self.structured_config = self._convert_namespace_to_structured(legacy_ns)
+            self.legacy_configs = legacy_ns
         else:
             self.structured_config = configs
-            self.legacy_configs = configs.to_namespace()
+            self.legacy_configs = configs.to_namespace() if hasattr(configs, 'to_namespace') else None
         
         # Initialize component registry
         register_all_components()
@@ -173,7 +178,10 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
             attention=AttentionConfig(
                 type=attention_type,
                 d_model=d_model,
-                n_heads=getattr(ns_config, 'n_heads', 8),
+                n_heads=getattr(ns_config, 'n_heads', getattr(ns_config, 'num_heads', None)),
+                num_heads=getattr(ns_config, 'num_heads', getattr(ns_config, 'n_heads', None)),
+                # Some attention implementations read seq_len from config; allowed via extra fields
+                seq_len=seq_len,
                 dropout=getattr(ns_config, 'dropout', 0.1),
                 factor=getattr(ns_config, 'factor', 1),
                 output_attention=getattr(ns_config, 'output_attention', False)
@@ -186,23 +194,23 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
             
             encoder=EncoderConfig(
                 type=encoder_type,
-                e_layers=getattr(ns_config, 'e_layers', 2),
-                d_model=d_model,
-                n_heads=getattr(ns_config, 'n_heads', 8),
+                num_encoder_layers=getattr(ns_config, 'e_layers', 2),
                 d_ff=getattr(ns_config, 'd_ff', 2048),
                 dropout=getattr(ns_config, 'dropout', 0.1),
                 activation=getattr(ns_config, 'activation', 'gelu'),
+                d_model=d_model,
+                n_heads=getattr(ns_config, 'n_heads', getattr(ns_config, 'num_heads', None)),
             ),
             
             decoder=DecoderConfig(
                 type=decoder_type,
-                d_layers=getattr(ns_config, 'd_layers', 1),
-                d_model=d_model,
-                n_heads=getattr(ns_config, 'n_heads', 8),
+                num_decoder_layers=getattr(ns_config, 'd_layers', 1),
                 d_ff=getattr(ns_config, 'd_ff', 2048),
                 dropout=getattr(ns_config, 'dropout', 0.1),
                 activation=getattr(ns_config, 'activation', 'gelu'),
-                c_out=c_out
+                c_out=c_out,
+                d_model=d_model,
+                n_heads=getattr(ns_config, 'n_heads', getattr(ns_config, 'num_heads', None))
             ),
             
             sampling=SamplingConfig(

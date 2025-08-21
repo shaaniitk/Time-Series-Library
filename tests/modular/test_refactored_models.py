@@ -1,6 +1,6 @@
 import torch
 import pytest
-from models.Autoformer import Model as Autoformer
+from models.modular_autoformer import ModularAutoformer as Autoformer
 from models.BayesianEnhancedAutoformer import Model as BayesianEnhancedAutoformer
 from models.HierarchicalEnhancedAutoformer import Model as HierarchicalEnhancedAutoformer
 from models.HybridAutoformer import Model as HybridAutoformer
