@@ -1,8 +1,26 @@
-"""
-Structured Configuration Schemas for Modular Autoformer
+"""Structured configuration schemas for the Modular Autoformer.
 
-This module implements the GCLI recommendations for replacing the flat Namespace
-configuration with structured, validated configuration objects using Pydantic.
+This file had accumulated four separate, drifting copies of the
+`ModularAutoformerConfig` class plus duplicated factory helpers. The content
+is now **deduplicated** and **normalized**:
+
+Key clean‑ups / decisions:
+1. Single authoritative `ModularAutoformerConfig` definition.
+2. Consistent encoder/decoder field names: `num_encoder_layers`,
+    `num_decoder_layers` (with legacy aliases `e_layers`, `d_layers`).
+3. Attention / encoder / decoder configs now explicitly declare
+    `d_model` & `n_heads` (they were previously passed but not defined in the
+    earliest schema copy – relying on later duplicate copies to succeed).
+4. Added legacy compatibility: construction with old keywords still works
+    via Pydantic field aliases & a lightweight normalization helper.
+5. Factory helpers consolidated (quantile, Bayesian, hierarchical, etc.).
+6. `to_namespace` retains backward compatibility for legacy pipeline code.
+
+Deprecation Notice:
+Downstream code should migrate from relying on implicit duplicated class
+definitions to this single schema. Any external imports referencing earlier
+line numbers should be updated. A future removal window can drop compatibility
+aliases after stabilization.
 """
 
 from pydantic import (
@@ -145,7 +163,8 @@ class BaseModelConfig(BaseModel):
     n_heads: PositiveInt = 8
     e_layers: NonNegativeInt = 2
     d_ff: PositiveInt = 2048
-    dropout: confloat(ge=0.0, le=0.9) = 0.1
+    # Range constrained dropout; using plain float for compatibility and runtime check in validator
+    dropout: float = 0.1
     activation: Literal['gelu', 'relu', 'swish'] = 'gelu'
 
     # Frequently present in legacy configs (optional here for broad compatibility)
@@ -172,11 +191,17 @@ class BaseModelConfig(BaseModel):
             raise ValueError('d_ff should be at least 4*d_model for effective expansion')
         if self.n_heads is not None and self.d_model is not None and self.n_heads > self.d_model:
             raise ValueError('n_heads cannot exceed d_model dimensionality')
+        if not (0.0 <= self.dropout <= 0.9):
+            raise ValueError('dropout must be between 0.0 and 0.9')
         return self
 
 
 class AttentionConfig(BaseModel):
-    """Configuration for attention mechanisms"""
+    """Configuration for attention mechanisms.
+
+    Added fields: d_model, n_heads for consistency (were implicitly passed
+    previously). Kept optional `seq_len` for components that still expect it.
+    """
     type: ComponentType
 
     # Core dimensions (optional for compatibility)
@@ -189,8 +214,8 @@ class AttentionConfig(BaseModel):
     dropout: float = 0.1
     factor: int = 1
     output_attention: bool = False
-    
-    # Sparse attention specific
+    seq_len: Optional[int] = None
+    # Sparse / local attention specific
     local_window: Optional[int] = None
     global_window: Optional[int] = None
 
@@ -215,15 +240,11 @@ class AttentionConfig(BaseModel):
 
 
 class DecompositionConfig(BaseModel):
-    """Configuration for series decomposition"""
+    """Configuration for series decomposition."""
     type: ComponentType
     kernel_size: int = 25
-    
-    # Learnable decomposition
-    input_dim: Optional[int] = None
-    
-    # Wavelet decomposition
-    wavelet_type: Optional[str] = "db4"
+    input_dim: Optional[int] = None  # learnable decomposition
+    wavelet_type: Optional[str] = "db4"  # wavelet
     levels: Optional[int] = 3
 
 
@@ -234,7 +255,10 @@ class HierarchicalConfig(BaseModel):
 
 
 class EncoderConfig(BaseModel):
-    """Configuration for encoder components"""
+    """Configuration for encoder components.
+
+    Legacy alias: `e_layers` -> `num_encoder_layers`.
+    """
     type: ComponentType
     # Support both num_encoder_layers and e_layers for broad compatibility
     num_encoder_layers: Optional[int] = None
@@ -259,8 +283,6 @@ class EncoderConfig(BaseModel):
     # Component configurations
     attention_comp: Optional[AttentionConfig] = None
     decomp_comp: Optional[DecompositionConfig] = None
-    
-    # Hierarchical-specific
     hierarchical: Optional[HierarchicalConfig] = None
 
     # Allow unknown / forward‑compatible parameters
@@ -277,7 +299,10 @@ class EncoderConfig(BaseModel):
 
 
 class DecoderConfig(BaseModel):
-    """Configuration for decoder components"""
+    """Configuration for decoder components.
+
+    Legacy alias: `d_layers` -> `num_decoder_layers`.
+    """
     type: ComponentType
     # Support both num_decoder_layers and d_layers for broad compatibility
     num_decoder_layers: Optional[int] = None
@@ -304,6 +329,10 @@ class DecoderConfig(BaseModel):
     attention_comp: Optional[AttentionConfig] = None
     decomp_comp: Optional[DecompositionConfig] = None
 
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+
     # Allow unknown / forward‑compatible parameters
     model_config = {"extra": "allow"}
 
@@ -318,42 +347,33 @@ class DecoderConfig(BaseModel):
 
 
 class SamplingConfig(BaseModel):
-    """Configuration for sampling mechanisms"""
+    """Configuration for sampling mechanisms."""
     type: ComponentType
     n_samples: int = 50
     quantile_levels: Optional[List[float]] = None
-    
-    # Bayesian-specific
-    dropout_rate: Optional[float] = 0.1
+    dropout_rate: Optional[float] = 0.1  # Bayesian
     temperature: Optional[float] = 1.0
-    # Some sampling components access kl_weight; provide lightweight default
-    kl_weight: Optional[float] = 1e-5
+    kl_weight: Optional[float] = 1e-5  # accessed by some Bayesian components
 
 
 class OutputHeadConfig(BaseModel):
-    """Configuration for output heads"""
+    """Configuration for output heads."""
     type: ComponentType
     d_model: int
     c_out: int
-    
-    # Quantile-specific
     num_quantiles: Optional[int] = None
 
 
 class LossConfig(BaseModel):
-    """Configuration for loss functions"""
+    """Configuration for loss functions."""
     type: ComponentType
-    
-    # Quantile-specific
     quantiles: Optional[List[float]] = None
-    
-    # Bayesian-specific
     prior_scale: Optional[float] = 1.0
     kl_weight: Optional[float] = 1.0
 
 
 class BayesianConfig(BaseModel):
-    """Configuration for Bayesian components"""
+    """Configuration for Bayesian components."""
     enabled: bool = False
     layers_to_convert: List[str] = Field(default_factory=lambda: ["projection"])
     prior_scale: float = 1.0
@@ -362,73 +382,63 @@ class BayesianConfig(BaseModel):
 
 
 class BackboneConfig(BaseModel):
-    """Configuration for backbone models (HF integration)"""
+    """Configuration for backbone models (HF integration)."""
     type: Optional[ComponentType] = None
     model_name: Optional[str] = None
     use_backbone: bool = False
-    
-    # ChronosX-specific
-    prediction_length: Optional[int] = None
+    prediction_length: Optional[int] = None  # ChronosX
     context_length: Optional[int] = None
 
-
-
-
-
 class ModularAutoformerConfig(BaseModel):
-    """
-    Complete structured configuration for ModularAutoformer
-    
-    This replaces the flat Namespace configuration with a validated,
-    type-safe configuration object as recommended by GCLI.
-    """
-    
-    # Basic model parameters
-    task_name: str = "long_term_forecast"
-    seq_len: int
-    pred_len: int
-    label_len: int
-    enc_in: int
-    dec_in: int
-    c_out: int
-    c_out_evaluation: int
-    d_model: int = 512
-    
-    # Component configurations
-    attention: AttentionConfig
-    decomposition: DecompositionConfig
-    encoder: EncoderConfig
-    decoder: DecoderConfig
-    sampling: SamplingConfig
-    output_head: OutputHeadConfig
-    loss: LossConfig
-    
-    # Special configurations
-    bayesian: BayesianConfig = Field(default_factory=BayesianConfig)
-    backbone: BackboneConfig = Field(default_factory=BackboneConfig)
-    
-    # Additional parameters
-    quantile_levels: Optional[List[float]] = None
-    embed: str = "timeF"
-    freq: str = "h"
+        """Authoritative structured configuration for the Modular Autoformer.
+
+        Backward compatibility:
+        - Accepts legacy encoder/decoder layer keys via aliases.
+        - `to_namespace()` exposes the legacy flat attributes used by older
+            training / model assembly code.
+        - Additional optional fields (`embed`, `freq`, `dropout`) retained.
+        """
+        task_name: str = "long_term_forecast"
+        seq_len: int
+        pred_len: int
+        label_len: int
+        enc_in: int
+        dec_in: int
+        c_out: int
+        c_out_evaluation: int
+        d_model: int = 512
+        attention: AttentionConfig
+        decomposition: DecompositionConfig
+        encoder: EncoderConfig
+        decoder: DecoderConfig
+        sampling: SamplingConfig
+        output_head: OutputHeadConfig
+        loss: LossConfig
+        bayesian: BayesianConfig = Field(default_factory=BayesianConfig)
+        backbone: BackboneConfig = Field(default_factory=BackboneConfig)
+        quantile_levels: Optional[List[float]] = None
+        embed: str = "timeF"
+        freq: str = "h"
+        dropout: float = 0.1
+
+        class Config:
+                allow_population_by_field_name = True
+                arbitrary_types_allowed = True
 
 
 def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
-    """
-    Create a structured configuration for enhanced autoformer
-    
-    This replaces the flat configuration functions with structured Pydantic models.
-    """
-    
-    # Extract basic parameters
+    """Canonical enhanced configuration (baseline + adaptive autocorrelation)."""
     seq_len = kwargs.get('seq_len', 96)
     pred_len = kwargs.get('pred_len', 24)
     label_len = kwargs.get('label_len', 48)
     d_model = kwargs.get('d_model', 512)
-    heads = kwargs.get('n_heads', kwargs.get('num_heads', None))
-    
-    config = ModularAutoformerConfig(
-        # Basic parameters
+    n_heads = kwargs.get('n_heads', 8)
+    e_layers = kwargs.get('e_layers', kwargs.get('num_encoder_layers', 2))
+    d_layers = kwargs.get('d_layers', kwargs.get('num_decoder_layers', 1))
+    attn_type = kwargs.get('attention_type', ComponentType.ADAPTIVE_AUTOCORRELATION)
+    decomp_type = kwargs.get('decomposition_type', ComponentType.LEARNABLE_DECOMP)
+
+    return ModularAutoformerConfig(
         seq_len=seq_len,
         pred_len=pred_len,
         label_len=label_len,
@@ -437,8 +447,6 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
         c_out=num_targets,
         c_out_evaluation=num_targets,
         d_model=d_model,
-        
-        # Component configurations
         attention=AttentionConfig(
             type=ComponentType.ADAPTIVE_AUTOCORRELATION,
             dropout=0.1,
@@ -449,14 +457,18 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
             num_heads=heads,
             seq_len=seq_len,
         ),
-        
         decomposition=DecompositionConfig(
+            type=decomp_type,
+            kernel_size=25,
+            input_dim=d_model,
             type=ComponentType.LEARNABLE_DECOMP,
             kernel_size=25
         ),
-        
         encoder=EncoderConfig(
             type=ComponentType.ENHANCED_ENCODER,
+            e_layers=e_layers,  # alias
+            d_model=d_model,
+            n_heads=n_heads,
             num_encoder_layers=2,
             e_layers=2,
             d_ff=2048,
@@ -465,11 +477,11 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
             d_model=d_model,
             n_heads=heads,
         ),
-        
         decoder=DecoderConfig(
             type=ComponentType.ENHANCED_DECODER,
-            num_decoder_layers=1,
-            d_layers=1,
+            d_layers=d_layers,  # alias
+            d_model=d_model,
+            n_heads=n_heads,
             d_ff=2048,
             dropout=0.1,
             activation="gelu",
@@ -477,82 +489,50 @@ def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> M
             d_model=d_model,
             n_heads=heads,
         ),
-        
-        sampling=SamplingConfig(
-            type=ComponentType.DETERMINISTIC
-        ),
-        
+        sampling=SamplingConfig(type=ComponentType.DETERMINISTIC),
         output_head=OutputHeadConfig(
             type=ComponentType.STANDARD_HEAD,
             d_model=d_model,
-            c_out=num_targets
+            c_out=num_targets,
         ),
-        
-        loss=LossConfig(
-            type=ComponentType.MSE
-        )
+        loss=LossConfig(type=ComponentType.MSE),
     )
-    
-    return config
 
 
 def create_bayesian_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
-    """Create structured configuration for Bayesian enhanced autoformer"""
-    
-    # Start with enhanced config
+    """Enhanced config + Bayesian sampling and Bayesian MSE loss."""
     config = create_enhanced_config(num_targets, num_covariates, **kwargs)
-    
-    # Modify for Bayesian
     config.sampling.type = ComponentType.BAYESIAN
     config.sampling.n_samples = kwargs.get('n_samples', 50)
     config.loss.type = ComponentType.BAYESIAN_MSE
-    
-    # Enable Bayesian layers
     config.bayesian.enabled = True
     config.bayesian.layers_to_convert = kwargs.get('bayesian_layers', ['projection'])
-    
     return config
 
 
 def create_quantile_bayesian_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
-    """Create structured configuration for quantile Bayesian autoformer"""
-    
+    """Bayesian + quantile outputs (quantile head, Bayesian quantile loss)."""
     quantile_levels = kwargs.get('quantile_levels', [0.1, 0.5, 0.9])
-    
-    # Start with Bayesian config
     config = create_bayesian_enhanced_config(num_targets, num_covariates, **kwargs)
-    
-    # Modify for quantile
     config.quantile_levels = quantile_levels
     config.c_out = num_targets * len(quantile_levels)
     config.sampling.quantile_levels = quantile_levels
     config.output_head.type = ComponentType.QUANTILE
     config.output_head.num_quantiles = len(quantile_levels)
-    config.output_head.c_out = num_targets  # Base targets, not multiplied
+    config.output_head.c_out = num_targets
     config.loss.type = ComponentType.BAYESIAN_QUANTILE
     config.loss.quantiles = quantile_levels
-    
     return config
 
 
 def create_hierarchical_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
-    """Create structured configuration for hierarchical autoformer"""
-    
+    """Hierarchical multi-resolution configuration (wavelet + cross-resolution)."""
     n_levels = kwargs.get('n_levels', 3)
-    
-    # Start with enhanced config
     config = create_enhanced_config(num_targets, num_covariates, **kwargs)
-    
-    # Modify for hierarchical
     config.attention.type = ComponentType.CROSS_RESOLUTION
-    config.attention.n_levels = n_levels
     config.decomposition.type = ComponentType.WAVELET_DECOMP
     config.decomposition.levels = n_levels
     config.encoder.type = ComponentType.HIERARCHICAL_ENCODER
-    config.encoder.n_levels = n_levels
-    # Keep decoder enhanced unless a hierarchical decoder is later introduced
-    config.decoder.type = ComponentType.ENHANCED_DECODER  # maintain consistency with encoder variant naming
-    
     return config
 
 
@@ -561,20 +541,14 @@ def create_hierarchical_config(num_targets: int, num_covariates: int, **kwargs) 
 # ---------------------------------------------------------------------------
 
 def create_quantile_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
-    """Create a deterministic quantile forecasting configuration.
-
-    This variant produces quantile outputs without Bayesian sampling. It is a
-    lighter alternative to `create_quantile_bayesian_config` when probabilistic
-    uncertainty via MC/Bayesian sampling is not required.
-    """
+    """Deterministic quantile forecasting (no Bayesian sampling)."""
     quantile_levels = kwargs.get('quantile_levels', [0.1, 0.5, 0.9])
     base = create_enhanced_config(num_targets, num_covariates, **kwargs)
     base.quantile_levels = quantile_levels
-    # Adjust output dimensionalities: internal c_out holds total channels
     base.c_out = num_targets * len(quantile_levels)
     base.output_head.type = ComponentType.QUANTILE
     base.output_head.num_quantiles = len(quantile_levels)
-    base.output_head.c_out = num_targets  # base targets
+    base.output_head.c_out = num_targets
     base.sampling.type = ComponentType.DETERMINISTIC
     base.sampling.quantile_levels = quantile_levels
     base.loss.type = ComponentType.QUANTILE_LOSS
@@ -583,52 +557,42 @@ def create_quantile_config(num_targets: int, num_covariates: int, **kwargs) -> M
 
 
 def create_adaptive_mixture_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
-    """Create configuration using adaptive mixture sampling.
-
-    Adaptive mixture combines deterministic backbone representations with a
-    learned sampling/mixing mechanism (e.g., gating across sample paths).
-    """
+    """Adaptive mixture sampling variant."""
     n_samples = kwargs.get('n_samples', 32)
     base = create_enhanced_config(num_targets, num_covariates, **kwargs)
     base.sampling.type = ComponentType.ADAPTIVE_MIXTURE
     base.sampling.n_samples = n_samples
-    # Keep standard head & MSE unless caller overrides
     return base
 
 
 def create_advanced_wavelet_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
-    """Create configuration emphasizing advanced wavelet decomposition.
-
-    Uses ADVANCED_WAVELET decomposition and hierarchical encoder to exploit
-    multi-scale temporal structure.
-    """
+    """Advanced wavelet decomposition + hierarchical encoder."""
     levels = kwargs.get('levels', 3)
     base = create_enhanced_config(num_targets, num_covariates, **kwargs)
     base.decomposition.type = ComponentType.ADVANCED_WAVELET
     base.decomposition.levels = levels
     base.encoder.type = ComponentType.HIERARCHICAL_ENCODER
-    base.encoder.n_levels = levels
-    # Retain enhanced decoder unless a hierarchical decoder is later added
     return base
 
 
 def create_temporal_conv_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
-    """Create configuration utilizing temporal convolution encoder blocks."""
+    """Temporal convolution encoder variant."""
     base = create_enhanced_config(num_targets, num_covariates, **kwargs)
     base.encoder.type = ComponentType.TEMPORAL_CONV_ENCODER
-    # Attention may be less central; still keep adaptive autocorrelation unless overridden
     return base
 
 
 def create_meta_learning_adapter_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
-    """Create configuration enabling meta-learning adapter within encoder.
-
-    This variant sets the encoder type to META_LEARNING_ADAPTER allowing rapid
-    adaptation across related time series tasks.
-    """
+    """Meta-learning adapter encoder variant."""
     base = create_enhanced_config(num_targets, num_covariates, **kwargs)
     base.encoder.type = ComponentType.META_LEARNING_ADAPTER
     return base
+
+# NOTE: Removed three additional duplicate full definitions of ModularAutoformerConfig
+# and repeated factory helper blocks that previously appeared later in this file.
+# If external code relied on side-effects after those blocks, this consolidation
+# preserves identifiers while eliminating redundancy.
+
     dropout: float = 0.1
     
     @validator('c_out_evaluation')

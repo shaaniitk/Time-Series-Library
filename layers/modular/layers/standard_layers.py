@@ -24,21 +24,44 @@ class StandardEncoderLayer(BaseEncoderLayer):
         return res, attn
 
 class StandardDecoderLayer(BaseDecoderLayer):
+    """Standard Autoformer decoder layer.
+
+    Applies self-attention, cross-attention, feed-forward style convolutional
+    mixing (1x1 convs), and multi-stage series decomposition accumulating a
+    residual trend component.
     """
-    The standard Autoformer decoder layer.
-    """
-    def __init__(self, self_attention_comp, cross_attention_comp, decomposition_comp, d_model, c_out, d_ff=None, dropout=0.1, activation="relu"):
-        super(StandardDecoderLayer, self).__init__()
+
+    def __init__(
+        self,
+        self_attention_comp,
+        cross_attention_comp,
+        decomposition_comp,
+        d_model: int,
+        c_out: int,
+        d_ff: int | None = None,
+        dropout: float = 0.1,
+        activation: str = "relu",
+    ) -> None:
+        super().__init__()
         d_ff = d_ff or 4 * d_model
         self.self_attention = self_attention_comp
         self.cross_attention = cross_attention_comp
         self.conv1 = nn.Conv1d(in_channels=d_model, out_channels=d_ff, kernel_size=1, bias=False)
         self.conv2 = nn.Conv1d(in_channels=d_ff, out_channels=d_model, kernel_size=1, bias=False)
-        self.decomp1 = decomposition_component
-        self.decomp2 = decomposition_component
+        # Use provided decomposition component consistently (shared instance acceptable for stateless ops)
+        self.decomp1 = decomposition_comp
+        self.decomp2 = decomposition_comp
         self.decomp3 = decomposition_comp
         self.dropout = nn.Dropout(dropout)
-        self.projection = nn.Conv1d(in_channels=d_model, out_channels=c_out, kernel_size=3, stride=1, padding=1, padding_mode='circular', bias=False)
+        self.projection = nn.Conv1d(
+            in_channels=d_model,
+            out_channels=c_out,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            padding_mode='circular',
+            bias=False,
+        )
         self.activation = F.relu if activation == "relu" else F.gelu
 
     def forward(self, x, cross, x_mask=None, cross_mask=None):

@@ -79,7 +79,18 @@ class EnhancedDecoderLayer(BaseDecoderLayer):
         x, trend1 = self.decomp1(x)
         
         residual = x
-        new_x = self.cross_attention(x, cross, cross, attn_mask=cross_mask)[0]
+        # Some encoder implementations return (tensor, attn_weights) or DecoderOutput.
+        # We only need the tensor memory for cross attention. Unwrap defensively.
+        cross_tensor = cross
+        # Recursively unwrap first element of tuple/list until we get a Tensor-like object
+        # or something that has a .shape attribute typical to torch.Tensor.
+        unwrap_depth = 0
+        while isinstance(cross_tensor, (tuple, list)) and cross_tensor:
+            cross_tensor = cross_tensor[0]
+            unwrap_depth += 1
+            if unwrap_depth > 3:  # prevent pathological nesting
+                break
+        new_x = self.cross_attention(x, cross_tensor, cross_tensor, attn_mask=cross_mask)[0]
         x = residual + self.dropout(self.cross_attn_scale * new_x)
         x, trend2 = self.decomp2(x)
         

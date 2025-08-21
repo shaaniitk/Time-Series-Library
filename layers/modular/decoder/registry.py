@@ -109,3 +109,50 @@ def get_decoder_component(name, **kwargs):
     except Exception as e:
         logger.error(f"Failed to create decoder component '{name}': {str(e)}")
         raise RuntimeError(f"Failed to create decoder component '{name}': {str(e)}") from e
+
+# ---------------- Deprecation Shim: Forward to unified registry -----------------
+try:
+    from layers.modular.core import unified_registry, ComponentFamily  # type: ignore
+    import warnings
+    _dec_dep_warned = False
+
+    def _warn_dec():
+        global _dec_dep_warned
+        if not _dec_dep_warned:
+            warnings.warn(
+                "DecoderRegistry is deprecated – use unified_registry.create(ComponentFamily.DECODER, name, **kwargs)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            _dec_dep_warned = True
+
+    _LEGACY_TO_UNIFIED = {}
+
+    @classmethod  # type: ignore
+    def _shim_register(cls, name, component_class, validate=True):
+        _warn_dec()
+        unified_registry.register(ComponentFamily.DECODER, name, component_class)
+
+    @classmethod  # type: ignore
+    def _shim_get(cls, name):
+        _warn_dec()
+        lookup = _LEGACY_TO_UNIFIED.get(name, name)
+        try:
+            return unified_registry.resolve(ComponentFamily.DECODER, lookup).cls
+        except Exception:
+            return cls._registry.get(name)
+
+    @classmethod  # type: ignore
+    def _shim_list(cls):
+        _warn_dec()
+        names = list(unified_registry.list(ComponentFamily.DECODER)[ComponentFamily.DECODER.value])
+        for n in cls._registry.keys():
+            if n not in names:
+                names.append(n)
+        return sorted(names)
+
+    DecoderRegistry.register = _shim_register  # type: ignore
+    DecoderRegistry.get = _shim_get  # type: ignore
+    DecoderRegistry.list_components = _shim_list  # type: ignore
+except Exception:  # pragma: no cover
+    pass

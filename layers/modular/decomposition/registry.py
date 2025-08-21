@@ -69,3 +69,50 @@ def get_decomposition_component(name, **kwargs):
         logger.debug(f"Component '{name}' using parameters: {list(filtered_kwargs.keys())}")
     
     return component_class(**filtered_kwargs)
+
+# ---------------- Deprecation Shim: Forward to unified registry -----------------
+try:
+    from layers.modular.core import unified_registry, ComponentFamily  # type: ignore
+    import warnings
+    _decomp_dep_warned = False
+
+    def _warn_decomp():
+        global _decomp_dep_warned
+        if not _decomp_dep_warned:
+            warnings.warn(
+                "DecompositionRegistry is deprecated – use unified_registry.create(ComponentFamily.DECOMPOSITION, name, **kwargs)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            _decomp_dep_warned = True
+
+    _LEGACY_TO_UNIFIED = {}
+
+    @classmethod  # type: ignore
+    def _shim_register(cls, name, component_class):
+        _warn_decomp()
+        unified_registry.register(ComponentFamily.DECOMPOSITION, name, component_class)
+
+    @classmethod  # type: ignore
+    def _shim_get(cls, name):
+        _warn_decomp()
+        lookup = _LEGACY_TO_UNIFIED.get(name, name)
+        try:
+            return unified_registry.resolve(ComponentFamily.DECOMPOSITION, lookup).cls
+        except Exception:
+            return cls._registry.get(name)
+
+    @classmethod  # type: ignore
+    def _shim_list(cls):
+        _warn_decomp()
+        names = list(unified_registry.list(ComponentFamily.DECOMPOSITION)[ComponentFamily.DECOMPOSITION.value])
+        for n in cls._registry.keys():
+            if n not in names:
+                names.append(n)
+        return sorted(names)
+
+    DecompositionRegistry.register = _shim_register  # type: ignore
+    DecompositionRegistry.get = _shim_get  # type: ignore
+    DecompositionRegistry.list_components = _shim_list  # type: ignore
+except Exception:  # pragma: no cover
+    pass

@@ -16,6 +16,13 @@ from configs.schemas import (
     DecompositionConfig, EncoderConfig, DecoderConfig, 
     SamplingConfig, OutputHeadConfig, LossConfig, BayesianConfig
 )
+try:
+    # Unified registry / factory (shadow integration)
+    from layers.modular.core.factory import unified_factory
+    from layers.modular.core import register_components  # ensure registrations executed
+    _UNIFIED_AVAILABLE = True
+except Exception:
+    _UNIFIED_AVAILABLE = False
 
 
 @dataclass
@@ -225,50 +232,95 @@ class ModularAssembler:
         the configuration without making decisions.
         """
         
-        # Create base components
-        attention = self.registry.create_component(
-            config.attention.type, 
-            config.attention,
-            d_model=config.d_model,
-            seq_len=config.seq_len
-        )
-        
-        decomposition = self.registry.create_component(
-            config.decomposition.type,
-            config.decomposition,
-            d_model=config.d_model
-        )
-        
-        encoder = self.registry.create_component(
-            config.encoder.type,
-            config.encoder,
-            attention_comp=attention,
-            decomp_comp=decomposition
-        )
-        
-        decoder = self.registry.create_component(
-            config.decoder.type,
-            config.decoder,
-            attention_comp=attention,
-            decomp_comp=decomposition
-        )
-        
-        sampling = self.registry.create_component(
-            config.sampling.type,
-            config.sampling,
-            d_model=config.d_model
-        )
-        
-        output_head = self.registry.create_component(
-            config.output_head.type,
-            config.output_head,
-            d_model=config.d_model
-        )
-        
-        loss_component = self.registry.create_component(
-            config.loss.type,
-            config.loss
-        )
+        if _UNIFIED_AVAILABLE:
+            try:
+                components_created = unified_factory.create_from_config(config)
+                attention = components_created['attention']
+                decomposition = components_created['decomposition']
+                encoder = components_created['encoder']
+                decoder = components_created['decoder']
+                sampling = components_created['sampling']
+                output_head = components_created['output_head']
+                loss_component = components_created['loss']
+                logger.info("Assembled model using unified registry factory")
+            except Exception as e:
+                logger.warning(f"Unified factory failed ({e}); falling back to legacy component registry")
+                attention = self.registry.create_component(
+                    config.attention.type, 
+                    config.attention,
+                    d_model=config.d_model,
+                    seq_len=config.seq_len
+                )
+                decomposition = self.registry.create_component(
+                    config.decomposition.type,
+                    config.decomposition,
+                    d_model=config.d_model
+                )
+                encoder = self.registry.create_component(
+                    config.encoder.type,
+                    config.encoder,
+                    attention_comp=attention,
+                    decomp_comp=decomposition
+                )
+                decoder = self.registry.create_component(
+                    config.decoder.type,
+                    config.decoder,
+                    attention_comp=attention,
+                    decomp_comp=decomposition
+                )
+                sampling = self.registry.create_component(
+                    config.sampling.type,
+                    config.sampling,
+                    d_model=config.d_model
+                )
+                output_head = self.registry.create_component(
+                    config.output_head.type,
+                    config.output_head,
+                    d_model=config.d_model
+                )
+                loss_component = self.registry.create_component(
+                    config.loss.type,
+                    config.loss
+                )
+        else:
+            # Legacy path
+            attention = self.registry.create_component(
+                config.attention.type, 
+                config.attention,
+                d_model=config.d_model,
+                seq_len=config.seq_len
+            )
+            decomposition = self.registry.create_component(
+                config.decomposition.type,
+                config.decomposition,
+                d_model=config.d_model
+            )
+            encoder = self.registry.create_component(
+                config.encoder.type,
+                config.encoder,
+                attention_comp=attention,
+                decomp_comp=decomposition
+            )
+            decoder = self.registry.create_component(
+                config.decoder.type,
+                config.decoder,
+                attention_comp=attention,
+                decomp_comp=decomposition
+            )
+            sampling = self.registry.create_component(
+                config.sampling.type,
+                config.sampling,
+                d_model=config.d_model
+            )
+            output_head = self.registry.create_component(
+                config.output_head.type,
+                config.output_head,
+                d_model=config.d_model
+            )
+            loss_component = self.registry.create_component(
+                config.loss.type,
+                config.loss
+            )
         
         # Apply Bayesian modifiers if needed
         components_to_modify = [encoder, decoder, output_head]

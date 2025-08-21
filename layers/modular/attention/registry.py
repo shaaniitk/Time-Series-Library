@@ -5,9 +5,16 @@ from .cross_resolution_attention import CrossResolutionAttention
 
 # Import new Phase 2 components
 from .fourier_attention import FourierAttention, FourierBlock, FourierCrossAttention
-from .wavelet_attention import WaveletAttention, WaveletDecomposition, AdaptiveWaveletAttention, MultiScaleWaveletAttention
+from .wavelet.wavelet_attention import WaveletAttention  # type: ignore
+from .wavelet.wavelet_decomposition import WaveletDecomposition  # type: ignore
+from .wavelet.adaptive_wavelet_attention import AdaptiveWaveletAttention  # type: ignore
+from .wavelet.multiscale_wavelet_attention import MultiScaleWaveletAttention  # type: ignore
 from .enhanced_autocorrelation import EnhancedAutoCorrelation, AdaptiveAutoCorrelationLayer as NewAdaptiveAutoCorrelationLayer, HierarchicalAutoCorrelation
-from .bayesian_attention import BayesianAttention, BayesianMultiHeadAttention, VariationalAttention, BayesianCrossAttention
+# Split Bayesian modules (backward-compatible re-exports retained in monolithic file)
+from .bayesian.bayesian_attention import BayesianAttention
+from .bayesian.bayesian_multi_head_attention import BayesianMultiHeadAttention
+from .bayesian.variational_attention import VariationalAttention
+from .bayesian.bayesian_cross_attention import BayesianCrossAttention
 from .adaptive_components import MetaLearningAdapter, AdaptiveMixture
 from .temporal_conv_attention import CausalConvolution, TemporalConvNet, ConvolutionalAttention
 from .graph_attention import GraphAttentionLayer, MultiGraphAttention
@@ -103,6 +110,57 @@ class AttentionRegistry:
                 return component_class()
             except:
                 raise ValueError(f"Could not instantiate {name} with any parameter combination")
+
+# ---------------- Deprecation Shim: Forward to unified registry -----------------
+try:
+    from layers.modular.core import unified_registry, ComponentFamily  # type: ignore
+    import warnings
+    _attn_deprecation_emitted = False
+
+    def _warn_attn():
+        global _attn_deprecation_emitted
+        if not _attn_deprecation_emitted:
+            warnings.warn(
+                "AttentionRegistry is deprecated – use unified_registry.create(ComponentFamily.ATTENTION, name, **kwargs)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            _attn_deprecation_emitted = True
+
+    # Legacy → unified name mapping (if any divergence later)
+    _LEGACY_TO_UNIFIED = {}
+
+    @classmethod  # type: ignore
+    def _shim_register(cls, name, component_class):  # noqa: D401
+        _warn_attn()
+        unified_registry.register(ComponentFamily.ATTENTION, name, component_class)
+
+    @classmethod  # type: ignore
+    def _shim_get(cls, name):  # noqa: D401
+        _warn_attn()
+        lookup = _LEGACY_TO_UNIFIED.get(name, name)
+        try:
+            return unified_registry.resolve(ComponentFamily.ATTENTION, lookup).cls
+        except Exception:
+            # Fall back to legacy dict for anything not yet migrated
+            return cls._registry.get(name)
+
+    @classmethod  # type: ignore
+    def _shim_list(cls):  # noqa: D401
+        _warn_attn()
+        names = list(unified_registry.list(ComponentFamily.ATTENTION)[ComponentFamily.ATTENTION.value])
+        # Include any legacy-only names (not yet migrated) for backward compatibility
+        for n in cls._registry.keys():
+            if n not in names:
+                names.append(n)
+        return sorted(names)
+
+    # Monkey-patch class methods
+    AttentionRegistry.register = _shim_register  # type: ignore
+    AttentionRegistry.get = _shim_get  # type: ignore
+    AttentionRegistry.list_components = _shim_list  # type: ignore
+except Exception:  # pragma: no cover - fail silently if unified not available early in bootstrap
+    pass
 
     @classmethod
     def list_available(cls):

@@ -82,3 +82,46 @@ def get_loss_component(name, **kwargs):
     
     logger.info(f"Loaded loss '{name}' with output dimension multiplier: {output_dim_multiplier}")
     return loss_instance, output_dim_multiplier
+
+# ---------------- Deprecation Shim: Forward to unified registry -----------------
+try:
+    from layers.modular.core import unified_registry, ComponentFamily  # type: ignore
+    import warnings
+    _loss_dep_warned = False
+
+    def _warn_loss():
+        global _loss_dep_warned
+        if not _loss_dep_warned:
+            warnings.warn(
+                "LossRegistry is deprecated – use unified_registry.create(ComponentFamily.LOSS, name, **kwargs)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            _loss_dep_warned = True
+
+    _LEGACY_TO_UNIFIED = {
+        'pinball': 'quantile_loss',
+    }
+
+    @classmethod  # type: ignore
+    def _shim_get(cls, name):
+        _warn_loss()
+        lookup = _LEGACY_TO_UNIFIED.get(name, name)
+        try:
+            return unified_registry.resolve(ComponentFamily.LOSS, lookup).cls
+        except Exception:
+            return cls._registry.get(name)
+
+    @classmethod  # type: ignore
+    def _shim_list(cls):
+        _warn_loss()
+        names = list(unified_registry.list(ComponentFamily.LOSS)[ComponentFamily.LOSS.value])
+        for n in cls._registry.keys():
+            if n not in names:
+                names.append(n)
+        return sorted(names)
+
+    LossRegistry.get = _shim_get  # type: ignore
+    LossRegistry.list_components = _shim_list  # type: ignore
+except Exception:  # pragma: no cover
+    pass

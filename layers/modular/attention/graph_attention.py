@@ -1,7 +1,42 @@
+"""Deprecated aggregate graph attention module.
+
+Re-exports split graph components. Use attention.graph.* instead.
 """
-Graph Attention Network (GAT) implementation for time series data.
-Integrates graph attention mechanisms with temporal sequence processing.
-"""
+from __future__ import annotations
+import warnings
+
+from .graph.graph_attention_layer import GraphAttentionLayer  # type: ignore  # noqa: F401
+from .graph.multi_graph_attention import MultiGraphAttention  # type: ignore  # noqa: F401
+from .graph.graph_construction import (  # type: ignore  # noqa: F401
+    construct_correlation_graph,
+    construct_temporal_correlation_graph,
+    construct_knn_graph,
+)
+
+_warned = False
+
+
+def __getattr__(name):  # pragma: no cover
+    global _warned
+    if name.startswith('__') and name.endswith('__') and name not in globals():
+        raise AttributeError(name)
+    if not _warned:
+        warnings.warn(
+            "Importing from graph_attention is deprecated – use attention.graph.*",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        _warned = True
+    return globals()[name]
+
+
+__all__ = [
+    "GraphAttentionLayer",
+    "MultiGraphAttention",
+    "construct_correlation_graph",
+    "construct_temporal_correlation_graph",
+    "construct_knn_graph",
+]
 
 import torch
 import torch.nn as nn

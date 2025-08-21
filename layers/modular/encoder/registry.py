@@ -57,3 +57,50 @@ def get_encoder_component(name, **kwargs):
                 raise
             return component_class(configs, n_levels, share_weights)
     return component_class(**kwargs)
+
+# ---------------- Deprecation Shim: Forward to unified registry -----------------
+try:
+    from layers.modular.core import unified_registry, ComponentFamily  # type: ignore
+    import warnings
+    _enc_dep_warned = False
+
+    def _warn_enc():
+        global _enc_dep_warned
+        if not _enc_dep_warned:
+            warnings.warn(
+                "EncoderRegistry is deprecated – use unified_registry.create(ComponentFamily.ENCODER, name, **kwargs)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            _enc_dep_warned = True
+
+    _LEGACY_TO_UNIFIED = {}
+
+    @classmethod  # type: ignore
+    def _shim_register(cls, name, component_class):
+        _warn_enc()
+        unified_registry.register(ComponentFamily.ENCODER, name, component_class)
+
+    @classmethod  # type: ignore
+    def _shim_get(cls, name):
+        _warn_enc()
+        lookup = _LEGACY_TO_UNIFIED.get(name, name)
+        try:
+            return unified_registry.resolve(ComponentFamily.ENCODER, lookup).cls
+        except Exception:
+            return cls._registry.get(name)
+
+    @classmethod  # type: ignore
+    def _shim_list(cls):
+        _warn_enc()
+        names = list(unified_registry.list(ComponentFamily.ENCODER)[ComponentFamily.ENCODER.value])
+        for n in cls._registry.keys():
+            if n not in names:
+                names.append(n)
+        return sorted(names)
+
+    EncoderRegistry.register = _shim_register  # type: ignore
+    EncoderRegistry.get = _shim_get  # type: ignore
+    EncoderRegistry.list_components = _shim_list  # type: ignore
+except Exception:  # pragma: no cover
+    pass
