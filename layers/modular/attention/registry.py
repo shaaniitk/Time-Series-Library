@@ -1,6 +1,6 @@
 
 from layers.AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
-from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelationLayer, AdaptiveAutoCorrelation
+from .enhanced_autocorrelation import AdaptiveAutoCorrelationLayer
 from .cross_resolution_attention import CrossResolutionAttention
 
 # Import new Phase 2 components
@@ -191,22 +191,21 @@ def get_attention_component(name, **kwargs):
             n_heads=kwargs.get('n_heads')
         )
     elif name == "adaptive_autocorrelation_layer":
-        # Same rationale as above: expose attention weights for metrics by default.
-        autocorrelation = AdaptiveAutoCorrelation(
-            mask_flag=kwargs.get('mask_flag', True),
+        # Modular AdaptiveAutoCorrelationLayer builds its own inner mechanism;
+        # pass only its expected named parameters (no positional autocorrelation object).
+        return component_class(
+            d_model=kwargs.get('d_model'),
+            n_heads=kwargs.get('n_heads'),
             factor=kwargs.get('factor', 1),
             attention_dropout=kwargs.get('dropout', 0.1),
-            output_attention=kwargs.get('output_attention', True)
-        )
-        return component_class(
-            autocorrelation,
-            d_model=kwargs.get('d_model'),
-            n_heads=kwargs.get('n_heads')
+            output_attention=kwargs.get('output_attention', True),
+            adaptive_k=kwargs.get('adaptive_k', True),
+            multi_scale=kwargs.get('multi_scale', True),
         )
     elif name == "cross_resolution_attention":
         return component_class(
             d_model=kwargs.get('d_model'),
-            n_levels=kwargs.get('n_levels'),
+            n_levels=kwargs.get('n_levels', 3),  # Provide default for n_levels
             n_heads=kwargs.get('n_heads')
         )
     
