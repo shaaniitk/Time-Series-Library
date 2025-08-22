@@ -2,7 +2,8 @@
 import unittest
 import torch
 from layers.modular.decomposition import get_decomposition_component
-from layers.modular.attention import get_attention_component
+from layers.modular.core import get_attention_component
+import layers.modular.core.register_components  # noqa: F401  # populate registry
 from layers.modular.encoder import get_encoder_component
 from layers.modular.decoder import get_decoder_component
 from layers.modular.sampling import get_sampling_component

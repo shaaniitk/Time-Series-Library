@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from .abstract_encoder import BaseEncoder
 from ..layers.enhanced_layers import EnhancedEncoderLayer
-from ..attention import get_attention_component
+from ..core import get_attention_component
 from ..decomposition import get_decomposition_component
 from utils.logger import logger
 

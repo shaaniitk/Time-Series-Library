@@ -34,7 +34,8 @@ def _encoder_param_map(name: str) -> Dict[str, Any]:
     Ensures we provide required dependency objects (attention + decomposition)
     so tests assert real functionality instead of xfail placeholders.
     """
-    from layers.modular.attention import get_attention_component  # type: ignore
+    from layers.modular.core import get_attention_component  # type: ignore
+    import layers.modular.core.register_components  # noqa: F401  # populate registry side-effects
     from layers.modular.decomposition import get_decomposition_component  # type: ignore
 
     base = {

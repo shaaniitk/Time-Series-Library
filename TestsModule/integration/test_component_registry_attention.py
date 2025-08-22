@@ -13,10 +13,26 @@ import torch
 
 pytestmark = [pytest.mark.extended]
 
-try:  # pragma: no cover
-    from layers.modular.attention.registry import AttentionRegistry  # type: ignore
-except Exception:  # pragma: no cover
-    AttentionRegistry = None  # type: ignore
+from layers.modular.core import unified_registry, ComponentFamily, get_attention_component  # type: ignore
+import layers.modular.core.register_components  # noqa: F401
+
+class AttentionRegistry:  # shim for migration
+    @staticmethod
+    def list_components() -> list[str]:
+        names = unified_registry.list(ComponentFamily.ATTENTION)['attention']
+        # include aliases like legacy did
+        out = set(names)
+        for n in list(names):
+            try:
+                info = unified_registry.describe(ComponentFamily.ATTENTION, n)
+                out.update(info.get('aliases', []))
+            except Exception:
+                pass
+        return sorted(out)
+
+    @staticmethod
+    def create(name: str, **kwargs):
+        return get_attention_component(name, **kwargs)
 
 
 def test_attention_registry_lists_components() -> None:

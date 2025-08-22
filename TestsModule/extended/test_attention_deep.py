@@ -18,19 +18,16 @@ import torch
 
 pytestmark = [pytest.mark.extended]
 
-try:  # pragma: no cover
-    from layers.modular.attention.registry import AttentionRegistry, get_attention_component  # type: ignore
-except Exception:  # pragma: no cover
-    AttentionRegistry = None  # type: ignore
-    get_attention_component = None  # type: ignore
+from layers.modular.core import get_attention_component  # type: ignore
+import layers.modular.core.register_components  # noqa: F401  # populate registry side-effects
 
 
 def _has(name: str) -> bool:
-    if AttentionRegistry is None:
-        return False
     try:
-        return name in AttentionRegistry.list_components()
-    except Exception:  # pragma: no cover
+        # Try creating to detect presence; don't keep instance
+        _ = get_attention_component(name, d_model=8, n_heads=2)
+        return True
+    except Exception:
         return False
 
 

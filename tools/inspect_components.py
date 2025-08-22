@@ -9,7 +9,8 @@ import os
 # Add the project root to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from layers.modular.attention.registry import AttentionRegistry
+from layers.modular.core import unified_registry, ComponentFamily
+import layers.modular.core.register_components  # noqa: F401
 from layers.modular.sampling.registry import SamplingRegistry
 from layers.modular.encoder.registry import EncoderRegistry
 from layers.modular.decoder.registry import DecoderRegistry
@@ -24,7 +25,7 @@ print("=" * 50)
 
 # Traditional components
 print("\n📋 Traditional Components:")
-print(f"Attention: {AttentionRegistry.list_components()}")
+print(f"Attention: {sorted(unified_registry.list(ComponentFamily.ATTENTION)[ComponentFamily.ATTENTION.value])}")
 print(f"Sampling: {SamplingRegistry.list_components()}")
 print(f"Encoder: {EncoderRegistry.list_components()}")
 print(f"Decoder: {DecoderRegistry.list_components()}")

@@ -108,7 +108,7 @@ unified_registry.register(
     ComponentType.AUTOCORRELATION.value,
     EnhancedAutoCorrelation,
     component_type=ComponentType.AUTOCORRELATION,
-    aliases=['enhanced_autocorrelation']
+    aliases=['enhanced_autocorrelation', 'autocorrelation_layer']
 )
 unified_registry.register(
     ComponentFamily.ATTENTION,

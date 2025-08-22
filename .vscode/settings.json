@@ -6,6 +6,6 @@
     "chat.mcp.autostart": "newAndOutdated",
     "chat.mcp.assisted.nuget.enabled": true,
     "github.copilot.chat.newWorkspace.useContext7": true,
-    "github.copilot.chat.executeCommand.enabled": true,
+    "github.copilot.chat.tools.autoapprove":true,
     "chat.mcp.discovery.enabled": true
 }

@@ -79,17 +79,7 @@ class EnhancedDecoderLayer(BaseDecoderLayer):
         x, trend1 = self.decomp1(x)
         
         residual = x
-        # Some encoder implementations return (tensor, attn_weights) or DecoderOutput.
-        # We only need the tensor memory for cross attention. Unwrap defensively.
-        cross_tensor = cross
-        # Recursively unwrap first element of tuple/list until we get a Tensor-like object
-        # or something that has a .shape attribute typical to torch.Tensor.
-        unwrap_depth = 0
-        while isinstance(cross_tensor, (tuple, list)) and cross_tensor:
-            cross_tensor = cross_tensor[0]
-            unwrap_depth += 1
-            if unwrap_depth > 3:  # prevent pathological nesting
-                break
+        cross_tensor = self._extract_cross_memory(cross)
         new_x = self.cross_attention(x, cross_tensor, cross_tensor, attn_mask=cross_mask)[0]
         x = residual + self.dropout(self.cross_attn_scale * new_x)
         x, trend2 = self.decomp2(x)
@@ -102,3 +92,29 @@ class EnhancedDecoderLayer(BaseDecoderLayer):
 
         residual_trend = trend1 + trend2 + trend3
         return x, residual_trend
+
+    @staticmethod
+    def _extract_cross_memory(cross):
+        """Extract tensor memory from various encoder output forms.
+
+        Supported forms:
+        - Tensor
+        - (tensor, attn_weights, ...)
+        - Objects with `.seasonal` attribute (use that attribute)
+        - List/tuple containing any of the above; first tensor-like element chosen
+        Raises TypeError if no tensor-like content found.
+        """
+        import torch as _torch
+        if _torch.is_tensor(cross):
+            return cross
+        # Structured decoder/encoder output objects
+        if hasattr(cross, 'seasonal') and _torch.is_tensor(getattr(cross, 'seasonal')):  # DecoderOutput-like
+            return getattr(cross, 'seasonal')
+        # Tuple/list: search for first viable tensor or object with seasonal
+        if isinstance(cross, (tuple, list)):
+            for elem in cross:
+                if _torch.is_tensor(elem):
+                    return elem
+                if hasattr(elem, 'seasonal') and _torch.is_tensor(getattr(elem, 'seasonal')):
+                    return getattr(elem, 'seasonal')
+        raise TypeError(f"Unsupported cross memory type: {type(cross)}")

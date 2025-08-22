@@ -200,9 +200,7 @@ class HybridGraphEncoder(BaseEncoder):
                  graph_type: str = "correlation", **graph_kwargs):
         super().__init__()
         
-        # Use existing attention components from registry
-        from ..attention.registry import get_attention_component
-        from ..layers.standard_layers import StandardEncoderLayer
+    # Use existing attention components from registry (not required here; using built-ins)
         
         self.num_layers = num_layers
         self.graph_layers = graph_layers or [i for i in range(0, num_layers, 2)]  # Every other layer

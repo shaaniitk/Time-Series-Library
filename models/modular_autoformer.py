@@ -14,7 +14,8 @@ from configs.modular_components import (
 from layers.modular.decomposition import get_decomposition_component
 from layers.modular.encoder import get_encoder_component
 from layers.modular.decoder import get_decoder_component
-from layers.modular.attention import get_attention_component
+from layers.modular.core import get_attention_component
+import layers.modular.core.register_components  # noqa: F401  # ensure attention registry populated
 from layers.modular.sampling import get_sampling_component
 from layers.modular.output_heads import get_output_head_component
 from layers.modular.losses import get_loss_component

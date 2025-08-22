@@ -6,6 +6,9 @@ import torch
 import torch.nn as nn
 from typing import List, Dict, Optional
 from dataclasses import dataclass
+from layers.Embed import DataEmbedding_wo_pos
+from layers.modular.core import get_attention_component
+from layers.modular.decomposition.registry import get_decomposition_component
 
 @dataclass
 class SeriesProcessingConfig:
@@ -38,9 +41,7 @@ class FlexibleAutoformer(nn.Module):
     
     def _init_components(self):
         """Initialize processing components using existing modular components"""
-        from layers.Embed import DataEmbedding_wo_pos
-        from layers.modular.attention.registry import get_attention_component
-        from layers.modular.decomposition.registry import get_decomposition_component
+    # Imports moved to module scope
         
         # Embeddings
         self.enc_embedding = DataEmbedding_wo_pos(

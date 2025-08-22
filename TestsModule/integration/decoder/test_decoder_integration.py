@@ -8,8 +8,7 @@ from layers.modular.decoder import (
     DecoderRegistry, UnifiedDecoderInterface, DecoderFactory,
     ComponentValidator, DecoderTestRunner, DecoderOutput
 )
-from layers.modular.attention.registry import AttentionRegistry
-from layers.modular.decomposition.registry import DecompositionRegistry
+# Legacy registries not required in these integration tests
 
 
 class TestDecoderIntegration:

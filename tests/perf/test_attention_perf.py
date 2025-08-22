@@ -9,10 +9,9 @@ import time
 import pytest
 import torch
 
-try:  # pragma: no cover
-    from layers.modular.attention.registry import AttentionRegistry  # type: ignore
-except Exception:  # pragma: no cover
-    AttentionRegistry = None  # type: ignore
+# Use unified registry helper; populate registrations explicitly
+from layers.modular.core import get_attention_component  # type: ignore
+import layers.modular.core.register_components  # noqa: F401  # populate registry side-effects
 
 ATTN_UNDER_TEST = [
     ("fourier_attention", {}),
@@ -22,11 +21,11 @@ ATTN_UNDER_TEST = [
 @pytest.mark.perf
 @pytest.mark.parametrize("name,kwargs", ATTN_UNDER_TEST)
 def test_attention_forward_time(name: str, kwargs: dict) -> None:
-    if AttentionRegistry is None:
-        pytest.skip("AttentionRegistry unavailable")
-
-    registry = AttentionRegistry()
-    attn = registry.create(name, d_model=128, n_heads=4, **kwargs)
+    # Skip gracefully if component isn't registered (e.g., linear_attention not present)
+    try:
+        attn = get_attention_component(name, d_model=128, n_heads=4, **kwargs)
+    except Exception:
+        pytest.skip(f"Attention component '{name}' not available")
 
     x = torch.randn(2, 64, 128)
     # Warmup

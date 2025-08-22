@@ -131,6 +131,8 @@ class UnifiedRegistry:
         mapping = {
             'e_layers': 'num_encoder_layers',
             'd_layers': 'num_decoder_layers',
+            'nhead': 'n_heads',
+            'hidden_size': 'd_model',
         }
         norm = dict(kwargs)
         for old, new in mapping.items():
@@ -148,6 +150,22 @@ class UnifiedRegistry:
                 if new in norm and legacy in params and legacy not in norm:
                     # Move value to legacy name for constructor compatibility
                     norm[legacy] = norm.pop(new)
+            # Drop unknown common knobs quietly if constructor doesn't support them
+            if 'factor' in norm and 'factor' not in params:
+                norm.pop('factor')
+            # Temporal conv compatibility: map conv_kernel_size -> kernel_sizes=[val]
+            if 'conv_kernel_size' in norm and 'kernel_sizes' in params:
+                val = norm.pop('conv_kernel_size')
+                norm['kernel_sizes'] = [val] if not isinstance(val, (list, tuple)) else list(val)
+            # Also support conv_kernel_sizes alias
+            if 'conv_kernel_sizes' in norm and 'kernel_sizes' in params and 'kernel_sizes' not in norm:
+                norm['kernel_sizes'] = list(norm.pop('conv_kernel_sizes'))
+            # Map conv_dilation_rates -> dilation_rates if present
+            if 'conv_dilation_rates' in norm and 'dilation_rates' in params and 'dilation_rates' not in norm:
+                norm['dilation_rates'] = list(norm.pop('conv_dilation_rates'))
+            # Remove pool_size when target doesn't support it
+            if 'pool_size' in norm and 'pool_size' not in params:
+                norm.pop('pool_size')
         except Exception:  # pragma: no cover - defensive
             pass
         # Attention-specific normalization
@@ -163,6 +181,9 @@ class UnifiedRegistry:
             # Remove seq_len if not accepted
             if 'seq_len' in norm and 'seq_len' not in params:
                 norm.pop('seq_len')
+            # Remove factor if still present and not accepted
+            if 'factor' in norm and 'factor' not in params:
+                norm.pop('factor')
         except Exception:
             pass
         return norm
@@ -176,3 +197,12 @@ class UnifiedRegistry:
 
 # Global singleton
 unified_registry = UnifiedRegistry()
+
+# Convenience helper(s) for migration from legacy per-family registries
+def get_attention_component(name: str, **kwargs):
+    """Backward-compatible helper returning an attention instance via unified registry.
+
+    Mirrors legacy get_attention_component signature so tests and docs can be migrated
+    incrementally without importing deprecated AttentionRegistry.
+    """
+    return unified_registry.create(ComponentFamily.ATTENTION, name, **kwargs)

@@ -12,7 +12,8 @@ pytestmark = [pytest.mark.extended]
 
 try:  # pragma: no cover
     from layers.modular.decoder.registry import DecoderRegistry, get_decoder_component  # type: ignore
-    from layers.modular.attention import get_attention_component  # type: ignore
+    from layers.modular.core import get_attention_component  # type: ignore
+    import layers.modular.core.register_components  # noqa: F401  # populate registry side-effects
     from layers.modular.decomposition import get_decomposition_component  # type: ignore
 except Exception:  # pragma: no cover
     DecoderRegistry = None  # type: ignore

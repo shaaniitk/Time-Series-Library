@@ -14,11 +14,29 @@ import torch
 
 pytestmark = [pytest.mark.extended]
 
-try:  # pragma: no cover
-    from layers.modular.attention.registry import AttentionRegistry, get_attention_component  # type: ignore
-except Exception:  # pragma: no cover
-    AttentionRegistry = None  # type: ignore
-    get_attention_component = None  # type: ignore
+from layers.modular.core import unified_registry, ComponentFamily, get_attention_component  # type: ignore
+# Populate unified registry (opt-in import)
+import layers.modular.core.register_components  # noqa: F401
+
+class _LegacyAttentionRegistryShim:
+    """Minimal shim to satisfy existing helper functions during migration."""
+    @staticmethod
+    def list_components():  # returns list for backward compatibility
+        listing = unified_registry.list(ComponentFamily.ATTENTION)['attention']
+        # Also incorporate known aliases so older test names remain discoverable
+        # This mirrors the legacy registry behaviour where aliases were listed.
+        # We pull alias names from the registry describe API if available.
+        names = set(listing)
+        for name in list(listing):
+            try:
+                info = unified_registry.describe(ComponentFamily.ATTENTION, name)
+                for alias in info.get('aliases', []):
+                    names.add(alias)
+            except Exception:
+                continue
+        return sorted(names)
+
+AttentionRegistry = _LegacyAttentionRegistryShim  # type: ignore
 
 
 def _has(name: str) -> bool:
