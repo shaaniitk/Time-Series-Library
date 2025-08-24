@@ -235,6 +235,15 @@ def get_attention_component(name, **kwargs):
             dropout=kwargs.get('dropout', 0.1),
             temperature=kwargs.get('temperature', 1.0)
         )
+    elif name == "enhanced_autocorrelation":
+        # Ensure we don't pass duplicate d_model; constructor expects named d_model/n_heads
+        return component_class(
+            d_model=kwargs.get('d_model'),
+            n_heads=kwargs.get('n_heads'),
+            factor=kwargs.get('factor', 1),
+            attention_dropout=kwargs.get('dropout', 0.1),
+            output_attention=kwargs.get('output_attention', False),
+        )
     
     # Phase 2: Wavelet Attention Components
     elif name == "wavelet_attention":

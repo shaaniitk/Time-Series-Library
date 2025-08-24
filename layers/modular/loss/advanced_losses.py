@@ -9,8 +9,40 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Union
 import math
+from ..base_interfaces import BaseLoss
+from layers.modular.core.logger import logger
+
+# Import config dataclasses used in the typed signatures below; fall back to lightweight stubs
+try:  # Preferred: use the configs defined alongside adaptive/bayesian implementations
+    from .adaptive_bayesian_losses import (
+        BayesianLossConfig,
+        AdaptiveLossConfig,
+        FrequencyLossConfig,
+        StructuralLossConfig,
+    )
+except Exception:  # pragma: no cover - provide minimal stubs to satisfy type usage
+    class _LossCfgStub:
+        def __init__(self, reduction: str = 'mean', **kwargs: Any) -> None:
+            self.reduction = reduction
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    class BayesianLossConfig(_LossCfgStub):
+        def __init__(self, kl_weight: float = 1e-5, uncertainty_weight: float = 0.1, reduction: str = 'mean', **kw: Any) -> None:
+            super().__init__(reduction=reduction, **kw)
+            self.kl_weight = kl_weight
+            self.uncertainty_weight = uncertainty_weight
+
+    class AdaptiveLossConfig(_LossCfgStub):
+        pass
+
+    class FrequencyLossConfig(_LossCfgStub):
+        pass
+
+    class StructuralLossConfig(_LossCfgStub):
+        pass
 
 from .standard_losses import StandardLossWrapper
 

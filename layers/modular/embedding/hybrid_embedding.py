@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from typing import Optional, Dict, Any, List
 from ..base import BaseEmbedding
-from ..core.configs import EmbeddingConfig
+from configs.schemas import EmbeddingConfig
 from .temporal_embedding import TemporalEmbedding
 from .value_embedding import ValueEmbedding
 from .covariate_embedding import CovariateEmbedding

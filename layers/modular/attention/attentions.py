@@ -14,7 +14,7 @@ import math
 import numpy as np
 
 from ..base_interfaces import BaseAttention
-from ..config_schemas import AttentionConfig
+from configs.schemas import AttentionConfig
 
 logger = logging.getLogger(__name__)
 

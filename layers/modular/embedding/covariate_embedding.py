@@ -1,10 +1,10 @@
 import logging
 import torch
 import torch.nn as nn
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 import torch
 from ..base import BaseEmbedding
-from ..core.configs import EmbeddingConfig
+from configs.schemas import EmbeddingConfig
 
 logger = logging.getLogger(__name__)
 

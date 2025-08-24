@@ -8,8 +8,14 @@ training with trend/seasonal awareness and uncertainty quantification.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Any, Optional, Union, Tuple
+from typing import Dict, Any, Optional, Union, Tuple, List
+from dataclasses import dataclass
+import logging
+from .losses import LossConfig
+from ..base_interfaces import BaseLoss
 import math
+
+logger = logging.getLogger(__name__)
 
 try:
     from layers.Autoformer_EncDec import series_decomp
@@ -28,7 +34,6 @@ except ImportError:
             # Moving average (trend)
             trend = F.avg_pool1d(x, kernel_size=self.kernel_size, 
                                stride=1, padding=self.kernel_size//2)
-            
             if x.dim() == 3:
                 x = x.transpose(1, 2)  # [B, L, D]
                 trend = trend.transpose(1, 2)  # [B, L, D]
@@ -706,7 +711,7 @@ class AdaptiveStructuralLoss(BaseLoss):
         super().__init__(config)
         
         try:
-            from layers.modular.losses.adaptive_bayesian_losses import AdaptiveAutoformerLoss
+            from layers.modular.loss.adaptive_bayesian_losses import AdaptiveAutoformerLoss
             
             if isinstance(config, dict):
                 self.adaptive_loss = AdaptiveAutoformerLoss(
@@ -733,12 +738,7 @@ class AdaptiveStructuralLoss(BaseLoss):
     def get_loss_type(self) -> str:
         return "adaptive_structural"
 
-# Continuing from previous partial PatchStructuralLoss
-    def compute_loss(self, pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-        return self.ps_loss(pred, true)
-    
-    def get_loss_type(self) -> str:
-        return "patch_structural"
+#
 
 class DTWAlignmentLoss(BaseLoss):
     """Wraps existing DTWLoss for modular framework"""
@@ -783,7 +783,7 @@ class PatchStructuralLoss(BaseLoss):
         super().__init__(config)
         
         try:
-            from utils.losses import PSLoss
+            from .losses import PSLoss
             
             if isinstance(config, dict):
                 self.ps_loss = PSLoss(
@@ -805,3 +805,33 @@ class PatchStructuralLoss(BaseLoss):
                     k_dominant_freqs=config.k_dominant_freqs,
                     min_patch_len=config.min_patch_len
                 )
+        except ImportError:
+            # Fallback to utils implementation if local not present
+            from utils.losses import PSLoss  # type: ignore
+            if isinstance(config, dict):
+                self.ps_loss = PSLoss(
+                    pred_len=config.get('pred_len', 96),
+                    mse_weight=config.get('mse_weight', 0.5),
+                    w_corr=config.get('w_corr', 1.0),
+                    w_var=config.get('w_var', 1.0),
+                    w_mean=config.get('w_mean', 1.0),
+                    k_dominant_freqs=config.get('k_dominant_freqs', 3),
+                    min_patch_len=config.get('min_patch_len', 5)
+                )
+            else:
+                self.ps_loss = PSLoss(
+                    pred_len=config.pred_len,
+                    mse_weight=config.mse_weight,
+                    w_corr=config.w_corr,
+                    w_var=config.w_var,
+                    w_mean=config.w_mean,
+                    k_dominant_freqs=config.k_dominant_freqs,
+                    min_patch_len=config.min_patch_len
+                )
+
+    def compute_loss(self, pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+        """Compute structural patch loss using wrapped PSLoss."""
+        return self.ps_loss(pred, true)
+    
+    def get_loss_type(self) -> str:
+        return "patch_structural"

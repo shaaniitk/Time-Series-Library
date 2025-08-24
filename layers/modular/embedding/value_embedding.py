@@ -1,11 +1,11 @@
 import logging
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any, Dict
 import math
 
 from ..base import BaseEmbedding
-from ..core.configs import EmbeddingConfig
+from configs.schemas import EmbeddingConfig
 
 logger = logging.getLogger(__name__)
 

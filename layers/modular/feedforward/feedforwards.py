@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from typing import Dict, Any, Optional, Union, List, Tuple
 from dataclasses import dataclass
 
-from layers.modular.core.base_interfaces import BaseFeedForward
+from layers.modular.base_interfaces import BaseFeedForward
 
 logger = logging.getLogger(__name__)
 

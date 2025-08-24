@@ -10,13 +10,12 @@ import torch
 import torch.nn as nn
 from typing import Dict, Any, Optional, Union, List, Tuple
 
-from ...base_interfaces import BaseBackbone
-from ..config_schemas import BackboneConfig
+from configs.schemas import BackboneConfig
 
 logger = logging.getLogger(__name__)
 
 
-class SimpleTransformerBackbone(BaseBackbone):
+class SimpleTransformerBackbone(nn.Module):
     """
     Simple transformer backbone that works without external dependencies
     
@@ -25,7 +24,7 @@ class SimpleTransformerBackbone(BaseBackbone):
     """
     
     def __init__(self, config: BackboneConfig):
-        super().__init__(config)
+        super().__init__()
         self.config = config
         self.d_model = config.d_model
         self.nhead = getattr(config, 'nhead', 8)
@@ -148,13 +147,13 @@ class SimpleTransformerBackbone(BaseBackbone):
         return info
 
 
-class RobustHFBackbone(BaseBackbone):
+class RobustHFBackbone(nn.Module):
     """
     Robust HuggingFace backbone with multiple fallback options
     """
     
     def __init__(self, config: BackboneConfig):
-        super().__init__(config)
+        super().__init__()
         self.config = config
         self.model_name = getattr(config, 'model_name', 'google/flan-t5-small')
         self.d_model = config.d_model

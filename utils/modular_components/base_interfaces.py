@@ -3,13 +3,27 @@ Abstract Base Interfaces for Modular Time Series Components
 
 These interfaces define the contracts that all modular components must implement,
 ensuring compatibility and interchangeability across different model architectures.
+
+Compatibility note:
+- To support the unified core architecture in `layers.modular.core`, we provide
+    thin forward-bridge methods so classes inheriting from these bases also
+    satisfy the lightweight Protocols (e.g., AttentionLike, LossLike).
 """
 
 import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Union, Tuple, List
+from typing import Dict, Any, Optional, Union, Tuple, List, Optional as _Optional
 from dataclasses import dataclass
+
+# Optional import for type compatibility with the core Protocols.
+# We don't strictly require these at runtime; they help during migration and typing.
+try:  # pragma: no cover - best effort typing bridge
+    from layers.modular.core.interfaces import AttentionLike, LossLike, OutputHeadLike  # type: ignore
+except Exception:  # pragma: no cover - avoid hard dependency
+    AttentionLike = object  # type: ignore
+    LossLike = object  # type: ignore
+    OutputHeadLike = object  # type: ignore
 
 
 class BaseComponent(nn.Module, ABC):
@@ -178,6 +192,16 @@ class BaseAttention(BaseComponent):
         """Return the type identifier of this attention mechanism"""
         pass
 
+    # Bridge method to satisfy the core AttentionLike Protocol
+    def forward(self,
+                queries: torch.Tensor,
+                keys: torch.Tensor,
+                values: torch.Tensor,
+                attn_mask: Optional[torch.Tensor] = None,
+                **kwargs) -> Tuple[torch.Tensor, _Optional[torch.Tensor]]:
+        """Forward alias calling apply_attention (core-compatible signature)."""
+        return self.apply_attention(queries, keys, values, attn_mask)
+
 
 class BaseProcessor(BaseComponent):
     """
@@ -278,6 +302,23 @@ class BaseLoss(BaseComponent):
     
     def get_output_dim(self) -> int:
         return 1  # Loss functions typically output scalar values
+
+    # Bridge method to satisfy the core LossLike Protocol
+    def forward(self,
+                predictions: torch.Tensor,
+                targets: torch.Tensor,
+                **kwargs) -> torch.Tensor:
+        """Forward alias calling compute_loss (core-compatible signature)."""
+        loss = self.compute_loss(predictions, targets, **kwargs)
+        # Ensure a scalar tensor is returned for unified handling
+        if isinstance(loss, dict):
+            # Sum known components or pick a primary key if present
+            total = None
+            for v in loss.values():
+                total = v if total is None else total + v
+            assert total is not None, "Empty loss dictionary returned from compute_loss()"
+            return total
+        return loss
 
 
 class BaseOutput(BaseComponent):

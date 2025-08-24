@@ -77,7 +77,7 @@ class EnhancedDecoderLayer(BaseDecoderLayer):
         new_x = self.self_attention(x, x, x, attn_mask=x_mask)[0]
         x = residual + self.dropout(self.self_attn_scale * new_x)
         x, trend1 = self.decomp1(x)
-        
+
         residual = x
         cross_tensor = self._extract_cross_memory(cross)
         new_x = self.cross_attention(x, cross_tensor, cross_tensor, attn_mask=cross_mask)[0]

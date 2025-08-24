@@ -271,12 +271,16 @@ class EnhancedAutoCorrelation(BaseAttention):
         keys = self.key_projection(keys)
         values = self.value_projection(values)
         
-        # Reshape for multi-head processing
-        queries = queries.view(B, L, H, E).transpose(1, 2)  # [B, H, L, E]
-        keys = keys.view(B, L, H, E).transpose(1, 2)        # [B, H, L, E]
-        values = values.view(B, L, H, E).transpose(1, 2)    # [B, H, L, E]
-        
+    # Reshape for multi-head processing
+        queries = queries.view(B, L, H, E).transpose(1, 2)  # [B, H, Lq, E]
+        # For cross-attention, keys/values may have different sequence length
+        Lk = keys.size(1)
+        Lv = values.size(1)
+        keys = keys.view(B, Lk, H, E).transpose(1, 2)        # [B, H, Lk, E]
+        values = values.view(B, Lv, H, E).transpose(1, 2)    # [B, H, Lv, E]
+            
         # Apply correlation-based attention
+    # Use query length for output shape
         output, attn_weights = self._correlation_based_attention(queries, keys, values, L)
         
         # Apply dropout

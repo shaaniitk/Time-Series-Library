@@ -21,6 +21,13 @@ from layers.modular.attention.wavelet_attention import (
     AdaptiveWaveletAttention,
     MultiScaleWaveletAttention,
 )
+from layers.modular.attention.attentions import (
+    MultiHeadAttention,
+    AutoCorrelationAttention,
+    SparseAttention,
+    LogSparseAttention,
+    ProbSparseAttention,
+)
 from layers.modular.attention.bayesian_attention import (
     BayesianAttention,
     BayesianMultiHeadAttention,
@@ -55,10 +62,16 @@ from layers.modular.output_heads.standard_output_head import StandardOutputHead
 from layers.modular.output_heads.quantile_output_head import QuantileOutputHead
 from layers.modular.fusion.hierarchical_fusion import HierarchicalFusion
 from layers.modular.backbone import ChronosBackboneWrapper
-from .backbone.simple_backbones import SimpleTransformerBackbone, RobustHFBackbone
+from ..backbone.simple_backbones import SimpleTransformerBackbone, RobustHFBackbone
 from layers.modular.embedding import TemporalEmbeddingWrapper
 from layers.modular.processor import TimeDomainProcessorWrapper
 from layers.modular.processor.processors import WaveletProcessor, NormalizationProcessor
+from layers.modular.processor.specialized_processors import (
+    FrequencyDomainProcessor,
+    StructuralPatchProcessor,
+    DTWAlignmentProcessor,
+    TrendProcessor,
+)
 from layers.modular.feedforward import PositionwiseFeedForwardWrapper
 from layers.modular.feedforward.feedforwards import StandardFFN, GatedFFN, MoEFFN, ConvFFN
 from layers.modular.output import LinearOutputWrapper
@@ -83,15 +96,15 @@ from layers.modular.normalization.normalization import RMSNorm
 # - QuantileLoss and BayesianQuantileLoss in adaptive_bayesian_losses
 # There is no explicit MSELoss/MAELoss class, so we create wrappers here.
 import torch.nn as nn
-from layers.modular.losses.standard_losses import StandardLossWrapper
-from layers.modular.losses.adaptive_bayesian_losses import (
+from layers.modular.loss.standard_losses import StandardLossWrapper
+from layers.modular.loss.adaptive_bayesian_losses import (
     BayesianQuantileLoss,
     QuantileLoss,
     AdaptiveAutoformerLoss,
     FrequencyAwareLoss,
     UncertaintyCalibrationLoss,
 )
-from layers.modular.losses.advanced_losses import (
+from layers.modular.loss.advanced_losses import (
     MAPELoss,
     SMAPELoss,
     MASELoss,
@@ -629,7 +642,14 @@ unified_registry.register(
     component_type=None,
     aliases=['linear_output', 'default_output']
 )
-from ...output.outputs import ForecastingHead, RegressionHead, ClassificationHead, ProbabilisticForecastingHead, QuantileForecastingHead, MultiTaskHead
+from layers.modular.output.outputs import (
+    ForecastingHead,
+    RegressionHead,
+    ClassificationHead,
+    ProbabilisticForecastingHead,
+    QuantileForecastingHead,
+    MultiTaskHead,
+)
 unified_registry.register(
     ComponentFamily.OUTPUT,
     'forecasting',
