@@ -87,14 +87,20 @@ class LearnableDecomposition(DecompositionComponent):
         )
     
     def _initialize_component(self, **kwargs):
-        # Get input dimension from multiple sources
+        # Get input dimension from multiple sources (kwargs override config)
         decomp_params = getattr(self.config, 'decomposition_params', {})
         self.input_dim = (
+            kwargs.get('input_dim') or
+            kwargs.get('d_model') or
             decomp_params.get('input_dim') or 
             getattr(self.config, 'input_dim', None) or
-            getattr(self.config, 'd_model', 512)  # Use d_model as fallback
+            getattr(self.config, 'd_model', 512)  # final fallback
         )
-        self.kernel_size = decomp_params.get('kernel_size', getattr(self.config, 'kernel_size', 25))
+        self.kernel_size = (
+            kwargs.get('kernel_size') or
+            decomp_params.get('kernel_size') or 
+            getattr(self.config, 'kernel_size', 25)
+        )
         
         # Simple learnable trend extraction
         self.trend_conv = nn.Conv1d(self.input_dim, self.input_dim, self.kernel_size, padding=self.kernel_size//2)

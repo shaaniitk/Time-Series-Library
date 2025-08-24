@@ -78,7 +78,7 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
         from configs.schemas import (
             AttentionConfig, DecompositionConfig, EncoderConfig, DecoderConfig,
             SamplingConfig, OutputHeadConfig, LossConfig, BayesianConfig,
-            BackboneConfig, ComponentType
+            BackboneConfig
         )
         
         # Map string types to ComponentType enums
@@ -125,6 +125,19 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
         dec_in = getattr(ns_config, 'dec_in', 7)
         c_out = getattr(ns_config, 'c_out', 7)
         c_out_evaluation = getattr(ns_config, 'c_out_evaluation', 7)
+        # If quantiles are requested, expand model c_out to targets * num_quantiles
+        ns_quantile_levels = getattr(ns_config, 'quantile_levels', None)
+        if ns_quantile_levels:
+            try:
+                num_quantiles = len(ns_quantile_levels)
+                if num_quantiles > 0:
+                    c_out = c_out_evaluation * num_quantiles
+                    logger.info(
+                        f"Quantile mode detected: expanding c_out to {c_out_evaluation} * {num_quantiles} = {c_out}"
+                    )
+            except Exception:
+                # Fallback: leave c_out unchanged if quantile_levels is malformed
+                pass
         d_model = getattr(ns_config, 'd_model', 512)
         
         # Extract component types with fallbacks
@@ -136,12 +149,15 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
             getattr(ns_config, 'decomposition_type', 'moving_avg'),
             ComponentType.MOVING_AVG
         )
-        # Loss function type mapping (separate from general type mapping)
+        # Loss function type mapping (explicit for supported variants)
         loss_type_mapping = {
             'mse': ComponentType.MSE,
-            'mae': ComponentType.MSE,  # Map to MSE for now - could add MAE later
-            'huber': ComponentType.MSE,  # Map to MSE for now - could add Huber later
-            'bayesian': ComponentType.MSE,  # Bayesian uses MSE loss but Bayesian sampling
+            'mae': ComponentType.MAE,
+            'huber': ComponentType.MSE,  # default to MSE until Huber is added
+            'quantile_loss': ComponentType.QUANTILE_LOSS,
+            'bayesian_mse': ComponentType.BAYESIAN_MSE,
+            'bayesian_quantile': ComponentType.BAYESIAN_QUANTILE,
+            'bayesian': ComponentType.BAYESIAN_MSE,  # alias
         }
         
         encoder_type = type_mapping.get(

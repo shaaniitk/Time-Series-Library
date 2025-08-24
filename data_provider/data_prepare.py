@@ -194,7 +194,20 @@ class FinancialDataManager:
         # Ensure date column exists and is properly formatted
         # _load_file should have already handled date index -> column conversion
         if 'date' in df.columns:
-            df['date'] = pd.to_datetime(df['date'], format="%d-%m-%Y")
+            # Be flexible: handle ISO8601, mixed formats, or day-first with inference
+            try:
+                df['date'] = pd.to_datetime(df['date'], format="%d-%m-%Y", errors='raise')
+            except Exception:
+                try:
+                    df['date'] = pd.to_datetime(df['date'], format='ISO8601', errors='raise')
+                except Exception:
+                    # Fallback to mixed inference, prefer dayfirst if ambiguous
+                    df['date'] = pd.to_datetime(df['date'], dayfirst=True, errors='coerce', infer_datetime_format=False)
+                    if df['date'].isna().any():
+                        # As a last resort, try non-dayfirst
+                        df['date'] = pd.to_datetime(df['date'].astype(str), errors='coerce')
+                    if df['date'].isna().any():
+                        raise ValueError("Failed to parse some date values; please ensure date column is parseable.")
             df = df.sort_values('date').reset_index(drop=True)
             self.date_column = 'date'
         else:

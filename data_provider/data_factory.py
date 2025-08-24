@@ -65,7 +65,12 @@ def setup_financial_forecasting_data(args):
 
     # Step 3: Split data into train/val/test sets
     logger.info("Step 3: Splitting data into train/val/test sets (chronological)...")
-    df_train, df_val, df_test = _split_data(merged_df, args.validation_length, args.test_length)
+    df_train, df_val, df_test = _split_data(
+        merged_df,
+        args.validation_length,
+        args.test_length,
+        min_train_len=args.seq_len + args.pred_len,
+    )
 
     # Step 4: Create and fit the ScalerManager with the correct data scopes
     logger.info("Step 4: Fitting scalers with correct data scopes...")
@@ -80,30 +85,47 @@ def setup_financial_forecasting_data(args):
     logger.info("Step 5: Creating datasets and dataloaders...")
     data_loaders = {}
     for flag, df_split in [('train', df_train), ('val', df_val), ('test', df_test)]:
-        # ScalerManager.transform expects a DataFrame, it will select columns internally
-        # For 'S' mode, data_x_scaled should only contain target features for the encoder input
-        if args.features == 'S':
-            data_x_scaled = scaler_manager.target_scaler.transform(df_split[dim_manager.target_features])
+        # ScalerManager.transform expects a DataFrame with rows; for empty splits, create empty arrays
+        if df_split is None or len(df_split) == 0:
+            logger.warning(f"Split '{flag}' is empty. Creating zero-length dataset.")
+            # Determine expected feature counts
+            if args.features == 'S':
+                x_feat_count = len(dim_manager.target_features)
+            else:
+                # all features except date
+                x_feat_count = len([c for c in merged_df.columns if c != 'date'])
+
+            all_features_no_date = [c for c in merged_df.columns if c != 'date']
+            y_feat_count = len(all_features_no_date)
+
+            data_x_scaled = np.empty((0, x_feat_count), dtype=np.float32)
+            data_y_unscaled = np.empty((0, y_feat_count), dtype=np.float32)
+            data_stamp = np.empty((0, 0), dtype=np.float32)
         else:
-            # For 'M' and 'MS' modes, data_x_scaled includes all features
-            data_x_scaled = scaler_manager.transform(df_split)
-        
-        # Get unscaled data as numpy array (excluding date)
-        all_features_no_date = [col for col in df_split.columns if col != 'date']
-        data_y_unscaled = df_split[all_features_no_date].values
-        
-        # Extract time features
-        df_stamp = df_split[['date']].copy()
-        df_stamp['date'] = pd.to_datetime(df_stamp['date'])
-        date_index = pd.DatetimeIndex(df_stamp['date'].values)
-        logger.debug(f"Created DatetimeIndex with {len(date_index)} dates for time features")
-        # Fixed time_features call with DatetimeIndex instead of Series
-        data_stamp = time_features(date_index, freq=args.freq)
-        data_stamp = data_stamp.transpose(1, 0) # Transpose to (num_dates, num_time_features)
-        
+            # For 'S' mode, data_x_scaled should only contain target features for the encoder input
+            if args.features == 'S':
+                data_x_scaled = scaler_manager.target_scaler.transform(df_split[dim_manager.target_features])
+            else:
+                # For 'M' and 'MS' modes, data_x_scaled includes all features
+                data_x_scaled = scaler_manager.transform(df_split)
+
+            # Get unscaled data as numpy array (excluding date)
+            all_features_no_date = [col for col in df_split.columns if col != 'date']
+            data_y_unscaled = df_split[all_features_no_date].values
+
+            # Extract time features
+            df_stamp = df_split[['date']].copy()
+            df_stamp['date'] = pd.to_datetime(df_stamp['date'])
+            date_index = pd.DatetimeIndex(df_stamp['date'].values)
+            logger.debug(f"Created DatetimeIndex with {len(date_index)} dates for time features")
+            # Fixed time_features call with DatetimeIndex instead of Series
+            data_stamp = time_features(date_index, freq=args.freq)
+            data_stamp = data_stamp.transpose(1, 0) # Transpose to (num_dates, num_time_features)
+
         dataset = ForecastingDataset(data_x_scaled, data_y_unscaled, data_stamp, args, dim_manager)
         shuffle = True if flag == 'train' else False
-        drop_last = True if flag == 'train' else False # Only drop last for training
+        # Avoid dropping last to prevent empty batches on tiny datasets
+        drop_last = False
         data_loaders[flag] = DataLoader(
             dataset, batch_size=args.batch_size, shuffle=shuffle,
             num_workers=args.num_workers, drop_last=drop_last
@@ -111,18 +133,55 @@ def setup_financial_forecasting_data(args):
     logger.info("Data pipeline setup complete.")
     return data_loaders['train'], data_loaders['val'], data_loaders['test'], scaler_manager, dim_manager # Return the loaders and managers
 
-def _split_data(df: pd.DataFrame, validation_length: int, test_length: int) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """
-    Helper to split a dataframe chronologically into train, validation, and test sets.
-    The validation and test sets are taken from the end of the dataframe.
+def _split_data(
+    df: pd.DataFrame,
+    validation_length: int,
+    test_length: int,
+    *,
+    min_train_len: int,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Chronologically split into train/val/test honoring requested lengths.
+
+    Rules:
+    - Keep at least ``min_train_len`` rows for training (sliding-window minimum).
+    - Try to honor ``validation_length`` and ``test_length`` exactly where possible.
+    - If the dataset is too small, first reduce ``validation_length`` down to 0, then reduce
+      ``test_length`` as needed, to preserve the minimum train rows.
+
+    This avoids small-dataset caps (like 25%/20%) that can yield zero-window val/test splits.
     """
     total_len = len(df)
-    num_test = test_length
-    num_val = validation_length
-    num_train = total_len - num_val - num_test
+
+    # Start with requested lengths (non-negative)
+    num_val = max(0, int(validation_length))
+    num_test = max(0, int(test_length))
+
+    # Ensure at least the required training rows remain
+    required = max(1, int(min_train_len))
+    # Reduce val first, then test, until the constraint is satisfied
+    while total_len - (num_val + num_test) < required and (num_val > 0 or num_test > 0):
+        if num_val > 0:
+            num_val -= 1
+        elif num_test > 0:
+            num_test -= 1
+
+    # Whatever remains goes to training
+    num_train = max(required, total_len - num_val - num_test)
+
+    # Guard against any overflows due to rounding
+    if num_train + num_val + num_test > total_len:
+        overflow = (num_train + num_val + num_test) - total_len
+        # trim from test preferentially
+        trim_test = min(overflow, num_test)
+        num_test -= trim_test
+        overflow -= trim_test
+        if overflow > 0:
+            num_val = max(0, num_val - overflow)
+
+    # Materialize splits
     df_train = df.iloc[0:num_train].copy()
     df_val = df.iloc[num_train:num_train + num_val].copy()
-    df_test = df.iloc[num_train + num_val:].copy()
+    df_test = df.iloc[num_train + num_val:num_train + num_val + num_test].copy()
     return df_train, df_val, df_test
 # --- END OF NEW PIPELINE ---
 

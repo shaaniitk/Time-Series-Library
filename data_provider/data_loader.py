@@ -41,14 +41,24 @@ class ForecastingDataset(Dataset):
         self.pred_len = args.pred_len
         self.dim_manager = dim_manager
         
-        # Set total number of samples
-        self.total_samples = len(self.data_x) - self.seq_len - self.pred_len + 1
+        # Set total number of samples; ensure it's non-negative to satisfy PyTorch contracts
+        computed = len(self.data_x) - self.seq_len - self.pred_len + 1
+        if computed < 0:
+            logger.warning(
+                "ForecastingDataset split too short for seq_len=%s, pred_len=%s (len=%s). Clamping samples to 0.",
+                self.seq_len,
+                self.pred_len,
+                len(self.data_x),
+            )
+        self.total_samples = max(0, computed)
         logger.debug(f"Created ForecastingDataset with {self.total_samples} samples")
     
     def __getitem__(self, index):
         """
         Get a single training/validation/test instance.
         """
+        if index < 0 or index >= self.total_samples:
+            raise IndexError("Index out of range for ForecastingDataset")
         s_begin = index
         s_end = s_begin + self.seq_len
         r_begin = s_end - self.label_len
@@ -163,7 +173,18 @@ class Dataset_ETT_hour(Dataset):
         return seq_x, seq_y, seq_x_mark, seq_y_mark
 
     def __len__(self):
-        return len(self.data_x) - self.seq_len - self.pred_len + 1
+        # Ensure non-negative to avoid downstream DataLoader issues
+        computed = len(self.data_x) - self.seq_len - self.pred_len + 1
+        if computed < 0:
+            logger.warning(
+                "Dataset_ETT_hour(%s) window too short: len=%s, seq_len=%s, pred_len=%s => samples=%s",
+                {0: 'train', 1: 'val', 2: 'test'}.get(getattr(self, 'set_type', -1), 'N/A'),
+                len(self.data_x),
+                self.seq_len,
+                self.pred_len,
+                computed,
+            )
+        return max(0, computed)
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
@@ -267,7 +288,18 @@ class Dataset_ETT_minute(Dataset):
         return seq_x, seq_y, seq_x_mark, seq_y_mark
 
     def __len__(self):
-        return len(self.data_x) - self.seq_len - self.pred_len + 1
+        # Ensure non-negative to avoid downstream DataLoader issues
+        computed = len(self.data_x) - self.seq_len - self.pred_len + 1
+        if computed < 0:
+            logger.warning(
+                "Dataset_ETT_minute(%s) window too short: len=%s, seq_len=%s, pred_len=%s => samples=%s",
+                {0: 'train', 1: 'val', 2: 'test'}.get(getattr(self, 'set_type', -1), 'N/A'),
+                len(self.data_x),
+                self.seq_len,
+                self.pred_len,
+                computed,
+            )
+        return max(0, computed)
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
@@ -341,6 +373,23 @@ class Dataset_Custom(Dataset):
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
+        # Sanity checks for borders
+        if border1 < 0:
+            logger.warning(
+                "Dataset_Custom(%s): border1 < 0 (%s). Adjust your seq_len/val/test lengths.", 
+                {0: 'train', 1: 'val', 2: 'test'}[self.set_type], border1
+            )
+        if border2 > len(df_raw):
+            logger.warning(
+                "Dataset_Custom(%s): border2 (%s) exceeds data length (%s).", 
+                {0: 'train', 1: 'val', 2: 'test'}[self.set_type], border2, len(df_raw)
+            )
+        if border2 - border1 <= 0:
+            logger.error(
+                "Dataset_Custom(%s): Empty window computed: border1=%s, border2=%s. Check split configuration.",
+                {0: 'train', 1: 'val', 2: 'test'}[self.set_type], border1, border2
+            )
+
         # --- Define feature sets ---
         # This class will always load all features. The `features` arg is a hint for downstream components.
         cols_for_all_features = [col for col in df_raw.columns if col != 'date']
@@ -404,8 +453,27 @@ class Dataset_Custom(Dataset):
         if self.set_type == 0 and getattr(self.args, 'augmentation_ratio', 0) > 0:
             self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
 
+        # Log effective sample availability for this split given sliding windowing
+        window_len = len(self.data_x)
+        computed_samples = window_len - self.seq_len - self.pred_len + 1
+        split_name = {0: 'train', 1: 'val', 2: 'test'}[self.set_type]
         logger.info(f"Loaded data shape: {df_raw.shape}")
-        logger.info(f"Data_x shape: {self.data_x.shape}, Data_y shape: {self.data_y.shape}")
+        logger.info(f"Split={split_name} | Data_x shape: {self.data_x.shape}, Data_y shape: {self.data_y.shape}")
+        logger.info(
+            "Split={split} | window_len={w}, seq_len={s}, pred_len={p} => samples={n}",
+            extra={
+                'split': split_name, 'w': window_len, 's': self.seq_len, 'p': self.pred_len, 'n': computed_samples
+            }
+        )
+        if computed_samples <= 0:
+            # With Dataset_Custom borders, samples = {val:test}_length - pred_len + 1
+            # => val requires validation_length >= pred_len; test requires test_length >= pred_len
+            logger.warning(
+                "Split=%s has no samples (computed=%s). Ensure validation_length/test_length >= pred_len (pred_len=%s).",
+                split_name,
+                computed_samples,
+                self.pred_len,
+            )
 
     def __getitem__(self, index):
         s_begin = index
@@ -421,7 +489,17 @@ class Dataset_Custom(Dataset):
         return seq_x, seq_y, seq_x_mark, seq_y_mark
 
     def __len__(self):
-        return len(self.data_x) - self.seq_len - self.pred_len + 1
+        computed = len(self.data_x) - self.seq_len - self.pred_len + 1
+        if computed < 0:
+            logger.warning(
+                "Dataset_Custom(%s) window too short: len=%s, seq_len=%s, pred_len=%s => samples=%s",
+                {0: 'train', 1: 'val', 2: 'test'}[self.set_type],
+                len(self.data_x),
+                self.seq_len,
+                self.pred_len,
+                computed,
+            )
+        return max(0, computed)
 
     def inverse_transform(self, data):
         """

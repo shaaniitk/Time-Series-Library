@@ -61,7 +61,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             'c_out_evaluation': self.dm.c_out_evaluation, # Number of actual target features for evaluation
             'num_quantiles': len(self.dm.quantiles) if self.dm.quantiles else 1,
             'quantile_levels': self.dm.quantiles,
-            'loss_name': self.dm.loss_function,
+            'loss_name': getattr(args, 'loss', self.dm.loss_function),
             'target_columns': self.dm.target_features # List of target column names
         }
 
@@ -112,6 +112,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             else:
                 criterion = get_loss_function('pinball', quantile_levels=levels_for_pinball)
                 logger.info(f"Using PinballLoss with quantiles: {levels_for_pinball}")
+                logger.debug(
+                    "PinballLoss activated | quantiles=%s | c_out_model=%s | c_out_eval=%s",
+                    levels_for_pinball,
+                    self.dm.c_out_model,
+                    self.dm.c_out_evaluation,
+                )
 
         elif loss_name == 'quantile' and not is_multi_quantile_scenario:
             if not (isinstance(single_q_val, float) and 0 < single_q_val < 1):
@@ -154,6 +160,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             logger.info(f"Model {self.args.model} has configure_optimizer_loss. Wrapping base criterion.")
             return self.model.configure_optimizer_loss(criterion, verbose=getattr(self.args, 'verbose_loss', False))
         
+        logger.debug("Selected criterion: %s", type(criterion).__name__)
         return criterion
 
     def vali(self, vali_loader, criterion):
@@ -205,6 +212,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 # Handle auxiliary loss if model returns tuple
                 if isinstance(outputs_raw, tuple):
                     outputs_raw, aux_loss_val = outputs_raw
+                if logger.isEnabledFor(10):
+                    logger.debug(
+                        "VAL forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
+                        tuple(outputs_raw.shape) if hasattr(outputs_raw, 'shape') else 'n/a',
+                        self.args.pred_len,
+                        self.dm.c_out_model,
+                    )
                 
                 # Prepare y_true for loss: scale the target part of batch_y_val_unscaled_targets
                 y_true_targets_unscaled_val_loss = batch_y_val_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation].cpu().numpy()
@@ -221,6 +235,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     y_pred_for_loss_val = outputs_raw[:, -self.args.pred_len:, :c_out_evaluation]
                 
                 loss = criterion(y_pred_for_loss_val, y_true_for_loss_val)
+                if logger.isEnabledFor(10):
+                    logger.debug(
+                        "VAL loss | criterion=%s | y_pred=%s | y_true=%s | pinball=%s",
+                        type(criterion).__name__,
+                        tuple(y_pred_for_loss_val.shape),
+                        tuple(y_true_for_loss_val.shape),
+                        is_criterion_pinball,
+                    )
                 total_loss.append(loss.item())
         
         total_loss_avg = np.average(total_loss)
@@ -303,6 +325,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 aux_loss_train = 0
                 if isinstance(outputs_raw_train, tuple):
                     outputs_raw_train, aux_loss_train = outputs_raw_train
+                if logger.isEnabledFor(10):
+                    logger.debug(
+                        "TRAIN forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
+                        tuple(outputs_raw_train.shape) if hasattr(outputs_raw_train, 'shape') else 'n/a',
+                        self.args.pred_len,
+                        self.dm.c_out_model,
+                    )
                 
                 # Prepare y_true for loss: scale the target part of batch_y
                 y_true_targets_unscaled_train_loss = batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_train].cpu().numpy()
@@ -318,6 +347,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     y_pred_for_loss_train = outputs_raw_train[:, -self.args.pred_len:, :c_out_evaluation_train]
                 
                 loss_train = criterion(y_pred_for_loss_train, y_true_for_loss_train)
+                if logger.isEnabledFor(10):
+                    logger.debug(
+                        "TRAIN loss | criterion=%s | y_pred=%s | y_true=%s | pinball=%s",
+                        type(criterion).__name__,
+                        tuple(y_pred_for_loss_train.shape),
+                        tuple(y_true_for_loss_train.shape),
+                        is_criterion_pinball_train,
+                    )
                 
                 # Add auxiliary loss if present
                 if aux_loss_train != 0:
@@ -438,6 +475,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
 
                 model_outputs_pred_len_segment = outputs_raw_test[:, -self.args.pred_len:, :] # [B, pred_len, c_out_model]
+                if logger.isEnabledFor(10):
+                    logger.debug(
+                        "TEST forward | outputs_raw=%s | pred_len_segment=%s | c_out_model=%s | quantile_mode=%s",
+                        tuple(outputs_raw_test.shape) if hasattr(outputs_raw_test, 'shape') else 'n/a',
+                        tuple(model_outputs_pred_len_segment.shape),
+                        self.dm.c_out_model,
+                        is_quantile_mode_test,
+                    )
                 
                 # Store original unscaled targets (only the target columns) for direct comparison/saving
                 true_targets_original_batch_np = batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy()
@@ -489,6 +534,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         logger.warning("Cannot visualize in original scale: inverse_transform not available or scale=False.")
 
 
+        # If no test windows were yielded (e.g., tiny dataset with seq_len+pred_len > test split),
+        # skip concatenation and metrics gracefully.
+        if len(preds_scaled_np) == 0:
+            logger.warning(
+                "No test samples available for evaluation (test split too short for given seq_len+pred_len). "
+                "Skipping metrics and result saving."
+            )
+            return
+
         preds_final_scaled = np.concatenate(preds_scaled_np, axis=0)
         trues_final_original_targets_only = np.concatenate(trues_original_np_targets_only, axis=0)
         
@@ -504,12 +558,21 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         trues_for_metric = trues_final_original_targets_only[:, :, :num_true_target_cols]
 
         logger.info(f'Test shape (original scale, targets only): preds={preds_for_metric.shape}, trues={trues_for_metric.shape}')
-        
+
+        # Explicitly log whether quantile path was active during test
+        logger.debug(
+            "TEST summary | loss_name=%s | quantiles=%s | num_quantiles=%s | median_index=%s",
+            self.eval_info['loss_name'],
+            self.eval_info['quantile_levels'],
+            num_quantiles_test,
+            median_quantile_index,
+        )
+
         mae, mse, rmse, mape, mspe = metric(preds_for_metric, trues_for_metric)
         logger.info('Metrics (original scale, targets only): mse:{}, mae:{}, rmse:{}'.format(mse, mae, rmse))
-        
+
         dtw_val = 'Not calculated' # Placeholder for DTW
-        
+
         with open(os.path.join(folder_path, "result_long_term_forecast.txt"), 'a') as f:
             f.write(setting + "  \n")
             f.write('Metrics (original scale, targets only): mse:{}, mae:{}, rmse:{}, dtw:{}'.format(mse, mae, rmse, dtw_val))

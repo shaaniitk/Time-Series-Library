@@ -68,6 +68,10 @@ class TemporalEmbedding(nn.Module):
     def __init__(self, d_model, embed_type='fixed', freq='h'):
         super(TemporalEmbedding, self).__init__()
 
+        # Normalize frequency to lowercase to handle inputs like 'D', 'H', etc.
+        if isinstance(freq, str):
+            freq = freq.lower()
+
         minute_size = 4
         hour_size = 24
         weekday_size = 7
@@ -98,9 +102,15 @@ class TimeFeatureEmbedding(nn.Module):
     def __init__(self, d_model, embed_type='timeF', freq='h'):
         super(TimeFeatureEmbedding, self).__init__()
 
+        # Normalize frequency to lowercase and map to expected input dimension
+        if isinstance(freq, str):
+            freq = freq.lower()
         freq_map = {'h': 4, 't': 5, 's': 6,
                     'm': 1, 'a': 1, 'w': 2, 'd': 3, 'b': 3}
-        d_inp = freq_map[freq]
+        try:
+            d_inp = freq_map[freq]
+        except KeyError as e:
+            raise KeyError(f"Unsupported frequency '{freq}'. Expected one of {list(freq_map.keys())}") from e
         self.embed = nn.Linear(d_inp, d_model, bias=False)
 
     def forward(self, x):
@@ -110,7 +120,8 @@ class TimeFeatureEmbedding(nn.Module):
 class DataEmbedding(nn.Module):
     def __init__(self, c_in, d_model, embed_type='fixed', freq='h', dropout=0.1):
         super(DataEmbedding, self).__init__()
-
+        if isinstance(freq, str):
+            freq = freq.lower()
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
         self.position_embedding = PositionalEmbedding(d_model=d_model)
         self.temporal_embedding = TemporalEmbedding(d_model=d_model, embed_type=embed_type,
@@ -149,7 +160,8 @@ class DataEmbedding_inverted(nn.Module):
 class DataEmbedding_wo_pos(nn.Module):
     def __init__(self, c_in, d_model, embed_type='fixed', freq='h', dropout=0.1):
         super(DataEmbedding_wo_pos, self).__init__()
-
+        if isinstance(freq, str):
+            freq = freq.lower()
         self.value_embedding = TokenEmbedding(c_in=c_in, d_model=d_model)
         self.position_embedding = PositionalEmbedding(d_model=d_model)
         self.temporal_embedding = TemporalEmbedding(d_model=d_model, embed_type=embed_type,

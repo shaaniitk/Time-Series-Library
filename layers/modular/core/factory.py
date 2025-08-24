@@ -50,45 +50,73 @@ COMPONENT_FAMILY_MAP: Dict[ComponentType, ComponentFamily] = {
 }
 
 class UnifiedFactory:
-    def create_from_config(self, config: ModularAutoformerConfig):
+    def create_from_config(self, config: ModularAutoformerConfig) -> Dict[str, Any]:
         # Build components using mapping
         attn_cfg = config.attention
         decomp_cfg = config.decomposition
         enc_cfg = config.encoder
         dec_cfg = config.decoder
 
-        attention = self._create(attn_cfg.type, d_model=config.d_model, n_heads=getattr(attn_cfg, 'n_heads', 8),
-                                 factor=getattr(attn_cfg, 'factor', 1), dropout=attn_cfg.dropout,
-                                 output_attention=getattr(attn_cfg, 'output_attention', False))
-        decomposition = self._create(decomp_cfg.type, kernel_size=getattr(decomp_cfg, 'kernel_size', 25),
-                                     input_dim=getattr(decomp_cfg, 'input_dim', config.d_model))
-        encoder = self._create(enc_cfg.type,
-                               num_encoder_layers=getattr(enc_cfg, 'num_encoder_layers', getattr(enc_cfg, 'e_layers', 2)),
-                               d_model=config.d_model,
-                               n_heads=getattr(enc_cfg, 'n_heads', 8),
-                               d_ff=enc_cfg.d_ff,
-                               dropout=enc_cfg.dropout,
-                               activation=enc_cfg.activation,
-                               attention_comp=attention,
-                               decomp_comp=decomposition)
-        decoder = self._create(dec_cfg.type,
-                               num_decoder_layers=getattr(dec_cfg, 'num_decoder_layers', getattr(dec_cfg, 'd_layers', 1)),
-                               d_model=config.d_model,
-                               n_heads=getattr(dec_cfg, 'n_heads', 8),
-                               d_ff=dec_cfg.d_ff,
-                               dropout=dec_cfg.dropout,
-                               activation=dec_cfg.activation,
-                               c_out=dec_cfg.c_out,
-                               self_attention_comp=attention,
-                               cross_attention_comp=attention,
-                               decomp_comp=decomposition)
-        sampling = self._create(config.sampling.type,
-                                n_samples=getattr(config.sampling, 'n_samples', 1),
-                                quantile_levels=config.quantile_levels or getattr(config.sampling, 'quantile_levels', None))
-        output_head = self._create(config.output_head.type,
-                                   d_model=config.output_head.d_model,
-                                   c_out=config.output_head.c_out,
-                                   num_quantiles=getattr(config.output_head, 'num_quantiles', None))
+        attention = self._create(
+            attn_cfg.type,
+            d_model=config.d_model,
+            n_heads=getattr(attn_cfg, 'n_heads', 8),
+            factor=getattr(attn_cfg, 'factor', 1),
+            dropout=attn_cfg.dropout,
+            output_attention=getattr(attn_cfg, 'output_attention', False),
+        )
+
+        # Map schema fields to component constructor names
+        decomp_kwargs = {
+            "input_dim": getattr(decomp_cfg, 'input_dim', config.d_model),
+            "d_model": config.d_model,
+        }
+        if decomp_cfg.type == ComponentType.LEARNABLE_DECOMP:
+            decomp_kwargs["init_kernel_size"] = getattr(decomp_cfg, 'kernel_size', 25)
+        else:
+            decomp_kwargs["kernel_size"] = getattr(decomp_cfg, 'kernel_size', 25)
+
+        decomposition = self._create(decomp_cfg.type, **decomp_kwargs)
+
+        encoder = self._create(
+            enc_cfg.type,
+            num_encoder_layers=getattr(enc_cfg, 'num_encoder_layers', getattr(enc_cfg, 'e_layers', 2)),
+            d_model=config.d_model,
+            n_heads=getattr(enc_cfg, 'n_heads', 8),
+            d_ff=enc_cfg.d_ff,
+            dropout=enc_cfg.dropout,
+            activation=enc_cfg.activation,
+            attention_comp=attention,
+            decomp_comp=decomposition,
+        )
+
+        decoder = self._create(
+            dec_cfg.type,
+            num_decoder_layers=getattr(dec_cfg, 'num_decoder_layers', getattr(dec_cfg, 'd_layers', 1)),
+            d_model=config.d_model,
+            n_heads=getattr(dec_cfg, 'n_heads', 8),
+            d_ff=dec_cfg.d_ff,
+            dropout=dec_cfg.dropout,
+            activation=dec_cfg.activation,
+            c_out=dec_cfg.c_out,
+            self_attention_comp=attention,
+            cross_attention_comp=attention,
+            decomp_comp=decomposition,
+        )
+
+        sampling = self._create(
+            config.sampling.type,
+            n_samples=getattr(config.sampling, 'n_samples', 1),
+            quantile_levels=(config.quantile_levels or getattr(config.sampling, 'quantile_levels', None)),
+        )
+
+        output_head = self._create(
+            config.output_head.type,
+            d_model=config.output_head.d_model,
+            c_out=config.output_head.c_out,
+            num_quantiles=getattr(config.output_head, 'num_quantiles', None),
+        )
+
         loss = self._create(config.loss.type, quantiles=getattr(config.loss, 'quantiles', None))
         embedding = None
         if config.embedding:
@@ -119,7 +147,7 @@ class UnifiedFactory:
             'normalization': normalization
         }
 
-    def _create(self, comp_type: ComponentType, **kwargs):
+    def _create(self, comp_type: ComponentType, **kwargs) -> Any:
         family = COMPONENT_FAMILY_MAP.get(comp_type)
         if not family:
             raise ValueError(f"Unsupported component type: {comp_type}")

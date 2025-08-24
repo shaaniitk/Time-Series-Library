@@ -1,63 +1,66 @@
 import os
 import torch
-from models import Autoformer, Transformer, TimesNet, Nonstationary_Transformer, DLinear, FEDformer, \
-    Informer, LightTS, Reformer, ETSformer, Pyraformer, PatchTST, MICN, Crossformer, FiLM, iTransformer, \
-    Koopa, TiDE, FreTS, TimeMixer, TSMixer, SegRNN, MambaSimple, TemporalFusionTransformer, SCINet, PAttn, TimeXer, \
-    WPMixer, MultiPatchFormer, EnhancedAutoformer, BayesianEnhancedAutoformer, HierarchicalEnhancedAutoformer
+import models as models_pkg
 
-# Import HF models and factory
-from models.HFEnhancedAutoformer import HFEnhancedAutoformer
-from models.HFAdvancedFactory import (
-    HFBayesianEnhancedAutoformer,
-    HFHierarchicalEnhancedAutoformer, 
-    HFQuantileEnhancedAutoformer,
-    HFFullEnhancedAutoformer,
-    create_hf_model_from_config
-)
+# GCLI modular model
+from models.modular_autoformer import ModularAutoformer
+
+# Import HF models and factory (optional; may not always be present)
+try:
+    from models.HFEnhancedAutoformer import HFEnhancedAutoformer  # type: ignore
+    from models.HFAdvancedFactory import (  # type: ignore
+        HFBayesianEnhancedAutoformer,
+        HFHierarchicalEnhancedAutoformer,
+        HFQuantileEnhancedAutoformer,
+        HFFullEnhancedAutoformer,
+        create_hf_model_from_config,
+    )
+except Exception:  # pragma: no cover - optional dependency path
+    HFEnhancedAutoformer = None  # type: ignore
+    HFBayesianEnhancedAutoformer = None  # type: ignore
+    HFHierarchicalEnhancedAutoformer = None  # type: ignore
+    HFQuantileEnhancedAutoformer = None  # type: ignore
+    HFFullEnhancedAutoformer = None  # type: ignore
+    create_hf_model_from_config = None  # type: ignore
 
 
 class Exp_Basic(object):
     def __init__(self, args):
         self.args = args
-        self.model_dict = {
-            'TimesNet': TimesNet,
-            'Autoformer': Autoformer,
-            'EnhancedAutoformer': EnhancedAutoformer,
-            'BayesianEnhancedAutoformer': BayesianEnhancedAutoformer,
-            'HierarchicalEnhancedAutoformer': HierarchicalEnhancedAutoformer,
-            'HFEnhancedAutoformer': HFEnhancedAutoformer,
-            'HFBayesianEnhancedAutoformer': HFBayesianEnhancedAutoformer,
-            'HFHierarchicalEnhancedAutoformer': HFHierarchicalEnhancedAutoformer,
-            'HFQuantileEnhancedAutoformer': HFQuantileEnhancedAutoformer,
-            'HFFullEnhancedAutoformer': HFFullEnhancedAutoformer,
-            'Transformer': Transformer,
-            'Nonstationary_Transformer': Nonstationary_Transformer,
-            'DLinear': DLinear,
-            'FEDformer': FEDformer,
-            'Informer': Informer,
-            'LightTS': LightTS,
-            'Reformer': Reformer,
-            'ETSformer': ETSformer,
-            'PatchTST': PatchTST,
-            'Pyraformer': Pyraformer,
-            'MICN': MICN,
-            'Crossformer': Crossformer,
-            'FiLM': FiLM,
-            'iTransformer': iTransformer,
-            'Koopa': Koopa,
-            'TiDE': TiDE,
-            'FreTS': FreTS,
-            'MambaSimple': MambaSimple,
-            'TimeMixer': TimeMixer,
-            'TSMixer': TSMixer,
-            'SegRNN': SegRNN,
-            'TemporalFusionTransformer': TemporalFusionTransformer,
-            "SCINet": SCINet,
-            'PAttn': PAttn,
-            'TimeXer': TimeXer,
-            'WPMixer': WPMixer,
-            'MultiPatchFormer': MultiPatchFormer
-        }
+        # Build model registry lazily to avoid import-time failures for optional models
+        self.model_dict = {}
+
+        # Always register the modular entry point explicitly
+        self.model_dict['ModularAutoformer'] = ModularAutoformer
+
+        # Optionally register HF models if available
+        if HFEnhancedAutoformer is not None:
+            self.model_dict['HFEnhancedAutoformer'] = HFEnhancedAutoformer
+        if HFBayesianEnhancedAutoformer is not None:
+            self.model_dict['HFBayesianEnhancedAutoformer'] = HFBayesianEnhancedAutoformer
+        if HFHierarchicalEnhancedAutoformer is not None:
+            self.model_dict['HFHierarchicalEnhancedAutoformer'] = HFHierarchicalEnhancedAutoformer
+        if HFQuantileEnhancedAutoformer is not None:
+            self.model_dict['HFQuantileEnhancedAutoformer'] = HFQuantileEnhancedAutoformer
+        if HFFullEnhancedAutoformer is not None:
+            self.model_dict['HFFullEnhancedAutoformer'] = HFFullEnhancedAutoformer
+
+        # Try to register standard models via models package lazy access
+        optional_model_names = [
+            'TimesNet', 'Autoformer', 'EnhancedAutoformer', 'BayesianEnhancedAutoformer',
+            'HierarchicalEnhancedAutoformer', 'Transformer', 'Nonstationary_Transformer', 'DLinear',
+            'FEDformer', 'Informer', 'LightTS', 'Reformer', 'ETSformer', 'Pyraformer', 'PatchTST', 'MICN',
+            'Crossformer', 'FiLM', 'iTransformer', 'Koopa', 'TiDE', 'FreTS', 'MambaSimple', 'TimeMixer',
+            'TSMixer', 'SegRNN', 'TemporalFusionTransformer', 'SCINet', 'PAttn', 'TimeXer', 'WPMixer',
+            'MultiPatchFormer'
+        ]
+        for name in optional_model_names:
+            try:
+                cls = getattr(models_pkg, name)
+                self.model_dict[name] = cls
+            except Exception:
+                # Skip models that are unavailable in this environment
+                pass
         if args.model == 'Mamba':
             print('Please make sure you have successfully installed mamba_ssm')
             from models import Mamba
