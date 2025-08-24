@@ -58,8 +58,8 @@ class HFEnhancedAutoformerBase(nn.Module):
         
     def _create_loss_manager(self, configs):
         """Create loss manager using existing loss infrastructure"""
-        from utils.losses import get_loss_function
-        from utils.bayesian_losses import create_bayesian_loss
+        from layers.modular.losses.registry import get_loss_component
+        from layers.modular.losses.adaptive_bayesian_losses import create_bayesian_loss
         
         loss_type = getattr(configs, 'loss', 'mse').lower()
         

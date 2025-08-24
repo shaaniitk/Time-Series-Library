@@ -3,8 +3,8 @@ Adapter registrations that expose utils adapter implementations to the unified r
 """
 from __future__ import annotations
 
-from utils.modular_components.registry import register_component
-from utils.modular_components.implementations.adapters import (
+from layers.modular.core.registry import register_component
+from layers.modular.backbone.adapters import (
     CovariateAdapter,
     MultiScaleAdapter,
 )
@@ -19,7 +19,7 @@ def register_utils_adapters() -> None:
         metadata={
             "domain": "adapter",
             "features": ["covariates", "fusion:project|concat|add", "tokenizer_aware"],
-            "source": "utils.modular_components.implementations.adapters",
+            "source": "layers.modular.backbone.adapters",
         },
     )
     register_component(
@@ -29,6 +29,6 @@ def register_utils_adapters() -> None:
         metadata={
             "domain": "adapter",
             "features": ["multi_scale", "concat|add_aggregation"],
-            "source": "utils.modular_components.implementations.adapters",
+            "source": "layers.modular.backbone.adapters",
         },
     )

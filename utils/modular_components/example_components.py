@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 from utils.modular_components.base_interfaces import (
     BaseBackbone, BaseProcessor, BaseAttention, BaseLoss, BaseEmbedding, BaseOutput
 )
-from utils.modular_components.config_schemas import ComponentConfig
+from configs.schemas import ComponentConfig
 
 
 class ChronosBackbone(BaseBackbone):

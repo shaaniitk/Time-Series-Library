@@ -13,10 +13,9 @@ from argparse import Namespace
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.modular_components.registry import create_global_registry
-from utils.modular_components.example_components import register_example_components
-from utils.modular_components.dependency_manager import DependencyValidator
-from utils.modular_components.configuration_manager import ConfigurationManager, ModularConfig
+from layers.modular.core.registry import unified_registry, ComponentFamily
+from layers.modular.backbone.chronos_backbone import ChronosXBackbone
+from layers.modular.core.configuration import ConfigurationManager, ModularConfig
 
 
 def test_chronos_x_integration():
@@ -25,14 +24,14 @@ def test_chronos_x_integration():
     print("=" * 60)
     
     # Initialize registry and validation
-    registry = create_global_registry()
+    registry = unified_registry
     config_manager = ConfigurationManager(registry)
     
     print("\n Available ChronosX Backbones:")
-    backbone_components = registry.list_components('backbone')
+    backbone_components = unified_registry.list(ComponentFamily.BACKBONE)['backbone']
     chronos_components = [comp for comp in backbone_components if 'chronos' in comp]
     for comp in chronos_components:
-        info = registry.get_component_info('backbone', comp)
+        info = unified_registry.describe(ComponentFamily.BACKBONE, comp)
         if info:
             metadata = info.get('metadata', {})
             print(f"  PASS {comp}: {metadata.get('description', 'No description')}")
@@ -129,7 +128,7 @@ def test_chronos_x_integration():
     for backbone in performance_backbones:
         print(f"  CHART {backbone}:")
         try:
-            info = registry.get_component_info('backbone', backbone)
+            info = unified_registry.describe(ComponentFamily.BACKBONE, backbone)
             if info:
                 metadata = info.get('metadata', {})
                 backbone_class = info['class']
@@ -149,7 +148,6 @@ def test_chronos_x_integration():
     print("   Registering Custom ChronosX Variant...")
     
     try:
-        from utils.modular_components.chronos_backbone import ChronosXBackbone
         
         class ChronosXCustom(ChronosXBackbone):
             @classmethod
@@ -157,7 +155,7 @@ def test_chronos_x_integration():
                 base_caps = super().get_capabilities()
                 return base_caps + ['custom_feature', 'extended_capability']
         
-        registry.register('backbone', 'chronos_x_custom', ChronosXCustom, {
+        unified_registry.register(ComponentFamily.BACKBONE, 'chronos_x_custom', ChronosXCustom, {
             'description': 'Custom ChronosX variant',
             'specialty': 'testing'
         })

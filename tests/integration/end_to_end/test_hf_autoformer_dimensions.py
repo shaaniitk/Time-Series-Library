@@ -26,7 +26,7 @@ warnings.filterwarnings('ignore')
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, project_root)
 
-from utils.dimension_manager import DimensionManager
+from layers.modular.dimensions.dimension_manager import DimensionManager
 
 # Try to import HF models if available
 try:
@@ -44,7 +44,7 @@ except ImportError as e:
 
 # Try to import modular components
 try:
-    from utils.modular_components.registry import create_component, get_global_registry
+    from layers.modular.core.registry import create_component, unified_registry as get_global_registry
     MODULAR_COMPONENTS_AVAILABLE = True
     print("PASS Modular components available for testing")
 except ImportError as e:

@@ -19,8 +19,7 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 try:
-    from utils.modular_components.registry import create_component, get_global_registry
-    from utils.modular_components.implementations import get_integration_status
+    from layers.modular.core.registry import unified_registry, ComponentFamily
     COMPONENTS_AVAILABLE = True
 except ImportError as e:
     print(f"WARN Could not import modular components: {e}")
@@ -91,7 +90,7 @@ def test_frequency_domain_processor():
     
     try:
         config = MockConfig(freq_threshold=0.1)
-        processor = create_component('processor', 'frequency_domain', config)
+        processor = unified_registry.create(ComponentFamily.PROCESSOR, 'frequency_domain', **vars(config))
         
         if processor is None:
             print("    WARN Frequency domain processor not available, skipping...")
@@ -151,7 +150,7 @@ def test_dtw_alignment_processor():
     
     try:
         config = MockConfig(window_size=16)
-        processor = create_component('processor', 'dtw_alignment', config)
+        processor = unified_registry.create(ComponentFamily.PROCESSOR, 'dtw_alignment', **vars(config))
         
         if processor is None:
             print("    WARN DTW alignment processor not available, skipping...")
@@ -221,7 +220,7 @@ def test_trend_processor():
     
     try:
         config = MockConfig(scales=[1, 4, 16])
-        processor = create_component('processor', 'trend_analysis', config)
+        processor = unified_registry.create(ComponentFamily.PROCESSOR, 'trend_analysis', **vars(config))
         
         if processor is None:
             print("    WARN Trend analysis processor not available, skipping...")
@@ -265,7 +264,7 @@ def test_trend_processor():
         for scale in [1, 2, 4, 8]:
             test_config = MockConfig(scales=[scale])
             try:
-                scale_processor = create_component('processor', 'trend_analysis', test_config)
+                scale_processor = unified_registry.create(ComponentFamily.PROCESSOR, 'trend_analysis', **vars(test_config))
                 if scale_processor:
                     with torch.no_grad():
                         scale_output = scale_processor(signal_data)
@@ -299,7 +298,7 @@ def test_integrated_signal_processor():
     
     try:
         config = MockConfig()
-        processor = create_component('processor', 'integrated_signal', config)
+        processor = unified_registry.create(ComponentFamily.PROCESSOR, 'integrated_signal', **vars(config))
         
         if processor is None:
             print("    WARN Integrated signal processor not available, skipping...")
@@ -396,7 +395,7 @@ def test_wavelet_processor():
     
     try:
         config = MockConfig(wavelet='db4', levels=3)
-        processor = create_component('processor', 'wavelet', config)
+        processor = unified_registry.create(ComponentFamily.PROCESSOR, 'wavelet', **vars(config))
         
         if processor is None:
             print("    WARN Wavelet processor not available, skipping...")
@@ -431,7 +430,7 @@ def test_wavelet_processor():
         for wavelet_type in wavelet_types:
             try:
                 wavelet_config = MockConfig(wavelet=wavelet_type, levels=3)
-                wavelet_proc = create_component('processor', 'wavelet', wavelet_config)
+                wavelet_proc = unified_registry.create(ComponentFamily.PROCESSOR, 'wavelet', wavelet_config)
                 
                 if wavelet_proc:
                     with torch.no_grad():
@@ -445,7 +444,7 @@ def test_wavelet_processor():
         for levels in [2, 3, 4, 5]:
             try:
                 level_config = MockConfig(wavelet='db4', levels=levels)
-                level_proc = create_component('processor', 'wavelet', level_config)
+                level_proc = unified_registry.create(ComponentFamily.PROCESSOR, 'wavelet', level_config)
                 
                 if level_proc:
                     with torch.no_grad():
@@ -493,7 +492,7 @@ def test_multi_scale_processor():
     
     try:
         config = MockConfig(scales=[1, 2, 4, 8])
-        processor = create_component('processor', 'multi_scale', config)
+        processor = unified_registry.create(ComponentFamily.PROCESSOR, 'multi_scale', **vars(config))
         
         if processor is None:
             print("    WARN Multi-scale processor not available, skipping...")
@@ -539,7 +538,7 @@ def test_multi_scale_processor():
         for scales in scale_configs:
             try:
                 scale_config = MockConfig(scales=scales)
-                scale_proc = create_component('processor', 'multi_scale', scale_config)
+                scale_proc = unified_registry.create(ComponentFamily.PROCESSOR, 'multi_scale', scale_config)
                 
                 if scale_proc:
                     with torch.no_grad():
@@ -567,7 +566,7 @@ def test_multi_scale_processor():
         for fusion_method in fusion_methods:
             try:
                 fusion_config = MockConfig(scales=[1, 2, 4], fusion_method=fusion_method)
-                fusion_proc = create_component('processor', 'multi_scale', fusion_config)
+                fusion_proc = unified_registry.create(ComponentFamily.PROCESSOR, 'multi_scale', fusion_config)
                 
                 if fusion_proc:
                     with torch.no_grad():

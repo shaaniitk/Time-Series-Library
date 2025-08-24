@@ -14,7 +14,7 @@ from dataclasses import dataclass
 # Import utils system components
 from utils.modular_components.factory import ComponentFactory
 from utils.modular_components.registry import _global_registry
-from utils.modular_components.config_schemas import AttentionConfig, LossConfig
+from configs.schemas import AttentionConfig, LossConfig
 
 # Import our algorithm adapters
 from utils_algorithm_adapters import (

@@ -216,15 +216,12 @@ def test_modular_components():
     print(f"\n{Color.BOLD}Modular Components Test:{Color.END}")
     
     try:
-        from utils.modular_components.registry import create_global_registry
-        from utils.modular_components.example_components import register_example_components
+        from layers.modular.core.registry import unified_registry
+        from layers.modular.core.example_components import register_example_components
         
         # Test registry creation
-        registry = create_global_registry()
-        print(f"{Color.GREEN}✅ Component registry created{Color.END}")
-        
         # Test component registration
-        register_example_components(registry)
+        register_example_components()
         print(f"{Color.GREEN}✅ Example components registered{Color.END}")
         
         return True

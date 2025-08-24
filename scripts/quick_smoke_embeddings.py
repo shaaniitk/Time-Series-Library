@@ -1,6 +1,6 @@
 import torch
 from unified_component_registry import unified_registry
-from utils.modular_components.config_schemas import EmbeddingConfig
+from layers.modular.core.config_schemas import EmbeddingConfig
 
 # List
 comps = unified_registry.list_all_components()

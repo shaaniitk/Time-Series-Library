@@ -34,6 +34,7 @@ class ComponentFamily(str, Enum):
     PROCESSOR = 'processor'
     FEEDFORWARD = 'feedforward'
     OUTPUT = 'output'
+    NORMALIZATION = 'normalization'
 
 PROTO_MAP = {
     ComponentFamily.ATTENTION: AttentionLike,

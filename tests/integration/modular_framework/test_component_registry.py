@@ -21,9 +21,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import modular components with graceful fallback
 try:
-    from utils.modular_components.registry import ComponentRegistry, get_global_registry
-    from utils.modular_components.base_interfaces import BaseComponent, ComponentType
-    from utils.modular_components.config_schemas import ComponentConfig
+    from layers.modular.core.registry import UnifiedRegistry as ComponentRegistry, unified_registry as get_global_registry
+from layers.modular.core.base_interfaces import BaseComponent, ComponentType
+from layers.modular.core.config_schemas import ComponentConfig
     MODULAR_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Modular components not available: {e}")
@@ -113,7 +113,7 @@ class TestComponentRegistry:
         registry.register('processor', 'test_overwrite', ComponentV1)
         
         # Register second version (should warn)
-        with patch('utils.modular_components.registry.logger') as mock_logger:
+        with patch('layers.modular.core.registry.logger') as mock_logger:
             registry.register('processor', 'test_overwrite', ComponentV2)
             mock_logger.warning.assert_called_once()
             

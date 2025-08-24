@@ -18,8 +18,8 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 sys.path.insert(0, PROJECT_ROOT)
 
 from models.modular_autoformer import ModularAutoformer
-from utils.modular_components.registry import create_global_registry
-from utils.modular_components.example_components import register_example_components
+from layers.modular.core.registry import unified_registry
+from layers.modular.core.example_components import register_example_components
 
 
 class ModularAutoformerTester:
@@ -184,7 +184,7 @@ class ModularAutoformerTester:
             config = self.create_test_config(use_backbone=False)
             
             # Initialize registry and register components
-            registry = create_global_registry()
+            registry = unified_registry
             register_example_components(registry)
             
             # Create model
@@ -241,7 +241,7 @@ class ModularAutoformerTester:
             config = self.create_test_config(use_backbone=True, backbone_type='chronos_x')
             
             # Initialize registry and register components
-            registry = create_global_registry()
+            registry = unified_registry
             register_example_components(registry)
             
             # Create model with ChronosX backbone
@@ -321,7 +321,7 @@ class ModularAutoformerTester:
                 config = self.create_test_config(use_backbone=True, backbone_type=variant_type)
                 
                 # Initialize registry
-                registry = create_global_registry()
+                registry = unified_registry
                 register_example_components(registry)
                 
                 # Create model

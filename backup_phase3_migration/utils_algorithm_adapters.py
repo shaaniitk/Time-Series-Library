@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 # Import utils base interfaces
 from utils.modular_components.base_interfaces import BaseAttention
-from utils.modular_components.config_schemas import AttentionConfig
+from configs.schemas import AttentionConfig
 
 # Import our restored algorithms
 from layers.modular.attention.fourier_attention import FourierAttention as OriginalFourierAttention

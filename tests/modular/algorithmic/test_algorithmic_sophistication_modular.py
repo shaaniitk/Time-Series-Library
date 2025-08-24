@@ -15,7 +15,7 @@ from utils_algorithm_adapters import (
     RestoredAutoCorrelationConfig,
     RestoredMetaLearningConfig,
 )
-from utils.modular_components.registry import _global_registry
+from layers.modular.core.registry import unified_registry as _global_registry
 
 
 @pytest.fixture(scope="module", autouse=True)

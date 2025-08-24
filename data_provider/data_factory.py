@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 # --- Imports for the NEW robust pipeline ---
 from data_provider.data_loader import ForecastingDataset
 from data_provider.data_prepare import FinancialDataManager
-from utils.dimension_manager import DimensionManager
+from layers.modular.dimensions.dimension_manager import DimensionManager
 from utils.scaler_manager import ScalerManager
 from typing import Tuple # Ensure Tuple is imported
 from utils.logger import logger

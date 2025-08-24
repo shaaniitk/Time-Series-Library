@@ -55,10 +55,28 @@ from layers.modular.output_heads.standard_output_head import StandardOutputHead
 from layers.modular.output_heads.quantile_output_head import QuantileOutputHead
 from layers.modular.fusion.hierarchical_fusion import HierarchicalFusion
 from layers.modular.backbone import ChronosBackboneWrapper
+from .backbone.simple_backbones import SimpleTransformerBackbone, RobustHFBackbone
 from layers.modular.embedding import TemporalEmbeddingWrapper
 from layers.modular.processor import TimeDomainProcessorWrapper
+from layers.modular.processor.processors import WaveletProcessor, NormalizationProcessor
 from layers.modular.feedforward import PositionwiseFeedForwardWrapper
+from layers.modular.feedforward.feedforwards import StandardFFN, GatedFFN, MoEFFN, ConvFFN
 from layers.modular.output import LinearOutputWrapper
+from layers.modular.embedding.embed import (
+    PositionalEmbedding,
+    TokenEmbedding,
+    FixedEmbedding,
+    TemporalEmbedding,
+    TimeFeatureEmbedding,
+    DataEmbedding,
+    DataEmbedding_inverted,
+    DataEmbedding_wo_pos,
+    PatchEmbedding,
+)
+from layers.modular.embedding.value_embedding import ValueEmbedding
+from layers.modular.embedding.covariate_embedding import CovariateEmbedding
+from layers.modular.embedding.hybrid_embedding import HybridEmbedding
+from layers.modular.normalization.normalization import RMSNorm
 
 # Loss implementations in current codebase:
 # - StandardLossWrapper wraps torch losses (MSE, MAE)
@@ -259,6 +277,43 @@ unified_registry.register(
     metadata={'description': 'Multi-graph attention wrapper'}
 )
 
+# Migrated attention components
+unified_registry.register(
+    ComponentFamily.ATTENTION,
+    'multi_head_attention',
+    MultiHeadAttention,
+    component_type=None,
+    aliases=['multihead']
+)
+unified_registry.register(
+    ComponentFamily.ATTENTION,
+    'autocorrelation_attention',
+    AutoCorrelationAttention,
+    component_type=None,
+    aliases=['autocorrelation']
+)
+unified_registry.register(
+    ComponentFamily.ATTENTION,
+    'sparse_attention',
+    SparseAttention,
+    component_type=None,
+    aliases=['sparse']
+)
+unified_registry.register(
+    ComponentFamily.ATTENTION,
+    'log_sparse_attention',
+    LogSparseAttention,
+    component_type=None,
+    aliases=['logsparse']
+)
+unified_registry.register(
+    ComponentFamily.ATTENTION,
+    'prob_sparse_attention',
+    ProbSparseAttention,
+    component_type=None,
+    aliases=['probsparse']
+)
+
 # DECOMPOSITION
 unified_registry.register(
     ComponentFamily.DECOMPOSITION,
@@ -418,96 +473,119 @@ unified_registry.register(
     aliases=['pinball_loss','pinball','quantile','multi_quantile']
 )
 unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.BAYESIAN_MSE.value,
-    BayesianMSELoss,
-    component_type=ComponentType.BAYESIAN_MSE,
-    aliases=['bayesian']
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.BAYESIAN_QUANTILE.value,
-    BayesianQuantileLoss,
-    component_type=ComponentType.BAYESIAN_QUANTILE,
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.ADAPTIVE_AUTOFORMER_LOSS.value,
-    AdaptiveAutoformerLoss,
-    component_type=ComponentType.ADAPTIVE_AUTOFORMER_LOSS,
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.FREQUENCY_AWARE_LOSS.value,
-    FrequencyAwareLoss,
-    component_type=ComponentType.FREQUENCY_AWARE_LOSS,
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.UNCERTAINTY_CALIBRATION_LOSS.value,
-    UncertaintyCalibrationLoss,
-    component_type=ComponentType.UNCERTAINTY_CALIBRATION_LOSS,
-    aliases=['uncertainty_calibration']
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.MAPE_LOSS.value,
-    MAPELoss,
-    component_type=ComponentType.MAPE_LOSS,
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.SMAPE_LOSS.value,
-    SMAPELoss,
-    component_type=ComponentType.SMAPE_LOSS,
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.MASE_LOSS.value,
-    MASELoss,
-    component_type=ComponentType.MASE_LOSS,
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.PS_LOSS.value,
-    PSLoss,
-    component_type=ComponentType.PS_LOSS,
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    ComponentType.FOCAL_LOSS.value,
-    FocalLoss,
-    component_type=ComponentType.FOCAL_LOSS,
-    aliases=['focal']
-)
-unified_registry.register(
-    ComponentFamily.LOSS,
-    'huber',
-    HuberLoss,
+    ComponentFamily.PROCESSOR,
+    'frequency_domain',
+    FrequencyDomainProcessor,
     component_type=None,
+    aliases=['frequency_domain']
+)
+unified_registry.register(
+    ComponentFamily.PROCESSOR,
+    'structural_patch',
+    StructuralPatchProcessor,
+    component_type=None,
+    aliases=['structural_patch']
+)
+unified_registry.register(
+    ComponentFamily.PROCESSOR,
+    'dtw_alignment',
+    DTWAlignmentProcessor,
+    component_type=None,
+    aliases=['dtw_alignment']
+)
+unified_registry.register(
+    ComponentFamily.PROCESSOR,
+    'trend',
+    TrendProcessor,
+    component_type=None,
+    aliases=['trend']
 )
 
-"""BACKBONE / EMBEDDING / PROCESSOR / FEEDFORWARD / OUTPUT generic family registrations."""
+"""EMBEDDING family registrations."""
+
 unified_registry.register(
-    ComponentFamily.BACKBONE,
-    'chronos_backbone',
-    ChronosBackboneWrapper,
+    ComponentFamily.EMBEDDING,
+    'positional',
+    PositionalEmbedding,
     component_type=None,
-    aliases=['chronos']
+    aliases=['positional']
 )
 unified_registry.register(
     ComponentFamily.EMBEDDING,
-    'temporal_embedding',
-    TemporalEmbeddingWrapper,
+    'token',
+    TokenEmbedding,
+    component_type=None,
+    aliases=['token']
+)
+unified_registry.register(
+    ComponentFamily.EMBEDDING,
+    'fixed',
+    FixedEmbedding,
+    component_type=None,
+    aliases=['fixed']
+)
+unified_registry.register(
+    ComponentFamily.EMBEDDING,
+    'temporal',
+    TemporalEmbedding,
     component_type=None,
     aliases=['temporal']
 )
 unified_registry.register(
-    ComponentFamily.PROCESSOR,
-    'time_domain_processor',
-    TimeDomainProcessorWrapper,
+    ComponentFamily.EMBEDDING,
+    'time_feature',
+    TimeFeatureEmbedding,
     component_type=None,
-    aliases=['time_domain']
+    aliases=['time_feature']
+)
+unified_registry.register(
+    ComponentFamily.EMBEDDING,
+    'data',
+    DataEmbedding,
+    component_type=None,
+    aliases=['data']
+)
+unified_registry.register(
+    ComponentFamily.EMBEDDING,
+    'data_inverted',
+    DataEmbedding_inverted,
+    component_type=None,
+    aliases=['data_inverted']
+)
+unified_registry.register(
+    ComponentFamily.EMBEDDING,
+    'data_wo_pos',
+    DataEmbedding_wo_pos,
+    component_type=None,
+    aliases=['data_wo_pos']
+)
+unified_registry.register(
+    ComponentFamily.EMBEDDING,
+    'patch',
+    PatchEmbedding,
+    component_type=None,
+    aliases=['patch']
+)
+unified_registry.register(
+    ComponentFamily.EMBEDDING,
+    'value',
+    ValueEmbedding,
+    component_type=None,
+    aliases=['value']
+)
+unified_registry.register(
+    ComponentFamily.EMBEDDING,
+    'covariate',
+    CovariateEmbedding,
+    component_type=None,
+    aliases=['covariate']
+)
+unified_registry.register(
+    ComponentFamily.EMBEDDING,
+    'hybrid',
+    HybridEmbedding,
+    component_type=None,
+    aliases=['hybrid']
 )
 unified_registry.register(
     ComponentFamily.FEEDFORWARD,
@@ -517,9 +595,80 @@ unified_registry.register(
     aliases=['ff']
 )
 unified_registry.register(
+    ComponentFamily.FEEDFORWARD,
+    'standard_ffn',
+    StandardFFN,
+    component_type=None,
+    aliases=['standard']
+)
+unified_registry.register(
+    ComponentFamily.FEEDFORWARD,
+    'gated_ffn',
+    GatedFFN,
+    component_type=None,
+    aliases=['gated']
+)
+unified_registry.register(
+    ComponentFamily.FEEDFORWARD,
+    'moe_ffn',
+    MoEFFN,
+    component_type=None,
+    aliases=['moe']
+)
+unified_registry.register(
+    ComponentFamily.FEEDFORWARD,
+    'conv_ffn',
+    ConvFFN,
+    component_type=None,
+    aliases=['conv']
+)
+unified_registry.register(
     ComponentFamily.OUTPUT,
     'linear_output',
     LinearOutputWrapper,
     component_type=None,
-    aliases=['linear']
+    aliases=['linear_output', 'default_output']
+)
+from ...output.outputs import ForecastingHead, RegressionHead, ClassificationHead, ProbabilisticForecastingHead, QuantileForecastingHead, MultiTaskHead
+unified_registry.register(
+    ComponentFamily.OUTPUT,
+    'forecasting',
+    ForecastingHead,
+    component_type=None,
+    aliases=['forecasting']
+)
+unified_registry.register(
+    ComponentFamily.OUTPUT,
+    'regression',
+    RegressionHead,
+    component_type=None,
+    aliases=['regression']
+)
+unified_registry.register(
+    ComponentFamily.OUTPUT,
+    'classification',
+    ClassificationHead,
+    component_type=None,
+    aliases=['classification']
+)
+unified_registry.register(
+    ComponentFamily.OUTPUT,
+    'probabilistic_forecasting',
+    ProbabilisticForecastingHead,
+    component_type=None,
+    aliases=['probabilistic_forecasting']
+)
+unified_registry.register(
+    ComponentFamily.OUTPUT,
+    'quantile_forecasting',
+    QuantileForecastingHead,
+    component_type=None,
+    aliases=['quantile_forecasting']
+)
+unified_registry.register(
+    ComponentFamily.OUTPUT,
+    'multi_task',
+    MultiTaskHead,
+    component_type=None,
+    aliases=['multi_task']
 )

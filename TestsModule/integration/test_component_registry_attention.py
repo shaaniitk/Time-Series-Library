@@ -13,7 +13,8 @@ import torch
 
 pytestmark = [pytest.mark.extended]
 
-from layers.modular.core import unified_registry, ComponentFamily, get_attention_component  # type: ignore
+from layers.modular.core import unified_registry, ComponentFamily
+from layers.modular.attention.registry import get_attention_component  # type: ignore
 import layers.modular.core.register_components  # noqa: F401
 
 class AttentionRegistry:  # shim for migration

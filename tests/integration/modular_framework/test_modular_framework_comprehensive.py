@@ -20,10 +20,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import modular components with graceful fallback
 try:
-    from utils.modular_components.registry import ComponentRegistry, get_global_registry
-    from utils.modular_components.base_interfaces import BaseComponent, ComponentType
-    from utils.modular_components.config_schemas import ComponentConfig
-    from utils.modular_components.factory import ComponentFactory
+    from layers.modular.core.registry import ComponentRegistry, get_global_registry
+    from layers.modular.core.interfaces import BaseComponent, ComponentType
+    from layers.modular.core.configs import ComponentConfig
+    from layers.modular.core.factory import ComponentFactory
     MODULAR_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Modular components not fully available: {e}")

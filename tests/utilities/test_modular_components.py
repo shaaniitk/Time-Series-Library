@@ -5,9 +5,9 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 try:
-    from utils.modular_components.base_interfaces import BaseComponent
-    from utils.modular_components.config_schemas import ComponentConfig
-    from utils.modular_components.registry import ComponentRegistry
+    from layers.modular.base_interfaces import BaseComponent
+    from layers.modular.core.config_schemas import ComponentConfig
+    from layers.modular.core.registry import UnifiedRegistry as ComponentRegistry
     MODULAR_AVAILABLE = True
 except ImportError:
     MODULAR_AVAILABLE = False

@@ -9,9 +9,9 @@ from layers.modular.attention.fourier_attention import FourierAttention
 from layers.modular.attention.temporal_conv_attention import TemporalConvNet
 from layers.modular.attention.adaptive_components import AdaptiveMixture
 from layers.modular.output_heads.standard_output_head import StandardOutputHead
-from utils.modular_components.implementations.embeddings import HybridEmbedding as EnhancedEmbedding
-from utils.kl_tuning import KLTuner as KLTuning
-from utils.bayesian_losses import BayesianQuantileLoss
+from layers.modular.embedding.hybrid_embedding import HybridEmbedding as EnhancedEmbedding
+from layers.modular.tuning.kl_tuning import KLTuner as KLTuning
+from layers.modular.losses.adaptive_bayesian_losses import BayesianQuantileLoss
 from configs.schemas import create_adaptive_mixture_config
 
 class Model(ModularAutoformer):

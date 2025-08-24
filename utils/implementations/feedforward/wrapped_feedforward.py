@@ -3,8 +3,8 @@ FeedForward registrations that expose utils FFN implementations to the unified r
 """
 from __future__ import annotations
 
-from utils.modular_components.registry import register_component
-from utils.modular_components.implementations.feedforward import (
+from layers.modular.core.registry import register_component
+from layers.modular.feedforward import (
     FFNConfig,
     StandardFFN,
     GatedFFN,
@@ -22,7 +22,7 @@ def register_utils_feedforwards() -> None:
         metadata={
             "domain": "feedforward",
             "features": ["linear", "dropout", "activation"],
-            "source": "utils.modular_components.implementations.feedforward",
+            "source": "layers.modular.feedforward",
         },
     )
     register_component(
@@ -32,7 +32,7 @@ def register_utils_feedforwards() -> None:
         metadata={
             "domain": "feedforward",
             "features": ["gated", "glu", "dropout"],
-            "source": "utils.modular_components.implementations.feedforward",
+            "source": "layers.modular.feedforward",
         },
     )
     register_component(
@@ -42,7 +42,7 @@ def register_utils_feedforwards() -> None:
         metadata={
             "domain": "feedforward",
             "features": ["moe", "experts", "topk_gating"],
-            "source": "utils.modular_components.implementations.feedforward",
+            "source": "layers.modular.feedforward",
         },
     )
     register_component(
@@ -52,6 +52,6 @@ def register_utils_feedforwards() -> None:
         metadata={
             "domain": "feedforward",
             "features": ["conv1d", "same_padding", "dropout"],
-            "source": "utils.modular_components.implementations.feedforward",
+            "source": "layers.modular.feedforward",
         },
     )

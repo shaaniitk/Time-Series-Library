@@ -4,7 +4,7 @@ from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
 from utils.logger import logger
 from argparse import Namespace # Import Namespace for model_init_args
-from utils.dimension_manager import DimensionManager # Import DimensionManager
+from layers.modular.dimensions.dimension_manager import DimensionManager # Import DimensionManager
 from utils.losses import PinballLoss # Import PinballLoss for type checking
 import torch
 import torch.nn as nn

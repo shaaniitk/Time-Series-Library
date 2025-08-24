@@ -21,23 +21,22 @@ import logging
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.modular_components.registry import ComponentRegistry, create_global_registry
-from utils.modular_components.example_components import register_example_components
-from utils.modular_components.dependency_manager import DependencyValidator
-from utils.modular_components.configuration_manager import ConfigurationManager, ModularConfig
-from utils.modular_components.config_schemas import ComponentConfig
+from layers.modular.core.registry import unified_registry, ComponentFamily
+from layers.modular.core.example_components import register_example_components
+from layers.modular.core.dependency_manager import DependencyValidator
+from layers.modular.core.configuration_manager import ConfigurationManager, ModularConfig
+from layers.modular.configs import ComponentConfig
 from models.modular_autoformer import ModularAutoformer
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 class ChronosXTestSuite:
     """Comprehensive test suite for ChronosX backbone integration"""
     
     def __init__(self):
-        self.registry = create_global_registry()
+        self.registry = unified_registry
         self.dependency_validator = DependencyValidator(self.registry)
         self.config_manager = ConfigurationManager(self.registry, self.dependency_validator)
         
@@ -76,7 +75,6 @@ class ChronosXTestSuite:
     
     def test_specific_combinations(self):
         """Scenario A: Test specific ChronosX combinations"""
-        
         specific_tests = [
             {
                 'name': 'ChronosX Tiny + Time Domain',
@@ -133,10 +131,341 @@ class ChronosXTestSuite:
             else:
                 print(f"   FAIL Configuration invalid: {result['validation']['errors']}")
                 if result['suggestions']:
-                    print(f"   IDEA Suggestions: {result['suggestions']}")\n    \n    def systematic_exploration(self):\n        \"\"\"Scenario B: Test all backbone x processor combinations\"\"\"\n        \n        # Get available components\n        backbones = ['chronos_x', 'chronos_x_tiny', 'chronos_x_large', 'chronos_x_uncertainty']\n        processors = ['time_domain', 'frequency_domain']\n        attentions = ['multi_head', 'autocorr']\n        \n        exploration_results = []\n        \n        for backbone in backbones:\n            for processor in processors:\n                for attention in attentions:\n                    config = {\n                        'backbone_type': backbone,\n                        'processor_type': processor,\n                        'attention_type': attention,\n                        'loss_type': 'mock_loss'\n                    }\n                    \n                    print(f\"\\nSEARCH Testing: {backbone} + {processor} + {attention}\")\n                    result = self._test_configuration(config)\n                    \n                    combination_key = f\"{backbone}+{processor}+{attention}\"\n                    exploration_results.append({\n                        'combination': combination_key,\n                        'backbone': backbone,\n                        'processor': processor,\n                        'attention': attention,\n                        'valid': result['validation']['is_valid'],\n                        'errors': result['validation']['errors'],\n                        'warnings': result['validation']['warnings']\n                    })\n                    \n                    status = \"PASS\" if result['validation']['is_valid'] else \"FAIL\"\n                    print(f\"   {status} {combination_key}\")\n        \n        self.test_results['systematic_exploration'] = exploration_results\n        \n        # Summary statistics\n        valid_combinations = sum(1 for r in exploration_results if r['valid'])\n        total_combinations = len(exploration_results)\n        print(f\"\\nGRAPH Systematic Exploration Summary:\")\n        print(f\"   Valid combinations: {valid_combinations}/{total_combinations} ({valid_combinations/total_combinations*100:.1f}%)\")\n    \n    def performance_optimization(self):\n        \"\"\"Scenario C: Analyze performance characteristics\"\"\"\n        \n        performance_tests = [\n            {\n                'name': 'Speed Test (Tiny vs Large)',\n                'configs': [\n                    {'backbone_type': 'chronos_x_tiny', 'expected_speed': 'fast'},\n                    {'backbone_type': 'chronos_x_large', 'expected_speed': 'slow'}\n                ]\n            },\n            {\n                'name': 'Memory Test (Standard vs Uncertainty)',\n                'configs': [\n                    {'backbone_type': 'chronos_x', 'expected_memory': 'moderate'},\n                    {'backbone_type': 'chronos_x_uncertainty', 'expected_memory': 'high'}\n                ]\n            },\n            {\n                'name': 'Capability Test (All Variants)',\n                'configs': [\n                    {'backbone_type': 'chronos_x'},\n                    {'backbone_type': 'chronos_x_tiny'},\n                    {'backbone_type': 'chronos_x_large'},\n                    {'backbone_type': 'chronos_x_uncertainty'}\n                ]\n            }\n        ]\n        \n        for perf_test in performance_tests:\n            print(f\"\\nLIGHTNING {perf_test['name']}\")\n            \n            for config in perf_test['configs']:\n                backbone_type = config['backbone_type']\n                \n                # Get component metadata\n                try:\n                    component_info = self.registry.get_component_info('backbone', backbone_type)\n                    if component_info:\n                        metadata = component_info.get('metadata', {})\n                        print(f\"   CHART {backbone_type}:\")\n                        print(f\"      Description: {metadata.get('description', 'N/A')}\")\n                        print(f\"      Typical d_model: {metadata.get('typical_d_model', 'N/A')}\")\n                        print(f\"      Speed: {metadata.get('speed', 'N/A')}\")\n                        print(f\"      Performance: {metadata.get('performance', 'N/A')}\")\n                        print(f\"      Specialty: {metadata.get('specialty', 'N/A')}\")\n                        \n                        # Test capabilities\n                        backbone_class = component_info['class']\n                        capabilities = backbone_class.get_capabilities()\n                        print(f\"      Capabilities: {capabilities}\")\n                    else:\n                        print(f\"   FAIL {backbone_type}: Component not found\")\n                        \n                except Exception as e:\n                    print(f\"   FAIL {backbone_type}: Error getting info: {e}\")\n    \n    def extend_component_library(self):\n        \"\"\"Scenario D: Test component library extension\"\"\"\n        \n        print(\"\\nTOOL Testing Component Library Extension\")\n        \n        # Test 1: Register new ChronosX variant\n        print(\"\\n Test 1: Registering Custom ChronosX Variant\")\n        try:\n            # Create a custom ChronosX variant\n            from utils.modular_components.chronos_backbone import ChronosXBackbone\n            \n            class ChronosXCustomBackbone(ChronosXBackbone):\n                \"\"\"Custom ChronosX variant for testing\"\"\"\n                \n                def __init__(self, config):\n                    config.model_size = 'small'\n                    config.num_samples = 50  # Custom uncertainty sampling\n                    super().__init__(config)\n                \n                @classmethod\n                def get_capabilities(cls):\n                    base_caps = super().get_capabilities()\n                    return base_caps + ['custom_processing', 'extended_uncertainty']\n            \n            # Register the custom component\n            self.registry.register('backbone', 'chronos_x_custom', ChronosXCustomBackbone, {\n                'description': 'Custom ChronosX variant for testing',\n                'supports_uncertainty': True,\n                'specialty': 'custom_testing'\n            })\n            \n            print(\"   PASS Successfully registered chronos_x_custom\")\n            \n            # Test the custom component\n            test_config = {\n                'backbone_type': 'chronos_x_custom',\n                'processor_type': 'time_domain',\n                'attention_type': 'multi_head',\n                'loss_type': 'mock_loss'\n            }\n            \n            result = self._test_configuration(test_config)\n            if result['validation']['is_valid']:\n                print(\"   PASS Custom component passes validation\")\n            else:\n                print(f\"   FAIL Custom component validation failed: {result['validation']['errors']}\")\n                \n        except Exception as e:\n            print(f\"   FAIL Failed to register custom component: {e}\")\n        \n        # Test 2: Component discovery\n        print(\"\\nSEARCH Test 2: Component Discovery\")\n        backbone_components = self.registry.list_components('backbone')\n        print(f\"   Available backbone components: {backbone_components}\")\n        \n        chronos_components = [comp for comp in backbone_components if 'chronos' in comp]\n        print(f\"   ChronosX variants: {chronos_components}\")\n        \n        # Test 3: Compatibility matrix\n        print(\"\\nTARGET Test 3: ChronosX Compatibility Matrix\")\n        self._generate_compatibility_matrix(chronos_components)\n    \n    def _test_configuration(self, config_dict: Dict[str, str]) -> Dict[str, Any]:\n        \"\"\"Test a specific configuration\"\"\"\n        try:\n            # Create modular config\n            config = ModularConfig(\n                backbone_type=config_dict.get('backbone_type'),\n                processor_type=config_dict.get('processor_type'),\n                attention_type=config_dict.get('attention_type'),\n                loss_type=config_dict.get('loss_type')\n            )\n            \n            # Validate and fix configuration\n            fixed_config, errors, warnings = self.config_manager.validate_and_fix_configuration(config)\n            \n            # Get suggestions\n            suggestions = []\n            if not self.dependency_validator.is_valid:\n                suggestions = self.config_manager.get_configuration_suggestions(config)\n            \n            return {\n                'configuration': config.to_dict(),\n                'validation': {\n                    'is_valid': len(errors) == 0,\n                    'errors': errors,\n                    'warnings': warnings\n                },\n                'fixed_config': fixed_config.to_dict() if fixed_config else None,\n                'suggestions': suggestions\n            }\n            \n        except Exception as e:\n            return {\n                'configuration': config_dict,\n                'validation': {\n                    'is_valid': False,\n                    'errors': [str(e)],\n                    'warnings': []\n                },\n                'fixed_config': None,\n                'suggestions': []\n            }\n    \n    def _test_model_instantiation(self, config_dict: Dict[str, str]) -> Dict[str, Any]:\n        \"\"\"Test actual model instantiation\"\"\"\n        try:\n            # Create mock configs for ModularAutoformer\n            configs = Namespace()\n            configs.task_name = 'long_term_forecast'\n            configs.seq_len = 96\n            configs.label_len = 48\n            configs.pred_len = 24\n            configs.d_model = 512\n            configs.enc_in = 7\n            configs.dec_in = 7\n            configs.c_out = 7\n            \n            # Set modular backbone configuration\n            configs.use_backbone_component = True\n            configs.backbone_type = config_dict['backbone_type']\n            configs.processor_type = config_dict.get('processor_type')\n            \n            # Mock other required parameters\n            configs.backbone_params = {\n                'model_size': 'tiny',  # Use tiny for testing\n                'device': 'cpu'  # Use CPU for testing\n            }\n            \n            configs.sampling_type = 'deterministic'\n            configs.sampling_params = {}\n            configs.output_head_type = 'linear'\n            configs.output_head_params = {'c_out': 7}\n            configs.loss_function_type = 'mse'\n            configs.loss_params = {}\n            \n            # Create model\n            model = ModularAutoformer(configs)\n            \n            # Get model info\n            model_info = model.get_component_info()\n            \n            return {\n                'success': True,\n                'model_info': model_info,\n                'error': None\n            }\n            \n        except Exception as e:\n            return {\n                'success': False,\n                'model_info': None,\n                'error': str(e)\n            }\n    \n    def _generate_compatibility_matrix(self, chronos_components: List[str]):\n        \"\"\"Generate compatibility matrix for ChronosX components\"\"\"\n        processors = ['time_domain', 'frequency_domain']\n        attentions = ['multi_head', 'autocorr']\n        \n        print(\"\\n   Compatibility Matrix:\")\n        print(\"   \" + \"-\" * 60)\n        \n        for backbone in chronos_components:\n            print(f\"\\n   {backbone}:\")\n            for processor in processors:\n                for attention in attentions:\n                    config = {\n                        'backbone_type': backbone,\n                        'processor_type': processor,\n                        'attention_type': attention,\n                        'loss_type': 'mock_loss'\n                    }\n                    \n                    result = self._test_configuration(config)\n                    status = \"PASS\" if result['validation']['is_valid'] else \"FAIL\"\n                    print(f\"     {status} + {processor} + {attention}\")\n    \n    def generate_final_report(self):\n        \"\"\"Generate comprehensive final report\"\"\"\n        print(\"\\n\" + \"=\" * 70)\n        print(\"CHART COMPREHENSIVE TEST REPORT\")\n        print(\"=\" * 70)\n        \n        # Scenario A Summary\n        print(\"\\nTEST SCENARIO A - Specific Combinations:\")\n        specific_results = self.test_results['specific_combinations']\n        valid_specific = sum(1 for r in specific_results.values() if r['validation']['is_valid'])\n        print(f\"   Valid configurations: {valid_specific}/{len(specific_results)}\")\n        \n        # Scenario B Summary\n        print(\"\\nMICROSCOPE SCENARIO B - Systematic Exploration:\")\n        systematic_results = self.test_results['systematic_exploration']\n        if systematic_results:\n            valid_systematic = sum(1 for r in systematic_results if r['valid'])\n            print(f\"   Valid combinations: {valid_systematic}/{len(systematic_results)}\")\n            \n            # Group by backbone\n            backbone_success = {}\n            for result in systematic_results:\n                backbone = result['backbone']\n                if backbone not in backbone_success:\n                    backbone_success[backbone] = {'valid': 0, 'total': 0}\n                backbone_success[backbone]['total'] += 1\n                if result['valid']:\n                    backbone_success[backbone]['valid'] += 1\n            \n            print(\"\\n   Success rate by backbone:\")\n            for backbone, stats in backbone_success.items():\n                rate = stats['valid'] / stats['total'] * 100\n                print(f\"     {backbone}: {stats['valid']}/{stats['total']} ({rate:.1f}%)\")\n        \n        # Key Findings\n        print(\"\\nTARGET KEY FINDINGS:\")\n        print(\"   PASS ChronosX backbone integration successful\")\n        print(\"   PASS Multiple ChronosX variants working (tiny, standard, large, uncertainty)\")\n        print(\"   PASS Cross-functionality dependency validation operational\")\n        print(\"   PASS Component library extension capability confirmed\")\n        print(\"   PASS Ready for comprehensive component combination testing\")\n        \n        print(\"\\nROCKET NEXT STEPS:\")\n        print(\"   1. Performance benchmarking on real data\")\n        print(\"   2. Uncertainty quantification evaluation\")\n        print(\"   3. Integration with additional HF models\")\n        print(\"   4. Production deployment testing\")\n        \n        print(\"\\n\" + \"=\" * 70)\n        print(\"PARTY CHRONOSX INTEGRATION TEST SUITE COMPLETE!\")\n        print(\"=\" * 70)
+                    print(f"   IDEA Suggestions: {result['suggestions']}")
+    
+    def systematic_exploration(self):
+        """Scenario B: Test all backbone x processor combinations"""
+        # Get available components
+        backbones = ['chronos_x', 'chronos_x_tiny', 'chronos_x_large', 'chronos_x_uncertainty']
+        processors = ['time_domain', 'frequency_domain']
+        attentions = ['multi_head', 'autocorr']
+        
+        exploration_results = []
+        
+        for backbone in backbones:
+            for processor in processors:
+                for attention in attentions:
+                    config = {
+                        'backbone_type': backbone,
+                        'processor_type': processor,
+                        'attention_type': attention,
+                        'loss_type': 'mock_loss'
+                    }
+                    
+                    print(f"\nSEARCH Testing: {backbone} + {processor} + {attention}")
+                    result = self._test_configuration(config)
+                    
+                    combination_key = f"{backbone}+{processor}+{attention}"
+                    exploration_results.append({
+                        'combination': combination_key,
+                        'backbone': backbone,
+                        'processor': processor,
+                        'attention': attention,
+                        'valid': result['validation']['is_valid'],
+                        'errors': result['validation']['errors'],
+                        'warnings': result['validation']['warnings']
+                    })
+                    
+                    status = "PASS" if result['validation']['is_valid'] else "FAIL"
+                    print(f"   {status} {combination_key}")
+        
+        self.test_results['systematic_exploration'] = exploration_results
+        
+        # Summary statistics
+        valid_combinations = sum(1 for r in exploration_results if r['valid'])
+        total_combinations = len(exploration_results)
+        print(f"\nGRAPH Systematic Exploration Summary:")
+        print(f"   Valid combinations: {valid_combinations}/{total_combinations} ({valid_combinations/total_combinations*100:.1f}%)")
+    
+    def performance_optimization(self):
+        """Scenario C: Analyze performance characteristics"""
+        performance_tests = [
+            {
+                'name': 'Speed Test (Tiny vs Large)',
+                'configs': [
+                    {'backbone_type': 'chronos_x_tiny', 'expected_speed': 'fast'},
+                    {'backbone_type': 'chronos_x_large', 'expected_speed': 'slow'}
+                ]
+            },
+            {
+                'name': 'Memory Test (Standard vs Uncertainty)',
+                'configs': [
+                    {'backbone_type': 'chronos_x', 'expected_memory': 'moderate'},
+                    {'backbone_type': 'chronos_x_uncertainty', 'expected_memory': 'high'}
+                ]
+            },
+            {
+                'name': 'Capability Test (All Variants)',
+                'configs': [
+                    {'backbone_type': 'chronos_x'},
+                    {'backbone_type': 'chronos_x_tiny'},
+                    {'backbone_type': 'chronos_x_large'},
+                    {'backbone_type': 'chronos_x_uncertainty'}
+                ]
+            }
+        ]
+        
+        for perf_test in performance_tests:
+            print(f"\nLIGHTNING {perf_test['name']}")
+            
+            for config in perf_test['configs']:
+                backbone_type = config['backbone_type']
+                
+                # Get component metadata
+                try:
+                    component_info = self.registry.get_component_info('backbone', backbone_type)
+                    if component_info:
+                        metadata = component_info.get('metadata', {})
+                        print(f"   CHART {backbone_type}:")
+                        print(f"      Description: {metadata.get('description', 'N/A')}")
+                        print(f"      Typical d_model: {metadata.get('typical_d_model', 'N/A')}")
+                        print(f"      Speed: {metadata.get('speed', 'N/A')}")
+                        print(f"      Performance: {metadata.get('performance', 'N/A')}")
+                        print(f"      Specialty: {metadata.get('specialty', 'N/A')}")
+                        
+                        # Test capabilities
+                        backbone_class = component_info['class']
+                        capabilities = backbone_class.get_capabilities()
+                        print(f"      Capabilities: {capabilities}")
+                    else:
+                        print(f"   FAIL {backbone_type}: Component not found")
+                        
+                except Exception as e:
+                    print(f"   FAIL {backbone_type}: Error getting info: {e}")
+    
+    def extend_component_library(self):
+        """Scenario D: Test component library extension"""
+        print("\nTOOL Testing Component Library Extension")
+        
+        # Test 1: Register new ChronosX variant
+        print("\n Test 1: Registering Custom ChronosX Variant")
+        try:
+            # Create a custom ChronosX variant
+            from layers.modular.backbone.chronos import ChronosXBackbone
+            
+            class ChronosXCustomBackbone(ChronosXBackbone):
+                """Custom ChronosX variant for testing"""
+                
+                def __init__(self, config):
+                    config.model_size = 'small'
+                    config.num_samples = 50  # Custom uncertainty sampling
+                    super().__init__(config)
+                
+                @classmethod
+                def get_capabilities(cls):
+                    base_caps = super().get_capabilities()
+                    return base_caps + ['custom_processing', 'extended_uncertainty']
+            
+            # Register the custom component
+            self.registry.register('backbone', 'chronos_x_custom', ChronosXCustomBackbone, {
+                'description': 'Custom ChronosX variant for testing',
+                'supports_uncertainty': True,
+                'specialty': 'custom_testing'
+            })
+            
+            print("   PASS Successfully registered chronos_x_custom")
+            
+            # Test the custom component
+            test_config = {
+                'backbone_type': 'chronos_x_custom',
+                'processor_type': 'time_domain',
+                'attention_type': 'multi_head',
+                'loss_type': 'mock_loss'
+            }
+            
+            result = self._test_configuration(test_config)
+            if result['validation']['is_valid']:
+                print("   PASS Custom component passes validation")
+            else:
+                print(f"   FAIL Custom component validation failed: {result['validation']['errors']}")
+                
+        except Exception as e:
+            print(f"   FAIL Failed to register custom component: {e}")
+        
+        # Test 2: Component discovery
+        print("\nSEARCH Test 2: Component Discovery")
+        backbone_components = self.registry.list_components('backbone')
+        print(f"   Available backbone components: {backbone_components}")
+        
+        chronos_components = [comp for comp in backbone_components if 'chronos' in comp]
+        print(f"   ChronosX variants: {chronos_components}")
+        
+        # Test 3: Compatibility matrix
+        print("\nTARGET Test 3: ChronosX Compatibility Matrix")
+        self._generate_compatibility_matrix(chronos_components)
+    
+    def _test_configuration(self, config_dict: Dict[str, str]) -> Dict[str, Any]:
+        """Test a specific configuration"""
+        try:
+            # Create modular config
+            config = ModularConfig(
+                backbone_type=config_dict.get('backbone_type'),
+                processor_type=config_dict.get('processor_type'),
+                attention_type=config_dict.get('attention_type'),
+                loss_type=config_dict.get('loss_type')
+            )
+            
+            # Validate and fix configuration
+            fixed_config, errors, warnings = self.config_manager.validate_and_fix_configuration(config)
+            
+            # Get suggestions
+            suggestions = []
+            if not self.dependency_validator.is_valid:
+                suggestions = self.config_manager.get_configuration_suggestions(config)
+            
+            return {
+                'configuration': config.to_dict(),
+                'validation': {
+                    'is_valid': len(errors) == 0,
+                    'errors': errors,
+                    'warnings': warnings
+                },
+                'fixed_config': fixed_config.to_dict() if fixed_config else None,
+                'suggestions': suggestions
+            }
+            
+        except Exception as e:
+            return {
+                'configuration': config_dict,
+                'validation': {
+                    'is_valid': False,
+                    'errors': [str(e)],
+                    'warnings': []
+                },
+                'fixed_config': None,
+                'suggestions': []
+            }
+    
+    def _test_model_instantiation(self, config_dict: Dict[str, str]) -> Dict[str, Any]:
+        """Test actual model instantiation"""
+        try:
+            # Create mock configs for ModularAutoformer
+            configs = Namespace()
+            configs.task_name = 'long_term_forecast'
+            configs.seq_len = 96
+            configs.label_len = 48
+            configs.pred_len = 24
+            configs.d_model = 512
+            configs.enc_in = 7
+            configs.dec_in = 7
+            configs.c_out = 7
+            
+            # Set modular backbone configuration
+            configs.use_backbone_component = True
+            configs.backbone_type = config_dict['backbone_type']
+            configs.processor_type = config_dict.get('processor_type')
+            
+            # Mock other required parameters
+            configs.backbone_params = {
+                'model_size': 'tiny',  # Use tiny for testing
+                'device': 'cpu'  # Use CPU for testing
+            }
+            
+            configs.sampling_type = 'deterministic'
+            configs.sampling_params = {}
+            configs.output_head_type = 'linear'
+            configs.output_head_params = {'c_out': 7}
+            configs.loss_function_type = 'mse'
+            configs.loss_params = {}
+            
+            # Create model
+            model = ModularAutoformer(configs)
+            
+            # Get model info
+            model_info = model.get_component_info()
+            
+            return {
+                'success': True,
+                'model_info': model_info,
+                'error': None
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'model_info': None,
+                'error': str(e)
+            }
+    
+    def _generate_compatibility_matrix(self, chronos_components: List[str]):
+        """Generate compatibility matrix for ChronosX components"""
+        processors = ['time_domain', 'frequency_domain']
+        attentions = ['multi_head', 'autocorr']
+        
+        print("\n   Compatibility Matrix:")
+        print("   " + "-" * 60)
+        
+        for backbone in chronos_components:
+            print(f"\n   {backbone}:")
+            for processor in processors:
+                for attention in attentions:
+                    config = {
+                        'backbone_type': backbone,
+                        'processor_type': processor,
+                        'attention_type': attention,
+                        'loss_type': 'mock_loss'
+                    }
+                    
+                    result = self._test_configuration(config)
+                    status = "PASS" if result['validation']['is_valid'] else "FAIL"
+                    print(f"     {status} + {processor} + {attention}")
+    
+    def generate_final_report(self):
+        """Generate comprehensive final report"""
+        print("\n" + "=" * 70)
+        print("CHART COMPREHENSIVE TEST REPORT")
+        print("=" * 70)
+        
+        # Scenario A Summary
+        print("\nTEST SCENARIO A - Specific Combinations:")
+        specific_results = self.test_results['specific_combinations']
+        valid_specific = sum(1 for r in specific_results.values() if r['validation']['is_valid'])
+        print(f"   Valid configurations: {valid_specific}/{len(specific_results)}")
+        
+        # Scenario B Summary
+        print("\nMICROSCOPE SCENARIO B - Systematic Exploration:")
+        systematic_results = self.test_results['systematic_exploration']
+        if systematic_results:
+            valid_systematic = sum(1 for r in systematic_results if r['valid'])
+            print(f"   Valid combinations: {valid_systematic}/{len(systematic_results)}")
+            
+            # Group by backbone
+            backbone_success = {}
+            for result in systematic_results:
+                backbone = result['backbone']
+                if backbone not in backbone_success:
+                    backbone_success[backbone] = {'valid': 0, 'total': 0}
+                backbone_success[backbone]['total'] += 1
+                if result['valid']:
+                    backbone_success[backbone]['valid'] += 1
+            
+            print("\n   Success rate by backbone:")
+            for backbone, stats in backbone_success.items():
+                rate = stats['valid'] / stats['total'] * 100
+                print(f"     {backbone}: {stats['valid']}/{stats['total']} ({rate:.1f}%)")
+        
+        # Key Findings
+        print("\nTARGET KEY FINDINGS:")
+        print("   PASS ChronosX backbone integration successful")
+        print("   PASS Multiple ChronosX variants working (tiny, standard, large, uncertainty)")
+        print("   PASS Cross-functionality dependency validation operational")
+        print("   PASS Component library extension capability confirmed")
+        print("   PASS Ready for comprehensive component combination testing")
+        
+        print("\nROCKET NEXT STEPS:")
+        print("   1. Performance benchmarking on real data")
+        print("   2. Uncertainty quantification evaluation")
+        print("   3. Integration with additional HF models")
+        print("   4. Production deployment testing")
+        
+        print("\n" + "=" * 70)
+        print("PARTY CHRONOSX INTEGRATION TEST SUITE COMPLETE!")
+        print("=" * 70)
 
+def main():
+    """Run the comprehensive ChronosX test suite"""
+    test_suite = ChronosXTestSuite()
+    test_suite.run_all_tests()
 
-def main():\n    \"\"\"Run the comprehensive ChronosX test suite\"\"\"\n    test_suite = ChronosXTestSuite()\n    test_suite.run_all_tests()
-
-
-if __name__ == \"__main__\":\n    main()
+if __name__ == "__main__":
+    main()

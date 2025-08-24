@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 from .registry import unified_registry, ComponentFamily
 from configs.schemas import ComponentType, ModularAutoformerConfig
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 COMPONENT_FAMILY_MAP: Dict[ComponentType, ComponentFamily] = {
     # Attention
@@ -34,6 +34,19 @@ COMPONENT_FAMILY_MAP: Dict[ComponentType, ComponentFamily] = {
     ComponentType.QUANTILE_LOSS: ComponentFamily.LOSS,
     ComponentType.BAYESIAN_MSE: ComponentFamily.LOSS,
     ComponentType.BAYESIAN_QUANTILE: ComponentFamily.LOSS,
+    # Normalization
+    ComponentType.LAYER_NORM: ComponentFamily.NORMALIZATION,
+    ComponentType.RMS_NORM: ComponentFamily.NORMALIZATION,
+    # Embedding
+    ComponentType.POSITIONAL_EMBEDDING: ComponentFamily.EMBEDDING,
+    ComponentType.TOKEN_EMBEDDING: ComponentFamily.EMBEDDING,
+    ComponentType.FIXED_EMBEDDING: ComponentFamily.EMBEDDING,
+    ComponentType.TEMPORAL_EMBEDDING: ComponentFamily.EMBEDDING,
+    ComponentType.TIME_FEATURE_EMBEDDING: ComponentFamily.EMBEDDING,
+    ComponentType.DATA_EMBEDDING: ComponentFamily.EMBEDDING,
+    ComponentType.DATA_EMBEDDING_INVERTED: ComponentFamily.EMBEDDING,
+    ComponentType.DATA_EMBEDDING_WO_POS: ComponentFamily.EMBEDDING,
+    ComponentType.PATCH_EMBEDDING: ComponentFamily.EMBEDDING,
 }
 
 class UnifiedFactory:
@@ -77,14 +90,33 @@ class UnifiedFactory:
                                    c_out=config.output_head.c_out,
                                    num_quantiles=getattr(config.output_head, 'num_quantiles', None))
         loss = self._create(config.loss.type, quantiles=getattr(config.loss, 'quantiles', None))
+        embedding = None
+        if config.embedding:
+            embedding = self._create(config.embedding.type,
+                                    c_in=config.embedding.c_in,
+                                    d_model=config.embedding.d_model,
+                                    max_len=getattr(config.embedding, 'max_len', 5000),
+                                    dropout=getattr(config.embedding, 'dropout', 0.1),
+                                    time_features=getattr(config.embedding, 'time_features', True),
+                                    freq=getattr(config.embedding, 'freq', 'h'))
+        normalization = None
+        if config.normalization:
+            normalization = self._create(config.normalization.type,
+                                        normalized_shape=config.normalization.normalized_shape,
+                                        eps=getattr(config.normalization, 'eps', 1e-5),
+                                        affine=getattr(config.normalization, 'affine', True))
         return {
+            'embedding': embedding,
+            'normalization': normalization,
             'attention': attention,
             'decomposition': decomposition,
             'encoder': encoder,
             'decoder': decoder,
             'sampling': sampling,
             'output_head': output_head,
-            'loss': loss
+            'loss': loss,
+            'embedding': embedding,
+            'normalization': normalization
         }
 
     def _create(self, comp_type: ComponentType, **kwargs):

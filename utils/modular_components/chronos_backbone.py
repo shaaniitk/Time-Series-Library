@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional, List, Tuple
 import logging
 
 from utils.modular_components.base_interfaces import BaseBackbone
-from utils.modular_components.config_schemas import ComponentConfig
+from configs.schemas import ComponentConfig
 
 # Conditional import for ChronosPipeline
 try:

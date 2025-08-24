@@ -9,7 +9,7 @@ import torch
 
 # Import guarded to avoid failures during partial refactors
 try:  # pragma: no cover
-    from utils.modular_components.model_builder import ModelBuilder, ModelConfig  # type: ignore
+    from layers.modular.core.model_builder import ModelBuilder, ModelConfig  # type: ignore
 except Exception:  # pragma: no cover
     ModelBuilder = None  # type: ignore
     ModelConfig = None  # type: ignore

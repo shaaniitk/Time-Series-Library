@@ -21,10 +21,10 @@ def _make_hidden(batch: int = 2, seq: int = 32, d_model: int = 64) -> torch.Tens
 
 def _try_import(name: str):  # returns class or skips
     try:
-        from utils.modular_components.implementations.outputs import (
-            ForecastingHead, RegressionHead, ClassificationHead,
-            ProbabilisticForecastingHead, MultiTaskHead, OutputConfig
-        )  # type: ignore
+        from layers.modular.output_heads.outputs import (
+    ForecastingHead, RegressionHead, ClassificationHead,
+    ProbabilisticForecastingHead, MultiTaskHead, OutputConfig
+)  # type: ignore
     except Exception:  # pragma: no cover
         pytest.skip("Output heads module unavailable")
     mapping = {

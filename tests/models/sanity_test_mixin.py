@@ -7,7 +7,7 @@ from data_provider.data_factory import data_provider
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from utils.logger import logger
-from utils.dimension_manager import DimensionManager # Import DimensionManager
+from layers.modular.dimensions.dimension_manager import DimensionManager # Import DimensionManager
 import inspect # Import inspect
 from utils.losses import get_loss_function, PinballLoss # Import the loss getter and PinballLoss
 

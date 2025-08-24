@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import pytest
 
-from utils.modular_components.registry import create_global_registry
-from utils.modular_components.configuration_manager import ConfigurationManager, ModularConfig
+from layers.modular.core.registry import create_global_registry
+from layers.modular.core.configuration_manager import ConfigurationManager, ModularConfig
 
 
 @pytest.fixture(scope="module")

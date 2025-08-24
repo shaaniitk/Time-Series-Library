@@ -19,8 +19,8 @@ from tests.helpers import time_series_generators as gen
 
 def _get_covariate_adapter():  # type: ignore[return-type]
     try:
-        from utils.modular_components.implementations.adapters import CovariateAdapter  # type: ignore
-        from utils.modular_components.base_interfaces import BaseBackbone  # type: ignore
+        from layers.modular.backbone.adapters import CovariateAdapter  # type: ignore
+        from layers.modular.base_interfaces import BaseBackbone  # type: ignore
     except Exception:  # pragma: no cover - missing modules
         pytest.skip("Adapter implementation not available")
 
@@ -68,7 +68,7 @@ def test_adapter_covariate_effect_present():
     adapter = _get_covariate_adapter()
     adapter.train()
     # Reconfigure to enable covariates (simulate new instance with dim>0)
-    from utils.modular_components.implementations.adapters import CovariateAdapter  # type: ignore
+    from layers.modular.backbone.adapters import CovariateAdapter  # type: ignore
     bb = adapter.backbone  # reuse tiny backbone
     cfg = {"covariate_dim": 3, "fusion_method": "project", "embedding_dim": bb.get_d_model()}
     adapter2 = CovariateAdapter(bb, cfg)

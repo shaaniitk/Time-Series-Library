@@ -31,8 +31,9 @@ import warnings
 
 from .HFEnhancedAutoformer import HFEnhancedAutoformer
 from layers.BayesianLayers import BayesianLinear, convert_to_bayesian, collect_kl_divergence
-from utils.losses import PSLoss, mape_loss, smape_loss, mase_loss, compute_loss
-from utils.bayesian_losses import (
+from layers.modular.losses.modular_standard_losses import mape_loss, smape_loss, mase_loss, compute_loss
+from layers.modular.losses.modular_advanced_losses import PSLoss
+from layers.modular.losses.adaptive_bayesian_losses import (
     BayesianLoss, BayesianAdaptiveLoss, BayesianQuantileLoss, 
     UncertaintyCalibrationLoss, create_bayesian_loss
 )

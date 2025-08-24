@@ -92,7 +92,7 @@ def metric_covariate_effect() -> float:
     if fn is None:
         raise RuntimeError("adapter helper unavailable")
     base = fn()
-    from utils.modular_components.implementations.adapters import CovariateAdapter  # type: ignore
+    from layers.modular.backbone.adapters import CovariateAdapter  # type: ignore
     cfg = {"covariate_dim": 3, "fusion_method": "project", "embedding_dim": base.backbone.get_d_model()}
     adapter = CovariateAdapter(base.backbone, cfg)
     seq = gen.seasonal_with_trend(batch=1, length=64, dim=1)

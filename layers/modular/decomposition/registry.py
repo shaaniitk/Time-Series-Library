@@ -2,7 +2,7 @@
 from .series_decomposition import SeriesDecomposition
 from .stable_decomposition import StableSeriesDecomposition
 from .learnable_decomposition import LearnableSeriesDecomposition
-from .wavelet_decomposition import WaveletHierarchicalDecomposition
+from .wavelet_decomposition import UnifiedWaveletDecomposition
 from layers.LearnableWaveletDecomposition import LearnableWaveletDecomposition
 from utils.logger import logger
 
@@ -14,7 +14,7 @@ class DecompositionRegistry:
         "series_decomp": SeriesDecomposition,
         "stable_decomp": StableSeriesDecomposition,
         "learnable_decomp": LearnableSeriesDecomposition,
-        "wavelet_decomp": WaveletHierarchicalDecomposition,
+        "wavelet_decomp": UnifiedWaveletDecomposition,
         "learnable_wavelet_decomp": LearnableWaveletDecomposition,
     }
 

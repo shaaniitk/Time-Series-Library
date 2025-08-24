@@ -10,11 +10,21 @@ import logging
 from typing import Dict, Any
 
 # Import the modular components system
-from utils.modular_components import (
+from layers.modular.core.registry import (
     get_global_registry,
-    create_backbone, create_embedding, create_attention,
-    BackboneConfig, EmbeddingConfig, AttentionConfig,
-    get_available_components, get_component_info, create_default_configs
+    get_available_components,
+    get_component_info
+)
+from layers.modular.core.factory import (
+    create_backbone,
+    create_embedding,
+    create_attention
+)
+from layers.modular.core.config_schemas import (
+    BackboneConfig,
+    EmbeddingConfig,
+    AttentionConfig,
+    create_default_configs
 )
 
 # Set up logging

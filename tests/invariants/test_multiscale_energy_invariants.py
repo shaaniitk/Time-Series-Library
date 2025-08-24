@@ -18,8 +18,8 @@ from tests.helpers import time_series_generators as gen
 
 def _build_adapter(scales=(1,2,4)):
     try:
-        from utils.modular_components.implementations.adapters import MultiScaleAdapter  # type: ignore
-        from utils.modular_components.base_interfaces import BaseBackbone  # type: ignore
+        from layers.modular.backbone.adapters import MultiScaleAdapter  # type: ignore
+        from layers.modular.base import BaseBackbone  # type: ignore
     except Exception:  # pragma: no cover
         pytest.skip("Adapter modules unavailable")
 

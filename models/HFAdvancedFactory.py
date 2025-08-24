@@ -36,8 +36,8 @@ from models.HFHierarchicalExtensions import (
 )
 
 # Import loss integration
-from utils.losses import get_loss_function
-from utils.bayesian_losses import create_bayesian_loss
+from layers.modular.losses.registry import get_loss_component
+from layers.modular.losses.adaptive_bayesian_losses import create_bayesian_loss
 from utils.logger import logger
 
 
@@ -110,7 +110,7 @@ class HFAdvancedModelWrapper(nn.Module):
         
         # Get base loss function from existing infrastructure
         loss_type = getattr(self.configs, 'loss_function', 'mse')
-        self.base_loss_fn = get_loss_function(loss_type, self.configs)
+        self.base_loss_fn, _ = get_loss_component(loss_type, **vars(self.configs))
         
         # Wrap with Bayesian loss if needed
         if 'bayesian' in self.extensions:

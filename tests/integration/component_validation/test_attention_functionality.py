@@ -21,8 +21,7 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 try:
-    from utils.modular_components.registry import create_component, get_global_registry
-    from utils.modular_components.implementations import get_integration_status
+    from layers.modular.core.registry import unified_registry, ComponentFamily
     COMPONENTS_AVAILABLE = True
 except ImportError as e:
     print(f"WARN Could not import modular components: {e}")
@@ -63,7 +62,7 @@ def test_multi_head_attention_functionality():
     
     try:
         config = MockConfig(d_model=512, num_heads=8)
-        attention = create_component('attention', 'multi_head', config)
+        attention = unified_registry.create(ComponentFamily.ATTENTION, 'multi_head', **vars(config))
         
         if attention is None:
             print("    WARN Multi-head attention not available, skipping...")
@@ -145,7 +144,7 @@ def test_optimized_autocorrelation_functionality():
             chunk_size=128
         )
         
-        attention = create_component('attention', 'optimized_autocorrelation', config)
+        attention = unified_registry.create(ComponentFamily.ATTENTION, 'optimized_autocorrelation', **vars(config))
         
         if attention is None:
             print("    WARN Optimized autocorrelation attention not available, skipping...")
@@ -209,7 +208,7 @@ def test_adaptive_autocorrelation_functionality():
             scales=[1, 2, 4, 8]
         )
         
-        attention = create_component('attention', 'adaptive_autocorrelation', config)
+        attention = unified_registry.create(ComponentFamily.ATTENTION, 'adaptive_autocorrelation', **vars(config))
         
         if attention is None:
             print("    WARN Adaptive autocorrelation attention not available, skipping...")
@@ -270,7 +269,7 @@ def test_hierarchical_attention_functionality():
             hierarchy_levels=3
         )
         
-        attention = create_component('attention', 'hierarchical_attention', config)
+        attention = unified_registry.create(ComponentFamily.ATTENTION, 'hierarchical_attention', **vars(config))
         
         if attention is None:
             print("    WARN Hierarchical attention not available, skipping...")
@@ -345,7 +344,7 @@ def test_memory_efficient_attention():
             use_checkpointing=True
         )
         
-        attention = create_component('attention', 'memory_efficient', config)
+        attention = unified_registry.create(ComponentFamily.ATTENTION, 'memory_efficient', **vars(config))
         
         if attention is None:
             print("    WARN Memory efficient attention not available, skipping...")
@@ -403,7 +402,7 @@ def test_attention_mathematical_properties():
         # Try to add other types if available
         for attn_type in ['optimized_autocorrelation', 'adaptive_autocorrelation']:
             try:
-                test_attn = create_component('attention', attn_type, MockConfig())
+                test_attn = unified_registry.create(ComponentFamily.ATTENTION, attn_type, **vars(MockConfig()))
                 if test_attn is not None:
                     attention_types.append(attn_type)
             except:
@@ -415,7 +414,7 @@ def test_attention_mathematical_properties():
             try:
                 print(f"    SEARCH Testing {attn_type} mathematical properties:")
                 
-                attention = create_component('attention', attn_type, MockConfig())
+                attention = unified_registry.create(ComponentFamily.ATTENTION, attn_type, **vars(MockConfig()))
                 if attention is None:
                     continue
                 

@@ -79,18 +79,18 @@ def test_modular_integration():
     try:
         # Import modular components
         sys.path.append(str(Path(__file__).parent))
-        from utils.modular_components.chronos_backbone import ChronosXBackbone
-        from utils.modular_components.registry import create_global_registry
+        from layers.modular.backbone.chronos_backbone import ChronosXBackbone
+        from layers.modular.core.registry import unified_registry
         
         # Create registry
         print(" Creating component registry...")
-        registry = create_global_registry()
+        registry = unified_registry
         
         # Test ChronosX backbone creation
         print("BRAIN Creating ChronosX backbone...")
         
         # Create config object
-        from utils.modular_components.config_schemas import BackboneConfig
+        from configs.schemas import BackboneConfig
         
         config = BackboneConfig(
             component_name='chronos_x',

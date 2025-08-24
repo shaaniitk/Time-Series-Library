@@ -2,8 +2,8 @@ from __future__ import annotations
 
 """Processor component tests.
 
-Covers utils-wrapped processors for decomposition, encoder, decoder, and fusion.
-Also verifies specialized processors register successfully. Lightweight and
+Covers processors for decomposition, encoder, decoder, and fusion.
+Verifies specialized processors register successfully. Lightweight and
 marked extended. Uses tiny tensors and checks forward shape + grad flow where
 appropriate.
 """
@@ -17,26 +17,12 @@ pytestmark = [pytest.mark.extended]
 
 try:  # pragma: no cover
     # Global registry and registration hooks
-    from utils.modular_components.registry import get_global_registry  # type: ignore
-    from utils.implementations.decomposition.wrapped_decompositions import (  # type: ignore
-        register_layers_decompositions,
-        DecompositionProcessorConfig,
-    )
-    from utils.implementations.encoder.wrapped_encoders import (  # type: ignore
-        register_layers_encoders,
-        EncoderProcessorConfig,
-    )
-    from utils.implementations.decoder.wrapped_decoders import (  # type: ignore
-        register_layers_decoders,
-        DecoderProcessorConfig,
-    )
-    from utils.implementations.fusion.wrapped_fusions import (  # type: ignore
-        register_layers_fusions,
-        FusionProcessorConfig,
-    )
-    from utils.modular_components.implementations.register_advanced import (  # type: ignore
-        register_specialized_processors,
-    )
+    from layers.modular.core.registry import get_global_registry  # type: ignore
+    from layers.modular.decomposition import register_layers_decompositions, DecompositionProcessorConfig  # Adjusted path
+    from layers.modular.encoder import register_layers_encoders, EncoderProcessorConfig  # Adjusted path
+    from layers.modular.decoder import register_layers_decoders, DecoderProcessorConfig  # Adjusted path
+    from layers.modular.fusion import register_layers_fusions, FusionProcessorConfig  # Adjusted path
+    from layers.modular.core.register_advanced import register_specialized_processors  # Adjusted path
     # Legacy components needed as dependencies for encoder/decoder wrappers
     from layers.modular.core import get_attention_component  # type: ignore
     import layers.modular.core.register_components  # noqa: F401  # populate registry side-effects
@@ -57,7 +43,7 @@ except Exception:  # pragma: no cover
 
 
 def _ensure_registered() -> None:
-    """Register wrapped processors into the global registry if available."""
+    """Register processors into the global registry if available."""
     if (
         get_global_registry is None
         or register_layers_decompositions is None

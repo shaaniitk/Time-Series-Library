@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import torch
 from unified_component_registry import unified_registry
-from utils.modular_components.implementations.feedforward import FFNConfig
+from layers.modular.core.config_schemas import FFNConfig
 
 
 def smoke_ffn() -> None:
@@ -36,7 +36,7 @@ def smoke_adapters() -> None:
     print("adapter:", comps.get("adapter"))
 
     # Use simple_transformer backbone for adapter smoke
-    from utils.modular_components.registry import get_global_registry
+    from layers.modular.core.registry import unified_registry as get_global_registry
 
     reg = get_global_registry()
     bb_cls = reg.get("backbone", "simple_transformer")
@@ -49,7 +49,7 @@ def smoke_adapters() -> None:
     bb = bb_cls(BBConfig())
 
     # CovariateAdapter
-    from utils.modular_components.implementations.adapters import CovariateAdapter, MultiScaleAdapter
+    from layers.modular.backbone.adapters import CovariateAdapter, MultiScaleAdapter
 
     cov = CovariateAdapter(bb, {"covariate_dim": 3, "fusion_method": "project", "embedding_dim": 16})
     x_ts = torch.randn(2, 5, 1)

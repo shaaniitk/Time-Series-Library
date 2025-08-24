@@ -14,7 +14,8 @@ import torch
 
 pytestmark = [pytest.mark.extended]
 
-from layers.modular.core import unified_registry, ComponentFamily, get_attention_component  # type: ignore
+from layers.modular.core import unified_registry, ComponentFamily  # type: ignore
+from layers.modular.attention.registry import get_attention_component
 # Populate unified registry (opt-in import)
 import layers.modular.core.register_components  # noqa: F401
 

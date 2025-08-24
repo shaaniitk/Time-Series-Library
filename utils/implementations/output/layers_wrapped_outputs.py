@@ -6,8 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from utils.modular_components.registry import register_component
-from utils.modular_components.base_interfaces import BaseOutput
+from layers.modular.core.registry import register_component
+from layers.modular.base import BaseOutput
 
 
 @dataclass

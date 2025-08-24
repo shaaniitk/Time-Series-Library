@@ -22,8 +22,8 @@ from argparse import Namespace
 # Import existing HF model and infrastructure
 from models.HFEnhancedAutoformer import HFEnhancedAutoformer
 from layers.BayesianLayers import BayesianLinear, convert_to_bayesian, collect_kl_divergence, DropoutSampling
-from utils.losses import get_loss_function
-from utils.bayesian_losses import create_bayesian_loss
+from layers.modular.losses.registry import get_loss_component
+from layers.modular.losses.adaptive_bayesian_losses import create_bayesian_loss
 from utils.logger import logger
 
 class HFBayesianLayerConverter:

@@ -13,14 +13,18 @@ import torch
 import torch.nn as nn
 import numpy as np
 from pathlib import Path
+from layers.modular.core.registry import unified_registry, ComponentFamily
+from layers.modular.core.registry import create_component, get_global_registry, unified_registry
+from layers.modular.core.implementations import get_integration_status
+from layers.modular.core.registry import ComponentFamily
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 try:
-    from utils.modular_components.registry import create_component, get_global_registry
-    from utils.modular_components.implementations import get_integration_status
+    from layers.modular.core.registry import create_component, get_global_registry
+    from layers.modular.core.implementations import get_integration_status
     COMPONENTS_AVAILABLE = True
 except ImportError as e:
     print(f"WARN Could not import modular components: {e}")
@@ -84,7 +88,7 @@ def test_processor_backbone_integration():
         config = MockConfig()
         
         # Create components
-        processor = create_component('processor', 'integrated_signal', config)
+        processor = unified_registry.create(ComponentFamily.PROCESSOR, 'integrated_signal', config)
         backbone_types = ['chronos', 'simple_transformer', 't5']
         
         if processor is None:
@@ -294,9 +298,9 @@ def test_end_to_end_pipeline():
         config = MockConfig()
         
         # Create pipeline components
-        processor = create_component('processor', 'integrated_signal', config)
-        backbone = create_component('backbone', 'simple_transformer', config)
-        loss_fn = create_component('loss', 'mse', config)
+        processor = unified_registry.create(ComponentFamily.PROCESSOR, 'integrated_signal', config)
+        backbone = unified_registry.create(ComponentFamily.BACKBONE, 'simple_transformer', config)
+        loss_fn = unified_registry.create(ComponentFamily.LOSS, 'mse', config)
         
         if not all([processor, backbone, loss_fn]):
             print("    WARN Required components not available, skipping...")
@@ -458,8 +462,8 @@ def test_quantile_integration():
         config = MockConfig(quantiles=[0.1, 0.5, 0.9])
         
         # Create quantile-aware components
-        loss_fn = create_component('loss', 'quantile', config)
-        backbone = create_component('backbone', 'simple_transformer', config)
+        loss_fn = unified_registry.create(ComponentFamily.LOSS, 'quantile', config)
+        backbone = unified_registry.create(ComponentFamily.BACKBONE, 'simple_transformer', config)
         
         if not all([loss_fn, backbone]):
             print("    WARN Required quantile components not available, skipping...")
@@ -520,7 +524,7 @@ def test_quantile_integration():
         for quantiles in quantile_configs:
             try:
                 test_config = MockConfig(quantiles=quantiles)
-                test_loss = create_component('loss', 'quantile', test_config)
+                test_loss = unified_registry.create(ComponentFamily.LOSS, 'quantile', test_config)
                 
                 if test_loss is None:
                     continue
@@ -552,7 +556,7 @@ def test_bayesian_integration():
         config = MockConfig()
         
         # Create Bayesian components
-        loss_fn = create_component('loss', 'bayesian_mse', config)
+        loss_fn = unified_registry.create(ComponentFamily.LOSS, 'bayesian_mse', config)
         
         if loss_fn is None:
             print("    WARN Bayesian loss not available, skipping...")
@@ -685,8 +689,8 @@ def test_component_interaction_matrix():
             for backbone_name in available_components.get('backbone', []):
                 interaction_tests += 1
                 try:
-                    processor = create_component('processor', processor_name, config)
-                    backbone = create_component('backbone', backbone_name, config)
+                    processor = unified_registry.create(ComponentFamily.PROCESSOR, processor_name, config)
+                    backbone = unified_registry.create(ComponentFamily.BACKBONE, backbone_name, config)
                     
                     x_enc, x_mark_enc, x_dec, x_mark_dec = create_sample_batch()
                     
@@ -711,8 +715,8 @@ def test_component_interaction_matrix():
             for loss_name in available_components.get('loss', []):
                 interaction_tests += 1
                 try:
-                    backbone = create_component('backbone', backbone_name, config)
-                    loss_fn = create_component('loss', loss_name, config)
+                    backbone = unified_registry.create(ComponentFamily.BACKBONE, backbone_name, config)
+                    loss_fn = unified_registry.create(ComponentFamily.LOSS, loss_name, config)
                     
                     x_enc, x_mark_enc, x_dec, x_mark_dec = create_sample_batch()
                     target = torch.randn(2, 24, 7)

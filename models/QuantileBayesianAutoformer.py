@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from models.BayesianEnhancedAutoformer import BayesianEnhancedAutoformer
-from utils.losses import get_loss_function
+from layers.modular.losses.registry import get_loss_component
 from utils.logger import logger
 
 class QuantileBayesianAutoformer(BayesianEnhancedAutoformer):
@@ -57,7 +57,7 @@ class QuantileBayesianAutoformer(BayesianEnhancedAutoformer):
         )
         
         # Create quantile loss function
-        self.quantile_criterion = get_loss_function('pinball', quantiles=self.quantiles)
+        self.quantile_criterion, _ = get_loss_component('pinball', quantiles=self.quantiles)
         
         logger.info(f"Model will output {configs.c_out} values ({original_c_out} targets × {self.n_quantiles} quantiles)")
     

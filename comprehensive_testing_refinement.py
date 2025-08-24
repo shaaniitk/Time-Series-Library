@@ -304,7 +304,7 @@ class ComprehensiveTestingRefinement:
                         if not comp_name.startswith('restored_'):
                             try:
                                 # Try to create with minimal config
-                                from utils.modular_components.config_schemas import AttentionConfig
+                                from configs.schemas import AttentionConfig
                                 basic_config = AttentionConfig(d_model=64, num_heads=2, dropout=0.1)
                                 basic_comp = self.unified_registry.create_component(
                                     'attention', comp_name, basic_config

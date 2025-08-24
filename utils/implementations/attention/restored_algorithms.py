@@ -12,8 +12,8 @@ from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
 # Import utils base interfaces
-from ...modular_components.base_interfaces import BaseAttention
-from ...modular_components.config_schemas import AttentionConfig
+from layers.modular.base import BaseAttention
+from layers.modular.configs import AttentionConfig
 
 # Import our restored algorithms
 from layers.modular.attention.fourier_attention import FourierAttention as OriginalFourierAttention
@@ -340,7 +340,7 @@ class RestoredMetaLearningAttention(BaseAttention):
 # Registration helper functions
 def register_restored_algorithms():
     """Register all our restored algorithms in the utils system"""
-    from utils.modular_components.registry import register_component
+    from layers.modular.core.registry import register_component
     
     # Register our sophisticated restored algorithms
     register_component(

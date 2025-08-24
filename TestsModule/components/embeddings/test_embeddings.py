@@ -16,10 +16,11 @@ pytestmark = [pytest.mark.extended]
 
 try:  # pragma: no cover
     from utils.modular_components.registry import get_global_registry  # type: ignore
-    from utils.modular_components.config_schemas import EmbeddingConfig  # type: ignore
-    from utils.implementations.embedding.wrapped_embeddings import (
-        register_utils_embeddings,
-    )  # type: ignore
+    from configs.schemas import EmbeddingConfig  # type: ignore
+    from layers.modular.embedding.temporal_embedding import TemporalEmbedding
+    from layers.modular.embedding.value_embedding import ValueEmbedding
+    from layers.modular.embedding.covariate_embedding import CovariateEmbedding
+    from layers.modular.embedding.hybrid_embedding import HybridEmbedding
 except Exception:  # pragma: no cover
     get_global_registry = None  # type: ignore
     EmbeddingConfig = None  # type: ignore

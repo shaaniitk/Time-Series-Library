@@ -200,7 +200,7 @@ class Phase3RegistryMigration:
                 'from ...modular_components.base_interfaces import BaseAttention'
             )
             content = content.replace(
-                'from utils.modular_components.config_schemas import AttentionConfig',
+                'from configs.schemas import AttentionConfig',
                 'from ...modular_components.config_schemas import AttentionConfig'
             )
             

@@ -149,6 +149,21 @@ class ComponentType(str, Enum):
     CHRONOS = "chronos"
     CHRONOS_X = "chronos_x"
 
+    # Normalization components
+    LAYER_NORM = "layer_norm"
+    RMS_NORM = "rms_norm"
+
+    # Embedding components
+    POSITIONAL_EMBEDDING = "positional_embedding"
+    TOKEN_EMBEDDING = "token_embedding"
+    FIXED_EMBEDDING = "fixed_embedding"
+    TEMPORAL_EMBEDDING = "temporal_embedding"
+    TIME_FEATURE_EMBEDDING = "time_feature_embedding"
+    DATA_EMBEDDING = "data_embedding"
+    DATA_EMBEDDING_INVERTED = "data_embedding_inverted"
+    DATA_EMBEDDING_WO_POS = "data_embedding_wo_pos"
+    PATCH_EMBEDDING = "patch_embedding"
+
 
 class BaseModelConfig(BaseModel):
     """Universal base configuration schema for *legacy* backbone style models.
@@ -389,41 +404,60 @@ class BackboneConfig(BaseModel):
     prediction_length: Optional[int] = None  # ChronosX
     context_length: Optional[int] = None
 
+class EmbeddingConfig(BaseModel):
+    type: ComponentType
+    c_in: int
+    d_model: int
+    max_len: int = 5000
+    dropout: float = 0.1
+    time_features: bool = True
+    freq: str = "h"
+    model_config = {"extra": "allow"}
+
+class NormalizationConfig(BaseModel):
+    type: ComponentType
+    normalized_shape: int
+    eps: float = 1e-5
+    affine: bool = True
+    model_config = {"extra": "allow"}
+
 class ModularAutoformerConfig(BaseModel):
-        """Authoritative structured configuration for the Modular Autoformer.
+    """Authoritative structured configuration for the Modular Autoformer.
 
-        Backward compatibility:
-        - Accepts legacy encoder/decoder layer keys via aliases.
-        - `to_namespace()` exposes the legacy flat attributes used by older
-            training / model assembly code.
-        - Additional optional fields (`embed`, `freq`, `dropout`) retained.
-        """
-        task_name: str = "long_term_forecast"
-        seq_len: int
-        pred_len: int
-        label_len: int
-        enc_in: int
-        dec_in: int
-        c_out: int
-        c_out_evaluation: int
-        d_model: int = 512
-        attention: AttentionConfig
-        decomposition: DecompositionConfig
-        encoder: EncoderConfig
-        decoder: DecoderConfig
-        sampling: SamplingConfig
-        output_head: OutputHeadConfig
-        loss: LossConfig
-        bayesian: BayesianConfig = Field(default_factory=BayesianConfig)
-        backbone: BackboneConfig = Field(default_factory=BackboneConfig)
-        quantile_levels: Optional[List[float]] = None
-        embed: str = "timeF"
-        freq: str = "h"
-        dropout: float = 0.1
+    Backward compatibility:
+    - Accepts legacy encoder/decoder layer keys via aliases.
+    - `to_namespace()` exposes the legacy flat attributes used by older
+        training / model assembly code.
+    - Additional optional fields (`embed`, `freq`, `dropout`) retained.
+    """
+    task_name: str = "long_term_forecast"
+    seq_len: int
+    pred_len: int
+    label_len: int
+    enc_in: int
+    dec_in: int
+    c_out: int
+    c_out_evaluation: int
+    d_model: int = 512
+    attention: AttentionConfig
+    decomposition: DecompositionConfig
+    encoder: EncoderConfig
+    decoder: DecoderConfig
+    sampling: SamplingConfig
+    output_head: OutputHeadConfig
+    loss: LossConfig
+    bayesian: BayesianConfig = Field(default_factory=BayesianConfig)
+    backbone: BackboneConfig = Field(default_factory=BackboneConfig)
+    embedding: Optional[EmbeddingConfig] = None
+    normalization: Optional[NormalizationConfig] = None
+    quantile_levels: Optional[List[float]] = None
+    embed: str = "timeF"
+    freq: str = "h"
+    dropout: float = 0.1
 
-        class Config:
-                allow_population_by_field_name = True
-                arbitrary_types_allowed = True
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
 
 
 def create_enhanced_config(num_targets: int, num_covariates: int, **kwargs) -> ModularAutoformerConfig:
@@ -537,6 +571,115 @@ def create_hierarchical_config(num_targets: int, num_covariates: int, **kwargs) 
 
 
 # ---------------------------------------------------------------------------
+
+# Merged from layers/modular/core/config_schemas.py: Unique dataclass configurations
+# Note: Overlapping classes (e.g., BackboneConfig, EmbeddingConfig, AttentionConfig, LossConfig, OutputConfig) 
+# are not added as they exist as Pydantic models here. Adding base ComponentConfig, ProcessorConfig, 
+# FeedForwardConfig, and the overarching ModularModelConfig.
+
+from dataclasses import dataclass, field
+from typing import Dict, Any, List, Optional
+from abc import ABC
+
+@dataclass
+class ComponentConfig(ABC):
+    """Base configuration class for all components"""
+    component_name: str = ""
+    d_model: int = 256
+    dropout: float = 0.1
+    device: str = "auto"  # auto, cpu, cuda
+    dtype: str = "float32"  # float32, float16, bfloat16
+    custom_params: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        if not self.component_name:
+            self.component_name = self.__class__.__name__.replace("Config", "")
+
+@dataclass
+class ProcessorConfig(ComponentConfig):
+    """Configuration for processing strategies"""
+    processor_type: str = "seq2seq"  # seq2seq, encoder_only, hierarchical, autoregressive
+    seq_len: int = 96
+    pred_len: int = 24
+    label_len: int = 48
+    scales: List[int] = field(default_factory=lambda: [1, 2, 4, 8])
+    cross_scale_attention: bool = True
+    use_decoder: bool = True
+    decoder_strategy: str = "teacher_forcing"  # teacher_forcing, autoregressive
+    pooling_method: str = "adaptive"  # adaptive, average, max, attention
+
+@dataclass
+class FeedForwardConfig(ComponentConfig):
+    """Configuration for feed-forward networks"""
+    ffn_type: str = "standard"  # standard, mixture_experts, adaptive, gated
+    d_ff: int = 1024
+    activation: str = "relu"  # relu, gelu, swish, mish
+    use_bias: bool = True
+    num_experts: int = 4
+    expert_dropout: float = 0.1
+    gate_type: str = "top_k"  # top_k, softmax, learned
+    top_k: int = 2
+    adaptive_method: str = "linear"  # linear, attention, meta
+    adaptation_dim: int = 64
+
+@dataclass
+class ModularModelConfig:
+    """Complete configuration for modular time series models"""
+    model_name: str = "ModularHFAutoformer"
+    model_version: str = "1.0"
+    seq_len: int = 96
+    pred_len: int = 24
+    enc_in: int = 1
+    dec_in: int = 1
+    c_out: int = 1
+    d_model: int = 256
+    backbone: BackboneConfig = field(default_factory=BackboneConfig)
+    embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
+    attention: AttentionConfig = field(default_factory=AttentionConfig)
+    processor: ProcessorConfig = field(default_factory=ProcessorConfig)
+    feedforward: FeedForwardConfig = field(default_factory=FeedForwardConfig)
+    loss: LossConfig = field(default_factory=LossConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
+    learning_rate: float = 1e-4
+    batch_size: int = 32
+    max_epochs: int = 100
+    validate_config: bool = True
+    strict_compatibility: bool = True
+    
+    def __post_init__(self):
+        """Post-initialization validation and synchronization"""
+        components = [self.backbone, self.embedding, self.attention, 
+                      self.processor, self.feedforward, self.loss, self.output]
+        for component in components:
+            if hasattr(component, 'd_model'):
+                component.d_model = self.d_model
+        self.embedding.input_dim = self.enc_in
+        self.embedding.output_dim = self.d_model
+        self.output.output_dim = self.c_out
+        self.processor.seq_len = self.seq_len
+        self.processor.pred_len = self.pred_len
+        if self.validate_config:
+            self._validate_configuration()
+    
+    def _validate_configuration(self):
+        """Validate configuration consistency"""
+        assert self.embedding.output_dim == self.d_model, \
+            f"Embedding output dim {self.embedding.output_dim} != d_model {self.d_model}"
+        assert self.processor.seq_len == self.seq_len, \
+            f"Processor seq_len {self.processor.seq_len} != global seq_len {self.seq_len}"
+        if self.attention.head_dim is None:
+            assert self.d_model % self.attention.num_heads == 0, \
+                f"d_model {self.d_model} not divisible by num_heads {self.attention.num_heads}"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert configuration to dictionary"""
+        from dataclasses import asdict
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> 'ModularModelConfig':
+        """Create configuration from dictionary"""
+        return cls(**config_dict)
 # Additional configuration factory helpers (extending coverage)
 # ---------------------------------------------------------------------------
 

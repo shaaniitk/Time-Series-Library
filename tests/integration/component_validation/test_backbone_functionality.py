@@ -18,8 +18,7 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 try:
-    from utils.modular_components.registry import create_component, get_global_registry
-    from utils.modular_components.implementations import get_integration_status
+    from layers.modular.core.registry import unified_registry, ComponentFamily
     COMPONENTS_AVAILABLE = True
 except ImportError as e:
     print(f"WARN Could not import modular components: {e}")
@@ -65,7 +64,7 @@ def test_chronos_backbone_functionality():
             c_out=7
         )
         
-        backbone = create_component('backbone', 'chronos', config)
+        backbone = unified_registry.create(ComponentFamily.BACKBONE, 'chronos', **vars(config))
         if backbone is None:
             print("    WARN Chronos backbone not available, skipping...")
             return True
@@ -123,7 +122,7 @@ def test_t5_backbone_functionality():
             c_out=7
         )
         
-        backbone = create_component('backbone', 't5', config)
+        backbone = unified_registry.create(ComponentFamily.BACKBONE, 't5', **vars(config))
         if backbone is None:
             print("    WARN T5 backbone not available, skipping...")
             return True
@@ -148,7 +147,7 @@ def test_t5_backbone_functionality():
         )
         
         try:
-            backbone_decoder = create_component('backbone', 't5', config_decoder)
+            backbone_decoder = unified_registry.create(ComponentFamily.BACKBONE, 't5', **vars(config_decoder))
             if backbone_decoder:
                 with torch.no_grad():
                     output_decoder = backbone_decoder(x_enc, x_mark_enc, x_dec, x_mark_dec)
@@ -180,7 +179,7 @@ def test_simple_transformer_backbone():
             dropout=0.1
         )
         
-        backbone = create_component('backbone', 'simple_transformer', config)
+        backbone = unified_registry.create(ComponentFamily.BACKBONE, 'simple_transformer', config)
         assert backbone is not None, "Simple transformer should always be available"
         
         x_enc, x_mark_enc, x_dec, x_mark_dec = create_sample_data()
@@ -201,7 +200,7 @@ def test_simple_transformer_backbone():
         
         for i, test_config in enumerate(configs_to_test):
             config_test = MockConfig(**test_config)
-            backbone_test = create_component('backbone', 'simple_transformer', config_test)
+            backbone_test = unified_registry.create(ComponentFamily.BACKBONE, 'simple_transformer', **vars(config_test))
             
             with torch.no_grad():
                 output_test = backbone_test(x_enc, x_mark_enc, x_dec, x_mark_dec)
@@ -238,7 +237,7 @@ def test_robust_hf_backbone():
             error_recovery='graceful'
         )
         
-        backbone = create_component('backbone', 'robust_hf', config)
+        backbone = unified_registry.create(ComponentFamily.BACKBONE, 'robust_hf', config)
         if backbone is None:
             print("    WARN Robust HF backbone not available, skipping...")
             return True
@@ -261,7 +260,7 @@ def test_robust_hf_backbone():
         )
         
         try:
-            backbone_fallback = create_component('backbone', 'robust_hf', config_invalid)
+            backbone_fallback = unified_registry.create(ComponentFamily.BACKBONE, 'robust_hf', **vars(config_invalid))
             if backbone_fallback:
                 with torch.no_grad():
                     output_fallback = backbone_fallback(x_enc, x_mark_enc, x_dec, x_mark_dec)
@@ -286,13 +285,13 @@ def test_backbone_consistency():
         x_enc, x_mark_enc, x_dec, x_mark_dec = create_sample_data(features=5)
         
         # Get available backbones
-        registry = get_global_registry()
+        registry = unified_registry
         backbone_types = ['simple_transformer']  # Always available
         
         # Try to add other backbones if available
         for backbone_type in ['chronos', 't5', 'robust_hf']:
             try:
-                test_backbone = create_component('backbone', backbone_type, config)
+                test_backbone = unified_registry.create(ComponentFamily.BACKBONE, backbone_type, config)
                 if test_backbone is not None:
                     backbone_types.append(backbone_type)
             except:
@@ -303,7 +302,7 @@ def test_backbone_consistency():
         
         for backbone_type in backbone_types:
             try:
-                backbone = create_component('backbone', backbone_type, config)
+                backbone = unified_registry.create(ComponentFamily.BACKBONE, backbone_type, config)
                 if backbone is not None:
                     with torch.no_grad():
                         output = backbone(x_enc, x_mark_enc, x_dec, x_mark_dec)

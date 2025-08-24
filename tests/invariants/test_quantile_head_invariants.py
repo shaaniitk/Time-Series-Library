@@ -14,7 +14,7 @@ from .thresholds import get_threshold
 
 def _make_quantile_head():  # returns head or skips
     try:
-        from utils.modular_components.implementations.outputs import QuantileForecastingHead, OutputConfig  # type: ignore
+        from layers.modular.outputs.quantiles import QuantileForecastingHead, OutputConfig  # type: ignore
     except Exception:  # pragma: no cover
         pytest.skip("Quantile head unavailable")
     cfg = OutputConfig(d_model=32, output_dim=2, horizon=6, dropout=0.0)

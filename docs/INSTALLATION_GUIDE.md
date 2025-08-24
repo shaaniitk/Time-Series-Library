@@ -106,7 +106,7 @@ python -c "import torch; print(f'PyTorch: {torch.__version__}')"
 python -c "from chronos import ChronosPipeline; print('✅ ChronosX ready')"
 
 # Test modular components
-python -c "from utils.modular_components.registry import create_global_registry; print('✅ Modular components ready')"
+python -c "from layers.modular.core.registry import unified_registry; print('✅ Modular components ready')"
 
 # Run quick test
 python demo_models/chronos_x_simple_demo.py --smoke
@@ -237,7 +237,7 @@ forecast = pipeline.predict(context, prediction_length=24)
 ### Modular Architecture Usage
 ```python
 from models.modular_autoformer import ModularAutoformer
-from utils.modular_components.registry import create_global_registry
+from layers.modular.core.registry import unified_registry
 
 # Initialize with ChronosX backbone
 configs.use_backbone_component = True

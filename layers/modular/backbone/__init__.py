@@ -1,9 +1,9 @@
 """Backbone family implementations (Chronos / ChronosX etc.)
 
-Thin wrappers over legacy utils.modular_components backbones so they can be
+Thin wrappers over backbone implementations so they can be
 instantiated through the unified registry with direct kwargs instead of a
 config object. These are deliberately minimal – they adapt the __init__
-signature to (d_model, **extras) and internally construct the legacy config
+signature to (d_model, **extras) and internally construct the config
 object if needed later.
 """
 from __future__ import annotations

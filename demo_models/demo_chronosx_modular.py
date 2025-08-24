@@ -17,8 +17,8 @@ import time
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from models.modular_autoformer import ModularAutoformer
-from utils.modular_components.registry import create_global_registry
-from utils.modular_components.example_components import register_example_components
+from layers.modular.core.registry import unified_registry
+from layers.modular.core.example_components import register_example_components
 
 
 def create_demo_config(backbone_type='chronos_x', model_size='tiny'):
@@ -115,7 +115,7 @@ def run_comprehensive_demo():
     
     # Initialize components
     print("🔧 Initializing component registry...")
-    registry = create_global_registry()
+    registry = unified_registry
     register_example_components(registry)
     print("   ✅ Components registered")
     

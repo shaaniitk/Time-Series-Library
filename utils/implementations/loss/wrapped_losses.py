@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Dict, Any
 
-from utils.modular_components.registry import register_component
-from utils.modular_components.implementations.losses import (
+from layers.modular.core.registry import register_component
+from layers.modular.loss import (
     LossConfig,
     MSELoss,
     MAELoss,
@@ -31,7 +31,7 @@ def register_utils_losses() -> None:
             "domain": "loss",
             "task_types": ["regression", "forecasting"],
             "features": ["differentiable", "stable"],
-            "source": "utils.modular_components.implementations.losses",
+            "source": "layers.modular.losses.modular_standard_losses",
         },
     )
     register_component(
@@ -42,7 +42,7 @@ def register_utils_losses() -> None:
             "domain": "loss",
             "task_types": ["regression", "forecasting"],
             "features": ["robust_to_outliers", "differentiable"],
-            "source": "utils.modular_components.implementations.losses",
+            "source": "layers.modular.losses.modular_standard_losses",
         },
     )
     register_component(
@@ -53,7 +53,7 @@ def register_utils_losses() -> None:
             "domain": "loss",
             "task_types": ["regression", "forecasting"],
             "features": ["robust_to_outliers", "delta_param"],
-            "source": "utils.modular_components.implementations.losses",
+            "source": "layers.modular.losses.modular_standard_losses",
         },
     )
 
@@ -66,7 +66,7 @@ def register_utils_losses() -> None:
             "domain": "loss",
             "task_types": ["classification"],
             "features": ["class_weights", "ignore_index"],
-            "source": "utils.modular_components.implementations.losses",
+            "source": "layers.modular.losses.modular_standard_losses",
         },
     )
 
@@ -79,7 +79,7 @@ def register_utils_losses() -> None:
             "domain": "loss",
             "task_types": ["probabilistic_forecasting", "probabilistic_regression"],
             "features": ["requires_uncertainty", "gaussian"],
-            "source": "utils.modular_components.implementations.losses",
+            "source": "layers.modular.losses.modular_standard_losses",
         },
     )
 
@@ -92,7 +92,7 @@ def register_utils_losses() -> None:
             "domain": "loss",
             "task_types": ["quantile_regression", "probabilistic_forecasting"],
             "features": ["provides_uncertainty", "multi_quantile"],
-            "source": "utils.modular_components.implementations.losses",
+            "source": "layers.modular.losses.modular_standard_losses",
         },
     )
 
@@ -105,6 +105,6 @@ def register_utils_losses() -> None:
             "domain": "loss",
             "task_types": ["multi_task"],
             "features": ["weighted_sum", "composite"],
-            "source": "utils.modular_components.implementations.losses",
+            "source": "layers.modular.losses.modular_standard_losses",
         },
     )

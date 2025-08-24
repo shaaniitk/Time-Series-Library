@@ -4,8 +4,8 @@ from argparse import Namespace
 from typing import Union, Dict, Any
 
 # GCLI Structured Configuration System
-from configs.schemas import ModularAutoformerConfig, ComponentType
-from configs.modular_components import (
+from layers.modular.core.config_schemas import ModularAutoformerConfig, ComponentType
+from utils.modular_components import (
     ModularAssembler, component_registry, AssembledAutoformer,
     register_all_components
 )
@@ -14,19 +14,19 @@ from configs.modular_components import (
 from layers.modular.decomposition import get_decomposition_component
 from layers.modular.encoder import get_encoder_component
 from layers.modular.decoder import get_decoder_component
-from layers.modular.core import get_attention_component
+from layers.modular.attention.registry import get_attention_component
 import layers.modular.core.register_components  # noqa: F401  # ensure attention registry populated
 from layers.modular.sampling import get_sampling_component
 from layers.modular.output_heads import get_output_head_component
-from layers.modular.losses import get_loss_component
+from layers.modular.loss import get_loss_component
 from layers.Embed import DataEmbedding_wo_pos
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 # Import unified base framework
 from models.base_forecaster import BaseTimeSeriesForecaster, CustomFrameworkMixin
 
 # Import modular dimension manager
-from utils.modular_dimension_manager import create_modular_dimension_manager
+from layers.modular.dimensions.modular_dimension_manager import create_modular_dimension_manager
 
 class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
     """
@@ -292,7 +292,7 @@ class ModularAutoformer(BaseTimeSeriesForecaster, CustomFrameworkMixin):
         # TODO: Migrate to GCLI component system
         
         # Traditional components (may be used differently with backbone)
-        from layers.modular.losses import get_loss_component
+        from layers.modular.loss import get_loss_component
         from layers.modular.sampling import get_sampling_component
         from layers.modular.output_heads import get_output_head_component
         

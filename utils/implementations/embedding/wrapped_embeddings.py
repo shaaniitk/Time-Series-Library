@@ -3,8 +3,8 @@ Embedding registrations that expose utils embedding implementations to the unifi
 """
 from __future__ import annotations
 
-from utils.modular_components.registry import register_component
-from utils.modular_components.implementations.embeddings import (
+from layers.modular.core.registry import register_component
+from layers.modular.embeddings import (
     TemporalEmbedding,
     ValueEmbedding,
     CovariateEmbedding,
@@ -21,7 +21,7 @@ def register_utils_embeddings() -> None:
         metadata={
             "domain": "embedding",
             "features": ["positional", "temporal_features"],
-            "source": "utils.modular_components.implementations.embeddings",
+            "source": "layers.modular.embeddings",
         },
     )
     register_component(
@@ -31,7 +31,7 @@ def register_utils_embeddings() -> None:
         metadata={
             "domain": "embedding",
             "features": ["continuous_projection", "optional_binning"],
-            "source": "utils.modular_components.implementations.embeddings",
+            "source": "layers.modular.embeddings",
         },
     )
     register_component(
@@ -41,7 +41,7 @@ def register_utils_embeddings() -> None:
         metadata={
             "domain": "embedding",
             "features": ["categorical", "numerical"],
-            "source": "utils.modular_components.implementations.embeddings",
+            "source": "layers.modular.embeddings",
         },
     )
     register_component(
@@ -51,6 +51,6 @@ def register_utils_embeddings() -> None:
         metadata={
             "domain": "embedding",
             "features": ["combine_temporal_value_covariate"],
-            "source": "utils.modular_components.implementations.embeddings",
+            "source": "layers.modular.embeddings",
         },
     )

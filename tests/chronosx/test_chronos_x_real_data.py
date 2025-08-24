@@ -19,12 +19,12 @@ import time
 sys.path.append(str(Path(__file__).parent))
 
 from chronos import ChronosPipeline
-from utils.modular_components.chronos_backbone import (
-    ChronosXBackbone, ChronosXTinyBackbone, 
+from layers.modular.backbone.chronos_backbone import (
+    ChronosBackbone as ChronosXBackbone, ChronosXTinyBackbone, 
     ChronosXLargeBackbone, ChronosXUncertaintyBackbone
 )
-from utils.modular_components.config_schemas import BackboneConfig
-from utils.modular_components.registry import create_global_registry
+from configs.schemas import BackboneConfig
+from layers.modular.core.registry import unified_registry
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class ChronosXRealDataTester:
     
     def __init__(self):
         self.results = {}
-        self.registry = create_global_registry()
+        self.registry = unified_registry
         
     def load_real_data(self) -> Dict[str, np.ndarray]:
         """Load real time series data from available sources"""

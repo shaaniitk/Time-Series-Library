@@ -1,9 +1,59 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 from .base import BaseDecomposition
 from layers.DWT_Decomposition import DWT1DForward, DWT1DInverse
 from utils.logger import logger
+
+class UnifiedWaveletDecomposition(nn.Module):
+    def __init__(self, d_model: int, levels: int = 3, wavelet_length: int = 8, orthogonality_weight: float = 0.01, padding_mode: str = 'reflect'):
+        super().__init__()
+        self.levels = levels
+        self.wavelet_length = wavelet_length
+        self.d_model = d_model
+        self.orthogonality_weight = orthogonality_weight
+        self.padding_mode = padding_mode
+        # Learnable filters initialized with Haar
+        haar_low = torch.tensor([1/math.sqrt(2), 1/math.sqrt(2)], dtype=torch.float32)
+        haar_high = torch.tensor([1/math.sqrt(2), -1/math.sqrt(2)], dtype=torch.float32)
+        if wavelet_length > 2:
+            haar_low = F.pad(haar_low, (0, wavelet_length - 2))
+            haar_high = F.pad(haar_high, (0, wavelet_length - 2))
+        self.low_pass_filter = nn.Parameter(haar_low.clone() + torch.randn(wavelet_length) * 0.01)
+        self.high_pass_filter = nn.Parameter(haar_high.clone() + torch.randn(wavelet_length) * 0.01)
+        self.level_projections = nn.ModuleList([nn.Linear(1, d_model) for _ in range(levels + 1)])
+        self.combination_weights = nn.Parameter(torch.ones(levels + 1) / (levels + 1))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, L, _ = x.shape
+        x_signal = x.squeeze(-1)
+        decompositions = []
+        current_signal = x_signal
+        for level in range(self.levels):
+            padding = (self.wavelet_length - 2) // 2
+            padded_signal = F.pad(current_signal.unsqueeze(1), (padding, padding), mode=self.padding_mode)
+            low_pass = F.conv1d(padded_signal, self.low_pass_filter.view(1, 1, -1), stride=2).squeeze(1)
+            high_pass = F.conv1d(padded_signal, self.high_pass_filter.view(1, 1, -1), stride=2).squeeze(1)
+            decompositions.append(high_pass)
+            current_signal = low_pass
+        decompositions.append(current_signal)
+        projected_decomps = []
+        weights = F.softmax(self.combination_weights, dim=0)
+        for i, decomp in enumerate(decompositions):
+            if decomp.size(1) != L:
+                decomp = F.interpolate(decomp.unsqueeze(1), size=L, mode='linear', align_corners=False).squeeze(1)
+            proj_decomp = self.level_projections[i](decomp.unsqueeze(-1))
+            proj_decomp = proj_decomp * weights[i]
+            projected_decomps.append(proj_decomp)
+        combined = torch.stack(projected_decomps, dim=-1).sum(dim=-1)
+        return combined
+
+    def compute_orthogonality_loss(self) -> torch.Tensor:
+        orthogonality_loss = torch.abs(torch.dot(self.low_pass_filter, self.high_pass_filter))
+        low_norm_loss = torch.abs(torch.norm(self.low_pass_filter) - 1.0)
+        high_norm_loss = torch.abs(torch.norm(self.high_pass_filter) - 1.0)
+        return (orthogonality_loss + low_norm_loss + high_norm_loss) * self.orthogonality_weight
 
 class WaveletHierarchicalDecomposition(BaseDecomposition):
     """

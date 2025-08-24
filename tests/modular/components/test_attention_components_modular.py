@@ -12,7 +12,8 @@ from __future__ import annotations
 import torch
 import pytest
 
-from configs.modular_components import component_registry, register_all_components
+from layers.modular.core.registry import unified_registry, ComponentFamily
+from layers.modular.core import register_components
 from configs.schemas import ComponentType, AttentionConfig
 
 @pytest.mark.parametrize(
@@ -29,7 +30,7 @@ def test_attention_component_forward(attention_type: ComponentType) -> None:
     Args:
         attention_type: The component enum member to validate.
     """
-    register_all_components()
+    register_components()
 
     batch_size, seq_len, d_model, n_heads = 2, 96, 64, 8
     x = torch.randn(batch_size, seq_len, d_model)
@@ -44,7 +45,7 @@ def test_attention_component_forward(attention_type: ComponentType) -> None:
         factor=1,
         output_attention=False,
     )
-    component = component_registry.create_component(attention_type, config, d_model=d_model, seq_len=seq_len)
+    component = unified_registry.create(ComponentFamily.ATTENTION, attention_type.value, **vars(config), d_model=d_model, seq_len=seq_len)
 
     with torch.no_grad():
         if attention_type == ComponentType.CROSS_RESOLUTION:
