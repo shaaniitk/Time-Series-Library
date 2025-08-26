@@ -59,7 +59,8 @@ class HybridEmbedding(BaseEmbedding):
                 values: torch.Tensor,
                 temporal_marks: Optional[torch.Tensor] = None,
                 categorical_covariates: Optional[Dict[str, torch.Tensor]] = None,
-                numerical_covariates: Optional[torch.Tensor] = None) -> torch.Tensor:
+                numerical_covariates: Optional[torch.Tensor] = None,
+                **kwargs) -> torch.Tensor:
         """
         Forward pass for hybrid embedding
         
@@ -72,8 +73,32 @@ class HybridEmbedding(BaseEmbedding):
         Returns:
             Hybrid embeddings [batch_size, seq_len, d_model]
         """
+        # Compatibility: tests pass temporal_features (dict) and numerical_data keys
+        # Map to internal argument names when provided via kwargs
+        if temporal_marks is None and 'temporal_features' in kwargs:
+            # TemporalEmbedding expects (input_embeddings, temporal_features, positions)
+            # Here we only use features downstream via TemporalEmbedding
+            # For shape alignment, create a zeros tensor as placeholder embeddings
+            # However, our TemporalEmbedding class takes (input_embeddings, temporal_features),
+            # so we'll use values as the base embeddings and pass features along.
+            temporal_features = kwargs.get('temporal_features')
+        else:
+            temporal_features = None
+        if categorical_covariates is None and 'categorical_data' in kwargs:
+            categorical_covariates = kwargs.get('categorical_data')
+        if numerical_covariates is None and 'numerical_data' in kwargs:
+            numerical_covariates = kwargs.get('numerical_data')
         # Get individual embeddings
-        temp_emb = self.temporal_embedding(temporal_marks) if temporal_marks is not None else 0
+        # Build temporal embedding: our TemporalEmbedding signature is
+        # forward(input_embeddings, temporal_features=None, positions=None)
+        if temporal_features is not None:
+            # Use values as base embeddings to match [B,L,D]
+            temp_emb = self.temporal_embedding(values, temporal_features=temporal_features, positions=None)
+        elif temporal_marks is not None:
+            # If a tensor is provided (back-compat), treat it as base embeddings without extra features
+            temp_emb = self.temporal_embedding(temporal_marks, temporal_features=None, positions=None)
+        else:
+            temp_emb = 0
         value_emb = self.value_embedding(values)
         cov_emb = self.covariate_embedding(
             categorical_data=categorical_covariates,

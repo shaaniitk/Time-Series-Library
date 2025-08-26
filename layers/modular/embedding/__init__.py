@@ -7,7 +7,10 @@ them into the global registry without importing tooling directly.
 from __future__ import annotations
 from typing import Any
 
-from .temporal_embedding import TemporalEmbedding as _TemporalLegacy  # local implementation
+try:
+    from .temporal_embedding import TemporalEmbedding as _TemporalLegacy  # local implementation
+except Exception:  # pragma: no cover
+    _TemporalLegacy = None  # type: ignore
 from .temporal_embedding import TemporalEmbedding
 from .value_embedding import ValueEmbedding
 from .covariate_embedding import CovariateEmbedding
@@ -42,12 +45,9 @@ class TemporalEmbeddingWrapper:
         # Legacy TemporalEmbedding signature expects (input_embeddings, temporal_features=None, positions=None)
         return self._impl.forward(x, *args, **kwargs)
 
-def register_utils_embeddings():  # pragma: no cover - delegating shim for tests
-    try:
-        from utils.implementations.embedding.wrapped_embeddings import register_utils_embeddings as _impl
-        _impl()
-    except Exception:
-        return None
+def register_utils_embeddings():  # pragma: no cover
+    # No-op shim: embeddings are registered via layers.modular.core.register_components
+    return None
 
 __all__ = [
     'TemporalEmbeddingWrapper',

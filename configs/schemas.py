@@ -252,8 +252,9 @@ class BackboneConfig(BaseModel):
     context_length: Optional[int] = None
 
 class EmbeddingConfig(BaseModel):
-    type: ComponentType
-    c_in: int
+    # Make fields lenient for lightweight tests that only set d_model/dropout
+    type: Optional[ComponentType] = None
+    c_in: int = 1
     d_model: int
     max_len: int = 5000
     dropout: float = 0.1

@@ -8,24 +8,32 @@ from the existing codebase into the modular framework.
 import logging
 from typing import Dict, Any
 
-from ..registry import register_component
+from .registry import register_component
 from ..base_interfaces import BaseComponent
 
 logger = logging.getLogger(__name__)
 
 
-def register_advanced_losses():
+def register_advanced_losses() -> None:
     """Register advanced loss function implementations"""
     try:
-        # Apply patches to ensure compute_loss methods exist
-        from . import patch_losses
-        
-        from .advanced_losses import (
-            BayesianMSELoss, BayesianMAELoss, AdaptiveStructuralLoss,
-            FrequencyAwareLoss, PatchStructuralLoss, DTWAlignmentLoss,
-            MultiScaleTrendLoss, BayesianQuantileLoss
+        # Import concrete modular loss implementations. Avoid importing from
+        # this package (layers.modular.core) to prevent circular imports.
+        from layers.modular.loss.modular_advanced_losses import (
+            BayesianMSELoss,
+            BayesianMAELoss,
+            FrequencyAwareLoss,
+            PatchStructuralLoss,
+            DTWAlignmentLoss,
+            MultiScaleTrendLoss,
+            BayesianQuantileLoss,
         )
-        
+        # Adaptive structural loss lives alongside modular advanced losses
+        try:
+            from layers.modular.loss.modular_advanced_losses import AdaptiveStructuralLoss
+        except Exception:
+            from layers.modular.loss.advanced_losses import AdaptiveStructuralLoss  # fallback if present
+
         # Register Bayesian losses
         register_component(
             'loss', 'bayesian_mse', BayesianMSELoss,
@@ -102,22 +110,28 @@ def register_advanced_losses():
                 'trend_aware': True
             }
         )
-        
         logger.info("Successfully registered 8 advanced loss functions")
-        
     except Exception as e:
         logger.error(f"Failed to register advanced losses: {e}")
 
 
-def register_advanced_attentions():
+def register_advanced_attentions() -> None:
     """Register advanced attention mechanisms"""
     try:
-        from .advanced_attentions import (
-            OptimizedAutoCorrelationAttention, AdaptiveAutoCorrelationAttention,
-            EnhancedAutoCorrelationLayer, MemoryEfficientAttention
-        )
+        # If advanced attentions module exists, import; otherwise skip gracefully
+        from layers.modular.attention.enhanced_autocorrelation import EnhancedAutoCorrelation as EnhancedAutoCorrelationLayer
+        # Optional advanced variants (may not exist):
+        try:
+            from layers.modular.attention.advanced_attentions import (
+                OptimizedAutoCorrelationAttention, AdaptiveAutoCorrelationAttention, MemoryEfficientAttention,
+            )
+        except Exception:
+            OptimizedAutoCorrelationAttention = None  # type: ignore
+            AdaptiveAutoCorrelationAttention = None  # type: ignore
+            MemoryEfficientAttention = None  # type: ignore
         
-        register_component(
+        if OptimizedAutoCorrelationAttention is not None:
+            register_component(
             'attention', 'optimized_autocorrelation', OptimizedAutoCorrelationAttention,
             metadata={
                 'type': 'autocorrelation',
@@ -126,9 +140,10 @@ def register_advanced_attentions():
                 'chunked_processing': True,
                 'mixed_precision': True
             }
-        )
+            )
         
-        register_component(
+        if AdaptiveAutoCorrelationAttention is not None:
+            register_component(
             'attention', 'adaptive_autocorrelation', AdaptiveAutoCorrelationAttention,
             metadata={
                 'type': 'autocorrelation',
@@ -136,7 +151,7 @@ def register_advanced_attentions():
                 'multi_scale': True,
                 'adaptive_k': True
             }
-        )
+            )
         
         register_component(
             'attention', 'enhanced_autocorrelation', EnhancedAutoCorrelationLayer,
@@ -149,7 +164,8 @@ def register_advanced_attentions():
             }
         )
         
-        register_component(
+        if MemoryEfficientAttention is not None:
+            register_component(
             'attention', 'memory_efficient', MemoryEfficientAttention,
             metadata={
                 'type': 'general',
@@ -157,22 +173,31 @@ def register_advanced_attentions():
                 'gradient_checkpointing': True,
                 'fallback_capable': True
             }
-        )
-        
-        logger.info("Successfully registered 4 advanced attention mechanisms")
-        
+            )
+        logger.info("Successfully registered advanced attention mechanisms")
     except Exception as e:
         logger.error(f"Failed to register advanced attentions: {e}")
 
 
-def register_specialized_processors():
+def register_specialized_processors() -> None:
     """Register specialized signal processors"""
     try:
-        from .specialized_processors import (
-            FrequencyDomainProcessor, StructuralPatchProcessor,
-            DTWAlignmentProcessor, TrendProcessor, QuantileProcessor,
-            IntegratedSignalProcessor
+        # Import specialized processors from modular processor package
+        from layers.modular.processor.specialized_processors import (
+            FrequencyDomainProcessor,
+            StructuralPatchProcessor,
+            DTWAlignmentProcessor,
+            TrendProcessor,
         )
+        # Optional processors; ignore if not present
+        try:
+            from layers.modular.processor.specialized_processors import QuantileProcessor  # type: ignore
+        except Exception:
+            QuantileProcessor = None  # type: ignore
+        try:
+            from layers.modular.processor.specialized_processors import IntegratedSignalProcessor  # type: ignore
+        except Exception:
+            IntegratedSignalProcessor = None  # type: ignore
         
         # Note: These processors don't directly inherit from BaseComponent
         # They are utility classes used by other components
@@ -219,34 +244,34 @@ def register_specialized_processors():
             }
         )
         
-        register_component(
-            'processor', 'quantile_analysis', QuantileProcessor,
-            metadata={
-                'type': 'quantile',
-                'quantile_regression': True,
-                'uncertainty_estimation': True,
-                'utility_class': True
-            }
-        )
+        if QuantileProcessor is not None:
+            register_component(
+                'processor', 'quantile_analysis', QuantileProcessor,
+                metadata={
+                    'type': 'quantile',
+                    'quantile_regression': True,
+                    'uncertainty_estimation': True,
+                    'utility_class': True
+                }
+            )
         
-        register_component(
-            'processor', 'integrated_signal', IntegratedSignalProcessor,
-            metadata={
-                'type': 'integrated',
-                'multi_modal': True,
-                'comprehensive': True,
-                'all_processors': True,
-                'utility_class': True
-            }
-        )
-        
-        logger.info("Successfully registered 6 specialized processors")
-        
+        if IntegratedSignalProcessor is not None:
+            register_component(
+                'processor', 'integrated_signal', IntegratedSignalProcessor,
+                metadata={
+                    'type': 'integrated',
+                    'multi_modal': True,
+                    'comprehensive': True,
+                    'all_processors': True,
+                    'utility_class': True
+                }
+            )
+        logger.info("Successfully registered specialized processors")
     except Exception as e:
         logger.error(f"Failed to register specialized processors: {e}")
 
 
-def register_all_advanced_components():
+def register_all_advanced_components() -> None:
     """Register all advanced components at once"""
     logger.info("Registering all advanced components...")
     
@@ -257,16 +282,13 @@ def register_all_advanced_components():
     logger.info("Advanced component registration complete")
 
 
-# Auto-register when module is imported
-try:
-    register_all_advanced_components()
-except Exception as e:
-    logger.error(f"Failed to auto-register advanced components: {e}")
+# Note: Do not auto-register on import to avoid import-time side effects and
+# potential circular import issues. Call register_* functions explicitly.
 
 
 def get_advanced_component_summary() -> Dict[str, Any]:
     """Get summary of all registered advanced components"""
-    from ..registry import get_global_registry
+    from .registry import get_global_registry
     
     registry = get_global_registry()
     components = registry.list_components()
@@ -305,7 +327,7 @@ def get_advanced_component_summary() -> Dict[str, Any]:
 
 def validate_bayesian_integration() -> Dict[str, bool]:
     """Validate that Bayesian components are properly integrated"""
-    from ..registry import get_global_registry
+    from .registry import get_global_registry
     
     registry = get_global_registry()
     validation = {

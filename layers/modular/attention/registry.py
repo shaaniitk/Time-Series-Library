@@ -138,6 +138,10 @@ try:
     @classmethod  # type: ignore
     def _shim_get(cls, name):  # noqa: D401
         _warn_attn()
+        # Special-case: keep legacy autocorrelation_layer mapping to legacy AutoCorrelationLayer
+        # to preserve constructor contract (positional inner correlation + named dims).
+        if name == 'autocorrelation_layer':
+            return cls._registry.get(name)
         lookup = _LEGACY_TO_UNIFIED.get(name, name)
         try:
             return unified_registry.resolve(ComponentFamily.ATTENTION, lookup).cls
@@ -236,7 +240,8 @@ def get_attention_component(name, **kwargs):
             temperature=kwargs.get('temperature', 1.0)
         )
     elif name == "enhanced_autocorrelation":
-        # Ensure we don't pass duplicate d_model; constructor expects named d_model/n_heads
+        # Instantiate directly; the implementation handles cross-attention via
+        # an internal scaled dot-product fallback when sequence lengths differ.
         return component_class(
             d_model=kwargs.get('d_model'),
             n_heads=kwargs.get('n_heads'),

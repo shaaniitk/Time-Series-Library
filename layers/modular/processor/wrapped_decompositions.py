@@ -1,35 +1,28 @@
 """
-Adapters that wrap legacy decomposition components under layers/modular/decomposition
-into utils 'processor' components, preserving behavior while providing a unified API.
+Wrapped decomposition processors registered under the unified registry.
 
-Each wrapper implements BaseProcessor.process_sequence and registers into the
-ComponentRegistry via register_layers_decompositions().
+These adapters expose decomposition components as 'processor' family entries
+with a uniform process_sequence API, without importing from utils/*.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Dict, Any
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from layers.modular.base_interfaces import BaseProcessor
-from layers.modular.core.registry import register_component
-
-# Legacy implementations
-from layers.modular.decomposition.series_decomposition import SeriesDecomposition
-from layers.modular.decomposition.stable_decomposition import StableSeriesDecomposition
-from layers.modular.decomposition.learnable_decomposition import LearnableSeriesDecomposition
-from layers.modular.decomposition.wavelet_decomposition import WaveletHierarchicalDecomposition
+from ..base_interfaces import BaseProcessor
+from ..decomposition.series_decomposition import SeriesDecomposition
+from ..decomposition.stable_decomposition import StableSeriesDecomposition
+from ..decomposition.learnable_decomposition import LearnableSeriesDecomposition
+from ..decomposition.wavelet_decomposition import WaveletHierarchicalDecomposition
+from ..core.registry import register_component
 
 
 @dataclass
 class ProcessorConfig:
-    """Minimal processor config base to avoid legacy modular_components import.
-
-    Includes the knobs actually used by wrapped processors in tests.
-    """
     d_model: int = 16
     dropout: float = 0.0
     seq_len: int = 8
@@ -40,16 +33,6 @@ class ProcessorConfig:
 
 @dataclass
 class DecompositionProcessorConfig(ProcessorConfig):
-    """Configuration for decomposition processors wrapped as processors.
-    
-    Attributes:
-        component_selection: which part to output ('seasonal', 'trend', 'concat', 'both').
-        kernel_size: for moving-average based decompositions.
-        ensure_odd_kernel: enforce odd kernel for stability (stable variant).
-        wavelet_type: wavelet family (for wavelet decomposition).
-        levels: DWT levels (for wavelet decomposition).
-        use_learnable_weights: learnable scale weights (for wavelet decomposition).
-    """
     component_selection: str = "seasonal"  # seasonal | trend | concat | both
     kernel_size: int = 25
     ensure_odd_kernel: bool = False
@@ -61,7 +44,6 @@ class DecompositionProcessorConfig(ProcessorConfig):
 class _ResizeMixin:
     @staticmethod
     def _resize_to_target_length(x: torch.Tensor, target_length: int) -> torch.Tensor:
-        """Resize [B, L, D] to desired L while preserving features."""
         if x.size(1) == target_length:
             return x
         if x.size(1) < target_length:
@@ -70,8 +52,6 @@ class _ResizeMixin:
 
 
 class SeriesDecompositionProcessor(BaseProcessor, _ResizeMixin):
-    """Processor wrapper around SeriesDecomposition."""
-
     def __init__(self, config: DecompositionProcessorConfig):
         super().__init__(config)
         self.config = config
@@ -79,7 +59,6 @@ class SeriesDecompositionProcessor(BaseProcessor, _ResizeMixin):
         if self.config.ensure_odd_kernel:
             k = k + (1 - k % 2)
         self.decomp = SeriesDecomposition(kernel_size=k)
-        # Optional projection for concat
         self.concat_proj = nn.Linear(config.d_model * 2, config.d_model) if config.component_selection == "concat" else None
 
     def forward(self, embedded_input: torch.Tensor, backbone_output: Optional[torch.Tensor] = None, target_length: Optional[int] = None, **kwargs) -> torch.Tensor:
@@ -97,7 +76,6 @@ class SeriesDecompositionProcessor(BaseProcessor, _ResizeMixin):
         if sel == "concat":
             x = torch.cat([seasonal, trend], dim=-1)
             return self.concat_proj(x) if self.concat_proj is not None else x
-        # both -> default to seasonal (could return tuple, but processors should return Tensor)
         return seasonal
 
     def get_processor_type(self) -> str:
@@ -108,8 +86,6 @@ class SeriesDecompositionProcessor(BaseProcessor, _ResizeMixin):
 
 
 class StableSeriesDecompositionProcessor(SeriesDecompositionProcessor):
-    """Stable variant that enforces odd kernel; kept for backward compatibility."""
-
     def __init__(self, config: DecompositionProcessorConfig):
         config.ensure_odd_kernel = True
         super().__init__(config)
@@ -119,12 +95,9 @@ class StableSeriesDecompositionProcessor(SeriesDecompositionProcessor):
 
 
 class LearnableDecompositionProcessor(BaseProcessor, _ResizeMixin):
-    """Processor wrapper around LearnableSeriesDecomposition."""
-
     def __init__(self, config: DecompositionProcessorConfig):
         super().__init__(config)
         self.config = config
-        # Align input_dim with d_model by default
         self.decomp = LearnableSeriesDecomposition(input_dim=config.d_model, init_kernel_size=config.kernel_size, max_kernel_size=max(config.kernel_size, 50))
         self.concat_proj = nn.Linear(config.d_model * 2, config.d_model) if config.component_selection == "concat" else None
 
@@ -153,8 +126,6 @@ class LearnableDecompositionProcessor(BaseProcessor, _ResizeMixin):
 
 
 class WaveletDecompositionProcessor(BaseProcessor, _ResizeMixin):
-    """Processor wrapper around WaveletHierarchicalDecomposition."""
-
     def __init__(self, config: DecompositionProcessorConfig):
         super().__init__(config)
         self.config = config
@@ -192,8 +163,6 @@ class WaveletDecompositionProcessor(BaseProcessor, _ResizeMixin):
 
 
 def register_layers_decompositions() -> None:
-    """Register wrapped decomposition processors into the utils registry."""
-    # Series decomposition
     register_component(
         "processor",
         "series_decomposition_processor",
@@ -205,7 +174,6 @@ def register_layers_decompositions() -> None:
             "sophistication_level": "medium",
         },
     )
-    # Stable variant (kept for backward-compat; essentially same with enforced odd kernel)
     register_component(
         "processor",
         "stable_series_decomposition_processor",
@@ -219,7 +187,6 @@ def register_layers_decompositions() -> None:
             "note": "Use series_decomposition_processor with ensure_odd_kernel=True",
         },
     )
-    # Learnable decomposition
     register_component(
         "processor",
         "learnable_series_decomposition_processor",
@@ -231,7 +198,6 @@ def register_layers_decompositions() -> None:
             "sophistication_level": "high",
         },
     )
-    # Wavelet hierarchical decomposition
     register_component(
         "processor",
         "wavelet_hierarchical_decomposition_processor",

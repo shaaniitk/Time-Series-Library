@@ -6,6 +6,16 @@ from .stable_encoder import StableEncoder
 from .hierarchical_encoder import HierarchicalEncoder
 from .registry import EncoderRegistry, get_encoder_component
 
+# Compatibility re-exports for processor tests now point to local wrappers
+try:
+    from ..processor.wrapped_encoders import (
+        register_layers_encoders,
+        EncoderProcessorConfig,
+    )
+except Exception:  # pragma: no cover
+    register_layers_encoders = None  # type: ignore
+    EncoderProcessorConfig = None  # type: ignore
+
 __all__ = [
     "BaseEncoder",
     "ModularEncoder",
@@ -15,4 +25,7 @@ __all__ = [
     "HierarchicalEncoder",
     "EncoderRegistry",
     "get_encoder_component",
+    # Re-exported for tests
+    "register_layers_encoders",
+    "EncoderProcessorConfig",
 ]

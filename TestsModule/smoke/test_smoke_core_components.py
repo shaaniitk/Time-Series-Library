@@ -17,23 +17,8 @@ pytestmark = [pytest.mark.smoke]
 
 
 def _import_registry():  # type: ignore[return-type]
-    """Return (create_component, list_components) from whichever registry is present.
-
-    Tries new path first (layers.modular.registry) then legacy path.
-    Returns (None, None) if neither present so tests can skip.
-    """
-    try:  # New style
+    try:
         from layers.modular.registry import create_component, list_components  # type: ignore
-        return create_component, list_components
-    except Exception:  # pragma: no cover
-        pass
-    try:  # Legacy style
-        from utils.modular_components.registry import create_component, get_global_registry  # type: ignore
-
-        def list_components(kind: str):  # adapter for legacy
-            reg = get_global_registry()
-            return reg.list_components(kind) if hasattr(reg, "list_components") else []  # type: ignore
-
         return create_component, list_components
     except Exception:  # pragma: no cover
         return None, None

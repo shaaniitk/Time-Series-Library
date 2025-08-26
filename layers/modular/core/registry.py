@@ -5,7 +5,7 @@ output_head, loss, fusion, adapter, backbone) register here. This replaces the
 multiple per-domain registries and utilities registries.
 """
 from __future__ import annotations
-from typing import Any, Dict, Type, Optional, Callable
+from typing import Any, Dict, Type, Optional, Callable, List
 from dataclasses import dataclass, field
 from enum import Enum
 import inspect
@@ -199,6 +199,100 @@ class UnifiedRegistry:
 # Global singleton
 unified_registry = UnifiedRegistry()
 
+# Lightweight compatibility shim for utils ComponentRegistry API expected by tests
+class _GlobalRegistryAdapter:
+    """Adapter exposing a utils-like registry surface over unified_registry.
+
+    Methods:
+    - list_components() -> dict[str, list[str]]
+    - get(component_type: str, name: str) -> Type
+    - get_metadata(component_type: str, name: str) -> dict[str, Any]
+    - is_registered(component_type: str, name: str) -> bool
+    """
+
+    _FAMILY_MAP: Dict[str, ComponentFamily] = {
+        'attention': ComponentFamily.ATTENTION,
+        'encoder': ComponentFamily.ENCODER,
+        'decoder': ComponentFamily.DECODER,
+        'decomposition': ComponentFamily.DECOMPOSITION,
+        'sampling': ComponentFamily.SAMPLING,
+        'output_head': ComponentFamily.OUTPUT_HEAD,
+        'loss': ComponentFamily.LOSS,
+        'fusion': ComponentFamily.FUSION,
+        'adapter': ComponentFamily.ADAPTER,
+        'backbone': ComponentFamily.BACKBONE,
+        'embedding': ComponentFamily.EMBEDDING,
+        'processor': ComponentFamily.PROCESSOR,
+        'feedforward': ComponentFamily.FEEDFORWARD,
+        'output': ComponentFamily.OUTPUT,
+        'normalization': ComponentFamily.NORMALIZATION,
+    }
+
+    def __init__(self) -> None:
+        # Optional: also include components registered in utils.modular_components.registry
+        try:  # pragma: no cover - only used in tests expecting legacy utils registry
+            from utils.modular_components.registry import get_global_registry as _get_utils_registry  # type: ignore
+            self._utils_registry = _get_utils_registry()
+        except Exception:
+            self._utils_registry = None
+
+    def _family(self, component_type: str) -> ComponentFamily:
+        fam = self._FAMILY_MAP.get(component_type)
+        if fam is None:
+            raise ValueError(f"Unknown component type: {component_type}")
+        return fam
+
+    def list_components(self) -> Dict[str, List[str]]:
+        # Start with unified registry listings
+        listings = unified_registry.list()
+        # Merge in utils registry if present
+        if self._utils_registry is not None:
+            utils_listings = self._utils_registry.list_components()
+            for k, names in utils_listings.items():
+                merged = set(listings.get(k, []))
+                merged.update(names)
+                if merged:
+                    listings[k] = sorted(merged)
+        return listings
+
+    def get(self, component_type: str, name: str):
+        fam = self._family(component_type)
+        try:
+            return unified_registry.resolve(fam, name).cls
+        except Exception:
+            # Fallback to utils registry if available
+            if self._utils_registry is not None:
+                try:
+                    return self._utils_registry.get(component_type, name)
+                except Exception:
+                    pass
+            raise
+
+    def get_metadata(self, component_type: str, name: str) -> Dict[str, Any]:
+        fam = self._family(component_type)
+        try:
+            return unified_registry.describe(fam, name)['metadata']
+        except Exception:
+            if self._utils_registry is not None:
+                try:
+                    return self._utils_registry.get_metadata(component_type, name)
+                except Exception:
+                    pass
+            raise
+
+    def is_registered(self, component_type: str, name: str) -> bool:
+        fam = self._family(component_type)
+        try:
+            unified_registry.resolve(fam, name)
+            return True
+        except Exception:
+            if self._utils_registry is not None:
+                try:
+                    return self._utils_registry.is_registered(component_type, name)  # type: ignore
+                except Exception:
+                    return False
+            return False
+
 # Convenience helper(s) for migration from legacy per-family registries
 def get_attention_component(name: str, **kwargs):
     """Backward-compatible helper returning an attention instance via unified registry.
@@ -207,3 +301,24 @@ def get_attention_component(name: str, **kwargs):
     incrementally without importing deprecated AttentionRegistry.
     """
     return unified_registry.create(ComponentFamily.ATTENTION, name, **kwargs)
+
+
+def get_global_registry() -> _GlobalRegistryAdapter:
+    """Return a global registry adapter for tests expecting utils API.
+
+    This does not mutate or duplicate registrations; it simply exposes a
+    read-only view that can also see utils.registry components when present.
+    """
+    return _GlobalRegistryAdapter()
+
+
+def register_component(component_type: str, component_name: str, component_class: Type, metadata: Optional[Dict[str, Any]] = None) -> None:
+    """Compatibility helper to register into unified_registry using string type.
+
+    Used by legacy register_* helpers that expect a function in this module.
+    """
+    adapter = _GlobalRegistryAdapter()
+    fam = adapter._FAMILY_MAP.get(component_type)
+    if fam is None:
+        raise ValueError(f"Unknown component type: {component_type}")
+    unified_registry.register(fam, component_name, component_class, metadata=metadata)

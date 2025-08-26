@@ -5,17 +5,17 @@ from __future__ import annotations
 import pytest
 import torch
 
-# Placeholder import path; adjust once backbone factory available
 try:
-    from utils.modular_components.implementations.feedforward import StandardFeedForward as _Backbone
-except Exception:  # pragma: no cover - early scaffold
-    _Backbone = None  # type: ignore
+    from layers.modular.core.registry import unified_registry, ComponentFamily
+except Exception:  # pragma: no cover
+    unified_registry = None  # type: ignore
 
 @pytest.mark.smoke
 def test_backbone_minimal_forward(device: torch.device) -> None:
-    if _Backbone is None:
+    if unified_registry is None:
         pytest.skip("Backbone implementation not available yet")
-    model = _Backbone(d_model=16, hidden_factor=2, dropout=0.0)  # type: ignore[arg-type]
+    # Use standard FFN from unified registry as a simple backbone-like block
+    model = unified_registry.create(ComponentFamily.FEEDFORWARD, 'standard_ffn', d_model=16, hidden_factor=2, dropout=0.0)
     x = torch.randn(2, 8, 16, device=device)
     y = model(x)
     assert y.shape == x.shape

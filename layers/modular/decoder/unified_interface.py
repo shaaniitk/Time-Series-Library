@@ -55,21 +55,26 @@ class UnifiedDecoderInterface(BaseDecoder):
         """
         if self.validate_inputs:
             self._validate_decoder_inputs(x, cross, trend)
-        
+
         self._forward_count += 1
-        
-        try:
-            # Call the underlying decoder implementation
+
+        # Fast path when validation is disabled: do not wrap exceptions at all
+        if not self.validate_inputs:
             raw_output = self.decoder_impl(x, cross, x_mask, cross_mask, trend)
-            
-            # Standardize the output format
             standardized_output = standardize_decoder_output(raw_output)
-            
-            # Return tuple for backward compatibility
             return standardized_output.seasonal, standardized_output.trend
-            
+
+        # When validation is enabled, wrap errors with context
+        try:
+            raw_output = self.decoder_impl(x, cross, x_mask, cross_mask, trend)
         except Exception as e:
             raise RuntimeError(f"Decoder forward pass failed at step {self._forward_count}: {str(e)}") from e
+
+        # Standardize the output format
+        standardized_output = standardize_decoder_output(raw_output)
+        
+        # Return tuple for backward compatibility
+        return standardized_output.seasonal, standardized_output.trend
     
     def get_full_output(self, x: torch.Tensor, cross: torch.Tensor, 
                        x_mask: Optional[torch.Tensor] = None, 
@@ -80,8 +85,16 @@ class UnifiedDecoderInterface(BaseDecoder):
         """
         if self.validate_inputs:
             self._validate_decoder_inputs(x, cross, trend)
-        
-        raw_output = self.decoder_impl(x, cross, x_mask, cross_mask, trend)
+
+        # Fast path when validation is disabled: do not wrap exceptions
+        if not self.validate_inputs:
+            raw_output = self.decoder_impl(x, cross, x_mask, cross_mask, trend)
+            return standardize_decoder_output(raw_output)
+
+        try:
+            raw_output = self.decoder_impl(x, cross, x_mask, cross_mask, trend)
+        except Exception as e:
+            raise RuntimeError(f"Decoder forward pass failed at step {self._forward_count}: {str(e)}") from e
         return standardize_decoder_output(raw_output)
     
     def reset_stats(self):

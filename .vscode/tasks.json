@@ -24,7 +24,11 @@
 			"type": "shell",
 			"command": "${workspaceFolder}/tsl-env/bin/python",
 			"args": [
-				"-X", "utf8", "-m", "pytest", "-q",
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
 				"TestsModule/components/output_heads",
 				"TestsModule/components/losses",
 				"-q"
@@ -38,7 +42,11 @@
 			"type": "shell",
 			"command": "${workspaceFolder}/tsl-env/bin/python",
 			"args": [
-				"-X", "utf8", "-m", "pytest", "-q",
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
 				"TestsModule/components/output_heads",
 				"TestsModule/components/losses",
 				"-q"
@@ -51,7 +59,15 @@
 			"label": "pytest all components in venv",
 			"type": "shell",
 			"command": "${workspaceFolder}/tsl-env/bin/python",
-			"args": ["-X", "utf8", "-m", "pytest", "-q", "TestsModule/components", "-q"],
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"TestsModule/components",
+				"-q"
+			],
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "build"
@@ -60,9 +76,83 @@
 			"label": "pytest all components in venv (confirm)",
 			"type": "shell",
 			"command": "${workspaceFolder}/tsl-env/bin/python",
-			"args": ["-X", "utf8", "-m", "pytest", "-q", "TestsModule/components", "-q"],
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"TestsModule/components",
+				"-q"
+			],
 			"isBackground": false,
 			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "pytest embeddings suite",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"TestsModule/components/embeddings",
+				"-q"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "pytest decoders only quick",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"TestsModule/components/decoder",
+				"-q"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "pytest decoders+embeddings quick",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"TestsModule/components/decoder",
+				"TestsModule/components/embeddings",
+				"-q"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "pytest attention+embeddings quick",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"TestsModule/components/attention/test_modular_attention_registry.py",
+				"TestsModule/components/embeddings",
+				"-q"
+			],
+			"isBackground": false,
 			"group": "build"
 		}
 	]
