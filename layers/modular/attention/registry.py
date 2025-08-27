@@ -19,7 +19,7 @@ from .adaptive_components import MetaLearningAdapter, AdaptiveMixture
 from .temporal_conv_attention import CausalConvolution, TemporalConvNet, ConvolutionalAttention
 from .graph_attention import GraphAttentionLayer, MultiGraphAttention
 
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 class AttentionRegistry:
     """

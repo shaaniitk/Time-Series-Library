@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from ..base import BaseAttention
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 class VariationalAttention(BaseAttention):
     def __init__(self, d_model: int, n_heads: int, dropout: float = 0.1, learn_variance: bool = True) -> None:

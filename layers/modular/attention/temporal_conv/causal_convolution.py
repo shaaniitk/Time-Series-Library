@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from ..base import BaseAttention
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 
 class CausalConvolution(BaseAttention):

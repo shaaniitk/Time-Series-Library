@@ -1,7 +1,7 @@
 import torch
 
-from unified_component_registry import unified_registry
-from utils.implementations.decomposition.wrapped_decompositions import DecompositionProcessorConfig
+from tools.unified_component_registry import unified_registry
+from layers.modular.processor.wrapped_decompositions import DecompositionProcessorConfig
 
 
 def run_smoke():

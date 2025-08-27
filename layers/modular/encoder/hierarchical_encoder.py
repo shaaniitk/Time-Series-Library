@@ -4,7 +4,7 @@ from .abstract_encoder import BaseEncoder
 from ..layers.enhanced_layers import EnhancedEncoderLayer
 from ..core import get_attention_component
 from ..decomposition import get_decomposition_component
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 class HierarchicalEncoder(BaseEncoder):
     """

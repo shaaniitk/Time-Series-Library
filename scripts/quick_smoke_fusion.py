@@ -1,9 +1,9 @@
 """
-Quick smoke test for wrapped fusion processors registered as processors via unified registry.
+Quick smoke test for modular fusion processors registered via unified registry.
 """
 import torch
-from unified_component_registry import unified_registry
-from utils.implementations.fusion.wrapped_fusions import FusionProcessorConfig
+from tools.unified_component_registry import unified_registry
+from layers.modular.processor.wrapped_fusions import FusionProcessorConfig
 
 def main() -> None:
     d_model = 64

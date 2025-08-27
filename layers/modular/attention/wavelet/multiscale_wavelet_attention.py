@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..base import BaseAttention
-from utils.logger import logger  # type: ignore
+from layers.modular.core.logger import logger  # type: ignore
 from .wavelet_attention import WaveletAttention
 
 

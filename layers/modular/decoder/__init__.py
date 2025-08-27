@@ -7,7 +7,7 @@ from .registry import DecoderRegistry, get_decoder_component
 
 # Compatibility re-exports for processor tests point to local wrappers
 try:
-    from ..processor.wrapped_decoders import (
+    from layers.modular.processor.wrapped_decoders import (
         register_layers_decoders,
         DecoderProcessorConfig,
     )

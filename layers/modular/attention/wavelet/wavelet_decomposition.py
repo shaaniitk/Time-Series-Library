@@ -5,7 +5,7 @@ from typing import List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils.logger import logger  # type: ignore
+from layers.modular.core.logger import logger  # type: ignore
 
 
 class WaveletDecomposition(nn.Module):

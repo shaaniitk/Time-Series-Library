@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from .base import BaseAttention
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 
 class EnhancedAutoCorrelation(BaseAttention):

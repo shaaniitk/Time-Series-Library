@@ -15,7 +15,7 @@ from .interfaces import (
     AttentionLike, EncoderLike, DecoderLike, DecompositionLike,
     SamplingLike, OutputHeadLike, LossLike, CAPABILITY_FLAGS
 )
-from utils.logger import logger
+from .logger import logger
 
 Family = str
 
@@ -229,12 +229,8 @@ class _GlobalRegistryAdapter:
     }
 
     def __init__(self) -> None:
-        # Optional: also include components registered in utils.modular_components.registry
-        try:  # pragma: no cover - only used in tests expecting legacy utils registry
-            from utils.modular_components.registry import get_global_registry as _get_utils_registry  # type: ignore
-            self._utils_registry = _get_utils_registry()
-        except Exception:
-            self._utils_registry = None
+        # Pure modular adapter; no utils fallback
+        self._utils_registry = None
 
     def _family(self, component_type: str) -> ComponentFamily:
         fam = self._FAMILY_MAP.get(component_type)
@@ -245,14 +241,6 @@ class _GlobalRegistryAdapter:
     def list_components(self) -> Dict[str, List[str]]:
         # Start with unified registry listings
         listings = unified_registry.list()
-        # Merge in utils registry if present
-        if self._utils_registry is not None:
-            utils_listings = self._utils_registry.list_components()
-            for k, names in utils_listings.items():
-                merged = set(listings.get(k, []))
-                merged.update(names)
-                if merged:
-                    listings[k] = sorted(merged)
         return listings
 
     def get(self, component_type: str, name: str):
@@ -260,12 +248,6 @@ class _GlobalRegistryAdapter:
         try:
             return unified_registry.resolve(fam, name).cls
         except Exception:
-            # Fallback to utils registry if available
-            if self._utils_registry is not None:
-                try:
-                    return self._utils_registry.get(component_type, name)
-                except Exception:
-                    pass
             raise
 
     def get_metadata(self, component_type: str, name: str) -> Dict[str, Any]:
@@ -273,11 +255,6 @@ class _GlobalRegistryAdapter:
         try:
             return unified_registry.describe(fam, name)['metadata']
         except Exception:
-            if self._utils_registry is not None:
-                try:
-                    return self._utils_registry.get_metadata(component_type, name)
-                except Exception:
-                    pass
             raise
 
     def is_registered(self, component_type: str, name: str) -> bool:
@@ -286,11 +263,6 @@ class _GlobalRegistryAdapter:
             unified_registry.resolve(fam, name)
             return True
         except Exception:
-            if self._utils_registry is not None:
-                try:
-                    return self._utils_registry.is_registered(component_type, name)  # type: ignore
-                except Exception:
-                    return False
             return False
 
 # Convenience helper(s) for migration from legacy per-family registries

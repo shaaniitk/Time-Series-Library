@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 from ..base import BaseAttention
 from .bayesian_attention import BayesianAttention
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 class BayesianMultiHeadAttention(BaseAttention):
     def __init__(self, d_model: int, n_heads: int, dropout: float = 0.1, prior_std: float = 1.0,

@@ -1,4 +1,4 @@
-"""Wrapped fusion processors registered under unified registry (no utils imports)."""
+"""Wrapped fusion processors for unified registry (no utils imports)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

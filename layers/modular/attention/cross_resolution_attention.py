@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .base import BaseAttention
 from layers.MultiWaveletCorrelation import MultiWaveletCross
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 class CrossResolutionAttention(BaseAttention):
     """

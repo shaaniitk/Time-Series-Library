@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ..base import BaseAttention
 from .bayesian_linear import BayesianLinear
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 class BayesianCrossAttention(BaseAttention):
     def __init__(self, d_model: int, n_heads: int, dropout: float = 0.1, prior_std: float = 1.0) -> None:

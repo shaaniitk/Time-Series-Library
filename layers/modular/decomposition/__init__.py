@@ -7,8 +7,8 @@ from .wavelet_decomposition import WaveletHierarchicalDecomposition
 from .registry import DecompositionRegistry, get_decomposition_component
 
 # Compatibility re-exports for processor tests now point to local wrappers
-try:
-    from ..processor.wrapped_decompositions import (
+try:  # Prefer utils wrappers for processor-style registration
+    from layers.modular.processor.wrapped_decompositions import (  # type: ignore
         register_layers_decompositions,
         DecompositionProcessorConfig,
     )

@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ..base import BaseAttention
 from .bayesian_linear import BayesianLinear
-from utils.logger import logger
+from layers.modular.core.logger import logger
 
 class BayesianAttention(BaseAttention):
     """Bayesian multi-head self-attention with uncertainty quantification."""

@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 from ..base import BaseAttention
-from utils.logger import logger  # type: ignore
+from layers.modular.core.logger import logger  # type: ignore
 
 
 class FourierBlock(BaseAttention):

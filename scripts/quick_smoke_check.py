@@ -1,13 +1,8 @@
 import torch
 
-from unified_component_registry import unified_registry
-
-# Import configs for components
-from utils.implementations.attention.restored_algorithms import RestoredFourierConfig
-from utils.implementations.attention.layers_wrapped_attentions import (
-    WaveletAttentionConfig,
-    BayesianAttentionConfig,
-)
+from tools.unified_component_registry import unified_registry
+from layers.modular.core import unified_registry as _ur  # ensure modular registrations
+import layers.modular.core.register_components  # noqa: F401
 
 
 def run_smoke():
@@ -15,29 +10,26 @@ def run_smoke():
     comps = unified_registry.list_all_components()
     print({k: len(v) for k, v in comps.items()})
 
-    # Restored Fourier Attention
-    f_cfg = RestoredFourierConfig(d_model=64, num_heads=4, dropout=0.1, seq_len=32)
-    f_attn = unified_registry.create_component('attention', 'restored_fourier_attention', f_cfg)
+    # Fourier Attention (modular)
+    f_attn = _ur.create_component('attention', 'fourier_attention', d_model=64, n_heads=4, dropout=0.1, seq_len=32)
     x = torch.randn(2, 32, 64)
-    y, attn = f_attn.apply_attention(x, x, x)
+    y, attn = f_attn(x, x, x)
     assert y.shape == x.shape
-    print("RestoredFourierAttention OK", y.shape)
+    print("FourierAttention OK", y.shape)
 
-    # Legacy Wavelet (wrapped)
-    w_cfg = WaveletAttentionConfig(d_model=64, num_heads=4, dropout=0.1, levels=2, n_levels=2)
-    w_attn = unified_registry.create_component('attention', 'layers_wavelet_attention', w_cfg)
+    # Wavelet Attention (modular)
+    w_attn = _ur.create_component('attention', 'wavelet_attention', d_model=64, n_heads=4, dropout=0.1)
     x = torch.randn(2, 16, 64)
-    y, attn = w_attn.apply_attention(x, x, x)
+    y, attn = w_attn(x, x, x)
     assert y.shape == x.shape
-    print("Wrapped WaveletAttention OK", y.shape)
+    print("WaveletAttention OK", y.shape)
 
-    # Legacy Bayesian (wrapped)
-    b_cfg = BayesianAttentionConfig(d_model=64, num_heads=4, dropout=0.1, prior_std=0.5, temperature=0.8)
-    b_attn = unified_registry.create_component('attention', 'layers_bayesian_attention', b_cfg)
+    # Bayesian Attention (modular)
+    b_attn = _ur.create_component('attention', 'bayesian_attention', d_model=64, n_heads=4, dropout=0.1)
     x = torch.randn(2, 8, 64)
-    y, attn = b_attn.apply_attention(x, x, x)
+    y, attn = b_attn(x, x, x)
     assert y.shape == x.shape
-    print("Wrapped BayesianAttention OK", y.shape)
+    print("BayesianAttention OK", y.shape)
 
     print("\nSMOKE CHECK: SUCCESS")
 

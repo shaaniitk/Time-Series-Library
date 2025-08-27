@@ -4,7 +4,7 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 from ..base import BaseAttention
-from utils.logger import logger
+from layers.modular.core.logger import logger
 from .temporal_block import TemporalBlock
 
 

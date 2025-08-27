@@ -8,7 +8,7 @@ from .registry import EncoderRegistry, get_encoder_component
 
 # Compatibility re-exports for processor tests now point to local wrappers
 try:
-    from ..processor.wrapped_encoders import (
+    from layers.modular.processor.wrapped_encoders import (  # type: ignore
         register_layers_encoders,
         EncoderProcessorConfig,
     )

@@ -32,8 +32,11 @@ import time
 import threading
 from typing import Dict, List, Any, Type
 
-from utils.modular_components.registry import _global_registry
-from utils.modular_components.base_interfaces import BaseComponent
+from layers.modular.core.registry import unified_registry as _modular_registry
+from typing import Protocol
+
+class BaseComponent(Protocol):
+    def forward(self, *args, **kwargs): ...
 
 LOGGER = logging.getLogger(__name__)
 
@@ -48,82 +51,14 @@ def _status_block(key: str) -> Dict[str, Any]:  # tiny helper
         block = REGISTRATION_STATUS.setdefault(key, {})
         return block
 
-# Register wrapped legacy attentions from layers folder
-try:
-    from utils.implementations.attention.layers_wrapped_attentions import register_layers_attentions
-    _HAS_LAYER_ATTENTION_WRAPPERS = True
-except Exception:
-    _HAS_LAYER_ATTENTION_WRAPPERS = False
-
-# Register wrapped legacy decomposition processors
-try:
-    from utils.implementations.decomposition.wrapped_decompositions import register_layers_decompositions
-    _HAS_LAYER_DECOMP_WRAPPERS = True
-except Exception:
-    _HAS_LAYER_DECOMP_WRAPPERS = False
-
-# Register wrapped legacy encoder processors
-try:
-    from utils.implementations.encoder.wrapped_encoders import register_layers_encoders
-    _HAS_LAYER_ENCODER_WRAPPERS = True
-except Exception:
-    _HAS_LAYER_ENCODER_WRAPPERS = False
-
-# Register wrapped legacy decoder processors
-try:
-    from utils.implementations.decoder.wrapped_decoders import register_layers_decoders
-    _HAS_LAYER_DECODER_WRAPPERS = True
-except Exception:
-    _HAS_LAYER_DECODER_WRAPPERS = False
-
-# Register wrapped legacy fusion processors
-try:
-    from utils.implementations.fusion.wrapped_fusions import register_layers_fusions
-    _HAS_LAYER_FUSION_WRAPPERS = True
-except Exception:
-    _HAS_LAYER_FUSION_WRAPPERS = False
-
-# Register utils loss implementations
-try:
-    from utils.implementations.loss.wrapped_losses import register_utils_losses
-    _HAS_UTILS_LOSSES = True
-except Exception:
-    _HAS_UTILS_LOSSES = False
-
-# Register utils output implementations
-try:
-    from utils.implementations.output.wrapped_outputs import register_utils_outputs
-    _HAS_UTILS_OUTPUTS = True
-except Exception:
-    _HAS_UTILS_OUTPUTS = False
-
-# Register legacy layers output head wrappers
-try:
-    from utils.implementations.output.layers_wrapped_outputs import register_layers_output_heads
-    _HAS_LAYER_OUTPUT_WRAPPERS = True
-except Exception:
-    _HAS_LAYER_OUTPUT_WRAPPERS = False
-
-# Register utils embedding implementations
-try:
-    from utils.implementations.embedding.wrapped_embeddings import register_utils_embeddings
-    _HAS_UTILS_EMBEDDINGS = True
-except Exception:
-    _HAS_UTILS_EMBEDDINGS = False
-
-# Register utils feedforward implementations
-try:
-    from utils.implementations.feedforward.wrapped_feedforward import register_utils_feedforwards
-    _HAS_UTILS_FFN = True
-except Exception:
-    _HAS_UTILS_FFN = False
-
-# Register utils adapter implementations
-try:
-    from utils.implementations.adapter.wrapped_adapters import register_utils_adapters
-    _HAS_UTILS_ADAPTERS = True
-except Exception:
-    _HAS_UTILS_ADAPTERS = False
+from layers.modular.core import register_components as _register_components  # populates modular registry
+from layers.modular.processor.wrapped_decompositions import register_layers_decompositions
+from layers.modular.processor.wrapped_encoders import register_layers_encoders
+from layers.modular.processor.wrapped_decoders import register_layers_decoders
+from layers.modular.processor.wrapped_fusions import register_layers_fusions
+from layers.modular.embedding import register_utils_embeddings  # shim; no-op
+from layers.modular.feedforward.feedforwards import register_feedforwards as register_utils_feedforwards  # if available
+from layers.modular.core.register_advanced import register_specialized_processors
 
 # Import sophisticated algorithms
 try:
@@ -168,39 +103,26 @@ def _initialize():
         if _INITIALIZED:
             return
         t0 = time.time()
-        # Sophisticated / restored algorithms
-        if ALGORITHMS_AVAILABLE:
-            _safe_call("restored_algorithms", register_restored_algorithms)
-        # Legacy / wrapped groups (each individually guarded)
-        if _HAS_LAYER_ATTENTION_WRAPPERS:
-            _safe_call("wrapped_attentions", register_layers_attentions)
-        if _HAS_LAYER_DECOMP_WRAPPERS:
-            _safe_call("wrapped_decomposition", register_layers_decompositions)
-        if _HAS_LAYER_ENCODER_WRAPPERS:
-            _safe_call("wrapped_encoders", register_layers_encoders)
-        if _HAS_LAYER_DECODER_WRAPPERS:
-            _safe_call("wrapped_decoders", register_layers_decoders)
-        if _HAS_LAYER_FUSION_WRAPPERS:
-            _safe_call("wrapped_fusions", register_layers_fusions)
-        if _HAS_UTILS_LOSSES:
-            _safe_call("utils_losses", register_utils_losses)
-        if _HAS_UTILS_OUTPUTS:
-            _safe_call("utils_outputs", register_utils_outputs)
-        if _HAS_LAYER_OUTPUT_WRAPPERS:
-            _safe_call("legacy_output_heads", register_layers_output_heads)
-        if _HAS_UTILS_EMBEDDINGS:
+        # Modular registrations
+        _safe_call("modular_core_components", _register_components)  # base attentions/enc/dec/decomp/etc
+        _safe_call("wrapped_decomposition", register_layers_decompositions)
+        _safe_call("wrapped_encoders", register_layers_encoders)
+        _safe_call("wrapped_decoders", register_layers_decoders)
+        _safe_call("wrapped_fusions", register_layers_fusions)
+        try:
             _safe_call("utils_embeddings", register_utils_embeddings)
-        if _HAS_UTILS_FFN:
+        except Exception:
+            pass
+        try:
             _safe_call("utils_feedforwards", register_utils_feedforwards)
-        if _HAS_UTILS_ADAPTERS:
-            _safe_call("utils_adapters", register_utils_adapters)
+        except Exception:
+            pass
+        _safe_call("specialized_processors", register_specialized_processors)
         _INITIALIZED = True
         REGISTRATION_STATUS["overall"] = {
             "initialized": True,
             "duration_ms": round(1000 * (time.time() - t0), 2),
-            "component_counts": {
-                k: len(v) for k, v in _global_registry.list_components().items()
-            },
+            "component_counts": _modular_registry.list(),
         }
         LOGGER.info(
             "Unified registry initialization complete (%sms)",
@@ -215,7 +137,7 @@ class UnifiedComponentRegistry:
     """
 
     def __init__(self):  # lightweight; does not trigger heavy work
-        self._registry = _global_registry
+        self._registry = _modular_registry
 
     # ---- public API ----
     def ensure_initialized(self):
@@ -223,15 +145,19 @@ class UnifiedComponentRegistry:
 
     def get_component(self, component_type: str, component_name: str) -> Type[BaseComponent]:
         self.ensure_initialized()
-        return self._registry.get(component_type, component_name)
+        fam = component_type
+        # Use unified modular registry resolve path
+        from layers.modular.core.registry import ComponentFamily
+        cf = ComponentFamily(fam)
+        return self._registry.resolve(cf, component_name).cls  # type: ignore[attr-defined]
 
     def create_component(self, component_type: str, component_name: str, config: Any) -> BaseComponent:  # type: ignore[name-defined]
         cls = self.get_component(component_type, component_name)
-        return cls(config)
+        return cls(config)  # type: ignore[call-arg]
 
     def list_all_components(self) -> Dict[str, List[str]]:
         self.ensure_initialized()
-        return self._registry.list_components()
+        return self._registry.list()
 
     def get_sophisticated_algorithms(self) -> List[Dict[str, Any]]:
         self.ensure_initialized()
@@ -241,10 +167,15 @@ class UnifiedComponentRegistry:
             "restored_meta_learning_attention",
         ]
         found = []
+        try:
+            from layers.modular.core.registry import ComponentFamily
+            attn_list = set(self._registry.list(ComponentFamily.ATTENTION)[ComponentFamily.ATTENTION.value])
+        except Exception:
+            attn_list = set()
         for algo in restored_algos:
-            if self._registry.is_registered("attention", algo):
+            if algo in attn_list:
                 try:
-                    metadata = self._registry.get_metadata("attention", algo)
+                    metadata = self._registry.describe(ComponentFamily.ATTENTION, algo).get("metadata", {})
                 except Exception:  # pragma: no cover
                     metadata = {}
                 found.append({
@@ -258,7 +189,7 @@ class UnifiedComponentRegistry:
 
     def validate_migration_status(self) -> Dict[str, Any]:
         self.ensure_initialized()
-        all_components = self._registry.list_components()
+        all_components = self._registry.list()
         sophisticated = self.get_sophisticated_algorithms()
         status = {
             "utils_components": sum(len(v) for v in all_components.values()),

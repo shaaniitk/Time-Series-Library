@@ -2,7 +2,7 @@ from .registry import FusionRegistry, get_fusion_component
 
 # Compatibility re-exports for processor tests now point to local wrappers
 try:
-    from ..processor.wrapped_fusions import (
+    from layers.modular.processor.wrapped_fusions import (  # type: ignore
         register_layers_fusions,
         FusionProcessorConfig,
     )
