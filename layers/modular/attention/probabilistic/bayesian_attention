@@ -1,0 +1,65 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import math
+from typing import Optional, Tuple
+
+from ..base import BaseAttention
+from .common import BayesianLinear
+
+class BayesianAttention(BaseAttention):
+    """
+    A Bayesian multi-head attention mechanism that uses Bayesian linear layers for its
+    projections. It can provide uncertainty estimates and requires a KL divergence
+    term to be added to the training loss.
+    """
+    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.1, prior_std: float = 1.0, **kwargs):
+        super().__init__(d_model, n_heads)
+        
+        assert d_model % n_heads == 0, "d_model must be divisible by n_heads"
+        self.d_k = d_model // n_heads
+
+        self.w_q = BayesianLinear(d_model, d_model, prior_std)
+        self.w_k = BayesianLinear(d_model, d_model, prior_std)
+        self.w_v = BayesianLinear(d_model, d_model, prior_std)
+        self.w_o = BayesianLinear(d_model, d_model, prior_std)
+        
+        self.dropout = nn.Dropout(dropout)
+        self.layer_norm = nn.LayerNorm(d_model)
+    
+    def get_kl_divergence(self) -> torch.Tensor:
+        """Aggregates KL divergence from all Bayesian linear layers."""
+        return self.w_q.kl_divergence() + self.w_k.kl_divergence() + \
+               self.w_v.kl_divergence() + self.w_o.kl_divergence()
+
+    def forward(
+        self,
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        **kwargs
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        
+        B, L, _ = queries.shape
+        S = keys.shape[1]
+        residual = queries
+
+        Q = self.w_q(queries).view(B, L, self.n_heads, self.d_k).transpose(1, 2)
+        K = self.w_k(keys).view(B, S, self.n_heads, self.d_k).transpose(1, 2)
+        V = self.w_v(values).view(B, S, self.n_heads, self.d_k).transpose(1, 2)
+        
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
+        if attn_mask is not None:
+             if attn_mask.dim() == 3: attn_mask = attn_mask.unsqueeze(1)
+             scores = scores.masked_fill(attn_mask == 0, -1e9)
+        
+        attention_weights = F.softmax(scores, dim=-1)
+        attention_weights = self.dropout(attention_weights)
+        
+        context = torch.matmul(attention_weights, V).transpose(1, 2).contiguous().view(B, L, self.d_model)
+        output = self.w_o(context)
+        
+        output = self.layer_norm(self.dropout(output) + residual)
+        
+        return output, attention_weights

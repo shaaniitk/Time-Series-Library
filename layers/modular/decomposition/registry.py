@@ -63,7 +63,7 @@ def get_decomposition_component(name, **kwargs):
     
     # Log filtered parameters for debugging
     if len(filtered_kwargs) != len(kwargs):
-    from layers.modular.core.logger import logger
+        from layers.modular.core.logger import logger
         removed_params = set(kwargs.keys()) - set(filtered_kwargs.keys())
         logger.debug(f"Component '{name}' filtered out parameters: {removed_params}")
         logger.debug(f"Component '{name}' using parameters: {list(filtered_kwargs.keys())}")

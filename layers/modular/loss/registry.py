@@ -11,6 +11,29 @@ from .adaptive_bayesian_losses import (
 )
 from layers.modular.core.logger import logger
 
+
+def _quantile_count(q):
+    """Best-effort count of quantiles for legacy pinball/quantile semantics.
+
+    Accepts list/tuple, numpy arrays, torch tensors, iterables, or a single float.
+    Returns None if q is None; otherwise a positive int (defaults to 1 on fallback).
+    """
+    if q is None:
+        return None
+    # Single scalar -> one quantile
+    if isinstance(q, (int, float)):
+        return 1
+    # Try generic length-based protocols first (covers list/tuple/np/torch)
+    try:
+        return int(len(q))  # type: ignore[arg-type]
+    except Exception:
+        pass
+    # Try to coerce to list as a fallback
+    try:
+        return len(list(q))  # type: ignore[arg-type]
+    except Exception:
+        return 1
+
 class LossRegistry:
     _registry = {
         # Standard losses
@@ -82,21 +105,21 @@ def get_loss_component(name, **kwargs):
     loss_class = LossRegistry.get(name)
     loss_instance = loss_class(**kwargs)
 
-    # Default from the instance
-    output_dim_multiplier = getattr(loss_instance, 'output_dim_multiplier', 1)
+    # Prefer component-driven sizing via method, fall back to attribute, then 1
+    if hasattr(loss_instance, "get_output_multiplier"):
+        try:
+            output_dim_multiplier = int(loss_instance.get_output_multiplier())  # type: ignore[attr-defined]
+        except Exception:
+            output_dim_multiplier = getattr(loss_instance, 'output_dim_multiplier', 1)
+    else:
+        output_dim_multiplier = getattr(loss_instance, 'output_dim_multiplier', 1)
 
     # Legacy alias semantics: multiplier equals number of quantiles
     if name in {"quantile", "pinball"}:
-        try:
-            q = kwargs.get("quantiles", None)
-            if q is None:
-                # Fallback to instance attribute if not passed explicitly
-                q = getattr(loss_instance, "quantiles", None)
-            if q is not None:
-                output_dim_multiplier = len(list(q))
-        except Exception:
-            # Fall back to instance attribute if quantiles malformed
-            pass
+        q = kwargs.get("quantiles", getattr(loss_instance, "quantiles", None))
+        cnt = _quantile_count(q)
+        if cnt is not None:
+            output_dim_multiplier = cnt
 
     logger.info(
         f"Loaded loss '{name}' with output dimension multiplier: {output_dim_multiplier}"

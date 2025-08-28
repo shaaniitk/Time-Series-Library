@@ -1,38 +1,34 @@
-"""AdaptiveWaveletAttention component (split from monolithic wavelet_attention module)."""
-from __future__ import annotations
-
-from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Optional, Tuple
 
 from ..base import BaseAttention
-from layers.modular.core.logger import logger  # type: ignore
 from .wavelet_attention import WaveletAttention
 
-
 class AdaptiveWaveletAttention(BaseAttention):
-    """Adaptive selection over multiple WaveletAttention levels."""
-
-    def __init__(self, d_model: int, n_heads: int, max_levels: int = 5, dropout: float = 0.1) -> None:
-        super().__init__()
-        logger.info("Initializing AdaptiveWaveletAttention: d_model=%s max_levels=%s", d_model, max_levels)
-        self.d_model = d_model
-        self.n_heads = n_heads
+    """
+    A meta-attention mechanism that adaptively selects the number of wavelet
+    decomposition levels. It maintains multiple WaveletAttention instances and
+    computes a weighted average of their outputs based on the input queries.
+    """
+    def __init__(self, d_model: int, n_heads: int, max_levels: int = 4, dropout: float = 0.1, **kwargs):
+        super().__init__(d_model, n_heads)
         self.max_levels = max_levels
+
+        # A pool of WaveletAttention modules, each with a different number of levels
+        self.wavelet_attentions = nn.ModuleList([
+            WaveletAttention(d_model, n_heads, levels=i + 1, dropout=dropout)
+            for i in range(max_levels)
+        ])
+        
+        # Gating network to determine the weight for each level
         self.level_selector = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
-            nn.Linear(d_model // 2, d_model // 4),
-            nn.ReLU(),
-            nn.Linear(d_model // 4, max_levels),
-            nn.Softmax(dim=-1),
-        )
-        self.wavelet_attentions = nn.ModuleList(
-            [WaveletAttention(d_model, n_heads, levels=i + 1) for i in range(max_levels)]
+            nn.Linear(d_model // 2, max_levels)
         )
         self.dropout = nn.Dropout(dropout)
-        self.output_dim_multiplier = 1
 
     def forward(
         self,
@@ -40,22 +36,29 @@ class AdaptiveWaveletAttention(BaseAttention):
         keys: torch.Tensor,
         values: torch.Tensor,
         attn_mask: Optional[torch.Tensor] = None,
-        tau: Optional[float] = None,
-        delta: Optional[float] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        **kwargs
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        
         B, L, D = queries.shape
-        input_summary = queries.mean(dim=1)
-        level_weights = self.level_selector(input_summary)
+        
+        # 1. Determine level weights from the queries
+        input_summary = queries.mean(dim=1) # [B, D]
+        level_logits = self.level_selector(input_summary) # [B, max_levels]
+        level_weights = F.softmax(level_logits, dim=-1) # [B, max_levels]
+        
+        # 2. Compute outputs for all possible levels
         level_outputs = []
-        level_attentions = []
         for wavelet_attn in self.wavelet_attentions:
-            output, attention = wavelet_attn(queries, keys, values, attn_mask)
+            output, _ = wavelet_attn(queries, keys, values, attn_mask)
             level_outputs.append(output)
-            level_attentions.append(attention)
-        level_outputs_t = torch.stack(level_outputs, dim=-1)
-        level_attentions_t = torch.stack(level_attentions, dim=-1)
-        final_output = torch.sum(level_outputs_t * level_weights.view(B, 1, 1, -1), dim=-1)
-        final_attention = torch.sum(level_attentions_t * level_weights.view(B, 1, 1, 1, -1), dim=-1)
-        return self.dropout(final_output), final_attention
-
-__all__ = ["AdaptiveWaveletAttention"]
+            
+        # 3. Compute the weighted average of the outputs
+        # Stack outputs: [max_levels, B, L, D] -> [B, L, D, max_levels]
+        stacked_outputs = torch.stack(level_outputs, dim=0).permute(1, 2, 3, 0)
+        
+        # Reshape weights for broadcasting: [B, 1, 1, max_levels]
+        reshaped_weights = level_weights.view(B, 1, 1, self.max_levels)
+        
+        final_output = torch.sum(stacked_outputs * reshaped_weights, dim=-1)
+        
+        return self.dropout(final_output), None # Returning combined weights is complex
