@@ -15,43 +15,27 @@ import torch
 pytestmark = [pytest.mark.extended]
 
 try:  # pragma: no cover
-    from layers.modular.registry import list_components  # type: ignore
+    from utils.modular_components.registry import get_global_registry  # type: ignore
     from configs.schemas import EmbeddingConfig  # type: ignore
     from layers.modular.embedding.temporal_embedding import TemporalEmbedding
     from layers.modular.embedding.value_embedding import ValueEmbedding
     from layers.modular.embedding.covariate_embedding import CovariateEmbedding
     from layers.modular.embedding.hybrid_embedding import HybridEmbedding
 except Exception:  # pragma: no cover
-    list_components = None  # type: ignore
+    get_global_registry = None  # type: ignore
     EmbeddingConfig = None  # type: ignore
-def _make_cfg(**kwargs: Any):
-    """Build an EmbeddingConfig tolerant to schema variations.
-
-    Some runs may require explicit fields like 'type' or 'c_in'. Provide
-    safe defaults while allowing overrides from callers.
-    """
-    if EmbeddingConfig is None:  # pragma: no cover
-        return None
-    base = {"c_in": 1, "type": None}
-    base.update(kwargs)
-    return EmbeddingConfig(**base)  # type: ignore[arg-type]
-
-# Provide a local shim that imports the project helper when available
-def register_utils_embeddings() -> None:
-    # Embeddings are registered by layers.modular.core.register_components import side-effect
-    try:
-        import layers.modular.core.register_components  # noqa: F401
-    except Exception:
-        pass
+    register_utils_embeddings = None  # type: ignore
 
 
 def test_embedding_registry_non_empty() -> None:
     """Registry lists at least one embedding and has unique names."""
-    if list_components is None:
+    if get_global_registry is None or register_utils_embeddings is None:
         pytest.skip("Registry unavailable")
+    # Ensure embeddings are registered into the global registry
     register_utils_embeddings()
-    comps = list_components("embedding")
-    names = comps.get("embedding", []) if isinstance(comps, dict) else []
+    reg = get_global_registry()
+    comps = reg.list_components()
+    names = comps.get("embedding", [])
     assert isinstance(names, list) and names
     assert len(names) == len(set(names))
 
@@ -62,7 +46,7 @@ def test_embedding_registry_non_empty() -> None:
         (
             "temporal_embedding",
             lambda cls: (
-                cls(_make_cfg(d_model=16, dropout=0.0)),
+                cls(EmbeddingConfig(d_model=16, dropout=0.0)),
                 {
                     "input_embeddings": torch.randn(2, 6, 16, requires_grad=True),
                     "temporal_features": {
@@ -78,7 +62,7 @@ def test_embedding_registry_non_empty() -> None:
         (
             "value_embedding",
             lambda cls: (
-                cls(_make_cfg(d_model=16, dropout=0.0)),
+                cls(EmbeddingConfig(d_model=16, dropout=0.0)),
                 {"values": torch.randn(2, 6, 1, requires_grad=True)},
             ),
         ),
@@ -86,7 +70,7 @@ def test_embedding_registry_non_empty() -> None:
             "covariate_embedding",
             lambda cls: (
                 # Create config and attach expected attributes dynamically
-                (lambda cfg: (setattr(cfg, "categorical_features", {"cat": 10}) or setattr(cfg, "numerical_features", 2) or cfg))(_make_cfg(d_model=16, dropout=0.0)),
+                (lambda cfg: (setattr(cfg, "categorical_features", {"cat": 10}) or setattr(cfg, "numerical_features", 2) or cfg))(EmbeddingConfig(d_model=16, dropout=0.0)),
                 {
                     "categorical_data": {"cat": torch.randint(0, 10, (2, 6))},
                     "numerical_data": torch.randn(2, 6, 2),
@@ -97,7 +81,7 @@ def test_embedding_registry_non_empty() -> None:
             "hybrid_embedding",
             lambda cls: (
                 # Create config and attach flags; avoid passing extra dataclass fields
-                (lambda cfg: (setattr(cfg, "use_temporal", True) or setattr(cfg, "use_value", True) or setattr(cfg, "use_covariate", True) or cfg))(_make_cfg(d_model=16, dropout=0.0)),
+                (lambda cfg: (setattr(cfg, "use_temporal", True) or setattr(cfg, "use_value", True) or setattr(cfg, "use_covariate", True) or cfg))(EmbeddingConfig(d_model=16, dropout=0.0)),
                 {
                     "values": torch.randn(2, 6, 1, requires_grad=True),
                     "temporal_features": {
@@ -115,16 +99,15 @@ def test_embedding_registry_non_empty() -> None:
 )
 def test_embedding_forward_shape_and_grad(name: str, setup: Callable[[type], Tuple[Any, dict[str, Any]]]) -> None:
     """Instantiate embedding, run forward, check shape and gradient flows."""
-    if list_components is None or EmbeddingConfig is None:
+    if get_global_registry is None or EmbeddingConfig is None or register_utils_embeddings is None:
         pytest.skip("Registry unavailable")
     register_utils_embeddings()
-    comps = list_components("embedding").get("embedding", [])  # type: ignore
+    reg = get_global_registry()
+    comps = reg.list_components().get("embedding", [])
     if name not in comps:
         pytest.skip(f"{name} not registered")
 
-    # Resolve class from unified registry
-    from layers.modular.core.registry import unified_registry, ComponentFamily
-    cls = unified_registry.resolve(ComponentFamily.EMBEDDING, name).cls
+    cls = reg.get("embedding", name)
     cfg_or_inst, kwargs = setup(cls)
     # setup may return a configured EmbeddingConfig or an already-instantiated module
     if isinstance(cfg_or_inst, EmbeddingConfig):
@@ -159,15 +142,15 @@ def test_embedding_forward_shape_and_grad(name: str, setup: Callable[[type], Tup
 
 def test_embedding_metadata_present() -> None:
     """At least one embedding reports metadata in the registry."""
-    if list_components is None:
+    if get_global_registry is None or register_utils_embeddings is None:
         pytest.skip("Registry unavailable")
     register_utils_embeddings()
+    reg = get_global_registry()
     meta_ok = 0
-    for n in list_components("embedding").get("embedding", []):  # type: ignore
+    for n in reg.list_components().get("embedding", []):
         try:
-            from layers.modular.core.registry import unified_registry, ComponentFamily
-            md = unified_registry.describe(ComponentFamily.EMBEDDING, n).get('metadata', {})
-            if isinstance(md, dict):  # type: ignore
+            md = reg.get_metadata("embedding", n)  # type: ignore[attr-defined]
+            if isinstance(md, dict):
                 meta_ok += 1
         except Exception:
             continue

@@ -76,3 +76,18 @@ class MultiHeadAttention(BaseAttention):
         output = self.layer_norm(self.dropout(output) + residual)
         
         return output, attention_weights
+
+
+        # --- REGISTRATION ---
+# This is the crucial part. By registering here, the component becomes
+# available to both the model factory and the test suite simultaneously.
+from core.registry import component_registry, ComponentFamily
+
+component_registry.register(
+    name="MultiHeadAttention",
+    component_class=MultiHeadAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "dropout": 0.1
+    }
+)

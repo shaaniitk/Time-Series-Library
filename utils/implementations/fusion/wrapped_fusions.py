@@ -6,24 +6,15 @@ This file also registers the wrapped fusions into the global ComponentRegistry.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, List
 
 import torch
 import torch.nn as nn
 
-from layers.modular.base_interfaces import BaseProcessor
-from layers.modular.core.registry import register_component
-
-@dataclass
-class ProcessorConfig:
-    """Minimal processor config base to avoid legacy modular_components import."""
-    d_model: int = 16
-    dropout: float = 0.0
-    seq_len: int = 8
-    pred_len: int = 8
-    label_len: int = 0
-    custom_params: dict = field(default_factory=dict)
+from ...modular_components.base_interfaces import BaseProcessor
+from ...modular_components.config_schemas import ProcessorConfig
+from ...modular_components.registry import register_component
 
 @dataclass
 class FusionProcessorConfig(ProcessorConfig):

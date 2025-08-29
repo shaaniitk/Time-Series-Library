@@ -5,7 +5,7 @@ from typing import Union, Dict, Any
 
 # GCLI Structured Configuration System
 from layers.modular.core.config_schemas import ModularAutoformerConfig, ComponentType
-from configs.modular_components import (
+from utils.modular_components import (
     ModularAssembler, component_registry, AssembledAutoformer,
     register_all_components
 )

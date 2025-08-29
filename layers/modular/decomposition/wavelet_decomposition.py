@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import math
 from .base import BaseDecomposition
 from layers.DWT_Decomposition import DWT1DForward, DWT1DInverse
-from layers.modular.core.logger import logger
+from utils.logger import logger
 
 class UnifiedWaveletDecomposition(nn.Module):
     def __init__(self, d_model: int, levels: int = 3, wavelet_length: int = 8, orthogonality_weight: float = 0.01, padding_mode: str = 'reflect'):

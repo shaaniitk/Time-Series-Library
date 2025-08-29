@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .base import BaseDecomposition
-from layers.modular.core.logger import logger
+from utils.logger import logger
 
 class LearnableSeriesDecomposition(BaseDecomposition):
     """

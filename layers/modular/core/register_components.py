@@ -141,13 +141,6 @@ unified_registry.register(
     component_type=ComponentType.AUTOCORRELATION,
     aliases=['enhanced_autocorrelation', 'autocorrelation_layer']
 )
-# Also register under 'enhanced_autocorrelation' explicitly so listing tests see it directly
-unified_registry.register(
-    ComponentFamily.ATTENTION,
-    'enhanced_autocorrelation',
-    EnhancedAutoCorrelation,
-    component_type=ComponentType.AUTOCORRELATION,
-)
 unified_registry.register(
     ComponentFamily.ATTENTION,
     ComponentType.ADAPTIVE_AUTOCORRELATION.value,

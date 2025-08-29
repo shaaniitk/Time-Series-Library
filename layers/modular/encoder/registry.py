@@ -4,7 +4,7 @@ from .enhanced_encoder import EnhancedEncoder
 from .stable_encoder import StableEncoder
 from .hierarchical_encoder import HierarchicalEncoder
 from .graph_encoder import GraphTimeSeriesEncoder, HybridGraphEncoder, AdaptiveGraphEncoder
-from layers.modular.core.logger import logger
+from utils.logger import logger
 
 class EncoderRegistry:
     """
@@ -46,12 +46,6 @@ def get_encoder_component(name, **kwargs):
     #    (e_layers, d_model, n_heads, d_ff, dropout, activation, attention_type, decomp_type, decomp_params,...)
     # 2) Enhancedcomponents HierarchicalEncoder variant expecting (configs, n_levels, share_weights)
     if name == 'hierarchical':
-        # Map legacy kwarg 'e_layers' if present before any constructor call
-        if 'e_layers' in kwargs:
-            kwargs = {**kwargs}
-            if 'num_encoder_layers' not in kwargs:
-                kwargs['num_encoder_layers'] = kwargs.get('e_layers')
-            kwargs.pop('e_layers', None)
         try:
             return component_class(**kwargs)
         except TypeError:

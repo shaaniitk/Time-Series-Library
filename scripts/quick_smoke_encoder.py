@@ -2,7 +2,7 @@
 Quick smoke test for wrapped encoders registered as processors via unified registry.
 """
 import torch
-from tools.unified_component_registry import unified_registry
+from unified_component_registry import unified_registry
 from utils.implementations.encoder.wrapped_encoders import EncoderProcessorConfig
 
 
@@ -17,14 +17,14 @@ def main() -> None:
     base_cfg = EncoderProcessorConfig(d_model=d_model, seq_len=seq_len, pred_len=seq_len)
 
     # Provide minimal components required by encoder layers
-    from layers.modular.core import unified_registry as _ur, ComponentFamily
-    from layers.modular.processor.wrapped_decompositions import DecompositionProcessorConfig, SeriesDecompositionProcessor
+    from utils_algorithm_adapters import RestoredFourierConfig, RestoredFourierAttention
+    from utils.implementations.decomposition.wrapped_decompositions import DecompositionProcessorConfig, SeriesDecompositionProcessor
 
-    self_attn = _ur.create(ComponentFamily.ATTENTION, 'fourier_attention', d_model=d_model, n_heads=4, dropout=0.1)
+    attn = RestoredFourierAttention(RestoredFourierConfig(d_model=d_model, num_heads=4, dropout=0.1))
     decomp = SeriesDecompositionProcessor(DecompositionProcessorConfig(d_model=d_model, seq_len=seq_len))
 
     # Inject components via custom_params
-    base_cfg.custom_params["attention_component"] = self_attn
+    base_cfg.custom_params["attention_component"] = attn
     base_cfg.custom_params["decomposition_component"] = decomp
 
     for name in [

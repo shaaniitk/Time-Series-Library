@@ -14,10 +14,4 @@ Design notes:
 """
 from .registry import unified_registry, ComponentFamily, get_attention_component  # re-export for convenience
 
-# Also re-export the advanced registration hook for specialized processors expected in tests
-try:
-	from .register_advanced import register_specialized_processors  # type: ignore
-except Exception:  # pragma: no cover
-	register_specialized_processors = None  # type: ignore
-
-__all__ = ["unified_registry", "ComponentFamily", "get_attention_component", "register_specialized_processors"]
+__all__ = ["unified_registry", "ComponentFamily", "get_attention_component"]

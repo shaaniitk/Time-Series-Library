@@ -4,49 +4,16 @@ from .abstract_encoder import BaseEncoder
 from ..layers.enhanced_layers import EnhancedEncoderLayer
 from ..core import get_attention_component
 from ..decomposition import get_decomposition_component
-from layers.modular.core.logger import logger
+from utils.logger import logger
 
 class HierarchicalEncoder(BaseEncoder):
     """
     The hierarchical Autoformer encoder, now properly modularized.
     """
-    def __init__(self, num_encoder_layers=None, d_model=None, n_heads=None, d_ff=None, dropout=0.1, activation='gelu', 
-                 attention_comp=None, decomp_comp=None, hierarchical_config=None, norm_layer=None,
-                 **kwargs):
+    def __init__(self, num_encoder_layers, d_model, n_heads, d_ff, dropout, activation, 
+                 attention_comp, decomp_comp, hierarchical_config, norm_layer=None):
         super(HierarchicalEncoder, self).__init__()
-        # Legacy alias handling and light defaults
-        if num_encoder_layers is None:
-            num_encoder_layers = kwargs.get('e_layers', None)
-        if d_model is None:
-            d_model = kwargs.get('d_model', 512)
-        if n_heads is None:
-            n_heads = kwargs.get('n_heads', 8)
-        if d_ff is None:
-            d_ff = kwargs.get('d_ff', 2048)
-        # Build components from legacy type strings if provided
-        if attention_comp is None and 'attention_type' in kwargs:
-            attn_type = kwargs.get('attention_type')
-            attn_kwargs = {
-                'd_model': d_model,
-                'n_heads': n_heads,
-                'dropout': dropout,
-            }
-            attention_comp = get_attention_component(attn_type, **attn_kwargs)
-        if decomp_comp is None and 'decomp_type' in kwargs:
-            decomp_type = kwargs.get('decomp_type')
-            decomp_params = kwargs.get('decomp_params', {})
-            decomp_comp = get_decomposition_component(decomp_type, **decomp_params)
-        if hierarchical_config is None:
-            # Minimal config shim
-            class _HCfg:
-                def __init__(self, n_levels:int=kwargs.get('n_levels', 2)):
-                    self.n_levels = n_levels
-                    self.level_configs = None
-            hierarchical_config = _HCfg()
-
-        # Determine number of levels; prefer explicit arg if present
-        if 'n_levels' in kwargs:
-            hierarchical_config.n_levels = kwargs['n_levels']
+        
         self.levels = hierarchical_config.n_levels
         self.share_weights = hierarchical_config.level_configs is None
 
@@ -67,7 +34,7 @@ class HierarchicalEncoder(BaseEncoder):
                 # For now, it will create independent layers for each level
                 layer = EnhancedEncoderLayer(
                     get_attention_component(attention_comp.type, d_model=d_model, n_heads=n_heads, dropout=dropout),
-                    get_decomposition_component(decomp_comp.type, kernel_size=getattr(decomp_comp, 'kernel_size', 3)),
+                    get_decomposition_component(decomp_comp.type, kernel_size=decomp_comp.kernel_size),
                     d_model,
                     n_heads,
                     d_ff,

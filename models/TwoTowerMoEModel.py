@@ -1,13 +1,13 @@
 # FILE: models/TwoTowerMoEModel.py
 import torch
 import torch.nn as nn
-from layers.modular.processor.wrapped_encoders import EncoderProcessorConfig, StandardEncoderProcessor
-from layers.modular.processor.bi_attention_fusion import BiDirectionalFusionProcessor
+from utils.implementations.encoder.wrapped_encoders import EncoderProcessor
+from utils.implementations.fusion.bi_attention_fusion import BiDirectionalFusionProcessor
 from layers.Autoformer_EncDec import Decoder
 
 class TwoTowerMoEModel(nn.Module):
-    def __init__(self, target_encoder: nn.Module,
-                 covariate_encoder: nn.Module,
+    def __init__(self, target_encoder: EncoderProcessor, 
+                 covariate_encoder: EncoderProcessor,
                  fusion_processor: BiDirectionalFusionProcessor,
                  decoder: Decoder,
                  d_model: int):

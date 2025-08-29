@@ -7,35 +7,22 @@ ComponentRegistry via register_layers_decompositions().
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional, Tuple, List, Dict, Any
+from dataclasses import dataclass
+from typing import Optional, Tuple, List
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from layers.modular.base_interfaces import BaseProcessor
-from layers.modular.core.registry import register_component
+from ...modular_components.base_interfaces import BaseProcessor
+from ...modular_components.config_schemas import ProcessorConfig
+from ...modular_components.registry import register_component
 
 # Legacy implementations
 from layers.modular.decomposition.series_decomposition import SeriesDecomposition
 from layers.modular.decomposition.stable_decomposition import StableSeriesDecomposition
 from layers.modular.decomposition.learnable_decomposition import LearnableSeriesDecomposition
 from layers.modular.decomposition.wavelet_decomposition import WaveletHierarchicalDecomposition
-
-
-@dataclass
-class ProcessorConfig:
-    """Minimal processor config base to avoid legacy modular_components import.
-
-    Includes the knobs actually used by wrapped processors in tests.
-    """
-    d_model: int = 16
-    dropout: float = 0.0
-    seq_len: int = 8
-    pred_len: int = 8
-    label_len: int = 0
-    custom_params: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

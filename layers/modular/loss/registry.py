@@ -11,29 +11,6 @@ from .adaptive_bayesian_losses import (
 )
 from layers.modular.core.logger import logger
 
-
-def _quantile_count(q):
-    """Best-effort count of quantiles for legacy pinball/quantile semantics.
-
-    Accepts list/tuple, numpy arrays, torch tensors, iterables, or a single float.
-    Returns None if q is None; otherwise a positive int (defaults to 1 on fallback).
-    """
-    if q is None:
-        return None
-    # Single scalar -> one quantile
-    if isinstance(q, (int, float)):
-        return 1
-    # Try generic length-based protocols first (covers list/tuple/np/torch)
-    try:
-        return int(len(q))  # type: ignore[arg-type]
-    except Exception:
-        pass
-    # Try to coerce to list as a fallback
-    try:
-        return len(list(q))  # type: ignore[arg-type]
-    except Exception:
-        return 1
-
 class LossRegistry:
     _registry = {
         # Standard losses
@@ -97,33 +74,13 @@ class LossRegistry:
 def get_loss_component(name, **kwargs):
     """
     Factory to get a loss component and its required output dimension multiplier.
-
-    For legacy compatibility, when requesting 'quantile'/'pinball' we always
-    report the multiplier as the number of quantiles provided, even if the
-    underlying implementation has a fixed multiplier (e.g., unified multi-quantile).
     """
     loss_class = LossRegistry.get(name)
     loss_instance = loss_class(**kwargs)
-
-    # Prefer component-driven sizing via method, fall back to attribute, then 1
-    if hasattr(loss_instance, "get_output_multiplier"):
-        try:
-            output_dim_multiplier = int(loss_instance.get_output_multiplier())  # type: ignore[attr-defined]
-        except Exception:
-            output_dim_multiplier = getattr(loss_instance, 'output_dim_multiplier', 1)
-    else:
-        output_dim_multiplier = getattr(loss_instance, 'output_dim_multiplier', 1)
-
-    # Legacy alias semantics: multiplier equals number of quantiles
-    if name in {"quantile", "pinball"}:
-        q = kwargs.get("quantiles", getattr(loss_instance, "quantiles", None))
-        cnt = _quantile_count(q)
-        if cnt is not None:
-            output_dim_multiplier = cnt
-
-    logger.info(
-        f"Loaded loss '{name}' with output dimension multiplier: {output_dim_multiplier}"
-    )
+    
+    output_dim_multiplier = getattr(loss_instance, 'output_dim_multiplier', 1)
+    
+    logger.info(f"Loaded loss '{name}' with output dimension multiplier: {output_dim_multiplier}")
     return loss_instance, output_dim_multiplier
 
 # ---------------- Deprecation Shim: Forward to unified registry -----------------
@@ -143,18 +100,12 @@ try:
             _loss_dep_warned = True
 
     _LEGACY_TO_UNIFIED = {
-        # Intentionally do NOT map 'quantile' here; tests expect legacy PinballLoss semantics
-        # where output_dim_multiplier equals the number of quantiles. The unified 'quantile'
-        # alias points to a multi-quantile loss with multiplier=1, which breaks expectations.
         'pinball': 'quantile_loss',
     }
 
     @classmethod  # type: ignore
     def _shim_get(cls, name):
         _warn_loss()
-        # Prefer local legacy mapping for quantile-style names to preserve PinballLoss behavior
-        if name in {"quantile", "pinball"}:
-            return cls._registry.get(name)
         lookup = _LEGACY_TO_UNIFIED.get(name, name)
         try:
             return unified_registry.resolve(ComponentFamily.LOSS, lookup).cls
