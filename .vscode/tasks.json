@@ -154,6 +154,78 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "pytest attentions suite",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"tests/component/attention",
+				"-q"
+			]
+		},
+		{
+			"label": "pytest attentions suite (retry)",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"tests/component/attention",
+				"-q",
+				"--enforce-venv=0"
+			]
+		},
+		{
+			"label": "pytest attentions suite (retry2)",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"tests/component/attention",
+				"-q",
+				"--enforce-venv=0"
+			]
+		},
+		{
+			"label": "pytest attentions suite (retry3)",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"tests/component/attention",
+				"-q"
+			]
+		},
+		{
+			"label": "pytest attentions suite (retry4)",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"tests/component/attention",
+				"-q"
+			]
 		}
 	]
 }

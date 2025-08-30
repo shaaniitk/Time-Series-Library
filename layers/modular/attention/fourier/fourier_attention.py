@@ -136,3 +136,19 @@ class FourierAttention(BaseAttention):
         return self.out_proj(out), attn_weights
 
 __all__ = ["FourierAttention"]
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="FourierAttention",
+    component_class=FourierAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "seq_len": 64,
+        "frequency_selection": "adaptive",
+        "dropout": 0.1,
+    },
+)

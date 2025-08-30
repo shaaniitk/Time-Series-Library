@@ -148,3 +148,22 @@ class CausalConvolution(BaseAttention):
         return self.layer_norm(final_output + residual), attn_w
 
 __all__ = ["CausalConvolution"]
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="CausalConvolution",
+    component_class=CausalConvolution,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "kernel_sizes": [3, 5],
+        "dilation_rates": [1, 2],
+        "dropout": 0.1,
+        "activation": "gelu",
+    },
+)
+
+ 

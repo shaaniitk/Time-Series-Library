@@ -42,3 +42,18 @@ class BayesianCrossAttention(BaseAttention):
         context = torch.matmul(attn_weights, v).transpose(1, 2).contiguous().view(B, L_dec, D)
         output = self.layer_norm(self.w_o(context) + residual)
         return output, attn_weights
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="BayesianCrossAttention",
+    component_class=BayesianCrossAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "dropout": 0.1,
+        "prior_std": 1.0,
+    },
+)

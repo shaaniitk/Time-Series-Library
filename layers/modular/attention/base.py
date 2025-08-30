@@ -10,7 +10,7 @@ class BaseAttention(nn.Module, ABC):
     This class enforces a common interface for all attention mechanisms,
     ensuring they can be used interchangeably in a modular framework.
     """
-    def __init__(self, d_model: int, n_heads: int, **kwargs):
+    def __init__(self, d_model: Optional[int] = None, n_heads: Optional[int] = None, **kwargs):
         """
         Initializes the base attention component.
 
@@ -19,8 +19,12 @@ class BaseAttention(nn.Module, ABC):
             n_heads (int): The number of attention heads.
         """
         super().__init__()
-        self.d_model = d_model
-        self.n_heads = n_heads
+        # Not all subclasses consistently pass these via super().__init__,
+        # so assign only when provided; many subclasses set them explicitly.
+        if d_model is not None:
+            self.d_model = d_model
+        if n_heads is not None:
+            self.n_heads = n_heads
         
         # This multiplier can be overridden by subclasses if their output
         # dimension differs from d_model.
@@ -63,4 +67,8 @@ class BaseAttention(nn.Module, ABC):
         Returns:
             int: The output dimension.
         """
-        return int(self.d_model * self.output_dim_multiplier)
+        # Some subclasses set d_model after super().__init__; fall back to attribute lookup.
+        d_model = getattr(self, "d_model", None)
+        if d_model is None:
+            raise AttributeError("d_model is not set on this attention module.")
+        return int(d_model * self.output_dim_multiplier)

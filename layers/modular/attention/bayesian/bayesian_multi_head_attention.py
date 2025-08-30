@@ -47,3 +47,20 @@ class BayesianMultiHeadAttention(BaseAttention):
         if self.output_attention:
             return mean_output, mean_attn, epistemic_uncertainty, aleatoric_uncertainty
         return mean_output, None
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="BayesianMultiHeadAttention",
+    component_class=BayesianMultiHeadAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "dropout": 0.1,
+        "prior_std": 1.0,
+        "n_samples": 3,
+        "output_attention": False,
+    },
+)

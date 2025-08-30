@@ -55,3 +55,20 @@ class AdaptiveMixture(BaseAttention):
 
 
 __all__ = ["AdaptiveMixture"]
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="AdaptiveMixture",
+    component_class=AdaptiveMixture,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "mixture_components": 3,
+        "gate_hidden_dim": 16,
+        "dropout": 0.1,
+        "temperature": 1.0,
+    },
+)

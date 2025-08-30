@@ -67,3 +67,18 @@ class GraphAttentionLayer(BaseAttention):
         return output, attention.mean(dim=1) # Return avg attention over heads
 
   
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="GraphAttentionLayer",
+    component_class=GraphAttentionLayer,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "dropout": 0.1,
+        "alpha": 0.2,
+    },
+)
+

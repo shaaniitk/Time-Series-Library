@@ -61,3 +61,22 @@ class BayesianAttention(BaseAttention):
         if self.output_attention:
             return output, attn_weights, uncertainty
         return output, None
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="BayesianAttention",
+    component_class=BayesianAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "dropout": 0.1,
+        "prior_std": 1.0,
+        "temperature": 1.0,
+        "output_attention": False,
+    },
+)
+
+ 

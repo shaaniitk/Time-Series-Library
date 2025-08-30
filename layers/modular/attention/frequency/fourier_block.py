@@ -60,3 +60,18 @@ class FourierBlock(BaseAttention):
         output = output.permute(0, 3, 1, 2).reshape(B, L, D)
 
         return output, None
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="FourierBlock",
+    component_class=FourierBlock,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "seq_len": 64,
+        "modes": 8,
+    },
+)

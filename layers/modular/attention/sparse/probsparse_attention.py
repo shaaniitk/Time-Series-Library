@@ -100,3 +100,20 @@ class ProbSparseAttention(BaseAttention):
         # Note: Returning full attention weights is computationally expensive and
         # defeats the purpose of sparse attention. Returning None is standard practice.
         return output, None
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="ProbSparseAttention",
+    component_class=ProbSparseAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "factor": 3,
+        "dropout": 0.1,
+    },
+)
+
+ 

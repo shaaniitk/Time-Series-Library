@@ -83,3 +83,21 @@ class ConvolutionalAttention(BaseAttention):
         return self.layer_norm(output + residual), attn_w
 
 __all__ = ["ConvolutionalAttention"]
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="ConvolutionalAttention",
+    component_class=ConvolutionalAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "conv_kernel_size": 3,
+        "pool_size": 2,
+        "dropout": 0.1,
+    },
+)
+
+ 

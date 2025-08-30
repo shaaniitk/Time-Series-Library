@@ -23,9 +23,9 @@ class HierarchicalAutoCorrelation(BaseAttention):
                 n_heads=n_heads,
                 factor=factor,
                 dropout=dropout,
-                scales=[level] # Use a single scale for each instance
+                scales=[level]  # Use a single scale for each instance
             )
-            for _ in hierarchy_levels
+            for level in hierarchy_levels
         ])
         
         # Learnable weights to fuse the outputs from different levels
@@ -74,3 +74,19 @@ class HierarchicalAutoCorrelation(BaseAttention):
         output = self.layer_norm(self.dropout(combined_output) + residual)
 
         return output, None
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="HierarchicalAutoCorrelation",
+    component_class=HierarchicalAutoCorrelation,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "hierarchy_levels": [1, 4],
+        "factor": 1,
+        "dropout": 0.1,
+    },
+)

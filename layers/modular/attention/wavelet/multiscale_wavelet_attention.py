@@ -74,3 +74,18 @@ class MultiScaleWaveletAttention(BaseAttention):
         return self.dropout(fused_output), avg_attention
 
 __all__ = ["MultiScaleWaveletAttention"]
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="MultiScaleWaveletAttention",
+    component_class=MultiScaleWaveletAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "scales": [1, 2, 4],
+        "dropout": 0.1,
+    },
+)

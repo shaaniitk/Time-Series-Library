@@ -73,3 +73,19 @@ class FourierCrossAttention(BaseAttention):
         output = self.layer_norm(self.dropout(output) + residual)
 
         return output, attention_weights
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="FourierCrossAttention",
+    component_class=FourierCrossAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "seq_len_q": 64,
+        "seq_len_kv": 64,
+        "dropout": 0.1,
+    },
+)

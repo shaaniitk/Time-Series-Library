@@ -81,7 +81,7 @@ class MultiHeadAttention(BaseAttention):
         # --- REGISTRATION ---
 # This is the crucial part. By registering here, the component becomes
 # available to both the model factory and the test suite simultaneously.
-from core.registry import component_registry, ComponentFamily
+from ...core.registry import component_registry, ComponentFamily
 
 component_registry.register(
     name="MultiHeadAttention",

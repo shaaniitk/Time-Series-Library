@@ -16,7 +16,14 @@ from typing import List
 import numpy as np
 import pytest
 import torch
-from tests.helpers.runtime_logging import build_row, append_rows  # type: ignore
+
+# Lightweight built-ins for runtime logging; avoids importing optional helpers during collection
+def build_row(nodeid: str, duration: float, status: str, markers: list[str]) -> list[str]:  # type: ignore
+    return [nodeid, f"{duration:.3f}", status, ",".join(markers)]
+
+def append_rows(rows: list[list[str]]) -> None:  # type: ignore
+    # No-op fallback when runtime logging helpers are unavailable
+    return
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:  # type: ignore[name-defined]

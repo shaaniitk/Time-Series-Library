@@ -85,3 +85,18 @@ class SparseAttention(BaseAttention):
         output = self.layer_norm(self.dropout(output) + residual)
         
         return output, attention_weights
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="SparseAttention",
+    component_class=SparseAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "sparsity_factor": 4,
+        "dropout": 0.1,
+    },
+)

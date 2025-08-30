@@ -74,3 +74,18 @@ class WaveletAttention(BaseAttention):
         return fused_output, avg_attention
 
 __all__ = ["WaveletAttention"]
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="WaveletAttention",
+    component_class=WaveletAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "levels": 2,
+        "dropout": 0.1,
+    },
+)

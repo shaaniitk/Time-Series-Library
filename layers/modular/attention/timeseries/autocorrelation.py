@@ -103,3 +103,19 @@ class AutoCorrelationAttention(BaseAttention):
         output = self.out_projection(output)
         
         return output, None # Returning weights is non-trivial for this mechanism
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="AutoCorrelationAttention",
+    component_class=AutoCorrelationAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "factor": 1,
+        "dropout": 0.1,
+        "scales": [1, 2],
+    },
+)

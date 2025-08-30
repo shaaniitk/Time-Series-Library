@@ -70,3 +70,21 @@ class TemporalConvNet(BaseAttention):
         return output, attn_weights
 
 __all__ = ["TemporalConvNet"]
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="TemporalConvNet",
+    component_class=TemporalConvNet,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 32,
+        "n_heads": 4,
+        "num_levels": 2,
+        "kernel_size": 3,
+        "dropout": 0.1,
+    },
+)
+
+ 
