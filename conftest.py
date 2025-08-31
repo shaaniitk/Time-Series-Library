@@ -17,12 +17,16 @@ import numpy as np
 import pytest
 import torch
 
-# Lightweight built-ins for runtime logging; avoids importing optional helpers during collection
+# Ensure project root is importable so `tests.helpers` can be resolved when present
+PROJECT_ROOT = Path(__file__).parent.resolve()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# Local lightweight helpers for runtime logging (no external import dependency)
 def build_row(nodeid: str, duration: float, status: str, markers: list[str]) -> list[str]:  # type: ignore
     return [nodeid, f"{duration:.3f}", status, ",".join(markers)]
 
 def append_rows(rows: list[list[str]]) -> None:  # type: ignore
-    # No-op fallback when runtime logging helpers are unavailable
     return
 
 
@@ -84,7 +88,10 @@ def _is_legacy_path(p: Path) -> bool:
         return False
     parts = {seg.lower() for seg in path.parts}
     # Treat dedicated invariants subpackage as non-legacy (always collect)
+    # Also treat the new modular test tree under tests/component as non-legacy
     if "invariants" in parts:
+        return False
+    if "tests" in parts and "component" in parts:
         return False
     return ("tests" in parts) and ("testsmodule" not in parts)
 

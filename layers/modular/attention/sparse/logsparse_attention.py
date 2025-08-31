@@ -33,13 +33,14 @@ class LogSparseAttention(BaseAttention):
             # Local attention (immediate neighbors)
             mask[i, max(0, i-1):min(seq_len, i+2)] = True
             
-            # Logarithmic pattern
-            for log_step in range(1, int(math.log2(seq_len)) + 1):
-                step_size = 2 ** log_step
+            # Logarithmic pattern without math.log2 for TorchScript
+            step_size = 2
+            while step_size < seq_len:
                 if i + step_size < seq_len:
                     mask[i, i + step_size] = True
                 if i - step_size >= 0:
                     mask[i, i - step_size] = True
+                step_size = step_size * 2
         
         return mask.unsqueeze(0).unsqueeze(0).expand(batch_size, self.n_heads, -1, -1)
 
@@ -48,8 +49,7 @@ class LogSparseAttention(BaseAttention):
         queries: torch.Tensor,
         keys: torch.Tensor,
         values: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
-        **kwargs
+    attn_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         
         batch_size, seq_len_q, _ = queries.shape
@@ -89,8 +89,6 @@ component_registry.register(
     component_class=LogSparseAttention,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "dropout": 0.1,
     },
 )

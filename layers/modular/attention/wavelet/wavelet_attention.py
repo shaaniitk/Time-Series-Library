@@ -34,13 +34,17 @@ class WaveletAttention(BaseAttention):
         self.levels = levels
         self.head_dim = d_model // n_heads
         self.dropout = nn.Dropout(dropout)
-        self.wavelet_decomp = WaveletDecomposition(d_model, levels)
         self.level_attentions = nn.ModuleList(
             [nn.MultiheadAttention(d_model, n_heads, batch_first=True) for _ in range(levels + 1)]
         )
         self.level_weights = nn.Parameter(torch.ones(levels + 1) / (levels + 1))
         self.fusion_proj = nn.Linear(d_model * (levels + 1), d_model)
         self.output_dim_multiplier = 1
+        self.wavelet_decomp = WaveletDecomposition(
+            input_dim=d_model,
+            levels=levels,
+            kernel_size=4,
+        )
 
     def forward(
         self,
@@ -51,22 +55,32 @@ class WaveletAttention(BaseAttention):
         tau: Optional[float] = None,
         delta: Optional[float] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass for WaveletAttention. TorchScript compatible.
+        """
         B, L, D = queries.shape
         _, q_components = self.wavelet_decomp(queries)
         _, k_components = self.wavelet_decomp(keys)
         _, v_components = self.wavelet_decomp(values)
-        level_outputs = []
-        level_attentions = []
-        for q_comp, k_comp, v_comp, attention_layer in zip(
-            q_components, k_components, v_components, self.level_attentions
-        ):
+        # TorchScript-compatible annotated lists
+        level_outputs = torch.jit.annotate(List[torch.Tensor], [])
+        level_attentions = torch.jit.annotate(List[torch.Tensor], [])
+        for idx, attention_layer in enumerate(self.level_attentions):
+            q_comp = q_components[idx]
+            k_comp = k_components[idx]
+            v_comp = v_components[idx]
             if q_comp.size(1) != L:
                 q_comp = F.interpolate(q_comp.transpose(1, 2), size=L, mode="linear", align_corners=False).transpose(1, 2)
+            if k_comp.size(1) != L:
                 k_comp = F.interpolate(k_comp.transpose(1, 2), size=L, mode="linear", align_corners=False).transpose(1, 2)
+            if v_comp.size(1) != L:
                 v_comp = F.interpolate(v_comp.transpose(1, 2), size=L, mode="linear", align_corners=False).transpose(1, 2)
             level_out, level_attn = attention_layer(q_comp, k_comp, v_comp, attn_mask=attn_mask)
             level_outputs.append(level_out)
-            level_attentions.append(level_attn)
+            if level_attn is not None:
+                level_attentions.append(level_attn)
+            else:
+                level_attentions.append(torch.zeros_like(level_out))
         weights = F.softmax(self.level_weights, dim=0)
         concatenated = torch.cat(level_outputs, dim=-1)
         fused_output = self.fusion_proj(concatenated)
@@ -83,8 +97,6 @@ component_registry.register(
     component_class=WaveletAttention,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "levels": 2,
         "dropout": 0.1,
     },

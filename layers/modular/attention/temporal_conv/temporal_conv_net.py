@@ -79,8 +79,6 @@ component_registry.register(
     component_class=TemporalConvNet,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "num_levels": 2,
         "kernel_size": 3,
         "dropout": 0.1,

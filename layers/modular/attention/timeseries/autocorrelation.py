@@ -43,8 +43,7 @@ class AutoCorrelationAttention(BaseAttention):
         queries: torch.Tensor,
         keys: torch.Tensor,
         values: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
-        **kwargs
+    attn_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         
         B, L, D = queries.shape
@@ -73,12 +72,19 @@ class AutoCorrelationAttention(BaseAttention):
             corr_time = torch.fft.irfft(corr_fft, n=target_len, dim=2)
             
             if corr_time.size(2) != L: # Upsample back if needed
-                 corr_time = F.interpolate(corr_time.permute(0,1,3,2), size=L, mode='linear').permute(0,1,3,2)
+                # [B,H,L,E] -> [B*H*E, 1, L] for 1D linear interpolation
+                b, h, l, e = corr_time.shape
+                corr_3d = corr_time.permute(0, 1, 3, 2).contiguous().view(b * h * e, 1, l)
+                corr_up = F.interpolate(corr_3d, size=L, mode='linear', align_corners=False)
+                corr_time = corr_up.view(b, h, e, L).permute(0, 1, 3, 2)
             correlations.append(corr_time)
         
         # Weighted combination of correlations
         weights = F.softmax(self.scale_weights, dim=0)
-        correlation = sum(w * corr for w, corr in zip(weights, correlations))
+        # TorchScript-friendly accumulation
+        correlation = correlations[0] * weights[0]
+        for idx in range(1, len(correlations)):
+            correlation = correlation + correlations[idx] * weights[idx]
 
         # --- Time delay aggregation ---
         k = max(int(self.factor * math.log(L)), 1)
@@ -112,8 +118,6 @@ component_registry.register(
     component_class=AutoCorrelationAttention,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "factor": 1,
         "dropout": 0.1,
         "scales": [1, 2],

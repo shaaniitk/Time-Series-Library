@@ -64,8 +64,6 @@ component_registry.register(
     component_class=AdaptiveMixture,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "mixture_components": 3,
         "gate_hidden_dim": 16,
         "dropout": 0.1,

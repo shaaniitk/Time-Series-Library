@@ -85,3 +85,20 @@ class FourierBlock(BaseAttention):
         return output, None
 
 __all__ = ["FourierBlock"]
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="FourierBlock",
+    component_class=FourierBlock,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "in_channels": 32,
+        "out_channels": 32,
+        "n_heads": 4,
+        "seq_len": 32,
+        "modes": 8,
+        "mode_select_method": "random",
+    },
+)

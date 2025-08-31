@@ -50,9 +50,9 @@ class WaveletDecomposition(nn.Module):
         x_conv = x.transpose(1, 2)
         components: List[torch.Tensor] = []
         current = x_conv
-        for level in range(self.levels):
-            low = self.low_pass[level](current)
-            high = self.high_pass[level](current)
+        for idx, (low_layer, high_layer) in enumerate(zip(self.low_pass, self.high_pass)):
+            low = low_layer(current)
+            high = high_layer(current)
             components.append(high.transpose(1, 2))
             current = low
         components.append(current.transpose(1, 2))

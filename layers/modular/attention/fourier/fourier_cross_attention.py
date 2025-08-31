@@ -25,8 +25,17 @@ class FourierCrossAttention(BaseAttention):
         mode_select_method: str = "random",
         activation: str = "tanh",
         num_heads: int = 8,
+        # Testing-friendly extras (absorbs BaseAttention defaults from tests)
+        d_model: Optional[int] = None,
+        n_heads: Optional[int] = None,
+        **kwargs,
     ) -> None:
-        super().__init__()
+        # Map optional d_model/n_heads from the generic test harness
+        if d_model is not None:
+            in_channels = d_model
+        if n_heads is not None:
+            num_heads = n_heads
+        super().__init__(d_model=in_channels, n_heads=num_heads)
         logger.info(
             "Initializing FourierCrossAttention: %s -> %s (modes=%s)", in_channels, out_channels, modes
         )
@@ -90,3 +99,23 @@ class FourierCrossAttention(BaseAttention):
         return output, attn_weights
 
 __all__ = ["FourierCrossAttention"]
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="FourierCrossAttention",
+    component_class=FourierCrossAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        # The test harness will also pass d_model/n_heads; we absorb them above
+        "in_channels": 32,
+        "out_channels": 32,
+        "seq_len_q": 32,
+        "seq_len_kv": 32,
+        "modes": 8,
+        "mode_select_method": "random",
+        "activation": "tanh",
+        "num_heads": 4,
+    },
+)

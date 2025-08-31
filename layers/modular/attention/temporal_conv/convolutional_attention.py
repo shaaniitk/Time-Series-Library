@@ -92,8 +92,6 @@ component_registry.register(
     component_class=ConvolutionalAttention,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "conv_kernel_size": 3,
         "pool_size": 2,
         "dropout": 0.1,

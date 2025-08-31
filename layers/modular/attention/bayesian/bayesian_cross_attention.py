@@ -51,8 +51,6 @@ component_registry.register(
     component_class=BayesianCrossAttention,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "dropout": 0.1,
         "prior_std": 1.0,
     },

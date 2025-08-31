@@ -29,7 +29,7 @@ class MetaLearningAdapter(BaseAttention):
         """A helper to run a forward pass with a custom set of parameters."""
         x = F.linear(x, params['network.layer1.weight'], params['network.layer1.bias'])
         x = F.relu(x)
-        x = F.linear(x, params['network.layer2.weight'], params['network.to_dict.layer2.bias'])
+        x = F.linear(x, params['network.layer2.weight'], params['network.layer2.bias'])
         return x
 
     def forward(
@@ -47,9 +47,9 @@ class MetaLearningAdapter(BaseAttention):
         if not self.training or support_set is None:
             return self.network(queries), None
 
-        # --- MAML Inner Loop: Adaptation ---
-        # Create a copy of the parameters to be adapted (the 'fast weights')
-        fast_params = OrderedDict(self.named_parameters())
+    # --- MAML Inner Loop: Adaptation ---
+    # Create a copy of the parameters to be adapted (the 'fast weights')
+        fast_params = OrderedDict((name, p.clone().detach().requires_grad_(True)) for name, p in self.named_parameters())
         
         for _ in range(self.adaptation_steps):
             # Forward pass on the support set with the current fast weights
@@ -72,5 +72,18 @@ class MetaLearningAdapter(BaseAttention):
         output = self._forward_with_params(queries, fast_params)
 
         return output, None
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="MetaLearningAdapter",
+    component_class=MetaLearningAdapter,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "adaptation_steps": 1,
+        "inner_lr": 0.05,
+    },
+)
 
   

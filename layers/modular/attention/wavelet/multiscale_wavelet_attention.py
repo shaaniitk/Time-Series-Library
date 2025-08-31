@@ -66,11 +66,20 @@ class MultiScaleWaveletAttention(BaseAttention):
             if output.size(1) != L:
                 output = F.interpolate(output.transpose(1, 2), size=L, mode="linear", align_corners=False).transpose(1, 2)
             scale_outputs.append(output)
-            scale_attentions.append(attention)
+            # Upsample attention maps to [B, L, L] if provided
+            if attention is not None:
+                attn = attention
+                if attn.dim() == 4:  # [B, H, Lq, Lk]
+                    attn = attn.mean(dim=1)
+                if attn.size(-2) != L or attn.size(-1) != L:
+                    attn = F.interpolate(attn.unsqueeze(1), size=(L, L), mode="bilinear", align_corners=False).squeeze(1)
+                scale_attentions.append(attn)
+
+
         weights = F.softmax(self.scale_weights, dim=0)
         concatenated = torch.cat(scale_outputs, dim=-1)
         fused_output = self.scale_proj(concatenated)
-        avg_attention = torch.stack(scale_attentions, dim=0).mean(dim=0)
+        avg_attention = torch.stack(scale_attentions, dim=0).mean(dim=0) if scale_attentions else None
         return self.dropout(fused_output), avg_attention
 
 __all__ = ["MultiScaleWaveletAttention"]
@@ -83,8 +92,6 @@ component_registry.register(
     component_class=MultiScaleWaveletAttention,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "scales": [1, 2, 4],
         "dropout": 0.1,
     },

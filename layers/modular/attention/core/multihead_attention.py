@@ -52,7 +52,6 @@ class MultiHeadAttention(BaseAttention):
         keys: torch.Tensor,
         values: torch.Tensor,
         attn_mask: Optional[torch.Tensor] = None,
-        **kwargs
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         
         batch_size, seq_len_q, _ = queries.shape

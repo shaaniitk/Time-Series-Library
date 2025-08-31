@@ -36,8 +36,7 @@ class BaseAttention(nn.Module, ABC):
         queries: torch.Tensor,
         keys: torch.Tensor,
         values: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
-        **kwargs
+    attn_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Defines the forward pass of the attention mechanism.
@@ -48,7 +47,6 @@ class BaseAttention(nn.Module, ABC):
             values (torch.Tensor): Value tensor. Shape: [B, S, D]
             attn_mask (Optional[torch.Tensor]): An optional mask to prevent
                                                 attention to certain positions.
-            **kwargs: For additional, implementation-specific arguments.
 
         Returns:
             Tuple[torch.Tensor, Optional[torch.Tensor]]:

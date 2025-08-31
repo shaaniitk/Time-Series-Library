@@ -114,7 +114,7 @@ class CausalConvolution(BaseAttention):
         kh = k.view(B, H, d_k, L).transpose(2, 3)
         vh = v.view(B, H, d_k, L).transpose(2, 3)
         scores = torch.matmul(qh, kh.transpose(-1, -2)) / math.sqrt(d_k)
-        causal_mask = torch.triu(torch.ones(L, L, device=q.device), diagonal=1).bool()
+        causal_mask = torch.triu(torch.ones(L, L, device=q.device), diagonal=1).to(torch.bool)
         scores.masked_fill_(causal_mask.unsqueeze(0).unsqueeze(0), -1e9)
         attn = torch.softmax(scores, dim=-1)
         attn = self.dropout(attn)
@@ -157,8 +157,6 @@ component_registry.register(
     component_class=CausalConvolution,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "kernel_sizes": [3, 5],
         "dilation_rates": [1, 2],
         "dropout": 0.1,

@@ -67,56 +67,50 @@ class FourierAttention(BaseAttention):
         keys: torch.Tensor,
         values: torch.Tensor,
         attn_mask: Optional[torch.Tensor] = None,
-        tau: Optional[float] = None,
-        delta: Optional[float] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         B, L, D = queries.shape
 
-        try:
-            queries_freq = torch.fft.rfft(queries, dim=1)
-            freq_dim = queries_freq.shape[1]
-        except Exception as exc:  # pragma: no cover - rare fallback
-            logger.warning("FFT failed (%s); falling back to standard attention", exc)
-            return self._standard_attention(queries, attn_mask)
+        # Frequency domain transform of queries
+        queries_freq = torch.fft.rfft(queries, dim=1)
+        freq_dim = queries_freq.shape[1]
 
+        # Adaptive or uniform frequency selection
         if self.frequency_selection == "adaptive" and hasattr(self, "freq_selector"):
             freq_weights_input = queries.mean(dim=1)
             freq_logits = self.freq_selector(freq_weights_input)[:, :freq_dim]
             freq_selection = F.softmax(freq_logits, dim=-1)
         else:
-            freq_selection = torch.ones(B, freq_dim, device=queries.device) / freq_dim
+            freq_selection = torch.ones(B, freq_dim, device=queries.device) / max(freq_dim, 1)
 
+        # Build complex filter
         phase_weights = self.phase_weights[:freq_dim]
         magnitude_weights = self.freq_weights[:freq_dim]
-
-        freq_filter = torch.complex(
-            torch.cos(phase_weights) * magnitude_weights, torch.sin(phase_weights) * magnitude_weights
-        )
+        base_filter = torch.complex(
+            torch.cos(phase_weights) * magnitude_weights,
+            torch.sin(phase_weights) * magnitude_weights,
+        )  # [freq_dim]
 
         if self.frequency_selection == "adaptive":
-            freq_filter = (freq_filter.unsqueeze(0) * freq_selection).unsqueeze(-1)
+            freq_filter = (base_filter.unsqueeze(0) * freq_selection).unsqueeze(-1)
         else:
-            freq_filter = freq_filter.unsqueeze(0).unsqueeze(-1)
+            freq_filter = base_filter.unsqueeze(0).unsqueeze(-1)
 
+        # Apply filter and inverse transform
         queries_freq_filtered = queries_freq * freq_filter
+        queries_filtered = torch.fft.irfft(queries_freq_filtered, n=L, dim=1)
 
-        try:
-            queries_filtered = torch.fft.irfft(queries_freq_filtered, n=L, dim=1)
-        except Exception as exc:  # pragma: no cover - rare fallback
-            logger.warning("Inverse FFT failed (%s); falling back to standard attention", exc)
-            return self._standard_attention(queries, attn_mask)
-
+    # Standard attention with filtered queries
         qkv = self.qkv(queries_filtered).reshape(B, L, 3, self.n_heads, self.head_dim)
-        q, k, v = qkv.permute(2, 0, 3, 1, 4)
-
+        qkv_perm = qkv.permute(2, 0, 3, 1, 4)
+        q = qkv_perm[0]
+        k = qkv_perm[1]
+        v = qkv_perm[2]
         scale = math.sqrt(self.head_dim)
         attn_scores = (q @ k.transpose(-2, -1)) / scale
         if attn_mask is not None:
             attn_scores = attn_scores.masked_fill(attn_mask == 0, -float("inf"))
-
         attn_weights = F.softmax(attn_scores, dim=-1)
         attn_weights = self.dropout(attn_weights)
-
         out = (attn_weights @ v).transpose(1, 2).reshape(B, L, D)
         return self.out_proj(out), attn_weights
 
@@ -125,7 +119,10 @@ class FourierAttention(BaseAttention):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         B, L, D = x.shape
         qkv = self.qkv(x).reshape(B, L, 3, self.n_heads, self.head_dim)
-        q, k, v = qkv.permute(2, 0, 3, 1, 4)
+        qkv_perm = qkv.permute(2, 0, 3, 1, 4)
+        q = qkv_perm[0]
+        k = qkv_perm[1]
+        v = qkv_perm[2]
         scale = math.sqrt(self.head_dim)
         attn_scores = (q @ k.transpose(-2, -1)) / scale
         if attn_mask is not None:
@@ -145,8 +142,6 @@ component_registry.register(
     component_class=FourierAttention,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "seq_len": 64,
         "frequency_selection": "adaptive",
         "dropout": 0.1,

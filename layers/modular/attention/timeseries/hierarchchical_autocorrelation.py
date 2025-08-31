@@ -38,29 +38,30 @@ class HierarchicalAutoCorrelation(BaseAttention):
         queries: torch.Tensor,
         keys: torch.Tensor,
         values: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
-        **kwargs
+    attn_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         
         B, L, D = queries.shape
         residual = queries
         level_outputs = []
         
-        for i, level in enumerate(self.hierarchy_levels):
+        for idx, corr_module in enumerate(self.level_correlations):
+            level = self.hierarchy_levels[idx]
             if level == 1:
                 # Process at original resolution
-                level_out, _ = self.level_correlations[i](queries, keys, values, attn_mask)
+                level_out, _ = corr_module(queries, keys, values, attn_mask)
             else:
                 # Downsample for coarser temporal resolutions
                 target_len = max(L // level, 1)
-                q_down = F.interpolate(queries.transpose(1, 2), size=target_len, mode='linear').transpose(1, 2)
-                k_down = F.interpolate(keys.transpose(1, 2), size=target_len, mode='linear').transpose(1, 2)
-                v_down = F.interpolate(values.transpose(1, 2), size=target_len, mode='linear').transpose(1, 2)
+                # Interpolate expects 3D for linear1d: [B, C, L]
+                q_down = F.interpolate(queries.transpose(1, 2), size=target_len, mode='linear', align_corners=False).transpose(1, 2)
+                k_down = F.interpolate(keys.transpose(1, 2), size=target_len, mode='linear', align_corners=False).transpose(1, 2)
+                v_down = F.interpolate(values.transpose(1, 2), size=target_len, mode='linear', align_corners=False).transpose(1, 2)
                 
-                level_out, _ = self.level_correlations[i](q_down, k_down, v_down)
+                level_out, _ = corr_module(q_down, k_down, v_down)
                 
                 # Upsample the output back to the original resolution
-                level_out = F.interpolate(level_out.transpose(1, 2), size=L, mode='linear').transpose(1, 2)
+                level_out = F.interpolate(level_out.transpose(1, 2), size=L, mode='linear', align_corners=False).transpose(1, 2)
             
             level_outputs.append(level_out)
         
@@ -68,8 +69,9 @@ class HierarchicalAutoCorrelation(BaseAttention):
         weights = F.softmax(self.fusion_weights, dim=0)
         
         # Weighted combination
-        weighted_outputs = [w * out for w, out in zip(weights, level_outputs)]
-        combined_output = sum(weighted_outputs)
+        combined_output = weights[0] * level_outputs[0]
+        for i in range(1, len(level_outputs)):
+            combined_output = combined_output + weights[i] * level_outputs[i]
         
         output = self.layer_norm(self.dropout(combined_output) + residual)
 
@@ -83,8 +85,6 @@ component_registry.register(
     component_class=HierarchicalAutoCorrelation,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "hierarchy_levels": [1, 4],
         "factor": 1,
         "dropout": 0.1,

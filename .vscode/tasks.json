@@ -226,6 +226,20 @@
 				"tests/component/attention",
 				"-q"
 			]
+		},
+		{
+			"label": "pytest attentions suite (retry5)",
+			"type": "shell",
+			"command": "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/tsl-env/bin/python",
+			"args": [
+				"-X",
+				"utf8",
+				"-m",
+				"pytest",
+				"-q",
+				"tests/component/attention",
+				"-q"
+			]
 		}
 	]
 }

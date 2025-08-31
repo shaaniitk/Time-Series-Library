@@ -35,8 +35,7 @@ class FourierBlock(BaseAttention):
         queries: torch.Tensor,
         keys: torch.Tensor,
         values: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
-        **kwargs
+    attn_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         
         B, L, D = queries.shape
@@ -48,12 +47,22 @@ class FourierBlock(BaseAttention):
         x_ft = torch.fft.rfft(x, dim=-1) # [B, H, E, L/2+1]
         
         # Initialize output tensor in frequency domain
-        out_ft = torch.zeros(B, H, E, L // 2 + 1, device=x.device, dtype=torch.cfloat)
+        freq_dim = x_ft.size(-1)
+        # Use a TorchScript-friendly loop to filter available frequency bins
+        valid_indices_list: List[int] = []
+        for idx in self.mode_indices:
+            if idx < int(freq_dim):
+                valid_indices_list.append(int(idx))
+        mode_count = len(valid_indices_list)
+        out_ft = torch.zeros(B, H, E, freq_dim, device=x.device, dtype=torch.cfloat)
 
-        # Apply learnable transformation to selected modes
-        # einsum: [B, H, E, modes], [H, E, E, modes] -> [B, H, E, modes]
-        selected_modes = torch.einsum("bhem,heem->bhem", x_ft[:, :, :, self.mode_indices], self.weights)
-        out_ft[:, :, :, self.mode_indices] = selected_modes
+        if mode_count > 0:
+            weights = self.weights[..., :mode_count]
+            idx_tensor = torch.tensor(valid_indices_list, device=x.device, dtype=torch.long)
+            selected = x_ft.index_select(3, idx_tensor)
+            # selected: [B,H,E,M], weights: [H,E,E,M]
+            selected_modes = torch.einsum("bhem,heem->bhem", selected, weights)
+            out_ft.index_copy_(3, idx_tensor, selected_modes)
 
         # Transform back to time domain
         output = torch.fft.irfft(out_ft, n=L, dim=-1)
@@ -69,8 +78,6 @@ component_registry.register(
     component_class=FourierBlock,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "seq_len": 64,
         "modes": 8,
     },

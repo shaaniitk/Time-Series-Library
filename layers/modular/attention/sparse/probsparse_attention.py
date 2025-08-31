@@ -2,12 +2,23 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-import numpy as np
 from typing import Optional, Tuple
+
 
 from ..base import BaseAttention
 
 class ProbSparseAttention(BaseAttention):
+    @staticmethod
+    def _ilog_plus_one(x: int) -> int:
+        """
+        Approximate ceil(log(x)) using integer doubling steps
+        """
+        steps = 0
+        val = 1
+        while val < x:
+            val = val * 2
+            steps += 1
+        return steps if steps > 0 else 1
     """
     ProbSparse attention from the Informer paper, which reduces complexity by
     only calculating attention scores for a subset of the most "important" queries.
@@ -28,32 +39,16 @@ class ProbSparseAttention(BaseAttention):
         self.layer_norm = nn.LayerNorm(d_model)
 
     def _prob_sparse_sampling(self, Q, K):
-        """
-        Samples the most important queries based on their similarity to a
-        random subset of keys.
-        """
+        """Samples the most important queries based on their similarity to a random subset of keys."""
         B, H, L, D = Q.shape
         _, _, S, _ = K.shape
-        
-        # Determine number of queries and keys to sample
-        n_top = min(self.factor * int(np.ceil(np.log(L))), L)
-        n_keys_sample = min(self.factor * int(np.ceil(np.log(S))), S)
-        
-        # Sample keys for measurement
+        n_top = min(self.factor * self._ilog_plus_one(int(L)), int(L))
+        n_keys_sample = min(self.factor * self._ilog_plus_one(int(S)), int(S))
         K_sample = K[:, :, torch.randperm(S)[:n_keys_sample], :]
-        
-        # Compute scores for all queries against the sampled keys
         scores_sample = torch.matmul(Q, K_sample.transpose(-2, -1))
-        
-        # Calculate the measurement M(q, K)
         M = scores_sample.max(dim=-1)[0] - torch.mean(scores_sample, dim=-1)
-        
-        # Select the top queries based on the measurement
         _, top_indices = M.topk(n_top, dim=-1, largest=True)
-        
-        # Gather the selected queries
         Q_reduced = torch.gather(Q, 2, top_indices.unsqueeze(-1).expand(-1, -1, -1, self.d_k))
-        
         return Q_reduced, top_indices
 
     def forward(
@@ -62,9 +57,7 @@ class ProbSparseAttention(BaseAttention):
         keys: torch.Tensor,
         values: torch.Tensor,
         attn_mask: Optional[torch.Tensor] = None,
-        **kwargs
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        
         B, L, _ = queries.shape
         S = keys.shape[1]
         residual = queries
@@ -75,18 +68,16 @@ class ProbSparseAttention(BaseAttention):
 
         # Select top queries using ProbSparse sampling
         Q_reduced, top_indices = self._prob_sparse_sampling(Q, K)
-        
-        # Compute full attention for the selected queries
         scores = torch.matmul(Q_reduced, K.transpose(-2, -1)) / math.sqrt(self.d_k)
-        
+
         if attn_mask is not None:
-             raise NotImplementedError("attn_mask is not yet supported for ProbSparseAttention")
+            raise NotImplementedError("attn_mask is not yet supported for ProbSparseAttention")
 
         attention_weights = F.softmax(scores, dim=-1)
         attention_weights = self.dropout(attention_weights)
 
         context_reduced = torch.matmul(attention_weights, V)
-        
+
         # Reconstruct full output tensor
         output = torch.zeros_like(Q)
         output.scatter_(2, top_indices.unsqueeze(-1).expand(-1, -1, -1, self.d_k), context_reduced)
@@ -94,9 +85,9 @@ class ProbSparseAttention(BaseAttention):
         # Concatenate heads and project
         output = output.transpose(1, 2).contiguous().view(B, L, self.d_model)
         output = self.w_o(output)
-        
+
         output = self.layer_norm(self.dropout(output) + residual)
-        
+
         # Note: Returning full attention weights is computationally expensive and
         # defeats the purpose of sparse attention. Returning None is standard practice.
         return output, None
@@ -109,8 +100,6 @@ component_registry.register(
     component_class=ProbSparseAttention,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "factor": 3,
         "dropout": 0.1,
     },

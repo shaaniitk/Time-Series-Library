@@ -49,8 +49,7 @@ class SparseAttention(BaseAttention):
         queries: torch.Tensor,
         keys: torch.Tensor,
         values: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None,
-        **kwargs
+    attn_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         
         batch_size, seq_len_q, _ = queries.shape
@@ -94,8 +93,6 @@ component_registry.register(
     component_class=SparseAttention,
     component_type=ComponentFamily.ATTENTION,
     test_config={
-        "d_model": 32,
-        "n_heads": 4,
         "sparsity_factor": 4,
         "dropout": 0.1,
     },
