@@ -5,6 +5,7 @@ from typing import Optional, Tuple, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Optional, Tuple
 
 from ..base import BaseAttention
 from utils.logger import logger  # type: ignore
@@ -42,11 +43,12 @@ class MultiScaleWaveletAttention(BaseAttention):
         attn_mask: Optional[torch.Tensor] = None,
         tau: Optional[float] = None,
         delta: Optional[float] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         B, L, D = queries.shape
         scale_outputs = []
         scale_attentions = []
-        for scale, scale_attn in zip(self.scales, self.scale_attentions):
+        for idx, scale_attn in enumerate(self.scale_attentions):
+            scale = self.scales[idx]
             if scale == 1:
                 q_scaled, k_scaled, v_scaled = queries, keys, values
             else:
@@ -77,8 +79,10 @@ class MultiScaleWaveletAttention(BaseAttention):
 
 
         weights = F.softmax(self.scale_weights, dim=0)
-        concatenated = torch.cat(scale_outputs, dim=-1)
-        fused_output = self.scale_proj(concatenated)
+        # Stack outputs: [num_scales, B, L, D]
+        stacked_outputs = torch.stack(scale_outputs, dim=0)
+        # Weighted sum over scales: [B, L, D]
+        fused_output = torch.sum(weights.view(-1, 1, 1, 1) * stacked_outputs, dim=0)
         avg_attention = torch.stack(scale_attentions, dim=0).mean(dim=0) if scale_attentions else None
         return self.dropout(fused_output), avg_attention
 
