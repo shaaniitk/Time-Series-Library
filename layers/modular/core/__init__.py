@@ -12,6 +12,6 @@ Design notes:
 	`ComponentFamily` + name for easier global introspection and tooling.
 * Legacy per‑family registries forward with DeprecationWarning until removed.
 """
-from .registry import ComponentFamily  # re-export for convenience
+from .registry import ComponentFamily, component_registry as unified_registry  # re-export for convenience
 
-__all__ = [ "ComponentFamily"]
+__all__ = ["ComponentFamily", "unified_registry"]

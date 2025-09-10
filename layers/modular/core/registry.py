@@ -7,6 +7,7 @@ class ComponentFamily(Enum):
     ATTENTION = "attention"
     ENCODER = "encoder"
     DECODER = "decoder"
+    FUSION = "fusion"
     LOSS = "loss"
 
 class ComponentRegistry:
