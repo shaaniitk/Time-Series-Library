@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from .standard_ffn import StandardFFN as _FFLegacy  # local implementation
+from .registry import FeedforwardRegistry, get_feedforward_component
 
 class PositionwiseFeedForwardWrapper:
     """Adapter around StandardFFN (position-wise feedforward) legacy implementation."""
@@ -36,4 +37,8 @@ class PositionwiseFeedForwardWrapper:
     def forward(self, x):  # type: ignore
         return self._impl.forward(x)
 
-__all__ = ['PositionwiseFeedForwardWrapper']
+__all__ = [
+    'PositionwiseFeedForwardWrapper',
+    'FeedforwardRegistry',
+    'get_feedforward_component'
+]

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from .linear_output import LinearOutput as _LinearLegacy  # local implementation
+from .registry import OutputRegistry, get_output_component
 
 class LinearOutputWrapper:
     def __init__(self, d_model: int = 512, output_dim: int = 1, **kwargs: Any):
@@ -17,4 +18,4 @@ class LinearOutputWrapper:
     def forward(self, x):  # type: ignore
         return self._impl.forward(x)
 
-__all__ = ['LinearOutputWrapper']
+__all__ = ['LinearOutputWrapper', 'OutputRegistry', 'get_output_component']

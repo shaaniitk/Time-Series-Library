@@ -69,6 +69,10 @@ class ChronosBackboneWrapper:
     def get_output_dim(self) -> int:  # compatibility hook
         return getattr(self._impl, 'd_model', self.d_model)
 
+from .registry import BackboneRegistry, get_backbone_component
+
 __all__ = [
-    'ChronosBackboneWrapper'
+    'ChronosBackboneWrapper',
+    'BackboneRegistry',
+    'get_backbone_component'
 ]

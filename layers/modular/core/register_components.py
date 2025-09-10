@@ -15,6 +15,10 @@ from ..loss.adaptive_bayesian_losses import (
     AdaptiveAutoformerLoss, FrequencyAwareLoss, BayesianLoss,
     BayesianQuantileLoss, QuantileLoss, UncertaintyCalibrationLoss
 )
+from ..backbone.backbones import ChronosBackbone, T5Backbone, BERTBackbone, SimpleTransformerBackbone
+from ..feedforward.feedforward import StandardFFN, GatedFFN, MoEFFN, ConvFFN
+from ..output.linear_output import LinearOutput, LinearOutputConfig
+from ..output.outputs import ForecastingHead, RegressionHead, OutputConfig
 import torch.nn as nn
 
 # Register Fusion Components
@@ -118,11 +122,82 @@ component_registry.register(
     test_config={"base_loss": "mse"}
 )
 
-# Additional fusion components can be registered here as they are added
-# Example:
-# component_registry.register(
-#     name="attention_fusion",
-#     component_class=AttentionFusion,
-#     component_type=ComponentFamily.FUSION,
-#     test_config={"d_model": 512, "n_heads": 8}
-# )
+# Register Backbone Components
+component_registry.register(
+    name="chronos_backbone",
+    component_class=ChronosBackbone,
+    component_type=ComponentFamily.BACKBONE,
+    test_config={"d_model": 512, "n_layers": 6}
+)
+
+component_registry.register(
+    name="t5_backbone",
+    component_class=T5Backbone,
+    component_type=ComponentFamily.BACKBONE,
+    test_config={"d_model": 512, "n_layers": 6}
+)
+
+component_registry.register(
+    name="bert_backbone",
+    component_class=BERTBackbone,
+    component_type=ComponentFamily.BACKBONE,
+    test_config={"d_model": 512, "n_layers": 6}
+)
+
+component_registry.register(
+    name="simple_transformer_backbone",
+    component_class=SimpleTransformerBackbone,
+    component_type=ComponentFamily.BACKBONE,
+    test_config={"d_model": 512, "n_layers": 6, "n_heads": 8}
+)
+
+# Register Feedforward Components
+component_registry.register(
+    name="standard_ffn",
+    component_class=StandardFFN,
+    component_type=ComponentFamily.FEEDFORWARD,
+    test_config={"d_model": 512, "d_ff": 2048}
+)
+
+component_registry.register(
+    name="gated_ffn",
+    component_class=GatedFFN,
+    component_type=ComponentFamily.FEEDFORWARD,
+    test_config={"d_model": 512, "d_ff": 2048}
+)
+
+component_registry.register(
+    name="moe_ffn",
+    component_class=MoEFFN,
+    component_type=ComponentFamily.FEEDFORWARD,
+    test_config={"d_model": 512, "d_ff": 2048, "num_experts": 4}
+)
+
+component_registry.register(
+    name="conv_ffn",
+    component_class=ConvFFN,
+    component_type=ComponentFamily.FEEDFORWARD,
+    test_config={"d_model": 512, "d_ff": 2048, "kernel_size": 3}
+)
+
+# Register Output Components
+component_registry.register(
+    name="linear_output",
+    component_class=LinearOutput,
+    component_type=ComponentFamily.OUTPUT,
+    test_config={"d_model": 512, "output_dim": 1}
+)
+
+component_registry.register(
+    name="forecasting_head",
+    component_class=ForecastingHead,
+    component_type=ComponentFamily.OUTPUT,
+    test_config={"d_model": 512, "output_dim": 1, "horizon": 1}
+)
+
+component_registry.register(
+    name="regression_head",
+    component_class=RegressionHead,
+    component_type=ComponentFamily.OUTPUT,
+    test_config={"d_model": 512, "output_dim": 1}
+)

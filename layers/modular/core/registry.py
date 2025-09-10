@@ -9,6 +9,14 @@ class ComponentFamily(Enum):
     DECODER = "decoder"
     FUSION = "fusion"
     LOSS = "loss"
+    DECOMPOSITION = "decomposition"
+    SAMPLING = "sampling"
+    OUTPUT_HEAD = "output_head"
+    NORMALIZATION = "normalization"
+    EMBEDDING = "embedding"
+    BACKBONE = "backbone"
+    FEEDFORWARD = "feedforward"
+    OUTPUT = "output"
 
 class ComponentRegistry:
     """
