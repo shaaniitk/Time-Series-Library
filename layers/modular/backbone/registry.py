@@ -100,14 +100,17 @@ try:
         try:
             return unified_registry.get_component(ComponentFamily.BACKBONE, name)
         except Exception:
-            # Fallback to legacy registry
-            return cls._registry.get(name)
+            # Fallback to legacy registry but preserve ValueError behavior
+            component = cls._registry.get(name)
+            if component is None:
+                raise ValueError(f"Backbone component '{name}' not found.")
+            return component
 
     @classmethod  # type: ignore
     def _shim_list(cls):
         _warn_backbone()
         try:
-            return unified_registry.list_components(ComponentFamily.BACKBONE)
+            return unified_registry.list(ComponentFamily.BACKBONE)
         except Exception:
             return list(cls._registry.keys())
 

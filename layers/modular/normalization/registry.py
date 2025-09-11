@@ -9,9 +9,8 @@ import torch.nn as nn
 from typing import Dict, Any, Optional, Union
 import logging
 
-from ...core.registry import ComponentRegistry, register_component
-from ...core.base_interfaces import BaseComponent
-from ...core.component_family import ComponentFamily
+from ..core.registry import ComponentRegistry, ComponentFamily
+from ..base_interfaces import BaseComponent
 
 # Import normalization components
 try:
@@ -36,7 +35,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Create normalization registry
-normalization_registry = ComponentRegistry(ComponentFamily.NORMALIZATION)
+normalization_registry = ComponentRegistry()
 
 
 # ============================================================================
@@ -75,18 +74,18 @@ class RMSNormWrapper(BaseComponent):
 
 # Register layer normalization components
 if RMSNorm is not None:
-    register_component(
-        normalization_registry,
+    normalization_registry.register(
         'rmsnorm',
         RMSNormWrapper,
-        description="Root Mean Square Layer Normalization"
+        ComponentFamily.NORMALIZATION,
+        {"description": "Root Mean Square Layer Normalization"}
     )
 
-register_component(
-    normalization_registry,
+normalization_registry.register(
     'layernorm',
     LayerNormWrapper,
-    description="Standard Layer Normalization"
+    ComponentFamily.NORMALIZATION,
+    {"description": "Standard Layer Normalization"}
 )
 
 
@@ -150,19 +149,19 @@ class NormalizationProcessorWrapper(BaseComponent):
 
 # Register data normalization components
 if TSNormalizer is not None:
-    register_component(
-        normalization_registry,
+    normalization_registry.register(
         'ts_normalizer',
         TSNormalizerWrapper,
-        description="Time Series DataFrame Normalizer"
+        ComponentFamily.NORMALIZATION,
+        {"description": "Time Series DataFrame Normalizer"}
     )
 
 if NormalizationProcessor is not None:
-    register_component(
-        normalization_registry,
+    normalization_registry.register(
         'normalization_processor',
         NormalizationProcessorWrapper,
-        description="Tensor-based Normalization Processor"
+        ComponentFamily.NORMALIZATION,
+        {"description": "Tensor-based Normalization Processor"}
     )
 
 

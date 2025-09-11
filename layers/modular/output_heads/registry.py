@@ -67,16 +67,20 @@ try:
         try:
             return unified_registry.resolve(ComponentFamily.OUTPUT_HEAD, lookup).cls
         except Exception:
-            return cls._registry.get(name)
+            # Fallback to legacy registry but preserve ValueError behavior
+            component = cls._registry.get(name)
+            if component is None:
+                raise ValueError(f"Output head component '{name}' not found.")
+            return component
 
     @classmethod  # type: ignore
     def _shim_list(cls):
         _warn_head()
-        names = list(unified_registry.list(ComponentFamily.OUTPUT_HEAD)[ComponentFamily.OUTPUT_HEAD.value])
-        for n in cls._registry.keys():
-            if n not in names:
-                names.append(n)
-        return sorted(names)
+        try:
+            names = list(unified_registry.list(ComponentFamily.OUTPUT_HEAD))
+        except Exception:
+            names = list(cls._registry.keys())
+        return names
 
     OutputHeadRegistry.register = _shim_register  # type: ignore
     OutputHeadRegistry.get = _shim_get  # type: ignore

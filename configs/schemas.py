@@ -13,6 +13,37 @@ from typing import Any, Dict, List, Optional, Literal
 from pydantic import BaseModel, Field, NonNegativeInt, PositiveInt, model_validator
 
 
+class BaseModelConfig(BaseModel):
+    """Base configuration class for all model configurations.
+    
+    Provides common fields and validation logic shared across different model types.
+    """
+    task_name: str = "long_term_forecast"
+    seq_len: int
+    pred_len: int
+    label_len: int
+    enc_in: int
+    dec_in: int
+    c_out: int
+    d_model: int = 512
+    dropout: float = 0.1
+    
+    model_config = {"extra": "allow", "populate_by_name": True}
+    
+    @model_validator(mode="after")
+    def _validate_base_consistency(self):
+        """Validate basic model configuration consistency."""
+        if self.seq_len <= 0:
+            raise ValueError("seq_len must be positive")
+        if self.pred_len <= 0:
+            raise ValueError("pred_len must be positive")
+        if self.label_len < 0:
+            raise ValueError("label_len must be non-negative")
+        if self.d_model <= 0:
+            raise ValueError("d_model must be positive")
+        return self
+
+
 # ---------------------------------------------------------------------------
 # Component Enumeration
 # ---------------------------------------------------------------------------
@@ -116,6 +147,7 @@ class ComponentType(str, Enum):
 class AttentionConfig(BaseModel):
     type: ComponentType
     d_model: Optional[int] = None
+    dropout: Optional[float] = None
     n_heads: Optional[int] = None
     num_heads: Optional[int] = None  # compatibility mirror
     head_dim: Optional[int] = None
@@ -250,6 +282,8 @@ class BackboneConfig(BaseModel):
     use_backbone: bool = False
     prediction_length: Optional[int] = None
     context_length: Optional[int] = None
+    d_model: Optional[int] = None
+    dropout: Optional[float] = None
 
 class EmbeddingConfig(BaseModel):
     type: ComponentType

@@ -14,4 +14,16 @@ Design notes:
 """
 from .registry import ComponentFamily, component_registry as unified_registry  # re-export for convenience
 
-__all__ = ["ComponentFamily", "unified_registry"]
+def get_attention_component(name: str, **kwargs):
+    """Get an attention component from the unified registry.
+    
+    Args:
+        name: Name of the attention component
+        **kwargs: Parameters to pass to the component constructor
+        
+    Returns:
+        Instantiated attention component
+    """
+    return unified_registry.create(ComponentFamily.ATTENTION, name, **kwargs)
+
+__all__ = ["ComponentFamily", "unified_registry", "get_attention_component"]

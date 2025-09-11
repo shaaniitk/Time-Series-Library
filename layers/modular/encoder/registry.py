@@ -90,16 +90,19 @@ try:
         try:
             return unified_registry.resolve(ComponentFamily.ENCODER, lookup).cls
         except Exception:
-            return cls._registry.get(name)
+            # Fallback to legacy registry but preserve ValueError behavior
+            component = cls._registry.get(name)
+            if component is None:
+                raise ValueError(f"Encoder component '{name}' not found.")
+            return component
 
     @classmethod  # type: ignore
     def _shim_list(cls):
         _warn_enc()
-        names = list(unified_registry.list(ComponentFamily.ENCODER)[ComponentFamily.ENCODER.value])
-        for n in cls._registry.keys():
-            if n not in names:
-                names.append(n)
-        return sorted(names)
+        try:
+            return unified_registry.list(ComponentFamily.ENCODER)
+        except Exception:
+            return list(cls._registry.keys())
 
     EncoderRegistry.register = _shim_register  # type: ignore
     EncoderRegistry.get = _shim_get  # type: ignore

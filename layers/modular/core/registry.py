@@ -93,6 +93,13 @@ class ComponentRegistry:
         Primarily used by the testing framework for discovery.
         """
         return self._registry[component_type].copy()
+    
+    def list(self, component_type: ComponentFamily) -> list:
+        """
+        Returns a list of all registered component names for a specific type.
+        Used by tests to enumerate available components.
+        """
+        return list(self._registry[component_type].keys())
 
 # Create a single, global instance of the registry to be imported everywhere.
 component_registry = ComponentRegistry()

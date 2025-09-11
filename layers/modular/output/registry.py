@@ -20,105 +20,71 @@ class OutputRegistry(ComponentRegistry):
     """Registry for output layer components"""
     
     def __init__(self):
-        super().__init__(ComponentFamily.OUTPUT)
+        super().__init__()
         self._register_components()
     
     def _register_components(self):
         """Register all available output components"""
         
         # Linear output components
-        self.register_component(
-            name="linear",
-            component_class=LinearOutput,
-            config_class=LinearOutputConfig,
-            description="Simple linear projection output layer",
-            tags=["linear", "projection", "basic"]
+        self.register(
+            "linear",
+            LinearOutput,
+            ComponentFamily.OUTPUT,
+            {
+                "config_class": LinearOutputConfig,
+                "description": "Simple linear projection output layer",
+                "tags": ["linear", "projection", "basic"]
+            }
         )
         
         # Forecasting heads
-        self.register_component(
-            name="forecasting",
-            component_class=ForecastingHead,
-            config_class=OutputConfig,
-            description="Output head for time series forecasting tasks",
-            tags=["forecasting", "timeseries", "prediction"]
+        self.register(
+            "forecasting",
+            ForecastingHead,
+            ComponentFamily.OUTPUT,
+            {
+                "config_class": OutputConfig,
+                "description": "Output head for time series forecasting tasks",
+                "tags": ["forecasting", "timeseries", "prediction"]
+            }
         )
         
         # Regression heads
-        self.register_component(
-            name="regression",
-            component_class=RegressionHead,
-            config_class=OutputConfig,
-            description="Output head for regression tasks",
-            tags=["regression", "continuous", "prediction"]
+        self.register(
+            "regression",
+            RegressionHead,
+            ComponentFamily.OUTPUT,
+            {
+                "config_class": OutputConfig,
+                "description": "Output head for regression tasks",
+                "tags": ["regression", "continuous", "prediction"]
+            }
         )
         
-        logger.info(f"Registered {len(self._components)} output components")
+        logger.info(f"Registered output components successfully")
     
     def create_component(self, name: str, config: Optional[Dict[str, Any]] = None, **kwargs) -> BaseOutput:
-        """Create an output component instance
+        """Create an output component by name."""
+        # Merge config with kwargs
+        final_config = {}
+        if config:
+            final_config.update(config)
+        final_config.update(kwargs)
         
-        Args:
-            name: Component name
-            config: Configuration dictionary
-            **kwargs: Additional configuration parameters
-            
-        Returns:
-            Configured output component instance
-        """
-        if name not in self._components:
-            available = list(self._components.keys())
-            raise ValueError(f"Unknown output component '{name}'. Available: {available}")
-        
-        component_info = self._components[name]
-        config_class = component_info['config_class']
-        component_class = component_info['component_class']
-        
-        # Merge config dict with kwargs
-        if config is None:
-            config = {}
-        config.update(kwargs)
-        
-        # Create config instance
-        if config_class == LinearOutputConfig:
-            # Handle LinearOutputConfig parameters
-            config_instance = config_class(
-                d_model=config.get('d_model', 512),
-                output_dim=config.get('output_dim', 1)
-            )
-        elif config_class == OutputConfig:
-            # Handle OutputConfig parameters
-            config_instance = config_class(
-                d_model=config.get('d_model', 512),
-                output_dim=config.get('output_dim', 1),
-                horizon=config.get('horizon', 1),
-                dropout=config.get('dropout', 0.1),
-                use_bias=config.get('use_bias', True),
-                activation=config.get('activation', None)
-            )
-        else:
-            # Generic config creation
-            config_instance = config_class(**config)
-        
-        # Create component instance
-        component = component_class(config_instance)
-        
-        logger.info(f"Created output component '{name}' with config: {config}")
-        return component
+        return self.create(name, ComponentFamily.OUTPUT, **final_config)
     
     def get_component_types(self) -> Dict[str, str]:
-        """Get mapping of component names to their types"""
-        return {
-            name: info['description']
-            for name, info in self._components.items()
-        }
+        """Get all available output component types."""
+        components = self.get_all_by_type(ComponentFamily.OUTPUT)
+        return {name: info.get('description', 'No description') for name, info in components.items()}
     
     def get_components_by_tag(self, tag: str) -> Dict[str, Dict[str, Any]]:
-        """Get components that have a specific tag"""
+        """Get all components that have a specific tag."""
+        components = self.get_all_by_type(ComponentFamily.OUTPUT)
         return {
-            name: info
-            for name, info in self._components.items()
-            if tag in info.get('tags', [])
+            name: info for name, info in components.items()
+            if tag in info.get('config', {}).get('tags', [])
         }
 
 
