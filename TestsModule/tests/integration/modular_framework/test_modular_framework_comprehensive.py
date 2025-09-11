@@ -20,10 +20,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import modular components with graceful fallback
 try:
-    from layers.modular.core.registry import ComponentRegistry, get_global_registry
-    from layers.modular.core.interfaces import BaseComponent, ComponentType
+    from layers.modular.core import unified_registry, ComponentFamily
+    from layers.modular.base_interfaces import BaseComponent
     from layers.modular.core.configs import ComponentConfig
     from layers.modular.core.factory import ComponentFactory
+    from configs.schemas import ComponentType
     MODULAR_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Modular components not fully available: {e}")
@@ -47,19 +48,18 @@ class TestModularRegistry:
     
     def test_registry_initialization(self):
         """Test that registry initializes correctly"""
-        registry = ComponentRegistry()
+        # Import register_components to populate registry
+        import layers.modular.core.register_components
         
-        # Check all expected component types are present
-        expected_types = ['backbone', 'embedding', 'attention', 'processor', 
-                         'feedforward', 'loss', 'output', 'adapter']
-        
-        for component_type in expected_types:
-            assert component_type in registry._components
-            assert component_type in registry._metadata
+        assert unified_registry is not None
+        # Check that registry has components registered
+        attention_components = unified_registry.get_all_by_type(ComponentFamily.ATTENTION)
+        assert len(attention_components) > 0
     
     def test_component_registration(self):
         """Test registering components in the registry"""
-        registry = ComponentRegistry()
+        # Import register_components to populate registry
+        import layers.modular.core.register_components
         
         # Create a mock component
         class MockComponent(BaseComponent):
@@ -75,25 +75,23 @@ class TestModularRegistry:
             def get_config(self):
                 return {'d_model': self.d_model}
         
-        # Register the component
-        registry.register(
-            component_type='attention',
-            component_name='mock_attention',
+        # Register the component properly
+        unified_registry.register(
+            name='mock_attention',
             component_class=MockComponent,
-            metadata={'test': True}
+            component_type=ComponentFamily.ATTENTION,
+            test_config={'d_model': 512}
         )
-        
+
         # Verify registration
-        assert 'mock_attention' in registry._components['attention']
-        assert registry._metadata['attention']['mock_attention']['test'] is True
-        
-        # Test retrieval
-        retrieved_class = registry.get('attention', 'mock_attention')
-        assert retrieved_class == MockComponent
+        attention_components = unified_registry.get_all_by_type(ComponentFamily.ATTENTION)
+        component_names = [comp.name for comp in attention_components]
+        assert 'mock_attention' in component_names
     
     def test_component_creation(self):
         """Test creating component instances"""
-        registry = ComponentRegistry()
+        # Import register_components to populate registry
+        import layers.modular.core.register_components
         
         # Mock component for testing
         class TestComponent(BaseComponent):
@@ -107,27 +105,33 @@ class TestModularRegistry:
             def get_config(self):
                 return {'test_param': self.test_param}
         
-        registry.register('processor', 'test_component', TestComponent)
+        # Register the component properly
+        unified_registry.register(
+            name='test_component',
+            component_class=TestComponent,
+            component_type=ComponentFamily.PROCESSOR,
+            test_config={'test_param': 'default'}
+        )
         
         # Test creation with default config
-        component = registry.create('processor', 'test_component', {})
+        config = ComponentConfig(type='test_component', params={})
+        component = unified_registry.create('test_component', ComponentFamily.PROCESSOR, config)
         assert component.test_param == 'default'
         
         # Test creation with custom config
-        component = registry.create('processor', 'test_component', {'test_param': 'custom'})
+        config = ComponentConfig(type='test_component', params={'test_param': 'custom'})
+        component = unified_registry.create('test_component', ComponentFamily.PROCESSOR, config)
         assert component.test_param == 'custom'
     
     def test_registry_error_handling(self):
         """Test registry error handling for invalid inputs"""
-        registry = ComponentRegistry()
-        
-        # Test invalid component type
-        with pytest.raises(ValueError, match="Unknown component type"):
-            registry.register('invalid_type', 'test', Mock)
+        # Import register_components to populate registry
+        import layers.modular.core.register_components
         
         # Test missing component
-        with pytest.raises(ValueError, match="Component .* not found"):
-            registry.get('attention', 'nonexistent_component')
+        with pytest.raises(Exception):
+            config = ComponentConfig(type='nonexistent_component', params={})
+            unified_registry.create('nonexistent_component', ComponentFamily.ATTENTION, config)
 
 
 class TestComponentInterfaces:

@@ -17,6 +17,8 @@ class ComponentFamily(Enum):
     TUNING = "tuning"
     ENCODER = "encoder"
     DECODER = "decoder"
+    LOSS = "loss"
+    FUSION = "fusion"
 
 class ComponentRegistry:
     """
@@ -30,29 +32,33 @@ class ComponentRegistry:
             family: {} for family in ComponentFamily
         }
 
-    def register(
-        self,
-        name: str,
-        component_class: Type[nn.Module],
-        component_type: ComponentFamily,
-        test_config: Dict[str, Any]
-    ):
+    def register(self, name: str, component_class: type, component_type: ComponentFamily, metadata: dict = None, test_config: dict = None):
         """
         Registers a new component, making it available to the factory and test suite.
         
         Args:
             name (str): The unique name to identify the component.
-            component_class (Type[nn.Module]): The component's class definition.
+            component_class (type): The component's class definition.
             component_type (ComponentFamily): The family the component belongs to.
-            test_config (Dict[str, Any]): Keyword arguments needed to instantiate
+            metadata (dict): Optional component metadata.
+            test_config (dict): Keyword arguments needed to instantiate
                                          the class for testing.
         """
         if name in self._registry[component_type]:
             print(f"Warning: Component '{name}' of type '{component_type.value}' is being overwritten.")
             
+        # Prepare metadata with automatic fields
+        final_metadata = metadata or {}
+        final_metadata.update({
+            'class_name': component_class.__name__,
+            'module': component_class.__module__,
+            'registered_name': name
+        })
+        
         self._registry[component_type][name] = {
             "class": component_class,
-            "config": test_config
+            "config": test_config or {},
+            "metadata": final_metadata
         }
 
     def create(
@@ -84,8 +90,9 @@ class ComponentRegistry:
         # Start with default config and update with any overrides
         final_config = component_info["config"].copy()
         final_config.update(override_kwargs)
-        
-        return component_class(**final_config)
+
+        # Pass config as a single dictionary parameter
+        return component_class(config=final_config)
 
     def get_all_by_type(self, component_type: ComponentFamily) -> Dict[str, Dict[str, Any]]:
         """

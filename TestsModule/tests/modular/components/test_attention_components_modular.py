@@ -12,7 +12,7 @@ from __future__ import annotations
 import torch
 import pytest
 
-from layers.modular.core.registry import unified_registry, ComponentFamily
+from layers.modular.core.registry import component_registry, ComponentFamily
 from layers.modular.core import register_components
 from configs.schemas import ComponentType, AttentionConfig
 
@@ -45,7 +45,7 @@ def test_attention_component_forward(attention_type: ComponentType) -> None:
         factor=1,
         output_attention=False,
     )
-    component = unified_registry.create(ComponentFamily.ATTENTION, attention_type.value, **vars(config), d_model=d_model, seq_len=seq_len)
+    component = component_registry.create(ComponentFamily.ATTENTION, attention_type.value, **vars(config), d_model=d_model, seq_len=seq_len)
 
     with torch.no_grad():
         if attention_type == ComponentType.CROSS_RESOLUTION:

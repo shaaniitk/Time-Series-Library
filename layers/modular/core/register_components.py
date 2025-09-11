@@ -27,13 +27,19 @@ from ..normalization.registry import (
 from ..output_heads.level_output_head import LevelOutputHead
 from ..encoder.crossformer_encoder import CrossformerEncoder
 from ..encoder.variational_lstm_encoder import VariationalLSTMEncoder
+from ..attention.registry import AttentionRegistry
+from layers.EnhancedAutoCorrelation import AdaptiveAutoCorrelationLayer
+from ..attention.enhanced_autocorrelation import EnhancedAutoCorrelation
+from ..attention.cross_resolution_attention import CrossResolutionAttention
+from ..attention.fourier.fourier_attention import FourierAttention
+from ..attention.bayesian.bayesian_attention import BayesianAttention
 import torch.nn as nn
 
 # Register Fusion Components
 component_registry.register(
     name="hierarchical_fusion",
     component_class=HierarchicalFusion,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.FUSION,
     test_config={
         "d_model": 512,
         "n_levels": 3,
@@ -46,14 +52,14 @@ component_registry.register(
 component_registry.register(
     name="quantile_loss",
     component_class=PinballLoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={"quantiles": [0.1, 0.5, 0.9]}
 )
 
 component_registry.register(
     name="pinball_loss",  # Alias for quantile
     component_class=PinballLoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={"quantiles": [0.1, 0.5, 0.9]}
 )
 
@@ -61,35 +67,35 @@ component_registry.register(
 component_registry.register(
     name="mape_loss",
     component_class=MAPELoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={}
 )
 
 component_registry.register(
     name="smape_loss",
     component_class=SMAPELoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={}
 )
 
 component_registry.register(
     name="mase_loss",
     component_class=MASELoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={"seasonal_periods": 1}
 )
 
 component_registry.register(
     name="ps_loss",
     component_class=PSLoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={}
 )
 
 component_registry.register(
     name="focal_loss",
     component_class=FocalLoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={"alpha": 1.0, "gamma": 2.0}
 )
 
@@ -97,21 +103,21 @@ component_registry.register(
 component_registry.register(
     name="adaptive_autoformer_loss",
     component_class=AdaptiveAutoformerLoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={"base_loss": "mse"}
 )
 
 component_registry.register(
     name="frequency_aware_loss",
     component_class=FrequencyAwareLoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={"base_loss": "mse"}
 )
 
 component_registry.register(
     name="multi_quantile_loss",
     component_class=QuantileLoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={"quantiles": [0.1, 0.5, 0.9]}
 )
 
@@ -119,14 +125,14 @@ component_registry.register(
 component_registry.register(
     name="bayesian_quantile_loss",
     component_class=BayesianQuantileLoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={"quantiles": [0.1, 0.5, 0.9]}
 )
 
 component_registry.register(
     name="uncertainty_calibration_loss",
     component_class=UncertaintyCalibrationLoss,
-    component_type=ComponentFamily.PROCESSOR,
+    component_type=ComponentFamily.LOSS,
     test_config={"base_loss": "mse"}
 )
 
@@ -197,6 +203,42 @@ component_registry.register(
     component_class=GatedFFN,
     component_type=ComponentFamily.FEEDFORWARD,
     test_config={"d_model": 512, "d_ff": 2048}
+)
+
+# Register Attention Components
+component_registry.register(
+    name="enhanced_autocorrelation",
+    component_class=EnhancedAutoCorrelation,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={"d_model": 512, "n_heads": 8}
+)
+
+component_registry.register(
+    name="adaptive_autocorrelation_layer",
+    component_class=AdaptiveAutoCorrelationLayer,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={"d_model": 512, "n_heads": 8}
+)
+
+component_registry.register(
+    name="cross_resolution_attention",
+    component_class=CrossResolutionAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={"d_model": 512, "n_heads": 8}
+)
+
+component_registry.register(
+    name="fourier_attention",
+    component_class=FourierAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={"d_model": 512, "n_heads": 8}
+)
+
+component_registry.register(
+    name="bayesian_attention",
+    component_class=BayesianAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={"d_model": 512, "n_heads": 8}
 )
 
 component_registry.register(

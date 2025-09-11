@@ -18,8 +18,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, PROJECT_ROOT)
 
 from models.modular_autoformer import ModularAutoformer
-from layers.modular.core.registry import unified_registry
-from layers.modular.core.example_components import register_example_components
+from layers.modular.core.registry import component_registry
+# from layers.modular.core.example_components import register_example_components  # Not needed
 
 
 def generate_test_data(seq_len=96, pred_len=24, num_features=1, batch_size=2):
@@ -132,7 +132,7 @@ def test_chronosx_integration():
     try:
         # Initialize global registry and register components
         print(">> Initializing component registry...")
-        registry = unified_registry
+        registry = component_registry
         register_example_components(registry)
         print("    Components registered successfully")
         

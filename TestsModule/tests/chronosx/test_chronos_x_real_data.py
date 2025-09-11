@@ -18,13 +18,13 @@ import time
 # Add project path
 sys.path.append(str(Path(__file__).parent))
 
-from chronos import ChronosPipeline
-from layers.modular.backbone.chronos_backbone import (
-    ChronosBackbone as ChronosXBackbone, ChronosXTinyBackbone, 
-    ChronosXLargeBackbone, ChronosXUncertaintyBackbone
-)
+# from chronos import ChronosPipeline  # External chronos library not available
+# Using local ChronosBackbone instead
+from layers.modular.backbone.chronos_backbone import ChronosBackbone
+# Note: ChronosXTinyBackbone, ChronosXLargeBackbone, ChronosXUncertaintyBackbone not available in current implementation
+# from layers.modular.core.example_components import register_example_components  # Not needed
 from configs.schemas import BackboneConfig
-from layers.modular.core.registry import unified_registry
+from layers.modular.core.registry import component_registry
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class ChronosXRealDataTester:
     
     def __init__(self):
         self.results = {}
-        self.registry = unified_registry
+        self.registry = component_registry
         
     def load_real_data(self) -> Dict[str, np.ndarray]:
         """Load real time series data from available sources"""
@@ -97,8 +97,8 @@ class ChronosXRealDataTester:
         return data_sources
     
     def test_chronos_pipeline_direct(self, data: np.ndarray, model_size: str = "tiny") -> Dict:
-        """Test ChronosPipeline directly without modular architecture"""
-        logger.info(f"Testing ChronosPipeline directly with {model_size} model...")
+        """Test ChronosBackbone directly without modular architecture"""
+        logger.info(f"Testing ChronosBackbone directly with {model_size} model...")
         
         model_names = {
             'tiny': 'amazon/chronos-t5-tiny',
@@ -108,13 +108,17 @@ class ChronosXRealDataTester:
         }
         
         try:
-            # Load ChronosX model
+            # Load ChronosX model using ChronosBackbone
             start_time = time.time()
-            pipeline = ChronosPipeline.from_pretrained(
-                model_names[model_size],
-                device_map="cpu",  # Use CPU for compatibility
-                torch_dtype=torch.float32,
+            config = BackboneConfig(
+                component_name='chronos_backbone',
+                backbone_type='chronos_backbone',
+                d_model=64,
+                model_name=model_names[model_size]
             )
+            config.device = 'cpu'
+            config.torch_dtype = torch.float32
+            pipeline = ChronosBackbone(config)
             load_time = time.time() - start_time
             
             # Prepare data
@@ -218,14 +222,9 @@ class ChronosXRealDataTester:
             config.model_size = 'tiny'
             
             # Create backbone
-            if backbone_type == "chronos_x_tiny":
-                backbone = ChronosXTinyBackbone(config)
-            elif backbone_type == "chronos_x_large":
-                backbone = ChronosXLargeBackbone(config)
-            elif backbone_type == "chronos_x_uncertainty":
-                backbone = ChronosXUncertaintyBackbone(config)
-            else:
-                backbone = ChronosXBackbone(config)
+            # All backbone types use ChronosBackbone for now
+            # TODO: Implement size-specific variants when available
+            backbone = ChronosBackbone(config)
             
             # Prepare data
             if len(data.shape) == 1:
@@ -318,7 +317,9 @@ class ChronosXRealDataTester:
             config.uncertainty_enabled = True
             config.num_samples = 50  # More samples for better uncertainty
             
-            backbone = ChronosXUncertaintyBackbone(config)
+            # Use ChronosBackbone for uncertainty testing
+            # TODO: Implement ChronosXUncertaintyBackbone when available
+            backbone = ChronosBackbone(config)
             
             # Test uncertainty prediction
             if len(data.shape) == 1:

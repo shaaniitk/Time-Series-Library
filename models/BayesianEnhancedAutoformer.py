@@ -8,7 +8,7 @@ from layers.modular.decoder.enhanced_decoder import EnhancedDecoder
 from layers.modular.attention.enhanced_autocorrelation import EnhancedAutoCorrelation
 from layers.modular.output_heads.standard_output_head import StandardOutputHead
 from layers.modular.sampling.monte_carlo_sampling import MonteCarloSampling
-from layers.modular.losses.bayesian_loss import BayesianLoss
+from layers.modular.loss.adaptive_bayesian_losses import BayesianLoss
 from layers.Autoformer_EncDec import series_decomp
 
 class Model(ModularAutoformer):

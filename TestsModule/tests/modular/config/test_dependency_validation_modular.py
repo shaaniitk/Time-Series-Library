@@ -14,16 +14,18 @@ from __future__ import annotations
 
 import pytest
 
-from layers.modular.core.registry import create_global_registry
+from layers.modular.core import unified_registry, ComponentFamily
 from layers.modular.core.configuration_manager import ConfigurationManager, ModularConfig
 
 
 @pytest.fixture(scope="module")
 def registry_and_manager():
     """Shared registry + configuration manager (module scope to amortize setup)."""
-    registry = create_global_registry()
-    manager = ConfigurationManager(registry)
-    return registry, manager
+    # Import register_components to populate registry
+    import layers.modular.core.register_components
+    
+    manager = ConfigurationManager(unified_registry)
+    return unified_registry, manager
 
 
 def test_minimal_valid_configuration(registry_and_manager):
@@ -68,7 +70,7 @@ def test_capability_requirement_resolution(registry_and_manager):
     fixed, errors, warnings = manager.validate_and_fix_configuration(cfg)
     # Permit same transient single error as above
     assert len(errors) <= 1, f"Too many errors: {errors}"
-    available_attention = registry.list_components('attention')['attention']
+    available_attention = [comp.name for comp in registry.get_all_by_type(ComponentFamily.ATTENTION)]
     assert fixed.attention_type in available_attention
 
 

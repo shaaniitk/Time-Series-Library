@@ -272,6 +272,9 @@ class TestBackwardCompatibility(unittest.TestCase):
         try:
             from layers.modular.loss.registry import LossRegistry
             
+            # Import register_components to populate registry
+            import layers.modular.core.register_components
+            
             # Test that we can still list components (should warn)
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
@@ -293,13 +296,16 @@ class TestBackwardCompatibility(unittest.TestCase):
         try:
             from layers.modular.loss.registry import LossRegistry
             
+            # Import register_components to populate registry
+            import layers.modular.core.register_components
+            
             # Test getting a component (should warn)
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
                 
                 # Try to get a component that should exist
                 try:
-                    component_class = LossRegistry.get("quantile")
+                    component_class = LossRegistry.get("quantile_loss")
                     self.assertIsNotNone(component_class)
                 except Exception:
                     # If unified registry integration fails, should fall back to legacy

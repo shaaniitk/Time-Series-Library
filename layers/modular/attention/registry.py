@@ -1,23 +1,27 @@
 
-from layers.AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
-from .enhanced_autocorrelation import AdaptiveAutoCorrelationLayer
+# Import AutoCorrelation components from modular structure
+from .timeseries.autocorrelation import AutoCorrelationAttention
+from .enhanced_autocorrelation import AdaptiveAutoCorrelationLayer, EnhancedAutoCorrelation, HierarchicalAutoCorrelation
 from .cross_resolution_attention import CrossResolutionAttention
 
 # Import new Phase 2 components
-from .fourier_attention import FourierAttention, FourierBlock, FourierCrossAttention
+from .fourier.fourier_attention import FourierAttention
 from .wavelet.wavelet_attention import WaveletAttention  # type: ignore
 from .wavelet.wavelet_decomposition import WaveletDecomposition  # type: ignore
 from .wavelet.adaptive_wavelet_attention import AdaptiveWaveletAttention  # type: ignore
 from .wavelet.multiscale_wavelet_attention import MultiScaleWaveletAttention  # type: ignore
-from .enhanced_autocorrelation import EnhancedAutoCorrelation, AdaptiveAutoCorrelationLayer as NewAdaptiveAutoCorrelationLayer, HierarchicalAutoCorrelation
+# Enhanced autocorrelation components already imported above
 # Split Bayesian modules (backward-compatible re-exports retained in monolithic file)
 from .bayesian.bayesian_attention import BayesianAttention
 from .bayesian.bayesian_multi_head_attention import BayesianMultiHeadAttention
 from .bayesian.variational_attention import VariationalAttention
 from .bayesian.bayesian_cross_attention import BayesianCrossAttention
-from .adaptive_components import MetaLearningAdapter, AdaptiveMixture
-from .temporal_conv_attention import CausalConvolution, TemporalConvNet, ConvolutionalAttention
-from .graph_attention import GraphAttentionLayer, MultiGraphAttention
+from .adaptive.meta_learning_adapter import MetaLearningAdapter
+from .adaptive.adaptive_mixture import AdaptiveMixture
+from .temporal_conv.causal_convolution import CausalConvolution
+from .temporal_conv.temporal_conv_net import TemporalConvNet
+from .temporal_conv.convolutional_attention import ConvolutionalAttention
+from .graph_attention import MultiGraphAttention
 
 from utils.logger import logger
 
@@ -26,15 +30,15 @@ class AttentionRegistry:
     A registry for all available attention components.
     """
     _registry = {
-        # Legacy components
-        "autocorrelation_layer": AutoCorrelationLayer,
+        # AutoCorrelation components
+        "autocorrelation_attention": AutoCorrelationAttention,
         "adaptive_autocorrelation_layer": AdaptiveAutoCorrelationLayer,
+        "enhanced_autocorrelation": EnhancedAutoCorrelation,
+        "hierarchical_autocorrelation": HierarchicalAutoCorrelation,
         "cross_resolution_attention": CrossResolutionAttention,
         
-        # Phase 2: Fourier Attention Components
+        # Phase 2: Fourier Components
         "fourier_attention": FourierAttention,
-        "fourier_block": FourierBlock,
-        "fourier_cross_attention": FourierCrossAttention,
         
         # Phase 2: Wavelet Attention Components
         "wavelet_attention": WaveletAttention,
@@ -42,10 +46,9 @@ class AttentionRegistry:
         "adaptive_wavelet_attention": AdaptiveWaveletAttention,
         "multi_scale_wavelet_attention": MultiScaleWaveletAttention,
         
-        # Phase 2: Enhanced AutoCorrelation Components
-        "enhanced_autocorrelation": EnhancedAutoCorrelation,
-        "new_adaptive_autocorrelation_layer": NewAdaptiveAutoCorrelationLayer,
-        "hierarchical_autocorrelation": HierarchicalAutoCorrelation,
+        # Phase 2: Enhanced AutoCorrelation Components (already included above)
+        # "enhanced_autocorrelation": EnhancedAutoCorrelation,  # Already registered above
+        # "hierarchical_autocorrelation": HierarchicalAutoCorrelation,  # Already registered above
         
         # Phase 2: Bayesian Attention Components
         "bayesian_attention": BayesianAttention,
@@ -63,7 +66,6 @@ class AttentionRegistry:
         "convolutional_attention": ConvolutionalAttention,
         
         # Graph Attention Components
-        "graph_attention_layer": GraphAttentionLayer,
         "multi_graph_attention": MultiGraphAttention,
     }
 
@@ -171,26 +173,22 @@ except Exception:  # pragma: no cover - fail silently if unified not available e
     def list_components(cls):
         return list(cls._registry.keys())
 
+    @classmethod
+    def create_component(cls, component_name, **kwargs):
+        """Create an attention component instance with given parameters"""
+        if component_name in ["autocorrelation_attention", "enhanced_autocorrelation", "hierarchical_autocorrelation"]:
+            return cls._registry[component_name](**kwargs)
+        
+        if component_name in cls._registry:
+            return cls._registry[component_name](**kwargs)
+        else:
+            raise ValueError(f"Unknown attention component: {component_name}. Available: {list(cls._registry.keys())}")
+
 def get_attention_component(name, **kwargs):
     component_class = AttentionRegistry.get(name)
     
     # Legacy components
-    if name == "autocorrelation_layer":
-        # Default to output_attention=True so downstream diagnostics/metrics can uniformly access
-        # attention (correlation) weights without every caller remembering to opt-in.
-        # Callers can still disable explicitly via output_attention=False.
-        autocorrelation = AutoCorrelation(
-            mask_flag=kwargs.get('mask_flag', True),
-            factor=kwargs.get('factor', 1),
-            attention_dropout=kwargs.get('dropout', 0.1),
-            output_attention=kwargs.get('output_attention', True)
-        )
-        return component_class(
-            autocorrelation,
-            d_model=kwargs.get('d_model'),
-            n_heads=kwargs.get('n_heads')
-        )
-    elif name == "adaptive_autocorrelation_layer":
+    if name == "adaptive_autocorrelation_layer":
         # Modular AdaptiveAutoCorrelationLayer builds its own inner mechanism;
         # pass only its expected named parameters (no positional autocorrelation object).
         return component_class(

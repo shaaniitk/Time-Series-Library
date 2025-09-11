@@ -1603,11 +1603,11 @@ component_registry.register_component(
 
 # Register Adaptive Mixture Sampling
 component_registry.register_component(
-    ComponentType.ADAPTIVE_MIXTURE,
+    ComponentType.ADAPTIVE_MIXTURE_ATTN,
     AdaptiveMixtureSampling,
     ComponentMetadata(
         name="AdaptiveMixture",
-        component_type=ComponentType.ADAPTIVE_MIXTURE,
+        component_type=ComponentType.ADAPTIVE_MIXTURE_ATTN,
         required_params=['d_model'],
         optional_params=['num_experts'],
         description="Adaptive mixture of experts for pattern-specific sampling"
@@ -2228,11 +2228,11 @@ component_registry.register_component(
 )
 
 component_registry.register_component(
-    ComponentType.ADAPTIVE_MIXTURE,
+    ComponentType.ADAPTIVE_MIXTURE_ATTN,
     AdaptiveMixtureSampling,
     ComponentMetadata(
         name="AdaptiveMixtureSampling",
-        component_type=ComponentType.ADAPTIVE_MIXTURE,
+        component_type=ComponentType.ADAPTIVE_MIXTURE_ATTN,
         required_params=['d_model'],
         optional_params=['num_experts'],
         description="Adaptive mixture of experts for different time series patterns"

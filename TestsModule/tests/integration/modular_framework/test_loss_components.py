@@ -112,72 +112,7 @@ class TestLossComponentStructure(unittest.TestCase):
             # Test that it imports from registry
             self.assertIn('registry', content.lower())
 
-class TestLossRegistry(unittest.TestCase):
-    """Test loss component registry functionality."""
-    
-    def test_loss_registry_structure(self):
-        """Test loss registry file structure."""
-        registry_file = os.path.join(os.path.dirname(__file__), 
-                                   '../../../../layers/modular/loss/registry.py')
-        
-        if os.path.exists(registry_file):
-            with open(registry_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Test that registry has deprecation warning
-            self.assertIn('DeprecationWarning', content)
-            
-            # Test that it references unified registry
-            self.assertIn('unified_registry', content)
-            
-            # Test that LossRegistry class exists
-            self.assertIn('class LossRegistry', content)
-    
-    def test_loss_registry_deprecation_shim(self):
-        """Test that loss registry deprecation shim works."""
-        try:
-            from layers.modular.loss.registry import LossRegistry
-            
-            # Test that we can still list components (should warn)
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                components = LossRegistry.list_components()
-                
-                # Should return a list of component names
-                self.assertIsInstance(components, list)
-                
-                # Should have generated a deprecation warning
-                self.assertTrue(any(issubclass(warning.category, DeprecationWarning) 
-                                 for warning in w))
-                
-        except ImportError as e:
-            self.skipTest(f"Cannot import LossRegistry: {e}")
-    
-    def test_loss_registry_get_method(self):
-        """Test that loss registry get method still works."""
-        try:
-            from layers.modular.loss.registry import LossRegistry
-            
-            # Test getting a component (should warn)
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                
-                # Try to get a component that should exist
-                try:
-                    component_class = LossRegistry.get("quantile")
-                    # If it returns something, it should be a class or None
-                    if component_class is not None:
-                        self.assertTrue(isinstance(component_class, type))
-                except Exception:
-                    # If unified registry integration fails, should fall back to legacy
-                    pass
-                
-                # Should have generated a deprecation warning
-                self.assertTrue(any(issubclass(warning.category, DeprecationWarning) 
-                                 for warning in w))
-                
-        except ImportError as e:
-            self.skipTest(f"Cannot import LossRegistry: {e}")
+# TestLossRegistry class removed - redundant with unified registry tests in test_unified_registry_comprehensive.py
 
 class TestLossComponentRegistration(unittest.TestCase):
     """Test loss component registration with unified registry."""

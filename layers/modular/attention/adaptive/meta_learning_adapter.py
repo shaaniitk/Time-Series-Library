@@ -1,0 +1,89 @@
+    
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import Optional, Tuple, Dict
+from collections import OrderedDict
+
+from ..base import BaseAttention
+
+class MetaLearningAdapter(BaseAttention):
+    """
+    A MAML-style meta-learning adapter. It can quickly adapt its internal
+    'fast weights' to a new task (e.g., a new time series) using a small
+    support set.
+    """
+    def __init__(self, d_model: int, n_heads: int, adaptation_steps: int = 3, inner_lr: float = 0.1, **kwargs):
+        super().__init__(d_model, n_heads)
+        self.adaptation_steps = adaptation_steps
+        self.inner_lr = inner_lr
+
+        # These are the "meta" parameters that will be learned slowly.
+        self.network = nn.Sequential(OrderedDict([
+            ('layer1', nn.Linear(d_model, d_model)),
+            ('relu1', nn.ReLU()),
+            ('layer2', nn.Linear(d_model, d_model))
+        ]))
+
+    def _forward_with_params(self, x: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """A helper to run a forward pass with a custom set of parameters."""
+        x = F.linear(x, params['network.layer1.weight'], params['network.layer1.bias'])
+        x = F.relu(x)
+        x = F.linear(x, params['network.layer2.weight'], params['network.layer2.bias'])
+        return x
+
+    def forward(
+        self,
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        support_set: Optional[torch.Tensor] = None,
+        support_labels: Optional[torch.Tensor] = None,
+        **kwargs
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        
+        # During inference or if no support set is provided, use the standard meta-parameters.
+        if not self.training or support_set is None:
+            return self.network(queries), None
+
+    # --- MAML Inner Loop: Adaptation ---
+    # Create a copy of the parameters to be adapted (the 'fast weights')
+        fast_params = OrderedDict((name, p.clone().detach().requires_grad_(True)) for name, p in self.named_parameters())
+        
+        for _ in range(self.adaptation_steps):
+            # Forward pass on the support set with the current fast weights
+            support_pred = self._forward_with_params(support_set, fast_params)
+            
+            # Compute loss on the support set
+            loss = F.mse_loss(support_pred, support_labels if support_labels is not None else support_set)
+            
+            # Compute gradients for the fast weights
+            grads = torch.autograd.grad(loss, fast_params.values(), create_graph=True)
+            
+            # Update the fast weights using gradient descent
+            fast_params = OrderedDict(
+                (name, param - self.inner_lr * grad)
+                for ((name, param), grad) in zip(fast_params.items(), grads)
+            )
+            
+        # --- Outer Loop: Forward pass on the query set ---
+        # Use the final adapted fast weights for the main query
+        output = self._forward_with_params(queries, fast_params)
+
+        return output, None
+
+# --- Registration ---
+from ...core.registry import component_registry, ComponentFamily  # noqa: E402
+
+component_registry.register(
+    name="MetaLearningAdapter",
+    component_class=MetaLearningAdapter,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "adaptation_steps": 1,
+        "inner_lr": 0.05,
+    },
+)
+
+  

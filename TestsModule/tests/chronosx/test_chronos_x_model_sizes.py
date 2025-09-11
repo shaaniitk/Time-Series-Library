@@ -9,7 +9,7 @@ import torch
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from chronos import ChronosPipeline
+from layers.modular.backbone.chronos_backbone import ChronosBackbone
 import time
 import psutil
 import logging

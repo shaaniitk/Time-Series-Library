@@ -29,7 +29,7 @@ ADVANCED_COMPONENT_TYPES = [
     ComponentType.ADVANCED_WAVELET,
     ComponentType.TEMPORAL_CONV_ENCODER,
     ComponentType.META_LEARNING_ADAPTER,
-    ComponentType.ADAPTIVE_MIXTURE,
+    ComponentType.ADAPTIVE_MIXTURE_ATTN,
     ComponentType.BAYESIAN_HEAD,
 ]
 

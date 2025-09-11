@@ -21,11 +21,10 @@ import logging
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from layers.modular.core.registry import unified_registry, ComponentFamily
-from layers.modular.core.example_components import register_example_components
-from layers.modular.core.dependency_manager import DependencyValidator
-from layers.modular.core.configuration_manager import ConfigurationManager, ModularConfig
-from layers.modular.configs import ComponentConfig
+from layers.modular.core.registry import component_registry, ComponentFamily
+# from layers.modular.core.dependency_manager import DependencyValidator  # Module not available
+# from layers.modular.core.configuration_manager import ConfigurationManager, ModularConfig  # Module not available
+from configs.schemas import BaseModelConfig
 from models.modular_autoformer import ModularAutoformer
 
 # Setup logging
@@ -36,9 +35,9 @@ class ChronosXTestSuite:
     """Comprehensive test suite for ChronosX backbone integration"""
     
     def __init__(self):
-        self.registry = unified_registry
-        self.dependency_validator = DependencyValidator(self.registry)
-        self.config_manager = ConfigurationManager(self.registry, self.dependency_validator)
+        self.registry = component_registry
+        # self.dependency_validator = DependencyValidator(self.registry)  # Module not available
+        # self.config_manager = ConfigurationManager(self.registry, self.dependency_validator)  # Module not available
         
         # Test results storage
         self.test_results = {
@@ -241,9 +240,9 @@ class ChronosXTestSuite:
         print("\n Test 1: Registering Custom ChronosX Variant")
         try:
             # Create a custom ChronosX variant
-            from layers.modular.backbone.chronos import ChronosXBackbone
+            from layers.modular.backbone.chronos_backbone import ChronosBackbone
             
-            class ChronosXCustomBackbone(ChronosXBackbone):
+            class ChronosXCustomBackbone(ChronosBackbone):
                 """Custom ChronosX variant for testing"""
                 
                 def __init__(self, config):
@@ -298,9 +297,9 @@ class ChronosXTestSuite:
         """Test a specific configuration"""
         try:
             # Create modular config
-            config = ModularConfig(
-                backbone_type=config_dict.get('backbone_type'),
-                processor_type=config_dict.get('processor_type'),
+            config = BaseModelConfig(
+                task_name=config_dict.get('backbone_type', 'chronos_backbone'),
+                # processor_type=config_dict.get('processor_type'),  # Using BaseModelConfig instead
                 attention_type=config_dict.get('attention_type'),
                 loss_type=config_dict.get('loss_type')
             )

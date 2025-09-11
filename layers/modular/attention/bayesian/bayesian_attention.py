@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from ..base import BaseAttention
-from .bayesian_linear import BayesianLinear
+from layers.BayesianLayers import BayesianLinear
 from utils.logger import logger
 
 class BayesianAttention(BaseAttention):

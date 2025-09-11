@@ -6,8 +6,8 @@ from layers.modular.encoder.standard_encoder import StandardEncoder
 from layers.modular.encoder.enhanced_encoder import EnhancedEncoder
 from layers.modular.encoder.stable_encoder import StableEncoder
 from layers.modular.layers.standard_layers import StandardEncoderLayer
-from layers.modular.attention.attention_components import MultiHeadAttention
-from layers.modular.decomposition.decomposition_components import MovingAverageDecomposition
+from layers.modular.attention.core.multihead_attention import MultiHeadAttention
+from layers.modular.decomposition.series_decomposition import SeriesDecomposition as MovingAverageDecomposition
 
 @pytest.fixture
 def modular_encoder():

@@ -18,8 +18,8 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 sys.path.insert(0, PROJECT_ROOT)
 
 from models.modular_autoformer import ModularAutoformer
-from layers.modular.core.registry import unified_registry
-from layers.modular.core.example_components import register_example_components
+from layers.modular.core.registry import component_registry
+# from layers.modular.core.example_components import register_example_components  # Not needed
 
 
 class ModularAutoformerTester:
@@ -183,9 +183,8 @@ class ModularAutoformerTester:
             # Create traditional config
             config = self.create_test_config(use_backbone=False)
             
-            # Initialize registry and register components
-            registry = unified_registry
-            register_example_components(registry)
+            # Initialize registry
+            registry = component_registry
             
             # Create model
             model = ModularAutoformer(config)

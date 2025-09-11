@@ -21,9 +21,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import modular components with graceful fallback
 try:
-    from layers.modular.core.registry import UnifiedRegistry as ComponentRegistry, unified_registry as get_global_registry
-from layers.modular.core.base_interfaces import BaseComponent, ComponentType
-from layers.modular.core.config_schemas import ComponentConfig
+    from layers.modular.core.registry import ComponentRegistry, ComponentFamily
+    from layers.modular.core import unified_registry as get_global_registry
+    from layers.modular.base import BaseComponent
+    from layers.modular.core.config_schemas import ComponentConfig
     MODULAR_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Modular components not available: {e}")
@@ -38,8 +39,8 @@ class TestComponentRegistry:
         if not MODULAR_AVAILABLE:
             pytest.skip("Modular components not available")
         
-        registry1 = get_global_registry()
-        registry2 = get_global_registry()
+        registry1 = get_global_registry
+        registry2 = get_global_registry
         
         assert registry1 is registry2, "Registry should be a singleton"
     
@@ -74,14 +75,14 @@ class TestComponentRegistry:
         }
         
         registry.register(
-            component_type='attention',
-            component_name='test_component',
+            name='test_component',
             component_class=TestComponent,
+            component_type=ComponentFamily.ATTENTION,
             metadata=metadata
         )
         
         # Retrieve metadata
-        stored_metadata = registry._metadata['attention']['test_component']
+        stored_metadata = registry._registry[ComponentFamily.ATTENTION]['test_component'].get('metadata', {})
         
         # Check that all original metadata is preserved
         assert stored_metadata['description'] == metadata['description']
@@ -110,20 +111,28 @@ class TestComponentRegistry:
             def get_config(self): return {'version': 2}
         
         # Register first version
-        registry.register('processor', 'test_overwrite', ComponentV1)
+        registry.register(
+            name='test_overwrite',
+            component_class=ComponentV1,
+            component_type=ComponentFamily.ENCODER
+        )
         
         # Register second version (should warn)
-        with patch('layers.modular.core.registry.logger') as mock_logger:
-            registry.register('processor', 'test_overwrite', ComponentV2)
-            mock_logger.warning.assert_called_once()
+        with patch('builtins.print') as mock_print:
+            registry.register(
+                name='test_overwrite',
+                component_class=ComponentV2,
+                component_type=ComponentFamily.ENCODER
+            )
+            mock_print.assert_called_once()
             
             # Verify the warning message mentions overwriting
-            warning_message = mock_logger.warning.call_args[0][0]
-            assert 'Overwriting' in warning_message
+            warning_message = mock_print.call_args[0][0]
+            assert 'Warning' in warning_message
             assert 'test_overwrite' in warning_message
         
         # Verify that the new component is actually registered
-        retrieved_class = registry.get('processor', 'test_overwrite')
+        retrieved_class = registry.get_all_by_type(ComponentFamily.ENCODER)['test_overwrite']['class']
         instance = retrieved_class({})
         assert instance.get_config()['version'] == 2
     
@@ -133,25 +142,31 @@ class TestComponentRegistry:
         
         # Register multiple components
         components_to_register = [
-            ('attention', 'component_a', Mock),
-            ('attention', 'component_b', Mock),
-            ('processor', 'component_c', Mock),
-            ('loss', 'component_d', Mock),
+            (ComponentFamily.ATTENTION, 'component_a', Mock),
+            (ComponentFamily.ATTENTION, 'component_b', Mock),
+            (ComponentFamily.ENCODER, 'component_c', Mock),
+            (ComponentFamily.LOSS, 'component_d', Mock),
         ]
         
         for comp_type, comp_name, comp_class in components_to_register:
-            registry.register(comp_type, comp_name, comp_class)
+            registry.register(
+                name=comp_name,
+                component_class=comp_class,
+                component_type=comp_type
+            )
         
         # Test listing by category
-        attention_components = list(registry._components['attention'].keys())
+        attention_components = registry.get_all_by_type(ComponentFamily.ATTENTION)
         assert 'component_a' in attention_components
         assert 'component_b' in attention_components
         assert len(attention_components) >= 2
         
         # Test that components are in correct categories
-        assert 'component_c' in registry._components['processor']
-        assert 'component_d' in registry._components['loss']
-        assert 'component_c' not in registry._components['attention']
+        encoder_components = registry.get_all_by_type(ComponentFamily.ENCODER)
+        loss_components = registry.get_all_by_type(ComponentFamily.LOSS)
+        assert 'component_c' in encoder_components
+        assert 'component_d' in loss_components
+        assert 'component_c' not in attention_components
     
     def test_component_creation_with_different_config_types(self):
         """Test component creation with various configuration formats"""
@@ -175,13 +190,19 @@ class TestComponentRegistry:
             def get_config(self):
                 return {'param1': self.param1, 'param2': self.param2}
         
-        registry.register('embedding', 'flexible_component', FlexibleComponent)
+        registry.register(
+            name='flexible_component',
+            component_class=FlexibleComponent,
+            component_type=ComponentFamily.EMBEDDING
+        )
         
         # Test with dictionary config
-        component1 = registry.create('embedding', 'flexible_component', {
-            'param1': 'custom_value',
-            'param2': 100
-        })
+        component1 = registry.create(
+            name='flexible_component',
+            component_type=ComponentFamily.EMBEDDING,
+            param1='custom_value',
+            param2=100
+        )
         assert component1.param1 == 'custom_value'
         assert component1.param2 == 100
         
@@ -191,12 +212,21 @@ class TestComponentRegistry:
         config_obj.param1 = 'object_value'
         config_obj.param2 = 200
         
-        component2 = registry.create('embedding', 'flexible_component', config_obj)
+        component2 = registry.create(
+            name='flexible_component',
+            component_type=ComponentFamily.EMBEDDING,
+            param1='object_value',
+            param2=200
+        )
         assert component2.param1 == 'object_value'
         assert component2.param2 == 200
         
         # Test with partial config (should use defaults)
-        component3 = registry.create('embedding', 'flexible_component', {'param1': 'partial'})
+        component3 = registry.create(
+            name='flexible_component',
+            component_type=ComponentFamily.EMBEDDING,
+            param1='partial'
+        )
         assert component3.param1 == 'partial'
         assert component3.param2 == 42  # default value
 
