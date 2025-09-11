@@ -1,4 +1,6 @@
 
+import torch
+
 import torch.nn as nn
 from abc import ABC, abstractmethod
 
@@ -10,7 +12,7 @@ class BaseOutputHead(nn.Module, ABC):
         super(BaseOutputHead, self).__init__()
 
     @abstractmethod
-    def forward(self, x: nn.Module) -> nn.Module:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         The forward pass for the output head.
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from .chronos_backbone import ChronosBackbone as _ChronosLegacy  # local implementation
+from .crossformer_backbone import CrossformerBackboneWrapper
 
 class ChronosBackboneWrapper:
     """Thin adapter for Chronos backbone (or fallback) usable via unified registry.
@@ -73,6 +74,7 @@ from .registry import BackboneRegistry, get_backbone_component
 
 __all__ = [
     'ChronosBackboneWrapper',
+    'CrossformerBackboneWrapper',
     'BackboneRegistry',
     'get_backbone_component'
 ]

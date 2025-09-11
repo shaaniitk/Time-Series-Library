@@ -11,6 +11,7 @@ import torch.nn as nn
 from typing import Dict, Any, Optional, Union, List, Tuple
 
 from configs.schemas import BackboneConfig
+from layers.VariationalLSTM import VariationalLSTM
 
 logger = logging.getLogger(__name__)
 
@@ -312,3 +313,88 @@ def get_robust_backbones():
         'simple': SimpleTransformerBackbone,
         'auto': RobustHFBackbone,
     }
+
+
+class VariationalLSTMBackbone(nn.Module):
+    """
+    Variational LSTM backbone that wraps layers.VariationalLSTM.
+
+    This backbone operates on inputs shaped [B, L, D] and returns hidden states of the same length.
+    If the internal hidden_size differs from d_model, a projection brings outputs back to d_model.
+    """
+    def __init__(
+        self,
+        d_model: int,
+        hidden_size: Optional[int] = None,
+        num_layers: int = 2,
+        dropout: float = 0.1,
+        prior_std: float = 1.0,
+        variational_dropout: bool = True,
+        input_dim: Optional[int] = None,
+    ) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.hidden_size = hidden_size or d_model
+        self.num_layers = num_layers
+        self.dropout = dropout
+        self.prior_std = prior_std
+        self.variational_dropout = variational_dropout
+        self.input_dim = input_dim or d_model
+
+        self.vlstm = VariationalLSTM(
+            input_size=self.input_dim,
+            hidden_size=self.hidden_size,
+            num_layers=self.num_layers,
+            dropout=self.dropout,
+            prior_std=self.prior_std,
+            variational_dropout=self.variational_dropout,
+        )
+
+        # Input projection if needed (allowing input_dim != d_model)
+        self.input_projection: Optional[nn.Module]
+        if self.input_dim != self.d_model:
+            self.input_projection = nn.Linear(self.input_dim, self.d_model)
+        else:
+            self.input_projection = None
+
+        # Output projection if needed
+        self.output_projection: Optional[nn.Module]
+        if self.hidden_size != self.d_model:
+            self.output_projection = nn.Linear(self.hidden_size, self.d_model)
+        else:
+            self.output_projection = None
+
+        self.last_hidden: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
+        self.last_kl: Optional[torch.Tensor] = None
+
+    def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Args:
+            x: Tensor of shape [B, L, D_in]
+            attention_mask: Optional mask [B, L] (ignored by LSTM)
+        Returns:
+            Tensor of shape [B, L, d_model]
+        """
+        if self.input_projection is not None:
+            x = self.input_projection(x)
+
+        out, hidden, kl = self.vlstm(x)
+        self.last_hidden = hidden
+        self.last_kl = kl
+
+        if self.output_projection is not None:
+            out = self.output_projection(out)
+        return out
+
+    def get_d_model(self) -> int:
+        return self.d_model
+
+    def supports_seq2seq(self) -> bool:
+        return False
+
+    def get_backbone_type(self) -> str:
+        return "variational_lstm"
+
+    # Optional convenience accessor
+    def get_last_kl(self) -> Optional[torch.Tensor]:
+        return self.last_kl

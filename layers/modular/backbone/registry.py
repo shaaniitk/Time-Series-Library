@@ -1,6 +1,7 @@
 from .backbones import ChronosBackbone, T5Backbone, BERTBackbone, SimpleTransformerBackbone
 from .simple_backbones import SimpleTransformerBackbone as SimpleTransformerBackboneAlt, RobustHFBackbone
 from .chronos_backbone import ChronosBackbone as ChronosBackboneLocal
+from .crossformer_backbone import CrossformerBackbone
 from utils.logger import logger
 
 class BackboneRegistry:
@@ -15,6 +16,7 @@ class BackboneRegistry:
         "simple_transformer": SimpleTransformerBackbone,
         "simple_transformer_alt": SimpleTransformerBackboneAlt,
         "robust_hf": RobustHFBackbone,
+        "crossformer": CrossformerBackbone,
     }
 
     @classmethod

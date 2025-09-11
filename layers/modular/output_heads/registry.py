@@ -1,6 +1,7 @@
 
 from .standard_output_head import StandardOutputHead
 from .quantile_output_head import QuantileOutputHead
+from .level_output_head import LevelOutputHead
 from utils.logger import logger
 
 class OutputHeadRegistry:
@@ -10,6 +11,7 @@ class OutputHeadRegistry:
     _registry = {
         "standard": StandardOutputHead,
         "quantile": QuantileOutputHead,
+        "level": LevelOutputHead,
     }
 
     @classmethod

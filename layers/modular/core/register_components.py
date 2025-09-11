@@ -16,9 +16,13 @@ from ..loss.adaptive_bayesian_losses import (
     BayesianQuantileLoss, QuantileLoss, UncertaintyCalibrationLoss
 )
 from ..backbone.backbones import ChronosBackbone, T5Backbone, BERTBackbone, SimpleTransformerBackbone
+from ..backbone.simple_backbones import VariationalLSTMBackbone
 from ..feedforward.feedforward import StandardFFN, GatedFFN, MoEFFN, ConvFFN
 from ..output.linear_output import LinearOutput, LinearOutputConfig
 from ..output.outputs import ForecastingHead, RegressionHead, OutputConfig
+from ..normalization.registry import (
+    LayerNormWrapper, RMSNormWrapper, TSNormalizerWrapper, NormalizationProcessorWrapper
+)
 import torch.nn as nn
 
 # Register Fusion Components
@@ -151,6 +155,14 @@ component_registry.register(
     test_config={"d_model": 512, "n_layers": 6, "n_heads": 8}
 )
 
+# Variational LSTM Backbone
+component_registry.register(
+    name="variational_lstm_backbone",
+    component_class=VariationalLSTMBackbone,
+    component_type=ComponentFamily.BACKBONE,
+    test_config={"d_model": 256, "n_layers": 2, "hidden_size": 256, "dropout": 0.1, "input_dim": 256}
+)
+
 # Register Feedforward Components
 component_registry.register(
     name="standard_ffn",
@@ -200,4 +212,33 @@ component_registry.register(
     component_class=RegressionHead,
     component_type=ComponentFamily.OUTPUT,
     test_config={"d_model": 512, "output_dim": 1}
+)
+
+# Register Normalization Components
+component_registry.register(
+    name="layer_norm",
+    component_class=LayerNormWrapper,
+    component_type=ComponentFamily.NORMALIZATION,
+    test_config={"d_model": 512}
+)
+
+component_registry.register(
+    name="rms_norm",
+    component_class=RMSNormWrapper,
+    component_type=ComponentFamily.NORMALIZATION,
+    test_config={"d_model": 512}
+)
+
+component_registry.register(
+    name="ts_normalizer",
+    component_class=TSNormalizerWrapper,
+    component_type=ComponentFamily.NORMALIZATION,
+    test_config={"mode": "standard"}
+)
+
+component_registry.register(
+    name="normalization_processor",
+    component_class=NormalizationProcessorWrapper,
+    component_type=ComponentFamily.NORMALIZATION,
+    test_config={"normalization_type": "standard", "feature_wise": True}
 )

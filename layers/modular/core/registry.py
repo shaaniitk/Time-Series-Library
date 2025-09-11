@@ -3,20 +3,20 @@ import torch.nn as nn
 from enum import Enum
 
 class ComponentFamily(Enum):
-    """Enumeration for different families of components."""
+    """Enumeration of all component families in the modular system."""
     ATTENTION = "attention"
-    ENCODER = "encoder"
-    DECODER = "decoder"
-    FUSION = "fusion"
-    LOSS = "loss"
+    EMBEDDING = "embedding"
     DECOMPOSITION = "decomposition"
     SAMPLING = "sampling"
     OUTPUT_HEAD = "output_head"
     NORMALIZATION = "normalization"
-    EMBEDDING = "embedding"
     BACKBONE = "backbone"
     FEEDFORWARD = "feedforward"
     OUTPUT = "output"
+    PROCESSOR = "processor"
+    TUNING = "tuning"
+    ENCODER = "encoder"
+    DECODER = "decoder"
 
 class ComponentRegistry:
     """

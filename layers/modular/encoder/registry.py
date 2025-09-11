@@ -4,6 +4,7 @@ from .enhanced_encoder import EnhancedEncoder
 from .stable_encoder import StableEncoder
 from .hierarchical_encoder import HierarchicalEncoder
 from .graph_encoder import GraphTimeSeriesEncoder, HybridGraphEncoder, AdaptiveGraphEncoder
+from .crossformer_encoder import CrossformerEncoder
 from utils.logger import logger
 
 class EncoderRegistry:
@@ -18,6 +19,7 @@ class EncoderRegistry:
         "graph": GraphTimeSeriesEncoder,
         "hybrid_graph": HybridGraphEncoder,
         "adaptive_graph": AdaptiveGraphEncoder,
+        "crossformer": CrossformerEncoder,
     }
 
     @classmethod

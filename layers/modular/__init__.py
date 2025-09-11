@@ -11,7 +11,12 @@ from .backbone import *
 from .feedforward import *
 from .output import *
 from .output_heads import *
+from .normalization import *
 from .core import *
+from .processor import *
+from .tuning import *
+from .encoder import *
+from .decoder import *
 
 # Import and initialize the component registry
 from .core.register_components import component_registry
