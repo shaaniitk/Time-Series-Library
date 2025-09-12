@@ -5,13 +5,133 @@
     "configurations": [
         {
             "name": "Python: Train Dynamic Autoformer",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/scripts/train/train_dynamic_autoformer.py",
             "console": "integratedTerminal",
             "args": [
                 "--config", "configs/config_HierarchicalEnhancedAutoformer_MS_light_sl96_pl24.yaml"
             ]
+        },
+        {
+             "name": "Python: Current File",
+             "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false,
+             "stopOnEntry": false,
+             "showReturnValue": true,
+             "redirectOutput": true
+        },
+        {
+             "name": "Debug: Pytest Current File",
+             "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${file}",
+                "-v",
+                "-s",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                 "PYTHONPATH": "${workspaceFolder}"
+             },
+             "justMyCode": false,
+             "stopOnEntry": false,
+             "showReturnValue": true,
+             "redirectOutput": true
+         },
+         {
+             "name": "Debug: Pytest Specific Test",
+             "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${input:testPath}",
+                "-v",
+                "-s",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                 "PYTHONPATH": "${workspaceFolder}"
+             },
+             "justMyCode": false,
+             "stopOnEntry": false,
+             "showReturnValue": true,
+             "redirectOutput": true
+         },
+         {
+             "name": "Debug: Modular Algorithmic Test",
+             "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "TestsModule/tests/modular/algorithmic/test_algorithmic_sophistication_modular.py",
+                "-v",
+                "-s",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                 "PYTHONPATH": "${workspaceFolder}"
+             },
+             "justMyCode": false,
+             "stopOnEntry": false,
+             "showReturnValue": true,
+             "redirectOutput": true
+         },
+         {
+             "name": "Debug: Run Script with Args",
+             "type": "debugpy",
+            "request": "launch",
+            "program": "${input:scriptPath}",
+            "args": [],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                 "PYTHONPATH": "${workspaceFolder}"
+             },
+             "justMyCode": false,
+             "stopOnEntry": false,
+             "showReturnValue": true,
+             "redirectOutput": true
+         },
+         {
+             "name": "Python: Attach to debugpy",
+             "type": "debugpy",
+             "request": "attach",
+             "connect": {
+                 "host": "localhost",
+                 "port": 5678
+             },
+             "justMyCode": false,
+             "showReturnValue": true,
+             "redirectOutput": true
+         }
+     ],
+    "inputs": [
+        {
+            "id": "testPath",
+            "description": "Path to test file or specific test (e.g., TestsModule/tests/modular/algorithmic/test_algorithmic_sophistication_modular.py::test_fourier_restored_capabilities)",
+            "default": "TestsModule/tests/modular/algorithmic/test_algorithmic_sophistication_modular.py",
+            "type": "promptString"
+        },
+        {
+            "id": "scriptPath",
+            "description": "Path to Python script to debug",
+            "default": "run.py",
+            "type": "promptString"
         }
     ]
 }

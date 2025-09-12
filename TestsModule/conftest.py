@@ -7,11 +7,23 @@ guard below raises if old monolithic path resurfaces in collection.
 from __future__ import annotations
 import os
 import random
+import sys
+from pathlib import Path
 from typing import Iterator
 
 import numpy as np
 import pytest
 import torch
+
+# Add project root to Python path
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+# Also add the project root as an absolute path
+abs_project_root = project_root.resolve()
+if str(abs_project_root) not in sys.path:
+    sys.path.insert(0, str(abs_project_root))
 
 
 def pytest_collection_modifyitems(config, items):  # pragma: no cover - collection hook

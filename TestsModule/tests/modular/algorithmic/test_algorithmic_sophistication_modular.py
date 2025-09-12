@@ -15,7 +15,7 @@ from utils_algorithm_adapters import (
     RestoredAutoCorrelationConfig,
     RestoredMetaLearningConfig,
 )
-from layers.modular.core.registry import unified_registry as _global_registry
+from layers.modular.core.registry import component_registry as _global_registry, ComponentFamily
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -24,8 +24,7 @@ def _register_restored() -> None:  # pragma: no cover - one-off side effect
 
 
 def _create(component: str, cfg):
-    cls = _global_registry.get('attention', component)
-    return cls(cfg)
+    return _global_registry.create(component, ComponentFamily.ATTENTION, config=cfg.to_dict())
 
 
 def test_fourier_restored_capabilities() -> None:

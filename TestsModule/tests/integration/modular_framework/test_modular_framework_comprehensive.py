@@ -22,7 +22,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from layers.modular.core import unified_registry, ComponentFamily
     from layers.modular.base_interfaces import BaseComponent
-    from layers.modular.core.configs import ComponentConfig
+    from layers.modular.core.config_schemas import ComponentConfig
     from layers.modular.core.factory import ComponentFactory
     from configs.schemas import ComponentType
     MODULAR_AVAILABLE = True
@@ -63,7 +63,7 @@ class TestModularRegistry:
         
         # Create a mock component
         class MockComponent(BaseComponent):
-            component_type = ComponentType.ATTENTION
+            component_type = "attention"
             
             def __init__(self, config):
                 super().__init__(config)
@@ -85,8 +85,7 @@ class TestModularRegistry:
 
         # Verify registration
         attention_components = unified_registry.get_all_by_type(ComponentFamily.ATTENTION)
-        component_names = [comp.name for comp in attention_components]
-        assert 'mock_attention' in component_names
+        assert 'mock_attention' in attention_components
     
     def test_component_creation(self):
         """Test creating component instances"""
@@ -114,13 +113,11 @@ class TestModularRegistry:
         )
         
         # Test creation with default config
-        config = ComponentConfig(type='test_component', params={})
-        component = unified_registry.create('test_component', ComponentFamily.PROCESSOR, config)
+        component = unified_registry.create('test_component', ComponentFamily.PROCESSOR)
         assert component.test_param == 'default'
         
         # Test creation with custom config
-        config = ComponentConfig(type='test_component', params={'test_param': 'custom'})
-        component = unified_registry.create('test_component', ComponentFamily.PROCESSOR, config)
+        component = unified_registry.create('test_component', ComponentFamily.PROCESSOR, test_param='custom')
         assert component.test_param == 'custom'
     
     def test_registry_error_handling(self):
@@ -130,8 +127,7 @@ class TestModularRegistry:
         
         # Test missing component
         with pytest.raises(Exception):
-            config = ComponentConfig(type='nonexistent_component', params={})
-            unified_registry.create('nonexistent_component', ComponentFamily.ATTENTION, config)
+            unified_registry.create('nonexistent_component', ComponentFamily.ATTENTION)
 
 
 class TestComponentInterfaces:

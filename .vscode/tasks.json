@@ -2,6 +2,107 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "Debug: Run Current Test File",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"pytest",
+				"${file}",
+				"-v",
+				"-s",
+				"--tb=short"
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "new"
+			},
+			"options": {
+				"cwd": "${workspaceFolder}",
+				"env": {
+					"PYTHONPATH": "${workspaceFolder}"
+				}
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Debug: Test Modular Algorithmic",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"pytest",
+				"TestsModule/tests/modular/algorithmic/test_algorithmic_sophistication_modular.py",
+				"-v",
+				"-s",
+				"--tb=short"
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "new"
+			},
+			"options": {
+				"cwd": "${workspaceFolder}",
+				"env": {
+					"PYTHONPATH": "${workspaceFolder}"
+				}
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Debug: Registry System",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"debug_helper.py",
+				"registry"
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "new"
+			},
+			"options": {
+				"cwd": "${workspaceFolder}",
+				"env": {
+					"PYTHONPATH": "${workspaceFolder}"
+				}
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Debug: Test Fourier Attention",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"debug_helper.py",
+				"attention",
+				"fourier"
+			],
+			"group": "test",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "new"
+			},
+			"options": {
+				"cwd": "${workspaceFolder}",
+				"env": {
+					"PYTHONPATH": "${workspaceFolder}"
+				}
+			},
+			"problemMatcher": []
+		},
+		{
 			"label": "pytest components new suites",
 			"type": "shell",
 			"command": "python -X utf8 -m pytest -q TestsModule/components/output_heads TestsModule/components/losses -q",

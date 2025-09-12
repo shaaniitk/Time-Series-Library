@@ -59,6 +59,7 @@ class ComponentType(str, Enum):
     # Attention families
     AUTOCORRELATION = "autocorrelation"
     ADAPTIVE_AUTOCORRELATION = "adaptive_autocorrelation"
+    MULTI_HEAD = "multi_head_attention"
     CROSS_RESOLUTION = "cross_resolution_attention"
     FOURIER_ATTENTION = "fourier_attention"
     FOURIER_BLOCK = "fourier_block"
