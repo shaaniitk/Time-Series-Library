@@ -22,10 +22,12 @@ from .temporal_conv.causal_convolution import CausalConvolution
 from .temporal_conv.temporal_conv_net import TemporalConvNet
 from .temporal_conv.convolutional_attention import ConvolutionalAttention
 from .graph_attention import MultiGraphAttention
+from .temporal_attention import TemporalAttention
 
+from ..core.registry import ComponentRegistry
 from utils.logger import logger
 
-class AttentionRegistry:
+class AttentionRegistry(ComponentRegistry):
     """
     A registry for all available attention components.
     """
@@ -67,6 +69,9 @@ class AttentionRegistry:
         
         # Graph Attention Components
         "multi_graph_attention": MultiGraphAttention,
+        
+        # Temporal Attention
+        "temporal_attention": TemporalAttention,
     }
 
     @classmethod
@@ -78,11 +83,10 @@ class AttentionRegistry:
 
     @classmethod
     def get(cls, name):
-        component = cls._registry.get(name)
-        if component is None:
-            logger.error(f"Attention component '{name}' not found.")
-            raise ValueError(f"Attention component '{name}' not found.")
-        return component
+        if name in cls._registry:
+            return cls._registry[name]
+        logger.error(f"Attention component '{name}' not found.")
+        raise ValueError(f"Attention component '{name}' not found.")
     
     @classmethod
     def create(cls, name, **kwargs):

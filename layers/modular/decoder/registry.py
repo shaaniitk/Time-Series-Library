@@ -2,12 +2,14 @@
 from .standard_decoder import StandardDecoder
 from .enhanced_decoder import EnhancedDecoder
 from .stable_decoder import StableDecoder
+from .custom_decoders import StandardDecoder as CustomStandardDecoder, ProbabilisticDecoder
 from .validation import ComponentValidator
+from ..core.registry import ComponentRegistry
 from utils.logger import logger
 import inspect
 import torch.nn
 
-class DecoderRegistry:
+class DecoderRegistry(ComponentRegistry):
     """
     A registry for all available decoder components with validation.
     """
@@ -15,6 +17,8 @@ class DecoderRegistry:
         "standard": StandardDecoder,
         "enhanced": EnhancedDecoder,
         "stable": StableDecoder,
+        "custom_standard": CustomStandardDecoder,
+        "probabilistic": ProbabilisticDecoder,
     }
     _validator = ComponentValidator()
 
@@ -45,12 +49,9 @@ class DecoderRegistry:
 
     @classmethod
     def get(cls, name):
-        component = cls._registry.get(name)
-        if component is None:
-            logger.error(f"Decoder component '{name}' not found.")
-            available = ", ".join(cls._registry.keys())
-            raise ValueError(f"Decoder component '{name}' not found. Available: {available}")
-        return component
+        if name in cls._registry:
+            return cls._registry[name]
+        raise ValueError(f"Decoder component '{name}' not found in registry")
 
     @classmethod
     def list_components(cls):
