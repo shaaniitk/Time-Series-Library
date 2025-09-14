@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Type
 import torch.nn as nn
 from .embed import PositionalEmbedding, TokenEmbedding, FixedEmbedding, TemporalEmbedding, TimeFeatureEmbedding, DataEmbedding, DataEmbedding_inverted, DataEmbedding_wo_pos, PatchEmbedding
+from .graph_positional_encoding import GraphAwarePositionalEncoding, HierarchicalGraphPositionalEncoding
 from utils.logger import logger
 
 class EmbeddingRegistry:
@@ -34,3 +35,5 @@ EmbeddingRegistry.register('data', DataEmbedding)
 EmbeddingRegistry.register('data_inverted', DataEmbedding_inverted)
 EmbeddingRegistry.register('data_wo_pos', DataEmbedding_wo_pos)
 EmbeddingRegistry.register('patch', PatchEmbedding)
+EmbeddingRegistry.register('graph_aware_positional', GraphAwarePositionalEncoding)
+EmbeddingRegistry.register('hierarchical_graph_positional', HierarchicalGraphPositionalEncoding)

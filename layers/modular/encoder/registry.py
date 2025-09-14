@@ -5,6 +5,7 @@ from .stable_encoder import StableEncoder
 from .hierarchical_encoder import HierarchicalEncoder
 from .graph_encoder import GraphTimeSeriesEncoder, HybridGraphEncoder, AdaptiveGraphEncoder
 from .crossformer_encoder import CrossformerEncoder
+from .spatiotemporal_encoding import JointSpatioTemporalEncoding, AdaptiveSpatioTemporalEncoder
 from utils.logger import logger
 
 class EncoderRegistry:
@@ -20,6 +21,8 @@ class EncoderRegistry:
         "hybrid_graph": HybridGraphEncoder,
         "adaptive_graph": AdaptiveGraphEncoder,
         "crossformer": CrossformerEncoder,
+        "joint_spatiotemporal": JointSpatioTemporalEncoding,
+        "adaptive_spatiotemporal": AdaptiveSpatioTemporalEncoder,
     }
 
     @classmethod

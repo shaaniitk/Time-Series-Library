@@ -22,6 +22,7 @@ from .temporal_conv.causal_convolution import CausalConvolution
 from .temporal_conv.temporal_conv_net import TemporalConvNet
 from .temporal_conv.convolutional_attention import ConvolutionalAttention
 from .graph_attention import MultiGraphAttention
+from .multihead_graph_attention import MultiHeadGraphAttention, GraphTransformerLayer
 from .temporal_attention import TemporalAttention
 
 from ..core.registry import ComponentRegistry
@@ -69,6 +70,8 @@ class AttentionRegistry(ComponentRegistry):
         
         # Graph Attention Components
         "multi_graph_attention": MultiGraphAttention,
+        "multihead_graph_attention": MultiHeadGraphAttention,
+        "graph_transformer_layer": GraphTransformerLayer,
         
         # Temporal Attention
         "temporal_attention": TemporalAttention,

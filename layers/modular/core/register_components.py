@@ -33,6 +33,10 @@ from ..attention.enhanced_autocorrelation import EnhancedAutoCorrelation
 from ..attention.cross_resolution_attention import CrossResolutionAttention
 from ..attention.fourier.fourier_attention import FourierAttention
 from ..attention.bayesian.bayesian_attention import BayesianAttention
+from ..attention.multihead_graph_attention import MultiHeadGraphAttention, GraphTransformerLayer
+from ..embedding.graph_positional_encoding import GraphAwarePositionalEncoding, HierarchicalGraphPositionalEncoding
+from ..encoder.spatiotemporal_encoding import JointSpatioTemporalEncoding, AdaptiveSpatioTemporalEncoder
+from ..graph.dynamic_graph import DynamicGraphConstructor, AdaptiveGraphStructure
 import torch.nn as nn
 
 # Register Fusion Components
@@ -187,6 +191,103 @@ component_registry.register(
         "d_ff": 2048,
         "e_layers": 2,
         "factor": 3
+    }
+)
+
+# Register Graph Attention Components
+component_registry.register(
+    name="multihead_graph_attention",
+    component_class=MultiHeadGraphAttention,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 512,
+        "n_heads": 8,
+        "dropout": 0.1,
+        "num_node_types": 3
+    }
+)
+
+component_registry.register(
+    name="graph_transformer_layer",
+    component_class=GraphTransformerLayer,
+    component_type=ComponentFamily.ATTENTION,
+    test_config={
+        "d_model": 512,
+        "n_heads": 8,
+        "d_ff": 2048,
+        "dropout": 0.1
+    }
+)
+
+# Register Graph Positional Encoding Components
+component_registry.register(
+    name="graph_aware_positional",
+    component_class=GraphAwarePositionalEncoding,
+    component_type=ComponentFamily.EMBEDDING,
+    test_config={
+        "d_model": 512,
+        "max_len": 1000,
+        "num_nodes": 100
+    }
+)
+
+component_registry.register(
+    name="hierarchical_graph_positional",
+    component_class=HierarchicalGraphPositionalEncoding,
+    component_type=ComponentFamily.EMBEDDING,
+    test_config={
+        "d_model": 512,
+        "max_len": 1000,
+        "num_nodes": 100,
+        "num_levels": 3
+    }
+)
+
+# Register Spatiotemporal Encoding Components
+component_registry.register(
+    name="joint_spatiotemporal",
+    component_class=JointSpatioTemporalEncoding,
+    component_type=ComponentFamily.ENCODER,
+    test_config={
+        "d_model": 512,
+        "num_nodes": 100,
+        "temporal_kernel_sizes": [3, 5, 7],
+        "spatial_hops": [1, 2, 3]
+    }
+)
+
+component_registry.register(
+    name="adaptive_spatiotemporal",
+    component_class=AdaptiveSpatioTemporalEncoder,
+    component_type=ComponentFamily.ENCODER,
+    test_config={
+        "d_model": 512,
+        "num_nodes": 100,
+        "num_layers": 4,
+        "dropout": 0.1
+    }
+)
+
+# Register Dynamic Graph Components
+component_registry.register(
+    name="dynamic_graph_constructor",
+    component_class=DynamicGraphConstructor,
+    component_type=ComponentFamily.PROCESSOR,
+    test_config={
+        "num_nodes": 100,
+        "k_nearest": 10,
+        "temperature": 1.0
+    }
+)
+
+component_registry.register(
+    name="adaptive_graph_structure",
+    component_class=AdaptiveGraphStructure,
+    component_type=ComponentFamily.PROCESSOR,
+    test_config={
+        "num_nodes": 100,
+        "d_model": 512,
+        "num_transitions": 5
     }
 )
 
