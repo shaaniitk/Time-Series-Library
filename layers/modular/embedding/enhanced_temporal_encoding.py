@@ -8,15 +8,16 @@ class SinusoidalTemporalEncoding(nn.Module):
     Provides rich temporal position information before attention mechanisms.
     """
     
-    def __init__(self, d_model, max_seq_len=5000, temperature=10000.0):
+    def __init__(self, d_model, max_len=None, max_seq_len=5000, temperature=10000.0):
         super().__init__()
         self.d_model = d_model
-        self.max_seq_len = max_seq_len
+        # Support both max_len (preferred) and max_seq_len (backward compat)
+        self.max_len = max_len if max_len is not None else max_seq_len
         self.temperature = temperature
         
         # Pre-compute positional encodings
-        pe = torch.zeros(max_seq_len, d_model)
-        position = torch.arange(0, max_seq_len, dtype=torch.float).unsqueeze(1)
+        pe = torch.zeros(self.max_len, d_model)
+        position = torch.arange(0, self.max_len, dtype=torch.float).unsqueeze(1)
         
         # Create sinusoidal patterns with different frequencies
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * 
@@ -26,7 +27,7 @@ class SinusoidalTemporalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         
         # Register as buffer (not a parameter, but part of state)
-        self.register_buffer('pe', pe.unsqueeze(0))  # [1, max_seq_len, d_model]
+        self.register_buffer('pe', pe.unsqueeze(0))  # [1, max_len, d_model]
         
     def forward(self, x):
         """
@@ -41,8 +42,8 @@ class SinusoidalTemporalEncoding(nn.Module):
         batch_size, seq_len, d_model = x.shape
         
         # Ensure we don't exceed pre-computed length
-        if seq_len > self.max_seq_len:
-            raise ValueError(f"Sequence length {seq_len} exceeds maximum {self.max_seq_len}")
+        if seq_len > self.max_len:
+            raise ValueError(f"Sequence length {seq_len} exceeds maximum {self.max_len}")
             
         # Add positional encoding
         pos_encoding = self.pe[:, :seq_len, :d_model]
@@ -54,17 +55,18 @@ class AdaptiveTemporalEncoding(nn.Module):
     based on the temporal patterns in the data.
     """
     
-    def __init__(self, d_model, max_seq_len=5000, num_scales=4):
+    def __init__(self, d_model, max_len=None, max_seq_len=5000, num_scales=4):
         super().__init__()
         self.d_model = d_model
-        self.max_seq_len = max_seq_len
+        # Support both max_len (preferred) and max_seq_len (backward compat)
+        self.max_len = max_len if max_len is not None else max_seq_len
         self.num_scales = num_scales
         
         # Learnable scale parameters for different temporal frequencies
         self.scale_params = nn.Parameter(torch.ones(num_scales))
         
         # Base sinusoidal encoding
-        self.base_encoding = SinusoidalTemporalEncoding(d_model, max_seq_len)
+        self.base_encoding = SinusoidalTemporalEncoding(d_model, max_len=self.max_len)
         
         # Adaptive projection layers
         self.temporal_projection = nn.Linear(d_model, d_model)
@@ -122,17 +124,20 @@ class EnhancedTemporalEncoding(nn.Module):
     Combined enhanced temporal encoding that uses both sinusoidal and adaptive components.
     """
     
-    def __init__(self, d_model, max_seq_len=5000, use_adaptive=True):
+    def __init__(self, d_model, max_len=None, max_seq_len=5000, num_scales=4, use_adaptive=True):
         super().__init__()
         self.d_model = d_model
         self.use_adaptive = use_adaptive
+        # Support both max_len (preferred) and max_seq_len (backward compat)
+        self.max_len = max_len if max_len is not None else max_seq_len
+        self.num_scales = num_scales
         
         # Base sinusoidal encoding
-        self.sinusoidal_encoding = SinusoidalTemporalEncoding(d_model, max_seq_len)
+        self.sinusoidal_encoding = SinusoidalTemporalEncoding(d_model, max_len=self.max_len)
         
         # Optional adaptive encoding
         if use_adaptive:
-            self.adaptive_encoding = AdaptiveTemporalEncoding(d_model, max_seq_len)
+            self.adaptive_encoding = AdaptiveTemporalEncoding(d_model, max_len=self.max_len, num_scales=num_scales)
         
         # Learnable combination weights
         self.combination_weights = nn.Parameter(torch.tensor([0.7, 0.3]) if use_adaptive else torch.tensor([1.0]))

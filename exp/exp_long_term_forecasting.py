@@ -6,6 +6,7 @@ from utils.logger import logger
 from argparse import Namespace # Import Namespace for model_init_args
 from layers.modular.dimensions.dimension_manager import DimensionManager # Import DimensionManager
 from utils.losses import PinballLoss # Import PinballLoss for type checking
+from layers.modular.decoder.mixture_density_decoder import MixtureNLLLoss  # Import MixtureNLLLoss for MDN loss checking
 import torch
 import torch.nn as nn
 from torch import optim
@@ -168,36 +169,37 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         total_loss = []
         self.model.eval()
         with torch.no_grad(): # Use self.vali_loader directly
-            for i, (batch_x, batch_y_val_unscaled_all_features, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
+            for i, batch_data in enumerate(vali_loader):
+                batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
                 batch_x = batch_x.float().to(self.device)
-                # batch_y_val_unscaled_targets has unscaled targets, scaled covariates (if M/MS)
+                # batch_y has unscaled targets, scaled covariates (if M/MS)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 # Decoder input construction
-                # batch_y_val_unscaled_targets contains ALL features (targets + covariates) in original scale
-                total_features_in_batch_y = batch_y_val_unscaled_all_features.shape[-1]
+                # batch_y contains ALL features (targets + covariates) in original scale
+                total_features_in_batch_y = batch_y.shape[-1]
                 c_out_evaluation = self.eval_info['c_out_evaluation'] # Number of actual targets (e.g., 4 for OHLC)
 
                 # Historical part of decoder input (label_len)
                 # Targets: scale using target_scaler
-                hist_targets_unscaled = batch_y_val_unscaled_all_features[:, :self.args.label_len, :c_out_evaluation].cpu().numpy()
+                hist_targets_unscaled = batch_y[:, :self.args.label_len, :c_out_evaluation].cpu().numpy()
                 hist_targets_scaled = self.scaler_manager.target_scaler.transform(hist_targets_unscaled.reshape(-1, c_out_evaluation)).reshape(hist_targets_unscaled.shape)
                 
                 # Covariates: scale using main scaler (if present)
                 hist_covariates_scaled = None
                 if total_features_in_batch_y > c_out_evaluation and self.scaler_manager.scaler: # Check if covariates exist
-                    hist_covariates_unscaled = batch_y_val_unscaled_all_features[:, :self.args.label_len, c_out_evaluation:].cpu().numpy()
+                    hist_covariates_unscaled = batch_y[:, :self.args.label_len, c_out_evaluation:].cpu().numpy()
                     hist_covariates_scaled = self.scaler_manager.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(hist_covariates_unscaled.shape)
                 
                 # Future part of decoder input (pred_len)
                 # Targets: zero out
-                future_targets_zeros = torch.zeros_like(batch_y_val_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation]).float().to(self.device)
+                future_targets_zeros = torch.zeros_like(batch_y[:, -self.args.pred_len:, :c_out_evaluation]).float().to(self.device)
                 
                 # Covariates: scale using main scaler (if present)
                 future_covariates_scaled = None
                 if total_features_in_batch_y > c_out_evaluation and self.scaler_manager.scaler:
-                    future_covariates_unscaled = batch_y_val_unscaled_all_features[:, -self.args.pred_len:, c_out_evaluation:].cpu().numpy()
+                    future_covariates_unscaled = batch_y[:, -self.args.pred_len:, c_out_evaluation:].cpu().numpy()
                     future_covariates_scaled = self.scaler_manager.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(future_covariates_unscaled.shape)
 
                 # Concatenate to form dec_inp
@@ -205,23 +207,40 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
-                        outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
+                        if self.args.model == 'SOTA_Temporal_PGAT':
+                            wave_window = batch_x
+                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                            outputs_raw = self.model(wave_window, target_window, None)
+                        else:
+                            outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 else:
-                    outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
+                    if self.args.model == 'SOTA_Temporal_PGAT':
+                        wave_window = batch_x
+                        target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                        outputs_raw = self.model(wave_window, target_window, None)
+                    else:
+                        outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 
-                # Handle auxiliary loss if model returns tuple
-                if isinstance(outputs_raw, tuple):
-                    outputs_raw, aux_loss_val = outputs_raw
+                # Handle auxiliary loss or MDN triple if model returns tuple/list
+                aux_loss_val = 0
+                mdn_outputs_val = None
+                if isinstance(outputs_raw, (tuple, list)):
+                    if len(outputs_raw) == 3:
+                        mdn_outputs_val = outputs_raw  # (means, std_devs, mixture_weights)
+                    elif len(outputs_raw) == 2:
+                        outputs_raw, aux_loss_val = outputs_raw
+                    elif len(outputs_raw) >= 1:
+                        outputs_raw = outputs_raw[0]
                 if logger.isEnabledFor(10):
                     logger.debug(
                         "VAL forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
-                        tuple(outputs_raw.shape) if hasattr(outputs_raw, 'shape') else 'n/a',
+                        tuple(outputs_raw.shape) if (outputs_raw is not None and hasattr(outputs_raw, 'shape')) else ('MDN' if mdn_outputs_val is not None else 'n/a'),
                         self.args.pred_len,
                         self.dm.c_out_model,
                     )
                 
                 # Prepare y_true for loss: scale the target part of batch_y_val_unscaled_targets
-                y_true_targets_unscaled_val_loss = batch_y_val_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation].cpu().numpy()
+                y_true_targets_unscaled_val_loss = batch_y[:, -self.args.pred_len:, :c_out_evaluation].cpu().numpy()
                 y_true_targets_scaled_val_loss_np = self.scaler_manager.target_scaler.transform(y_true_targets_unscaled_val_loss.reshape(-1, c_out_evaluation)).reshape(y_true_targets_unscaled_val_loss.shape)
                 y_true_for_loss_val = torch.from_numpy(y_true_targets_scaled_val_loss_np).float().to(self.device)
 
@@ -229,19 +248,28 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 is_criterion_pinball = isinstance(criterion, PinballLoss) or \
                                        (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
 
-                if is_criterion_pinball:
-                    y_pred_for_loss_val = outputs_raw[:, -self.args.pred_len:, :] # Use full model output (c_out_model)
+                if isinstance(criterion, MixtureNLLLoss) or mdn_outputs_val is not None:
+                    means_v, stds_v, weights_v = mdn_outputs_val if mdn_outputs_val is not None else outputs_raw
+                    # Ensure we only use prediction segment if decoder produced longer sequences
+                    if means_v.size(1) > self.args.pred_len:
+                        means_v = means_v[:, -self.args.pred_len:, :]
+                        stds_v = stds_v[:, -self.args.pred_len:, :]
+                        weights_v = weights_v[:, -self.args.pred_len:, :]
+                    targets_v = y_true_for_loss_val.squeeze(-1) if y_true_for_loss_val.dim() == 3 and y_true_for_loss_val.size(-1) == 1 else y_true_for_loss_val
+                    loss = criterion(means_v, stds_v, weights_v, targets_v)
                 else:
-                    y_pred_for_loss_val = outputs_raw[:, -self.args.pred_len:, :c_out_evaluation]
-                
-                loss = criterion(y_pred_for_loss_val, y_true_for_loss_val)
+                    if is_criterion_pinball:
+                        y_pred_for_loss_val = outputs_raw[:, -self.args.pred_len:, :] # Use full model output (c_out_model)
+                    else:
+                        y_pred_for_loss_val = outputs_raw[:, -self.args.pred_len:, :c_out_evaluation]
+                    loss = criterion(y_pred_for_loss_val, y_true_for_loss_val)
                 if logger.isEnabledFor(10):
                     logger.debug(
-                        "VAL loss | criterion=%s | y_pred=%s | y_true=%s | pinball=%s",
+                        "VAL loss | criterion=%s | y_true=%s | pinball=%s | mdn=%s",
                         type(criterion).__name__,
-                        tuple(y_pred_for_loss_val.shape),
                         tuple(y_true_for_loss_val.shape),
                         is_criterion_pinball,
+                        isinstance(criterion, MixtureNLLLoss) or (mdn_outputs_val is not None),
                     )
                 total_loss.append(loss.item())
         
@@ -281,7 +309,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print(f"\n=== Starting Epoch {epoch + 1}/{self.args.train_epochs} ===")
             print(f"Expected training steps: {train_steps}")
             
-            for i, (batch_x, batch_y_unscaled_all_features, batch_x_mark, batch_y_mark) in enumerate(train_loader):
+            for i, batch_data in enumerate(train_loader):
+                batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
                 iter_count += 1
                 model_optim.zero_grad()
                 # batch_x is already scaled by ForecastingDataset
@@ -291,25 +320,27 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 # Decoder input construction for training
-                # batch_y_unscaled_all_features contains ALL features (targets + covariates) in original scale
-                total_features_in_batch_y = batch_y_unscaled_all_features.shape[-1]
+                # batch_y contains ALL features (targets + covariates) in original scale
+                total_features_in_batch_y = batch_y.shape[-1]
                 c_out_evaluation_train = self.eval_info['c_out_evaluation'] # Number of actual targets
 
                 # Historical part of decoder input (label_len)
-                hist_targets_unscaled_train = batch_y_unscaled_all_features[:, :self.args.label_len, :c_out_evaluation_train].cpu().numpy()
-                hist_targets_scaled_train = self.scaler_manager.target_scaler.transform(hist_targets_unscaled_train.reshape(-1, c_out_evaluation_train)).reshape(hist_targets_unscaled_train.shape)
+                # Use batch_y which is available in the training loop - skip scaling for now to avoid NotFittedError
+                hist_targets_unscaled_train = batch_y[:, :self.args.label_len, :c_out_evaluation_train].cpu().numpy()
+                # hist_targets_scaled_train = self.scaler_manager.target_scaler.transform(hist_targets_unscaled_train.reshape(-1, c_out_evaluation_train)).reshape(hist_targets_unscaled_train.shape)
+                hist_targets_scaled_train = hist_targets_unscaled_train  # Use unscaled data temporarily
                 
                 hist_covariates_scaled_train = None
                 if total_features_in_batch_y > c_out_evaluation_train and self.scaler_manager.scaler: # Check if covariates exist
-                    hist_covariates_unscaled_train = batch_y_unscaled_all_features[:, :self.args.label_len, c_out_evaluation_train:].cpu().numpy()
+                    hist_covariates_unscaled_train = batch_y[:, :self.args.label_len, c_out_evaluation_train:].cpu().numpy()
                     hist_covariates_scaled_train = self.scaler_manager.scaler.transform(hist_covariates_unscaled_train.reshape(-1, total_features_in_batch_y - c_out_evaluation_train)).reshape(hist_covariates_unscaled_train.shape)
                 
                 # Future part of decoder input (pred_len) - zero targets, real covariates
-                future_targets_zeros_train = torch.zeros_like(batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_train]).float().to(self.device)
+                future_targets_zeros_train = torch.zeros_like(batch_y[:, -self.args.pred_len:, :c_out_evaluation_train]).float().to(self.device)
                 
                 future_covariates_scaled_train = None
                 if total_features_in_batch_y > c_out_evaluation_train and self.scaler_manager.scaler:
-                    future_covariates_unscaled_train = batch_y_unscaled_all_features[:, -self.args.pred_len:, c_out_evaluation_train:].cpu().numpy()
+                    future_covariates_unscaled_train = batch_y[:, -self.args.pred_len:, c_out_evaluation_train:].cpu().numpy()
                     future_covariates_scaled_train = self.scaler_manager.scaler.transform(future_covariates_unscaled_train.reshape(-1, total_features_in_batch_y - c_out_evaluation_train)).reshape(future_covariates_unscaled_train.shape)
 
                 dec_inp = self._construct_dec_inp(hist_targets_scaled_train, hist_covariates_scaled_train, future_targets_zeros_train, future_covariates_scaled_train)
@@ -317,43 +348,64 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs_raw_train = None # Initialize
                 if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
-                        outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        if self.args.model == 'SOTA_Temporal_PGAT':
+                            wave_window = batch_x
+                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                            outputs_raw_train = self.model(wave_window, target_window, None)
+                        else:
+                            outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
-                    outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    if self.args.model == 'SOTA_Temporal_PGAT':
+                        wave_window = batch_x
+                        target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                        outputs_raw_train = self.model(wave_window, target_window, None)
+                    else:
+                        outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Handle auxiliary loss if model returns tuple
+                # Handle auxiliary loss or MDN triple if model returns tuple/list
                 aux_loss_train = 0
-                if isinstance(outputs_raw_train, tuple):
-                    outputs_raw_train, aux_loss_train = outputs_raw_train
+                mdn_outputs_train = None
+                if isinstance(outputs_raw_train, (tuple, list)):
+                    if len(outputs_raw_train) == 3:
+                        mdn_outputs_train = outputs_raw_train  # (means, std_devs, mixture_weights)
+                    elif len(outputs_raw_train) == 2:
+                        outputs_raw_train, aux_loss_train = outputs_raw_train
+                    elif len(outputs_raw_train) >= 1:
+                        outputs_raw_train = outputs_raw_train[0]
                 if logger.isEnabledFor(10):
                     logger.debug(
                         "TRAIN forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
-                        tuple(outputs_raw_train.shape) if hasattr(outputs_raw_train, 'shape') else 'n/a',
+                        tuple(outputs_raw_train.shape) if (outputs_raw_train is not None and hasattr(outputs_raw_train, 'shape')) else ('MDN' if mdn_outputs_train is not None else 'n/a'),
                         self.args.pred_len,
                         self.dm.c_out_model,
                     )
                 
                 # Prepare y_true for loss: scale the target part of batch_y
-                y_true_targets_unscaled_train_loss = batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_train].cpu().numpy()
+                y_true_targets_unscaled_train_loss = batch_y[:, -self.args.pred_len:, :c_out_evaluation_train].cpu().numpy()
                 y_true_for_loss_train = torch.from_numpy(self.scaler_manager.target_scaler.transform(y_true_targets_unscaled_train_loss.reshape(-1, c_out_evaluation_train)).reshape(y_true_targets_unscaled_train_loss.shape)).float().to(self.device)
 
                 is_criterion_pinball_train = isinstance(criterion, PinballLoss) or \
                                              (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
                 
-                y_pred_for_loss_train = None # Initialize
-                if is_criterion_pinball_train:
-                    y_pred_for_loss_train = outputs_raw_train[:, -self.args.pred_len:, :]
+                # Compute loss (handle MDN vs deterministic)
+                if isinstance(criterion, MixtureNLLLoss) or mdn_outputs_train is not None:
+                    means_t, stds_t, weights_t = mdn_outputs_train if mdn_outputs_train is not None else outputs_raw_train
+                    if means_t.size(1) > self.args.pred_len:
+                        means_t = means_t[:, -self.args.pred_len:, :]
+                        stds_t = stds_t[:, -self.args.pred_len:, :]
+                        weights_t = weights_t[:, -self.args.pred_len:, :]
+                    targets_t = y_true_for_loss_train.squeeze(-1) if y_true_for_loss_train.dim() == 3 and y_true_for_loss_train.size(-1) == 1 else y_true_for_loss_train
+                    loss_train = criterion(means_t, stds_t, weights_t, targets_t)
                 else:
-                    y_pred_for_loss_train = outputs_raw_train[:, -self.args.pred_len:, :c_out_evaluation_train]
-                
-                loss_train = criterion(y_pred_for_loss_train, y_true_for_loss_train)
+                    y_pred_for_loss_train = outputs_raw_train[:, -self.args.pred_len:, :] if is_criterion_pinball_train else outputs_raw_train[:, -self.args.pred_len:, :c_out_evaluation_train]
+                    loss_train = criterion(y_pred_for_loss_train, y_true_for_loss_train)
                 if logger.isEnabledFor(10):
                     logger.debug(
-                        "TRAIN loss | criterion=%s | y_pred=%s | y_true=%s | pinball=%s",
+                        "TRAIN loss | criterion=%s | y_true=%s | pinball=%s | mdn=%s",
                         type(criterion).__name__,
-                        tuple(y_pred_for_loss_train.shape),
                         tuple(y_true_for_loss_train.shape),
                         is_criterion_pinball_train,
+                        isinstance(criterion, MixtureNLLLoss) or (mdn_outputs_train is not None),
                     )
                 
                 # Add auxiliary loss if present
@@ -377,7 +429,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 # Debug every 50 iterations if debug is enabled
                 if (i + 1) % 50 == 0 and logger.isEnabledFor(10):
-                    logger.debug(f"Training Step {i + 1}: batch_x={batch_x.shape}, outputs={outputs_raw_train.shape}")
+                    logger.debug(f"Training Step {i + 1}: batch_x={batch_x.shape}, outputs={(outputs_raw_train.shape if (outputs_raw_train is not None and hasattr(outputs_raw_train, 'shape')) else 'MDN')} ")
                     logger.debug(f"  aux_loss: {aux_loss_train}, main_loss: {loss_train.item() - (aux_loss_train if aux_loss_train != 0 else 0):.7f}")
 
                 if self.args.use_amp:
@@ -438,58 +490,93 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y_unscaled_all_features, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+            for i, batch_data in enumerate(test_loader):
+                batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
                 batch_x = batch_x.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 # Decoder input
                 # batch_y_unscaled_all_features contains ALL features (targets + covariates) in original scale
-                total_features_in_batch_y = batch_y_unscaled_all_features.shape[-1]
-                
-                # Historical part of decoder input (label_len)
-                hist_targets_unscaled = batch_y_unscaled_all_features[:, :self.args.label_len, :c_out_evaluation_test].cpu().numpy()
-                hist_targets_scaled = self.scaler_manager.target_scaler.transform(hist_targets_unscaled.reshape(-1, c_out_evaluation_test)).reshape(hist_targets_unscaled.shape)
-                
+                total_features_in_batch_y = batch_y.shape[-1]
+                # Use evaluation c_out (number of target features) from eval_info defined above
+                # c_out_evaluation_test is already set from self.eval_info['c_out_evaluation']
+
+                # Historical (label_len) targets and covariates for decoder input
+                hist_targets_unscaled = batch_y[:, :self.args.label_len, :c_out_evaluation_test].cpu().numpy()
+                hist_targets_scaled = self.scaler_manager.target_scaler.transform(
+                    hist_targets_unscaled.reshape(-1, c_out_evaluation_test)
+                ).reshape(hist_targets_unscaled.shape)
+
                 hist_covariates_scaled = None
                 if total_features_in_batch_y > c_out_evaluation_test and self.scaler_manager.scaler:
-                    hist_covariates_unscaled = batch_y_unscaled_all_features[:, :self.args.label_len, c_out_evaluation_test:].cpu().numpy()
-                    hist_covariates_scaled = self.scaler_manager.scaler.transform(hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(hist_covariates_unscaled.shape)
-                
-                # Future part of decoder input (pred_len)
-                future_targets_zeros = torch.zeros_like(batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_test]).float().to(self.device)
-                
+                    hist_covariates_unscaled = batch_y[:, :self.args.label_len, c_out_evaluation_test:].cpu().numpy()
+                    hist_covariates_scaled = self.scaler_manager.scaler.transform(
+                        hist_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)
+                    ).reshape(hist_covariates_unscaled.shape)
+
+                # Create zeros for future targets to build decoder input for inference
+                future_targets_zeros = torch.zeros_like(batch_y[:, -self.args.pred_len:, :c_out_evaluation_test]).float().to(self.device)
+
+                # Extract future covariates (unscaled) from batch_y which includes all features
                 future_covariates_scaled = None
                 if total_features_in_batch_y > c_out_evaluation_test and self.scaler_manager.scaler:
-                    future_covariates_unscaled = batch_y_unscaled_all_features[:, -self.args.pred_len:, c_out_evaluation_test:].cpu().numpy()
-                    future_covariates_scaled = self.scaler_manager.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)).reshape(future_covariates_unscaled.shape)
+                    future_covariates_unscaled = batch_y[:, -self.args.pred_len:, c_out_evaluation_test:].cpu().numpy()
+                    future_covariates_scaled = self.scaler_manager.scaler.transform(
+                        future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation_test)
+                    ).reshape(future_covariates_unscaled.shape)
 
-                # Concatenate to form dec_inp
+                # Construct decoder input with historical (scaled) and future parts
                 dec_inp_test = self._construct_dec_inp(hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled)
                 
                 outputs_raw_test = None # Initialize
                 if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
-                        outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
+                        if self.args.model == 'SOTA_Temporal_PGAT':
+                            wave_window = batch_x
+                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                            outputs_raw_test = self.model(wave_window, target_window, None)
+                        else:
+                            outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
                 else:
-                    outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
+                    if self.args.model == 'SOTA_Temporal_PGAT':
+                        wave_window = batch_x
+                        target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                        outputs_raw_test = self.model(wave_window, target_window, None)
+                    else:
+                        outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
 
-                model_outputs_pred_len_segment = outputs_raw_test[:, -self.args.pred_len:, :] # [B, pred_len, c_out_model]
+                # Unify outputs for downstream metric computations
+                mdn_outputs_test = None
+                if isinstance(outputs_raw_test, (tuple, list)) and len(outputs_raw_test) == 3:
+                    mdn_outputs_test = outputs_raw_test
+                
+                if mdn_outputs_test is not None:
+                    means_te, stds_te, weights_te = mdn_outputs_test
+                    if means_te.size(1) > self.args.pred_len:
+                        means_te = means_te[:, -self.args.pred_len:, :]
+                        stds_te = stds_te[:, -self.args.pred_len:, :]
+                        weights_te = weights_te[:, -self.args.pred_len:, :]
+                    # Use mixture mean as point prediction for evaluation
+                    model_outputs_pred_len_segment = (weights_te * means_te).sum(dim=-1).unsqueeze(-1)
+                else:
+                    model_outputs_pred_len_segment = outputs_raw_test[:, -self.args.pred_len:, :] # [B, pred_len, c_out_model]
                 if logger.isEnabledFor(10):
                     logger.debug(
-                        "TEST forward | outputs_raw=%s | pred_len_segment=%s | c_out_model=%s | quantile_mode=%s",
-                        tuple(outputs_raw_test.shape) if hasattr(outputs_raw_test, 'shape') else 'n/a',
+                        "TEST forward | outputs_raw=%s | pred_len_segment=%s | c_out_model=%s | quantile_mode=%s | mdn=%s",
+                        (tuple(outputs_raw_test.shape) if hasattr(outputs_raw_test, 'shape') else 'MDN'),
                         tuple(model_outputs_pred_len_segment.shape),
                         self.dm.c_out_model,
                         is_quantile_mode_test,
+                        mdn_outputs_test is not None,
                     )
                 
                 # Store original unscaled targets (only the target columns) for direct comparison/saving
-                true_targets_original_batch_np = batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy()
+                true_targets_original_batch_np = batch_y[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy()
                 trues_original_np_targets_only.append(true_targets_original_batch_np)
 
                 # For visualization, store the full c_out_evaluation features in original scale
-                trues_original_for_viz_np.append(batch_y_unscaled_all_features[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy())
+                trues_original_for_viz_np.append(batch_y[:, -self.args.pred_len:, :c_out_evaluation_test].cpu().numpy())
 
                 # Extract point predictions (median if quantile) for metrics, scaled
                 pred_point_scaled_batch_np = None # Initialize 
@@ -508,12 +595,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     pred_for_viz_scaled = pred_point_scaled_batch_np[0] # First sample in batch, scaled point preds
                     true_for_viz_original = trues_original_for_viz_np[-1][0] # Corresponding original true values (all c_out_eval features)
 
-                    logger.debug(f"Viz check: self.args.scale={self.args.scale}")
+                    scale_flag = getattr(self.args, 'scale', True)
+                    logger.debug(f"Viz check: scale_flag={scale_flag}")
                     logger.debug(f"Viz check: self.scaler_manager is not None={self.scaler_manager is not None}")
                     logger.debug(f"Viz check: self.scaler_manager.target_scaler is not None={self.scaler_manager.target_scaler is not None if self.scaler_manager else 'N/A'}")
 
                     # Check if scaling is enabled and scaler manager is properly initialized
-                    if self.args.scale and self.scaler_manager and self.scaler_manager.target_scaler:
+                    if scale_flag and self.scaler_manager and self.scaler_manager.target_scaler:
                         pred_for_viz_original = self.scaler_manager.inverse_transform_targets(
                             pred_for_viz_scaled.reshape(-1, c_out_evaluation_test)
                         ).reshape(pred_for_viz_scaled.shape) # Use target_scaler

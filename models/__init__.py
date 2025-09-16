@@ -56,6 +56,7 @@ _MODEL_SPECS: Dict[str, Tuple[str, str]] = {
     "TimeXer": (".TimeXer", "Model"),
     "WPMixer": (".WPMixer", "Model"),
     "MultiPatchFormer": (".MultiPatchFormer", "Model"),
+    "SOTA_Temporal_PGAT": (".SOTA_Temporal_PGAT", "SOTA_Temporal_PGAT"),
     # Enhanced models
     "EnhancedAutoformer": (".Autoformer", "EnhancedAutoformer"),
     "BayesianEnhancedAutoformer": (".BayesianEnhancedAutoformer", "BayesianEnhancedAutoformer"),

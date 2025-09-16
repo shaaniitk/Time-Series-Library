@@ -225,7 +225,44 @@ class GraphTransformerLayer(nn.Module):
         """
         Forward pass of graph transformer layer
         """
-        # Multi-head attention
+        # Runtime validations: node features and edge indices
+        required_nodes = ['wave', 'transition', 'target']
+        for nt in required_nodes:
+            if nt not in x_dict:
+                raise ValueError(f"Missing node type '{nt}' in x_dict")
+        # Validate shapes and d_model consistency
+        d_model = getattr(self.multi_head_attention, 'd_model', None)
+        for node_type, x in x_dict.items():
+            if not isinstance(x, torch.Tensor):
+                raise ValueError(f"x_dict['{node_type}'] must be a Tensor, got {type(x)}")
+            if x.dim() != 2:
+                raise ValueError(f"x_dict['{node_type}'] must be 2D [num_nodes, d_model], got shape {tuple(x.shape)}")
+            if d_model is not None and x.size(1) != d_model:
+                raise ValueError(f"x_dict['{node_type}'] last dim must equal d_model={d_model}, got {x.size(1)}")
+        
+        def _validate_edges(key, src_len, tgt_len):
+            if key in edge_index_dict:
+                ei = edge_index_dict[key]
+                if not isinstance(ei, torch.Tensor):
+                    raise ValueError(f"edge_index for {key} must be a Tensor, got {type(ei)}")
+                if ei.dtype not in (torch.long, torch.int64):
+                    raise ValueError(f"edge_index for {key} must be of dtype torch.long, got {ei.dtype}")
+                if ei.dim() != 2 or ei.size(0) != 2:
+                    raise ValueError(f"edge_index for {key} must have shape [2, E], got {tuple(ei.shape)}")
+                if ei.numel() > 0:
+                    max_src = int(ei[0].max().item())
+                    max_tgt = int(ei[1].max().item())
+                    min_src = int(ei[0].min().item())
+                    min_tgt = int(ei[1].min().item())
+                    if min_src < 0 or min_tgt < 0:
+                        raise ValueError(f"edge_index for {key} contains negative indices")
+                    if max_src >= src_len:
+                        raise ValueError(f"edge_index source index out of bounds for {key}: max {max_src} >= {src_len}")
+                    if max_tgt >= tgt_len:
+                        raise ValueError(f"edge_index target index out of bounds for {key}: max {max_tgt} >= {tgt_len}")
+        
+        _validate_edges(('wave', 'interacts_with', 'transition'), x_dict['wave'].size(0), x_dict['transition'].size(0))
+        _validate_edges(('transition', 'influences', 'target'), x_dict['transition'].size(0), x_dict['target'].size(0))        # Multi-head attention
         attention_output = self.multi_head_attention(x_dict, edge_index_dict, edge_weights)
         
         # Feed-forward networks with residual connections

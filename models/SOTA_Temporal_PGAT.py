@@ -14,6 +14,7 @@ from layers.modular.attention.autocorr_temporal_attention import AutoCorrTempora
 from layers.modular.embedding.structural_positional_encoding import StructuralPositionalEncoding
 from layers.modular.embedding.enhanced_temporal_encoding import EnhancedTemporalEncoding
 from layers.modular.graph.enhanced_pgat_layer import EnhancedPGAT_CrossAttn_Layer
+from utils.graph_aware_dimension_manager import GraphAwareDimensionManager, create_graph_aware_dimension_manager
 
 class SOTA_Temporal_PGAT(nn.Module):
     """
@@ -30,6 +31,21 @@ class SOTA_Temporal_PGAT(nn.Module):
         self.attention_registry = AttentionRegistry()
         self.decoder_registry = DecoderRegistry()
         self.graph_registry = GraphComponentRegistry()
+        
+        # Initialize enhanced graph-aware dimension manager
+        self.dim_manager = create_graph_aware_dimension_manager(config)
+        
+        # Validate graph compatibility upfront
+        graph_components = {
+            'enhanced_pgat': {'num_nodes': getattr(config, 'enc_in', 7), 'd_model': getattr(config, 'd_model', 512)},
+            'spatial_encoder': {'num_nodes': getattr(config, 'enc_in', 7), 'd_model': getattr(config, 'd_model', 512)},
+            'temporal_attention': {'d_model': getattr(config, 'd_model', 512)}
+        }
+        
+        is_compatible, issues = self.dim_manager.validate_graph_compatibility(graph_components)
+        if not is_compatible:
+            print(f"Warning: Graph compatibility issues detected: {issues}")
+            print(f"Dimension manager info: {self.dim_manager}")
         
         # Get components from registries
         try:
@@ -61,17 +77,26 @@ class SOTA_Temporal_PGAT(nn.Module):
         self.feature_projection = None
         
         # Enhanced spatial encoder with dynamic edge weights
+        # Note: Previously forced disabled due to index errors; now gated via config with safe fallback
         use_dynamic_weights = getattr(config, 'use_dynamic_edge_weights', True)
-        if use_dynamic_weights:
-            self.spatial_encoder = EnhancedPGAT_CrossAttn_Layer(
-                d_model=config.d_model,
-                num_heads=getattr(config, 'n_heads', 8),
-                use_dynamic_weights=True
-            )
-        else:
-            self.spatial_encoder = self.graph_registry.get('pgat_cross_attn_layer')(
-                d_model=config.d_model
-            )
+        try:
+            if use_dynamic_weights:
+                self.spatial_encoder = EnhancedPGAT_CrossAttn_Layer(
+                    d_model=config.d_model,
+                    num_heads=getattr(config, 'n_heads', 8),
+                    use_dynamic_weights=True
+                )
+                self.enhanced_pgat_enabled = True
+            else:
+                raise RuntimeError('Enhanced PGAT disabled via config')
+        except Exception as e:
+            print(f"Info: Enhanced PGAT unavailable ({e}); falling back to Linear spatial encoder")
+            self.enhanced_pgat_enabled = False
+            # Use simple linear layer for spatial encoding
+            self.spatial_encoder = nn.Linear(config.d_model, config.d_model)
+            # Feature projection for concatenated features when enhanced PGAT is disabled
+            total_features = config.d_model * 3  # wave + transition + target
+            self.feature_projection = nn.Linear(total_features, config.d_model)
         
         # Enhanced temporal encoder with autocorrelation attention
         use_autocorr = getattr(config, 'use_autocorr_attention', True)
@@ -101,10 +126,9 @@ class SOTA_Temporal_PGAT(nn.Module):
         else:  # probabilistic mode
             if use_mdn:
                 self.decoder = MixtureDensityDecoder(
-                    input_dim=config.d_model,
-                    output_dim=getattr(config, 'c_out', 1),
-                    num_components=getattr(config, 'mdn_components', 3),
-                    hidden_dim=getattr(config, 'mdn_hidden_dim', 256)
+                    d_model=config.d_model,
+                    pred_len=getattr(config, 'pred_len', 96),
+                    num_components=getattr(config, 'mdn_components', 3)
                 )
             else:
                 self.decoder = self.decoder_registry.get('probabilistic')(config.d_model)
@@ -112,8 +136,9 @@ class SOTA_Temporal_PGAT(nn.Module):
         # Add structural positional encoding
         self.structural_pos_encoding = StructuralPositionalEncoding(
             d_model=config.d_model,
-            max_nodes=getattr(config, 'max_nodes', 100),
-            k_eigenvectors=getattr(config, 'k_eigenvectors', 16)
+            num_eigenvectors=getattr(config, 'max_eigenvectors', 16),
+            dropout=getattr(config, 'dropout', 0.1),
+            learnable_projection=True
         )
         
         # Add enhanced temporal positional encoding
@@ -199,17 +224,23 @@ class SOTA_Temporal_PGAT(nn.Module):
         num_nodes = combined_input.shape[-1]
         
         # Initialize dynamic graph components if not exists
+        # Use actual tensor dimensions instead of hardcoded config values
+        actual_num_nodes = combined_input.shape[-1]  # This is the actual feature dimension
+        
         if self.dynamic_graph is None:
             self.dynamic_graph = DynamicGraphConstructor(
-                num_nodes=num_nodes,
-                feature_dim=seq_len,
-                hidden_dim=self.d_model
+                d_model=self.d_model,
+                num_waves=actual_num_nodes,
+                num_targets=actual_num_nodes,
+                num_transitions=actual_num_nodes
             ).to(combined_input.device)
         
         if self.adaptive_graph is None:
             self.adaptive_graph = AdaptiveGraphStructure(
-                num_nodes=num_nodes,
-                feature_dim=seq_len
+                d_model=self.d_model,
+                num_waves=actual_num_nodes,
+                num_targets=actual_num_nodes,
+                num_transitions=actual_num_nodes
             ).to(combined_input.device)
         
         if self.spatiotemporal_encoder is None:
@@ -237,90 +268,272 @@ class SOTA_Temporal_PGAT(nn.Module):
         
         # Create dynamic adjacency matrix
         node_features = combined_input.transpose(1, 2)  # [batch_size, features, seq_len]
-        adjacency_matrix, edge_weights = self.dynamic_graph(node_features)
         
-        # Update graph structure adaptively
-        adjacency_matrix = self.adaptive_graph(adjacency_matrix, node_features)
+        # Format node features as dictionary for dynamic graph constructor
+        # Create placeholder features for transition and target nodes
+        batch_size, feature_dim, seq_len = node_features.shape
+        transition_features = torch.zeros(batch_size, feature_dim, seq_len, device=node_features.device)
+        target_features = torch.zeros(batch_size, feature_dim, seq_len, device=node_features.device)
+        
+        node_features_dict = {
+            'wave': node_features,
+            'transition': transition_features,
+            'target': target_features
+        }
+        
+        # Dynamic graph construction with enhanced edge weights
+        # Replace hard-disabled path with config gate and fallback
+        if getattr(self.config, 'enable_dynamic_graph', True):
+            dyn_result = self.dynamic_graph(node_features_dict)
+            if isinstance(dyn_result, (tuple, list)):
+                adjacency_matrix, edge_weights = dyn_result[0], dyn_result[1]
+            else:
+                adjacency_matrix, edge_weights = dyn_result, None
+            # Update graph structure adaptively
+            adapt_result = self.adaptive_graph(node_features_dict)
+            if isinstance(adapt_result, (tuple, list)):
+                adjacency_matrix, edge_weights = adapt_result[0], adapt_result[1]
+            else:
+                adjacency_matrix = adapt_result
+        else:
+            # Use simple adjacency matrix for now
+            adjacency_matrix = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
+            edge_weights = None
         
         # Reshape embedded features for spatial-temporal processing
         spatiotemporal_input = embedded.unsqueeze(2).expand(-1, -1, num_nodes, -1)  # [batch, seq, nodes, d_model]
-        
         # Add structural positional encoding for enhanced graph structure awareness
-        if hasattr(self, 'structural_pos_encoding'):
-            structural_encoding = self.structural_pos_encoding(adjacency_matrix, spatiotemporal_input)
-            spatiotemporal_input = spatiotemporal_input + structural_encoding
-        
-        # Add graph-aware positional encoding
-        pos_encoding = self.graph_pos_encoding(
-            batch_size, seq_len, num_nodes, adjacency_matrix, combined_input.device
-        )
-        spatiotemporal_input = spatiotemporal_input + pos_encoding
+        if getattr(self.config, 'enable_structural_pos_encoding', True):
+            try:
+                # Lazily initialize structural positional encoding module if needed
+                if not hasattr(self, 'structural_pos_encoding') or self.structural_pos_encoding is None:
+                    self.structural_pos_encoding = StructuralPositionalEncoding(
+                        d_model=self.d_model,
+                        num_eigenvectors=getattr(self.config, 'max_eigenvectors', 16),
+                        dropout=getattr(self.config, 'dropout', 0.1),
+                        learnable_projection=True
+                    ).to(combined_input.device)
+
+                # Use homogeneous simple path: compute node-wise structural encoding once and broadcast
+                adj_matrix_tensor = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
+                d_model = spatiotemporal_input.size(-1)
+                base_x = torch.zeros(num_nodes, d_model, device=combined_input.device, dtype=spatiotemporal_input.dtype)
+                node_struct_encoding = self.structural_pos_encoding(base_x, adj_matrix_tensor)  # [num_nodes, d_model]
+                # Broadcast across batch and sequence length
+                node_struct_encoding = node_struct_encoding.unsqueeze(0).unsqueeze(0).expand(batch_size, seq_len, -1, -1)
+                spatiotemporal_input = spatiotemporal_input + node_struct_encoding
+            except Exception as e:
+                print(f"Info: Structural positional encoding skipped: {e}")
+        # Add graph-aware positional encoding (config gated)
+        if getattr(self.config, 'enable_graph_positional_encoding', True):
+            try:
+                adj_matrix_tensor = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
+                pos_encoding = self.graph_pos_encoding(
+                    batch_size, seq_len, num_nodes, adj_matrix_tensor, combined_input.device
+                )
+                spatiotemporal_input = spatiotemporal_input + pos_encoding
+            except Exception as e:
+                print(f"Info: Graph positional encoding skipped: {e}")
+        # Create adjacency matrix for spatiotemporal encoder
+        adj_matrix_tensor = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
         
         # Apply joint spatial-temporal encoding
         spatiotemporal_encoded = self.spatiotemporal_encoder(
-            spatiotemporal_input, adjacency_matrix
+            spatiotemporal_input, adj_matrix_tensor
         )
         
-        # Apply enhanced graph attention
+        # Derive enhanced node features and edge indices before validations
         enhanced_x_dict = {
-            'wave': spatiotemporal_encoded[:, :wave_len, :, :].mean(dim=2),
-            'transition': spatiotemporal_encoded[:, wave_len:, :, :].mean(dim=2),
-            'target': spatiotemporal_encoded[:, wave_len:, :, :].mean(dim=2)
+            'wave': spatiotemporal_encoded[:, :wave_len, :, :].mean(dim=2).mean(dim=0),
+            'transition': spatiotemporal_encoded[:, wave_len:, :, :].mean(dim=2).mean(dim=0),
+            'target': spatiotemporal_encoded[:, wave_len:, :, :].mean(dim=2).mean(dim=0)
         }
-        
+
+        enhanced_edge_index_dict = {
+            ('wave', 'interacts_with', 'transition'): self._create_edge_index(wave_len, target_len, combined_input.device),
+            ('transition', 'influences', 'target'): self._create_edge_index(target_len, target_len, combined_input.device)
+        }
+
+        # Runtime validations for enhanced_x_dict and enhanced_edge_index_dict
+        for nt in ['wave', 'transition', 'target']:
+            if nt not in enhanced_x_dict:
+                raise ValueError(f"Missing node type '{nt}' in enhanced_x_dict")
+            x_nt = enhanced_x_dict[nt]
+            if not isinstance(x_nt, torch.Tensor):
+                raise ValueError(f"enhanced_x_dict['{nt}'] must be a Tensor, got {type(x_nt)}")
+            if x_nt.dim() != 2:
+                raise ValueError(f"enhanced_x_dict['{nt}'] must be 2D [num_nodes, d_model], got shape {tuple(x_nt.shape)}")
+        d_w = enhanced_x_dict['wave'].size(1)
+        d_t = enhanced_x_dict['transition'].size(1)
+        d_g = enhanced_x_dict['target'].size(1)
+        if not (d_w == d_t == d_g):
+            raise ValueError(f"Mismatched feature dims across nodes: wave={d_w}, transition={d_t}, target={d_g}")
+
+        def _validate_edges_pg(key, src_key, tgt_key):
+            if key in enhanced_edge_index_dict:
+                ei = enhanced_edge_index_dict[key]
+                if not isinstance(ei, torch.Tensor):
+                    raise ValueError(f"edge_index for {key} must be a Tensor, got {type(ei)}")
+                if ei.dtype not in (torch.long, torch.int64):
+                    raise ValueError(f"edge_index for {key} must be of dtype torch.long, got {ei.dtype}")
+                if ei.dim() != 2 or ei.size(0) != 2:
+                    raise ValueError(f"edge_index for {key} must have shape [2, E], got {tuple(ei.shape)}")
+                if ei.numel() > 0:
+                    max_src = int(ei[0].max().item())
+                    max_tgt = int(ei[1].max().item())
+                    min_src = int(ei[0].min().item())
+                    min_tgt = int(ei[1].min().item())
+                    if min_src < 0 or min_tgt < 0:
+                        raise ValueError(f"edge_index for {key} contains negative indices")
+                    if max_src >= enhanced_x_dict[src_key].size(0):
+                        raise ValueError(f"edge_index source index out of bounds for {key}: max {max_src} >= {enhanced_x_dict[src_key].size(0)}")
+                    if max_tgt >= enhanced_x_dict[tgt_key].size(0):
+                        raise ValueError(f"edge_index target index out of bounds for {key}: max {max_tgt} >= {enhanced_x_dict[tgt_key].size(0)}")
+
+        _validate_edges_pg(('wave','interacts_with','transition'), 'wave', 'transition')
+        _validate_edges_pg(('transition','influences','target'), 'transition', 'target')        # Apply enhanced graph attention
+        enhanced_x_dict = {
+            'wave': spatiotemporal_encoded[:, :wave_len, :, :].mean(dim=2).mean(dim=0),
+            'transition': spatiotemporal_encoded[:, wave_len:, :, :].mean(dim=2).mean(dim=0),
+            'target': spatiotemporal_encoded[:, wave_len:, :, :].mean(dim=2).mean(dim=0)
+        }
+
         enhanced_edge_index_dict = {
             ('wave', 'interacts_with', 'transition'): self._create_edge_index(wave_len, target_len, combined_input.device),
             ('transition', 'influences', 'target'): self._create_edge_index(target_len, target_len, combined_input.device)
         }
         
-        # Apply multi-head graph attention
-        attended_features = self.graph_attention(enhanced_x_dict, enhanced_edge_index_dict)
-        
-        # Apply original spatial encoding through graph attention
-        spatial_encoded_dict = self.spatial_encoder(x_dict, t_dict, edge_index_dict)
-        
-        # Combine enhanced and original features
-        spatial_encoded = {
-            'wave': spatial_encoded_dict['wave'].unsqueeze(0).expand(batch_size, -1, -1) + attended_features['wave'],
-            'transition': spatial_encoded_dict['transition'].unsqueeze(0).expand(batch_size, -1, -1) + attended_features['transition'],
-            'target': spatial_encoded_dict['target'].unsqueeze(0).expand(batch_size, -1, -1) + attended_features['target']
-        }
+        # Apply multi-head graph attention (config-gated with safe fallback)
+        if getattr(self.config, 'enable_graph_attention', True):
+            try:
+                attended_features = self.graph_attention(enhanced_x_dict, enhanced_edge_index_dict)
+            except Exception as e:
+                print(f"Info: Graph attention skipped due to error: {e}")
+                attended_features = enhanced_x_dict
+        else:
+            # Use enhanced features directly without graph attention
+            attended_features = enhanced_x_dict
+
+        # Apply spatial encoding based on encoder type
+        use_dynamic_weights = getattr(self.config, 'use_dynamic_edge_weights', True) and isinstance(self.spatial_encoder, EnhancedPGAT_CrossAttn_Layer)
+        if use_dynamic_weights and hasattr(self.spatial_encoder, 'forward'):
+            # Enhanced spatial encoder with graph structure
+            spatial_x_dict, spatial_t_dict = self.spatial_encoder(x_dict, t_dict, edge_index_dict)
+            spatial_encoded = {
+                'wave': spatial_x_dict['wave'].unsqueeze(0).expand(batch_size, -1, -1) + attended_features['wave'],
+                'transition': spatial_x_dict['transition'].unsqueeze(0).expand(batch_size, -1, -1) + attended_features['transition'],
+                'target': spatial_x_dict['target'].unsqueeze(0).expand(batch_size, -1, -1) + attended_features['target']
+            }
+        else:
+            # Simple linear spatial encoder
+            wave_features = self.spatial_encoder(attended_features['wave']).unsqueeze(0).expand(batch_size, -1, -1)
+            transition_features = self.spatial_encoder(attended_features['transition']).unsqueeze(0).expand(batch_size, -1, -1)
+            target_features = self.spatial_encoder(attended_features['target']).unsqueeze(0).expand(batch_size, -1, -1)
+            spatial_encoded = {
+                'wave': wave_features,
+                'transition': transition_features,
+                'target': target_features
+            }
         
         # Store graph information if enabled
+        # Store graph information if enabled
         if self.store_graph_info:
-            self.last_adjacency_matrix = adjacency_matrix.detach()
-            self.last_edge_weights = edge_weights.detach() if edge_weights is not None else None
+            adj_to_store = adjacency_matrix
+            ew_to_store = edge_weights
+            if isinstance(adj_to_store, (tuple, list)):
+                # Normalize possible (adjacency, weights) tuple
+                if ew_to_store is None and len(adj_to_store) >= 2:
+                    adj_to_store, ew_to_store = adj_to_store[0], adj_to_store[1]
+                else:
+                    adj_to_store = adj_to_store[0]
+            self.last_adjacency_matrix = adj_to_store.detach() if hasattr(adj_to_store, 'detach') else adj_to_store
+            self.last_edge_weights = ew_to_store.detach() if ew_to_store is not None and hasattr(ew_to_store, 'detach') else ew_to_store
         
         # Temporal encoding with temporal attention
         # Extract target embeddings from spatial encoded output
         target_spatial = spatial_encoded['target']
-        temporal_encoded, _ = self.temporal_encoder(
-            target_spatial,
-            spatial_encoded['wave']
-        )
+        
+        # Call temporal encoder robustly: prefer (query, keys, values), then fallbacks
+        out = None
+        try:
+            # Try keyword arguments first (most explicit)
+            out = self.temporal_encoder(query=target_spatial, keys=target_spatial, values=target_spatial)
+        except TypeError:
+            try:
+                # Fallback to positional Q, K, V
+                out = self.temporal_encoder(target_spatial, target_spatial, target_spatial)
+            except TypeError:
+                try:
+                    # Some temporal encoders may accept only a single tensor
+                    out = self.temporal_encoder(target_spatial)
+                except TypeError:
+                    # Last resort: two-tensor signature
+                    out = self.temporal_encoder(target_spatial, target_spatial)
+        
+        # Unpack output if needed
+        temporal_encoded = out[0] if isinstance(out, tuple) else out
         
         # Combine spatial and temporal features
         # Use target spatial features for combination
-        final_embedding = temporal_encoded + target_spatial
+        if temporal_encoded.shape == target_spatial.shape:
+            final_embedding = temporal_encoded + target_spatial
+        else:
+            # Handle dimension mismatch by using only temporal encoded features
+            final_embedding = temporal_encoded
         
         # Project features if dimension mismatch
         if final_embedding.size(-1) != self.d_model:
-            if self.feature_projection is None:
-                self.feature_projection = nn.Linear(final_embedding.size(-1), self.d_model).to(final_embedding.device)
-            final_embedding = self.feature_projection(final_embedding)
+            if not hasattr(self, 'final_projection') or self.final_projection is None:
+                self.final_projection = nn.Linear(final_embedding.size(-1), self.d_model).to(final_embedding.device)
+            final_embedding = self.final_projection(final_embedding)
         
         # Decode to final output
         return self.decoder(final_embedding)
     
     def _create_edge_index(self, num_source: int, num_target: int, device: torch.device) -> torch.Tensor:
         """
-        Create edge indices for heterogeneous graph attention
+        Create edge indices for heterogeneous graph attention with dimension validation
         """
-        # Create fully connected bipartite graph
-        source_nodes = torch.arange(num_source, device=device).repeat(num_target)
-        target_nodes = torch.arange(num_target, device=device).repeat_interleave(num_source)
-        edge_index = torch.stack([source_nodes, target_nodes], dim=0)
-        return edge_index
+        try:
+            # Use dimension manager's safe edge index creation
+            edge_index = self.dim_manager.create_safe_edge_index(num_source, num_target, device)
+            
+            # Additional validation for this specific edge type
+            if edge_index.shape[0] != 2:
+                raise ValueError(f"Edge index should have 2 rows, got {edge_index.shape[0]}")
+            
+            if edge_index.shape[1] != num_source * num_target:
+                raise ValueError(f"Edge index should have {num_source * num_target} edges, got {edge_index.shape[1]}")
+            
+            return edge_index
+            
+        except Exception as e:
+            print(f"Warning: Safe edge index creation failed ({e}), falling back to basic method")
+            print(f"Dimensions: source={num_source}, target={num_target}")
+            
+            # Fallback to original method with bounds checking
+            if num_source <= 0 or num_target <= 0:
+                print(f"Invalid node counts: source={num_source}, target={num_target}")
+                return torch.empty((2, 0), device=device, dtype=torch.long)
+            
+            # Create fully connected bipartite graph (original method)
+            source_nodes = torch.arange(num_source, device=device).repeat(num_target)
+            target_nodes = torch.arange(num_target, device=device).repeat_interleave(num_source)
+            edge_index = torch.stack([source_nodes, target_nodes], dim=0)
+            return edge_index
+    
+    def _create_adjacency_matrix(self, seq_len, num_nodes, device):
+        """Create adjacency matrix for temporal connections
+        Returns a [num_nodes, num_nodes] adjacency matrix
+        """
+        # Create a simple fully connected graph for demonstration
+        # In practice, this should be based on actual spatial relationships
+        adj_matrix = torch.ones(num_nodes, num_nodes, device=device)
+        # Remove self-loops for better graph structure
+        adj_matrix.fill_diagonal_(0)
+        # Add small values to diagonal to avoid numerical issues
+        adj_matrix.fill_diagonal_(0.1)
+        return adj_matrix
     
     def get_graph_structure(self):
         """

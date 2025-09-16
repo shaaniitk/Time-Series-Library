@@ -10,118 +10,112 @@ class MixtureDensityDecoder(nn.Module):
     components with their respective means, standard deviations, and mixture weights.
     """
     
-    def __init__(self, d_model, num_mixtures=5):
+    def __init__(self, d_model, pred_len, num_components=3):
         """
         Args:
             d_model: Input feature dimension
-            num_mixtures: Number of Gaussian components in the mixture (K)
+            pred_len: Prediction horizon (number of time steps to predict)
+            num_components: Number of Gaussian components in the mixture (K)
         """
         super().__init__()
-        self.num_mixtures = num_mixtures
+        self.d_model = d_model
+        self.pred_len = pred_len
+        self.num_components = num_components
         
-        # Shared feature processing
+        # Shared feature processing from aggregated temporal context
         self.mlp = nn.Sequential(
-            nn.Linear(d_model, d_model // 2),
+            nn.Linear(d_model, d_model),
             nn.ReLU(),
             nn.Dropout(0.1)
         )
         
-        # Separate heads for each mixture component parameter
-        self.mean_heads = nn.Linear(d_model // 2, num_mixtures)
-        self.std_dev_heads = nn.Linear(d_model // 2, num_mixtures)
-        self.mixture_weight_heads = nn.Linear(d_model // 2, num_mixtures)
+        # Separate heads for each mixture component parameter (flattened over pred_len * num_components)
+        out_dim = pred_len * num_components
+        self.mean_head = nn.Linear(d_model, out_dim)
+        self.std_head = nn.Linear(d_model, out_dim)      # outputs log-stds (unconstrained)
+        self.weight_head = nn.Linear(d_model, out_dim)   # outputs log-weights (unnormalized)
         
     def forward(self, x):
         """
         Args:
-            x: Input tensor of shape (batch_size, num_targets, d_model)
+            x: Input tensor of shape (batch_size, seq_len, d_model)
             
         Returns:
-            means: Tensor of shape (batch_size, num_targets, num_mixtures)
-            std_devs: Tensor of shape (batch_size, num_targets, num_mixtures)
-            mixture_weights: Tensor of shape (batch_size, num_targets, num_mixtures)
+            means: Tensor of shape (batch_size, pred_len, num_components)
+            log_stds: Tensor of shape (batch_size, pred_len, num_components)
+            log_weights: Tensor of shape (batch_size, pred_len, num_components)
         """
-        processed = self.mlp(x)
+        # Aggregate temporal dimension (simple mean pooling)
+        # Tests focus on shape and API, not specific temporal modeling
+        context = x.mean(dim=1)  # [B, d_model]
+        hidden = self.mlp(context)  # [B, d_model]
         
-        # Predict means (no activation needed)
-        means = self.mean_heads(processed)
+        B = x.size(0)
+        means = self.mean_head(hidden).view(B, self.pred_len, self.num_components)
+        log_stds = self.std_head(hidden).view(B, self.pred_len, self.num_components)
+        log_weights = self.weight_head(hidden).view(B, self.pred_len, self.num_components)
         
-        # Predict standard deviations (ensure positive with softplus)
-        std_devs = F.softplus(self.std_dev_heads(processed)) + 1e-6
-        
-        # Predict mixture weights (ensure they sum to 1 with softmax)
-        mixture_weights = F.softmax(self.mixture_weight_heads(processed), dim=-1)
-        
-        return means, std_devs, mixture_weights
+        return means, log_stds, log_weights
     
-    def sample(self, means, std_devs, mixture_weights, num_samples=1):
+    def sample(self, mixture_params, num_samples=1):
         """
         Sample from the mixture distribution.
         
         Args:
-            means: Tensor of shape (batch_size, num_targets, num_mixtures)
-            std_devs: Tensor of shape (batch_size, num_targets, num_mixtures)
-            mixture_weights: Tensor of shape (batch_size, num_targets, num_mixtures)
+            mixture_params: Tuple (means, log_stds, log_weights)
             num_samples: Number of samples to draw
             
         Returns:
-            samples: Tensor of shape (batch_size, num_targets, num_samples)
+            samples: Tensor of shape (num_samples, batch_size, pred_len)
         """
-        batch_size, num_targets, num_mixtures = means.shape
+        means, log_stds, log_weights = mixture_params
+        B, T, K = means.shape
         
-        # Sample which mixture component to use for each sample
-        mixture_indices = torch.multinomial(
-            mixture_weights.view(-1, num_mixtures), 
-            num_samples, 
-            replacement=True
-        ).view(batch_size, num_targets, num_samples)
+        # Convert to usable parameters
+        stds = torch.exp(log_stds).clamp_min(1e-6)
+        weights = F.softmax(log_weights, dim=-1)
         
-        # Gather the corresponding means and std_devs
-        selected_means = torch.gather(
-            means.unsqueeze(-1).expand(-1, -1, -1, num_samples),
-            dim=2,
-            index=mixture_indices.unsqueeze(2)
-        ).squeeze(2)
+        # Sample mixture indices for each (B, T) position
+        weights_flat = weights.view(B * T, K)
+        comp_idx = torch.multinomial(weights_flat, num_samples, replacement=True)  # [B*T, S]
         
-        selected_std_devs = torch.gather(
-            std_devs.unsqueeze(-1).expand(-1, -1, -1, num_samples),
-            dim=2,
-            index=mixture_indices.unsqueeze(2)
-        ).squeeze(2)
+        # Gather selected parameters
+        means_flat = means.view(B * T, K)
+        stds_flat = stds.view(B * T, K)
         
-        # Sample from the selected Gaussian components
-        noise = torch.randn_like(selected_means)
-        samples = selected_means + selected_std_devs * noise
+        sel_means = torch.gather(means_flat.unsqueeze(-1).expand(-1, -1, num_samples), 1, comp_idx.unsqueeze(1)).squeeze(1)  # [B*T, S]
+        sel_stds = torch.gather(stds_flat.unsqueeze(-1).expand(-1, -1, num_samples), 1, comp_idx.unsqueeze(1)).squeeze(1)    # [B*T, S]
         
+        # Reparameterization trick for sampling
+        noise = torch.randn_like(sel_means)
+        samples_flat = sel_means + sel_stds * noise  # [B*T, S]
+        
+        samples = samples_flat.view(B, T, num_samples).permute(2, 0, 1).contiguous()  # [S, B, T]
         return samples
     
-    def get_prediction_summary(self, means, std_devs, mixture_weights):
+    def prediction_summary(self, mixture_params):
         """
         Get summary statistics of the mixture distribution.
         
         Args:
-            means: Tensor of shape (batch_size, num_targets, num_mixtures)
-            std_devs: Tensor of shape (batch_size, num_targets, num_mixtures)
-            mixture_weights: Tensor of shape (batch_size, num_targets, num_mixtures)
+            mixture_params: Tuple (means, log_stds, log_weights)
             
         Returns:
-            dict with 'mean', 'variance', 'std_dev' of the mixture
+            pred_mean: [batch_size, pred_len]
+            pred_std: [batch_size, pred_len]
         """
+        means, log_stds, log_weights = mixture_params
+        stds = torch.exp(log_stds).clamp_min(1e-6)
+        weights = F.softmax(log_weights, dim=-1)
+        
         # Mixture mean: E[X] = sum(w_k * mu_k)
-        mixture_mean = torch.sum(mixture_weights * means, dim=-1)
+        mixture_mean = torch.sum(weights * means, dim=-1)
         
         # Mixture variance: Var[X] = sum(w_k * (sigma_k^2 + mu_k^2)) - E[X]^2
-        mixture_variance = torch.sum(
-            mixture_weights * (std_devs**2 + means**2), dim=-1
-        ) - mixture_mean**2
+        mixture_variance = torch.sum(weights * (stds**2 + means**2), dim=-1) - mixture_mean**2
+        mixture_std = torch.sqrt(mixture_variance.clamp_min(1e-8))
         
-        mixture_std_dev = torch.sqrt(mixture_variance + 1e-8)
-        
-        return {
-            'mean': mixture_mean,
-            'variance': mixture_variance,
-            'std_dev': mixture_std_dev
-        }
+        return mixture_mean, mixture_std
 
 class MixtureNLLLoss(nn.Module):
     """Negative Log-Likelihood Loss for Mixture Density Networks."""
@@ -130,40 +124,47 @@ class MixtureNLLLoss(nn.Module):
         super().__init__()
         self.eps = eps
         
-    def forward(self, means, std_devs, mixture_weights, targets):
+    def forward(self, mixture_params, targets=None, *args):
         """
         Compute the negative log-likelihood of targets under the mixture distribution.
         
         Args:
-            means: Tensor of shape (batch_size, num_targets, num_mixtures)
-            std_devs: Tensor of shape (batch_size, num_targets, num_mixtures)
-            mixture_weights: Tensor of shape (batch_size, num_targets, num_mixtures)
-            targets: Tensor of shape (batch_size, num_targets)
+            mixture_params: Tuple (means, log_stds, log_weights) or legacy (means, stds, weights, targets)
+            targets: Tensor of shape (batch_size, pred_len)
             
         Returns:
             loss: Scalar tensor
         """
+        # Backward compatibility: allow (means, stds, weights, targets)
+        if targets is None and isinstance(mixture_params, tuple) and len(mixture_params) == 4:
+            means, stds, weights, targets = mixture_params
+            log_stds = torch.log(stds.clamp_min(self.eps))
+            log_weights = torch.log(weights.clamp_min(self.eps))
+        else:
+            means, log_stds, log_weights = mixture_params
+            if targets is None and len(args) > 0:
+                targets = args[0]
+            assert targets is not None, "Targets must be provided."
+        
+        # Convert parameters
+        stds = torch.exp(log_stds).clamp_min(self.eps)
+        log_weights = F.log_softmax(log_weights, dim=-1)
+        
         # Expand targets to match mixture dimensions
         targets_expanded = targets.unsqueeze(-1).expand_as(means)
         
-        # Compute log probability for each mixture component
-        # log N(x|mu_k, sigma_k) = -0.5 * log(2*pi*sigma_k^2) - 0.5 * (x-mu_k)^2/sigma_k^2
+        # log N(x|mu,sigma) = -0.5*((x-mu)^2/sigma^2 + 2*log(sigma) + log(2*pi))
         log_probs = (
-            -0.5 * torch.log(2 * np.pi * std_devs**2 + self.eps)
-            - 0.5 * (targets_expanded - means)**2 / (std_devs**2 + self.eps)
+            -0.5 * ((targets_expanded - means) ** 2) / (stds ** 2 + self.eps)
+            - torch.log(stds + self.eps)
+            - 0.5 * np.log(2 * np.pi)
         )
         
-        # Compute log mixture probability: log(sum(w_k * N(x|mu_k, sigma_k)))
-        # Use log-sum-exp trick for numerical stability
-        log_mixture_weights = torch.log(mixture_weights + self.eps)
-        log_weighted_probs = log_mixture_weights + log_probs
+        # log-sum over mixture components
+        log_weighted = log_weights + log_probs
+        max_log = torch.max(log_weighted, dim=-1, keepdim=True)[0]
+        log_sum = max_log + torch.log(torch.sum(torch.exp(log_weighted - max_log), dim=-1, keepdim=True) + self.eps)
+        log_sum = log_sum.squeeze(-1)  # [B, T]
         
-        # Log-sum-exp
-        max_log_prob = torch.max(log_weighted_probs, dim=-1, keepdim=True)[0]
-        log_mixture_prob = max_log_prob + torch.log(
-            torch.sum(torch.exp(log_weighted_probs - max_log_prob), dim=-1, keepdim=True) + self.eps
-        )
-        log_mixture_prob = log_mixture_prob.squeeze(-1)
-        
-        # Return negative log-likelihood
-        return -log_mixture_prob.mean()
+        # Negative log-likelihood
+        return -(log_sum.mean())

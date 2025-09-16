@@ -40,6 +40,9 @@ if __name__ == '__main__':
         parser.add_argument('--freq', type=str, default='h',
                             help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
         parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+        # NEW: lengths for robust splitter used by setup_financial_forecasting_data
+        parser.add_argument('--validation_length', type=int, default=1000, help='number of rows for validation split (chronological)')
+        parser.add_argument('--test_length', type=int, default=1000, help='number of rows for test split (chronological)')
 
         # forecasting task
         parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -101,7 +104,7 @@ if __name__ == '__main__':
         parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
 
         # GPU
-        parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
+        parser.add_argument('--use_gpu', type=int, default=1, help='use gpu')
         parser.add_argument('--gpu', type=int, default=0, help='gpu')
         parser.add_argument('--gpu_type', type=str, default='cuda', help='gpu type')  # cuda or mps
         parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
@@ -179,6 +182,27 @@ if __name__ == '__main__':
         Exp = Exp_Classification
     else:
         Exp = Exp_Long_Term_Forecast
+
+    # Initialize required managers and data loaders for long_term_forecast
+    if args.task_name == 'long_term_forecast':
+        # Use the robust, leak-free pipeline that fits ScalerManager correctly
+        from data_provider.data_factory import setup_financial_forecasting_data
+        train_loader, vali_loader, test_loader, scaler_manager, dim_manager = setup_financial_forecasting_data(args)
+        # Attach to args for experiment class
+        args.train_loader = train_loader
+        args.vali_loader = vali_loader
+        args.test_loader = test_loader
+        args.scaler_manager = scaler_manager
+        args.dim_manager = dim_manager
+        logger.info(f"Initialized managers and data loaders for {args.task_name} (new pipeline)")
+        logger.info(f"Dimension manager: {args.dim_manager}")
+    else:
+        # For other tasks, set None values to avoid AttributeError
+        args.dim_manager = None
+        args.scaler_manager = None
+        args.train_loader = None
+        args.vali_loader = None
+        args.test_loader = None
 
     if args.is_training:
         for ii in range(args.itr):

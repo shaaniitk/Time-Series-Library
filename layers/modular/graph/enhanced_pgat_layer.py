@@ -47,8 +47,8 @@ class DynamicEdgeWeightComputation(nn.Module):
         Returns:
             edge_weights: Computed edge weights [num_edges, num_heads]
         """
-        # Get source and target node features for each edge
-        source_idx, target_idx = edge_index[0], edge_index[1]
+        # Convention alignment: our MessagePassing/propgation uses edge_index[0] = target(i), edge_index[1] = source(j)
+        target_idx, source_idx = edge_index[0], edge_index[1]
         edge_source_features = source_features[source_idx]  # [num_edges, d_model]
         edge_target_features = target_features[target_idx]  # [num_edges, d_model]
         
@@ -74,8 +74,9 @@ class DynamicEdgeWeightComputation(nn.Module):
         combined_weights = (self.structural_weight * mlp_weights + 
                           self.feature_weight * attention_weights)
         
-        # Normalize weights
-        combined_weights = F.softmax(combined_weights, dim=0)
+        # Normalize weights along edges group-wise via softmax inside conv's scatter
+        # Here keep them bounded/stable
+        combined_weights = torch.clamp(combined_weights, 0.0, 1.0)
         
         return combined_weights
 
@@ -104,10 +105,24 @@ class EnhancedCrossAttentionGNNConv(MessagePassing):
         x_source, x_target = x
         t_source, t_target = t
         
-        # Compute dynamic edge weights
-        edge_weights = self.edge_weight_computer(x_source, x_target, edge_index)
+        # Handle batched inputs by processing each batch independently
+        if x_source.dim() == 3:  # [B, N, D]
+            B = x_source.size(0)
+            x_out_list, t_out_list = [], []
+            for b in range(B):
+                edge_weights = self.edge_weight_computer(x_source[b], x_target[b], edge_index)
+                x_out_b, t_out_b = self.propagate(
+                    edge_index,
+                    x=(x_source[b], x_target[b]),
+                    t=(t_source[b], t_target[b]),
+                    edge_weights=edge_weights
+                )
+                x_out_list.append(x_out_b)
+                t_out_list.append(t_out_b)
+            return torch.stack(x_out_list, dim=0), torch.stack(t_out_list, dim=0)
         
-        # Propagate with dynamic edge weights
+        # Unbatched path
+        edge_weights = self.edge_weight_computer(x_source, x_target, edge_index)
         x_out, t_out = self.propagate(
             edge_index, 
             x=(x_source, x_target), 
@@ -143,10 +158,12 @@ class EnhancedCrossAttentionGNNConv(MessagePassing):
         # Topology message
         t_message = self.W_t(t_j)
         
-        return x_message, t_message
+        # Concatenate messages for aggregation
+        return torch.cat([x_message, t_message], dim=-1)
     
     def update(self, aggr_out):
-        return aggr_out
+        # Split aggregated output into x and t parts
+        return torch.chunk(aggr_out, 2, dim=-1)
 
 class EnhancedPGAT_CrossAttn_Layer(nn.Module):
     """

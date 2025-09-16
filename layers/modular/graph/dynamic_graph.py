@@ -108,20 +108,42 @@ class DynamicGraphConstructor(nn.Module):
         """
         Generate edge indices and weights from adjacency matrix and node features
         """
+        # Handle batch dimension properly
+        batch_size = source_features.shape[0]
+        num_source_nodes = min(adj_matrix.shape[0], source_features.shape[1])
+        num_target_nodes = min(adj_matrix.shape[1], target_features.shape[1])
+        
+        # Adjust adjacency matrix to match actual feature dimensions
+        adj_matrix_adjusted = adj_matrix[:num_source_nodes, :num_target_nodes]
+        
         # Get top-k connections for sparsity
-        k = min(3, adj_matrix.shape[1])  # Connect each node to top-3 neighbors
-        top_k_values, top_k_indices = torch.topk(adj_matrix, k, dim=1)
+        k = min(3, adj_matrix_adjusted.shape[1])  # Connect each node to top-3 neighbors
+        top_k_values, top_k_indices = torch.topk(adj_matrix_adjusted, k, dim=1)
         
         # Create edge indices
-        source_indices = torch.arange(adj_matrix.shape[0], device=adj_matrix.device).unsqueeze(1).expand(-1, k)
+        source_indices = torch.arange(num_source_nodes, device=adj_matrix.device).unsqueeze(1).expand(-1, k)
         edge_index = torch.stack([source_indices.flatten(), top_k_indices.flatten()])
         
-        # Compute edge weights using features
-        source_expanded = source_features[source_indices.flatten()]
-        target_expanded = target_features[top_k_indices.flatten()]
+        # Compute edge weights using features - handle batch dimension
+        # source_features: [batch_size, num_nodes, seq_len] -> [batch_size, num_nodes, seq_len]
+        # We need to average over sequence length for edge weight computation
+        source_pooled = source_features.mean(dim=-1)  # [batch_size, num_nodes]
+        target_pooled = target_features.mean(dim=-1)  # [batch_size, num_nodes]
+        
+        # Take first batch for edge computation (assuming homogeneous batches)
+        source_expanded = source_pooled[0][source_indices.flatten()]  # [num_edges]
+        target_expanded = target_pooled[0][top_k_indices.flatten()]   # [num_edges]
         
         # Concatenate source and target features
-        edge_features = torch.cat([source_expanded, target_expanded], dim=-1)
+        # The weight predictor expects d_model * 2 dimensions
+        # source_expanded and target_expanded are 1D, need to expand to d_model
+        d_model = self.d_model
+        
+        # Expand features to match d_model dimensions
+        source_expanded_full = source_expanded.unsqueeze(-1).expand(-1, d_model)
+        target_expanded_full = target_expanded.unsqueeze(-1).expand(-1, d_model)
+        
+        edge_features = torch.cat([source_expanded_full, target_expanded_full], dim=-1)
         edge_weights = weight_predictor(edge_features).squeeze(-1)
         
         # Apply adjacency probabilities as additional weights
@@ -169,9 +191,24 @@ class AdaptiveGraphStructure(nn.Module):
         """
         # Update structure memory
         if training:
-            all_features = torch.cat([x_dict['wave'], x_dict['transition'], x_dict['target']], dim=0)
-            self.structure_memory.data = (1 - self.memory_update_rate) * self.structure_memory.data + \
-                                       self.memory_update_rate * all_features.detach()
+            # x_dict tensors have shape [batch_size, num_nodes, seq_len]
+            # We need to average over batch and sequence dimensions to get [num_nodes, d_model]
+            wave_avg = x_dict['wave'].mean(dim=(0, 2))  # [num_nodes]
+            transition_avg = x_dict['transition'].mean(dim=(0, 2))  # [num_nodes]
+            target_avg = x_dict['target'].mean(dim=(0, 2))  # [num_nodes]
+            
+            # Expand to d_model dimensions
+            d_model = self.structure_memory.shape[1]
+            wave_expanded = wave_avg.unsqueeze(-1).expand(-1, d_model)
+            transition_expanded = transition_avg.unsqueeze(-1).expand(-1, d_model)
+            target_expanded = target_avg.unsqueeze(-1).expand(-1, d_model)
+            
+            all_features = torch.cat([wave_expanded, transition_expanded, target_expanded], dim=0)
+            
+            # Ensure dimensions match
+            if all_features.shape[0] == self.structure_memory.shape[0]:
+                self.structure_memory.data = (1 - self.memory_update_rate) * self.structure_memory.data + \
+                                           self.memory_update_rate * all_features.detach()
         
         # Generate dynamic graph
         graph_data, edge_weights = self.dynamic_constructor(x_dict, training)

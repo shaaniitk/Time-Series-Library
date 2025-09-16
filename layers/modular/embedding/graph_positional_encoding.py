@@ -34,12 +34,13 @@ class GraphAwarePositionalEncoding(nn.Module):
             
         # Spectral encoding
         if 'spectral' in encoding_types:
-            self.spectral_projection = nn.Linear(min(max_nodes, 32), self.encoding_dims['spectral'])
-            
+            # Spectral features are padded/truncated to 32 dims, so projection must accept 32
+            self.spectral_projection = nn.Linear(32, self.encoding_dims['spectral'])
+        
         # Random walk encoding
         if 'random_walk' in encoding_types:
             self.random_walk_projection = nn.Linear(16, self.encoding_dims['random_walk'])  # 16-dim RW features
-            
+        
         # Temporal positional encoding (standard sinusoidal)
         self.temporal_pos_encoding = self._create_temporal_encoding(max_seq_len, d_model // 4)
         
@@ -218,13 +219,15 @@ class GraphAwarePositionalEncoding(nn.Module):
             num_eigenvectors = min(num_nodes - 1, 32)
             spectral_features = eigenvectors[:, 1:num_eigenvectors + 1]  # [num_nodes, num_eigenvectors]
             
-            # Pad if necessary
+            # Pad if necessary to 32 dims (matches spectral_projection input)
             if spectral_features.size(1) < 32:
-                padding = torch.zeros(num_nodes, 32 - spectral_features.size(1), device=device)
+                padding = torch.zeros(num_nodes, 32 - spectral_features.size(1), device=device, dtype=spectral_features.dtype)
                 spectral_features = torch.cat([spectral_features, padding], dim=1)
+            elif spectral_features.size(1) > 32:
+                spectral_features = spectral_features[:, :32]
                 
-        except:
-            # Fallback to random features
+        except Exception:
+            # Fallback to random features with 32 dims
             spectral_features = torch.randn(num_nodes, 32, device=device)
         
         spectral_encoding = self.spectral_projection(spectral_features)
