@@ -12,5 +12,6 @@
         "windsurf": true,
         "cursor-global": true,
         "cursor-workspace": true
-    }
+    },
+    "kiroAgent.configureMCP": "Enabled"
 }
