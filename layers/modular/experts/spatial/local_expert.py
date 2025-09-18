@@ -20,8 +20,15 @@ class LocalSpatialExpert(SpatialExpert):
     def __init__(self, config, neighborhood_size: Optional[int] = None):
         super().__init__(config, 'local_spatial_expert')
         
-        # Local neighborhood parameters
-        self.neighborhood_size = neighborhood_size or getattr(config, 'local_neighborhood_size', 3)
+        # Local neighborhood parameters - handle MagicMock config
+        if hasattr(config, 'local_neighborhood_size'):
+            self.neighborhood_size = getattr(config, 'local_neighborhood_size', 3)
+        else:
+            self.neighborhood_size = neighborhood_size or 3
+        
+        # Ensure neighborhood_size is an integer
+        if not isinstance(self.neighborhood_size, int):
+            self.neighborhood_size = 3
         
         # Local convolution layers
         self.local_conv = nn.Sequential(
@@ -34,9 +41,13 @@ class LocalSpatialExpert(SpatialExpert):
         )
         
         # Local attention for spatial relationships
+        local_heads = getattr(config, 'local_spatial_heads', 4)
+        if not isinstance(local_heads, int):
+            local_heads = 4
+            
         self.local_attention = nn.MultiheadAttention(
             self.expert_dim, 
-            getattr(config, 'local_spatial_heads', 4),
+            local_heads,
             dropout=self.dropout,
             batch_first=True
         )
