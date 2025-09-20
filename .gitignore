@@ -37,6 +37,7 @@ MANIFEST
 *.manifest
 *.spec
 
+tslenv/
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
@@ -115,7 +116,8 @@ ENV/
 env.bak/
 venv.bak/
 tsl-env/
-
+tslenv/
+venv_python312_backup/
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -249,3 +251,4 @@ Thumbs.db
 .vscode/settings.json
 .gemini/settings.json
 .vscode/mcp.json
+checking
