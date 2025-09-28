@@ -1,5 +1,8 @@
 import torch
 import torch.nn as nn
+import inspect
+from typing import Optional
+
 from layers.modular.attention.registry import AttentionRegistry
 from layers.modular.decoder.registry import DecoderRegistry
 from layers.modular.graph.registry import GraphComponentRegistry
@@ -9,12 +12,25 @@ from layers.modular.attention.multihead_graph_attention import MultiHeadGraphAtt
 from layers.modular.encoder.spatiotemporal_encoding import JointSpatioTemporalEncoding, AdaptiveSpatioTemporalEncoder
 from layers.modular.embedding.graph_positional_encoding import GraphAwarePositionalEncoding, HierarchicalGraphPositionalEncoding
 # New enhanced components
-from layers.modular.decoder.mixture_density_decoder import MixtureDensityDecoder
+from layers.modular.decoder.mixture_density_decoder import MixtureDensityDecoder, MixtureNLLLoss
 from layers.modular.attention.autocorr_temporal_attention import AutoCorrTemporalAttention
 from layers.modular.embedding.structural_positional_encoding import StructuralPositionalEncoding
 from layers.modular.embedding.enhanced_temporal_encoding import EnhancedTemporalEncoding
 from layers.modular.graph.enhanced_pgat_layer import EnhancedPGAT_CrossAttn_Layer
 from utils.graph_aware_dimension_manager import GraphAwareDimensionManager, create_graph_aware_dimension_manager
+
+class _LazyLinearEmbedding(nn.Module):
+    """Minimal lazy linear projection used by the fallback embedding path."""
+
+    def __init__(self, output_dim: int) -> None:
+        super().__init__()
+        self.projection = nn.LazyLinear(output_dim)
+        self.layer_norm = nn.LayerNorm(output_dim)
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """Project raw inputs to the model dimension with normalization."""
+        projected = self.projection(inputs)
+        return self.layer_norm(projected)
 
 class SOTA_Temporal_PGAT(nn.Module):
     """
@@ -26,6 +42,10 @@ class SOTA_Temporal_PGAT(nn.Module):
         super().__init__()
         self.config = config
         self.mode = mode
+        
+        # Track probabilistic configuration early for loss/decoder wiring
+        self._use_mdn_outputs = bool(getattr(config, 'use_mixture_density', True) and mode != 'standard')
+        self.mixture_loss = MixtureNLLLoss() if self._use_mdn_outputs else None
         
         # Initialize registries
         self.attention_registry = AttentionRegistry()
@@ -48,21 +68,9 @@ class SOTA_Temporal_PGAT(nn.Module):
             print(f"Dimension manager info: {self.dim_manager}")
         
         # Get components from registries
-        try:
-            # Try to get embedding from registry, fallback to direct import if not available
-            try:
-                embedding_registry = EmbeddingRegistry()
-                self.embedding = embedding_registry.get('initial_embedding')(config)
-            except:
-                from layers.modular.embedding.initial_embedding import InitialEmbedding
-                self.embedding = InitialEmbedding(config)
-        except:
-            # Simple fallback embedding implementation
-            # For multivariate ('M'), assume 7 features as default
-            features = getattr(config, 'features', 'M')
-            d_model = getattr(config, 'd_model', 512)
-            num_features = 7 if features == 'M' else 1
-            self.embedding = nn.Linear(num_features, d_model)
+        self._embedding_source = 'unknown'
+        self._fallback_input_dim: Optional[int] = None
+        self.embedding = self._initialize_embedding(config)
         
         # Enhanced graph components initialization
         self.d_model = getattr(config, 'd_model', 512)
@@ -120,18 +128,16 @@ class SOTA_Temporal_PGAT(nn.Module):
         self.last_edge_weights = None
         
         # Enhanced decoder selection with mixture density network
-        use_mdn = getattr(config, 'use_mixture_density', True)
         if self.mode == 'standard':
             self.decoder = self.decoder_registry.get('custom_standard')(config.d_model)
-        else:  # probabilistic mode
-            if use_mdn:
-                self.decoder = MixtureDensityDecoder(
-                    d_model=config.d_model,
-                    pred_len=getattr(config, 'pred_len', 96),
-                    num_components=getattr(config, 'mdn_components', 3)
-                )
-            else:
-                self.decoder = self.decoder_registry.get('probabilistic')(config.d_model)
+        elif self._use_mdn_outputs:
+            self.decoder = MixtureDensityDecoder(
+                d_model=config.d_model,
+                pred_len=getattr(config, 'pred_len', 96),
+                num_components=getattr(config, 'mdn_components', 3)
+            )
+        else:
+            self.decoder = self.decoder_registry.get('probabilistic')(config.d_model)
         
         # Add structural positional encoding
         self.structural_pos_encoding = StructuralPositionalEncoding(
@@ -181,6 +187,24 @@ class SOTA_Temporal_PGAT(nn.Module):
         wave_embedded = embedded[:, :wave_len, :]
         target_embedded = embedded[:, wave_len:wave_len+target_len, :]
         
+        graph_counts = getattr(self.dim_manager, 'node_counts', {})
+        wave_nodes = graph_counts.get('wave', wave_len)
+        target_nodes = graph_counts.get('target', target_len)
+        transition_nodes = max(1, graph_counts.get('transition', min(wave_nodes, target_nodes)))
+        spatial_nodes = graph_counts.get('spatial', wave_nodes + target_nodes + transition_nodes)
+        total_graph_nodes = max(spatial_nodes, wave_nodes + target_nodes + transition_nodes)
+        
+        self.config.num_waves = wave_nodes
+        self.config.num_targets = target_nodes
+        self.config.num_transitions = transition_nodes
+        self.config.num_nodes = total_graph_nodes
+        self.dim_manager.num_nodes = total_graph_nodes
+        if hasattr(self.dim_manager, 'node_counts'):
+            self.dim_manager.node_counts['wave'] = wave_nodes
+            self.dim_manager.node_counts['target'] = target_nodes
+            self.dim_manager.node_counts['transition'] = transition_nodes
+            self.dim_manager.node_counts['spatial'] = total_graph_nodes
+        
         # Create proper graph structure for spatial encoding
         from utils.graph_utils import get_pyg_graph
         
@@ -200,12 +224,30 @@ class SOTA_Temporal_PGAT(nn.Module):
         }
         
         # Add transition features (learnable parameters)
+        transition_dim = getattr(self.config, 'd_model', 512)
         if not hasattr(self, 'transition_features'):
-            self.transition_features = nn.Parameter(
-                torch.randn(self.config.num_transitions, getattr(self.config, 'd_model', 512))
+            transition_init = torch.randn(
+                transition_nodes,
+                transition_dim,
+                device=embedded.device,
+                dtype=embedded.dtype,
             )
-        
-        x_dict['transition'] = self.transition_features.expand(batch_size, -1, -1).mean(dim=0)
+            self.register_parameter('transition_features', nn.Parameter(transition_init))
+        elif self.transition_features.size(0) != transition_nodes:
+            transition_init = torch.randn(
+                transition_nodes,
+                transition_dim,
+                device=embedded.device,
+                dtype=embedded.dtype,
+            )
+            self.transition_features = nn.Parameter(transition_init)
+        else:
+            if self.transition_features.device != embedded.device or self.transition_features.dtype != embedded.dtype:
+                self.transition_features.data = self.transition_features.data.to(embedded.device, dtype=embedded.dtype)
+ 
+        transition_features_param = self.transition_features
+        transition_broadcast = transition_features_param.unsqueeze(0).expand(batch_size, -1, -1)
+        x_dict['transition'] = transition_broadcast.mean(dim=0)
         
         # Prepare topology features
         t_dict = {
@@ -221,28 +263,25 @@ class SOTA_Temporal_PGAT(nn.Module):
         }
         
         # Enhanced spatial encoding with dynamic graph components
-        num_nodes = combined_input.shape[-1]
-        
+        num_nodes = total_graph_nodes
+
         # Initialize dynamic graph components if not exists
-        # Use actual tensor dimensions instead of hardcoded config values
-        actual_num_nodes = combined_input.shape[-1]  # This is the actual feature dimension
-        
         if self.dynamic_graph is None:
             self.dynamic_graph = DynamicGraphConstructor(
                 d_model=self.d_model,
-                num_waves=actual_num_nodes,
-                num_targets=actual_num_nodes,
-                num_transitions=actual_num_nodes
+                num_waves=wave_nodes,
+                num_targets=target_nodes,
+                num_transitions=transition_nodes
             ).to(combined_input.device)
-        
+
         if self.adaptive_graph is None:
             self.adaptive_graph = AdaptiveGraphStructure(
                 d_model=self.d_model,
-                num_waves=actual_num_nodes,
-                num_targets=actual_num_nodes,
-                num_transitions=actual_num_nodes
+                num_waves=wave_nodes,
+                num_targets=target_nodes,
+                num_transitions=transition_nodes
             ).to(combined_input.device)
-        
+
         if self.spatiotemporal_encoder is None:
             self.spatiotemporal_encoder = AdaptiveSpatioTemporalEncoder(
                 d_model=self.d_model,
@@ -251,7 +290,7 @@ class SOTA_Temporal_PGAT(nn.Module):
                 num_layers=2,
                 num_heads=self.n_heads
             ).to(combined_input.device)
-        
+
         if self.graph_pos_encoding is None:
             self.graph_pos_encoding = GraphAwarePositionalEncoding(
                 d_model=self.d_model,
@@ -259,26 +298,18 @@ class SOTA_Temporal_PGAT(nn.Module):
                 max_seq_len=seq_len,
                 encoding_types=['distance', 'centrality', 'spectral']
             ).to(combined_input.device)
-        
+
         if self.graph_attention is None:
             self.graph_attention = MultiHeadGraphAttention(
                 d_model=self.d_model,
                 num_heads=self.n_heads
             ).to(combined_input.device)
-        
+
         # Create dynamic adjacency matrix
-        node_features = combined_input.transpose(1, 2)  # [batch_size, features, seq_len]
-        
-        # Format node features as dictionary for dynamic graph constructor
-        # Create placeholder features for transition and target nodes
-        batch_size, feature_dim, seq_len = node_features.shape
-        transition_features = torch.zeros(batch_size, feature_dim, seq_len, device=node_features.device)
-        target_features = torch.zeros(batch_size, feature_dim, seq_len, device=node_features.device)
-        
         node_features_dict = {
-            'wave': node_features,
-            'transition': transition_features,
-            'target': target_features
+            'wave': wave_embedded,
+            'transition': transition_broadcast,
+            'target': target_embedded
         }
         
         # Dynamic graph construction with enhanced edge weights
@@ -350,8 +381,8 @@ class SOTA_Temporal_PGAT(nn.Module):
         }
 
         enhanced_edge_index_dict = {
-            ('wave', 'interacts_with', 'transition'): self._create_edge_index(wave_len, target_len, combined_input.device),
-            ('transition', 'influences', 'target'): self._create_edge_index(target_len, target_len, combined_input.device)
+            ('wave', 'interacts_with', 'transition'): self._create_edge_index(wave_nodes, transition_nodes, combined_input.device),
+            ('transition', 'influences', 'target'): self._create_edge_index(transition_nodes, target_nodes, combined_input.device)
         }
 
         # Runtime validations for enhanced_x_dict and enhanced_edge_index_dict
@@ -391,17 +422,7 @@ class SOTA_Temporal_PGAT(nn.Module):
                         raise ValueError(f"edge_index target index out of bounds for {key}: max {max_tgt} >= {enhanced_x_dict[tgt_key].size(0)}")
 
         _validate_edges_pg(('wave','interacts_with','transition'), 'wave', 'transition')
-        _validate_edges_pg(('transition','influences','target'), 'transition', 'target')        # Apply enhanced graph attention
-        enhanced_x_dict = {
-            'wave': spatiotemporal_encoded[:, :wave_len, :, :].mean(dim=2).mean(dim=0),
-            'transition': spatiotemporal_encoded[:, wave_len:, :, :].mean(dim=2).mean(dim=0),
-            'target': spatiotemporal_encoded[:, wave_len:, :, :].mean(dim=2).mean(dim=0)
-        }
-
-        enhanced_edge_index_dict = {
-            ('wave', 'interacts_with', 'transition'): self._create_edge_index(wave_len, target_len, combined_input.device),
-            ('transition', 'influences', 'target'): self._create_edge_index(target_len, target_len, combined_input.device)
-        }
+        _validate_edges_pg(('transition','influences','target'), 'transition', 'target')
         
         # Apply multi-head graph attention (config-gated with safe fallback)
         if getattr(self.config, 'enable_graph_attention', True):
@@ -441,13 +462,15 @@ class SOTA_Temporal_PGAT(nn.Module):
             adj_to_store = adjacency_matrix
             ew_to_store = edge_weights
             if isinstance(adj_to_store, (tuple, list)):
-                # Normalize possible (adjacency, weights) tuple
                 if ew_to_store is None and len(adj_to_store) >= 2:
-                    adj_to_store, ew_to_store = adj_to_store[0], adj_to_store[1]
-                else:
+                    adj_candidate, ew_candidate = adj_to_store[0], adj_to_store[1]
+                    adj_to_store, ew_to_store = adj_candidate, ew_candidate
+                elif len(adj_to_store) >= 1:
                     adj_to_store = adj_to_store[0]
-            self.last_adjacency_matrix = adj_to_store.detach() if hasattr(adj_to_store, 'detach') else adj_to_store
-            self.last_edge_weights = ew_to_store.detach() if ew_to_store is not None and hasattr(ew_to_store, 'detach') else ew_to_store
+                else:
+                    adj_to_store = None
+            self.last_adjacency_matrix = adj_to_store
+            self.last_edge_weights = ew_to_store
         
         # Temporal encoding with temporal attention
         # Extract target embeddings from spatial encoded output
@@ -489,6 +512,104 @@ class SOTA_Temporal_PGAT(nn.Module):
         
         # Decode to final output
         return self.decoder(final_embedding)
+    
+    def configure_optimizer_loss(self, base_criterion: nn.Module, verbose: bool = False) -> nn.Module:
+        """Select MixtureNLLLoss when MDN outputs are active.
+
+        Args:
+            base_criterion: Loss instantiated by experiment runner prior to model hook.
+            verbose: When True, emit informational message about swapping the criterion.
+
+        Returns:
+            nn.Module: MixtureNLLLoss for probabilistic mode with MDN outputs, otherwise the original criterion.
+        """
+        if self._use_mdn_outputs and self.mixture_loss is not None:
+            if verbose:
+                print("PGAT using MixtureNLLLoss for MDN outputs")
+            return self.mixture_loss
+        return base_criterion
+    
+    def _initialize_embedding(self, config: object) -> nn.Module:
+        """Select an embedding module with robust fallbacks for tensor-only inputs.
+
+        The production architecture registers a bespoke InitialEmbedding that
+        expects typed node dictionaries and structural metadata. When the
+        registry entry is missing (e.g., tests or stripped configs) we fall
+        back to tensor-friendly projections while documenting which path was
+        chosen for downstream debugging.
+        """
+        registry = EmbeddingRegistry()
+        d_model = getattr(config, 'd_model', 512)
+
+        try:
+            embedding_cls = registry.get('initial_embedding')
+        except ValueError as exc:
+            print(f"Info: initial_embedding not registered; using fallback ({exc}).")
+        else:
+            try:
+                candidate = embedding_cls(config)
+                if self._module_accepts_single_tensor(candidate):
+                    self._embedding_source = 'registry'
+                    return candidate
+                raise TypeError('initial_embedding requires non-tensor inputs')
+            except Exception as exc:  # noqa: BLE001 - guardrail for registry experiments
+                print(f"Info: Registry initial embedding unusable ({exc}); falling back.")
+
+        inferred_dim = self._infer_input_feature_dim(config)
+        if inferred_dim is not None:
+            self._fallback_input_dim = inferred_dim
+            self._embedding_source = 'linear_fallback'
+            return nn.Sequential(
+                nn.LayerNorm(inferred_dim),
+                nn.Linear(inferred_dim, d_model)
+            )
+
+        self._embedding_source = 'lazy_linear_fallback'
+        return _LazyLinearEmbedding(d_model)
+
+    def _infer_input_feature_dim(self, config: object) -> Optional[int]:
+        """Infer the raw feature dimension used by the fallback embedding path."""
+        candidate_attrs = (
+            'enc_in',
+            'wave_feature_dim',
+            'input_feature_dim',
+            'feature_dim',
+        )
+        for attr in candidate_attrs:
+            value = getattr(config, attr, None)
+            if isinstance(value, int) and value > 0:
+                return value
+
+        manager_enc_in = getattr(self.dim_manager, 'enc_in', None)
+        if isinstance(manager_enc_in, int) and manager_enc_in > 0:
+            return manager_enc_in
+
+        if hasattr(self.dim_manager, 'num_targets') and hasattr(self.dim_manager, 'num_covariates'):
+            combined = self.dim_manager.num_targets + self.dim_manager.num_covariates
+            if combined > 0:
+                return combined
+
+        return None
+
+    @staticmethod
+    def _module_accepts_single_tensor(module: nn.Module) -> bool:
+        """Return True when module.forward can process a single positional tensor input."""
+        signature = inspect.signature(module.forward)
+        parameters = [param for name, param in signature.parameters.items() if name != 'self']
+        if not parameters:
+            return False
+
+        first = parameters[0]
+        if first.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
+            for param in parameters[1:]:
+                if param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD) and param.default is inspect._empty:
+                    return False
+            return True
+
+        if first.kind == inspect.Parameter.VAR_POSITIONAL:
+            return True
+
+        return False
     
     def _create_edge_index(self, num_source: int, num_target: int, device: torch.device) -> torch.Tensor:
         """
@@ -556,14 +677,16 @@ class SOTA_Temporal_PGAT(nn.Module):
         """
         Get attention weights for visualization and analysis
         """
+        if self._embedding_source != 'registry':
+            raise RuntimeError("Attention weight inspection requires a registry-backed embedding module.")
         with torch.no_grad():
             embedded = self.embedding(wave_window, target_window, graph)
-            
+
             spatial_encoded, spatial_attn = self.spatial_encoder(
-                embedded['wave_embedded'], 
+                embedded['wave_embedded'],
                 embedded['target_embedded']
             )
-            
+
             return {
                 'spatial_attention': spatial_attn,
                 'embedded_features': embedded
@@ -582,3 +705,10 @@ class SOTA_Temporal_PGAT(nn.Module):
         """
         self.eval()
         return self
+
+        self.dim_manager.edge_bounds[('wave', 'transition')] = (wave_nodes, transition_nodes)
+        self.dim_manager.edge_bounds[('transition', 'target')] = (transition_nodes, target_nodes)
+        self.dim_manager.edge_bounds['spatial'] = (total_graph_nodes, total_graph_nodes)
+        
+        if self._embedding_source != 'registry':
+            raise RuntimeError("Attention weight inspection requires a registry-backed embedding module.")
