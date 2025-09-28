@@ -482,7 +482,7 @@ class SOTA_Temporal_PGAT(nn.Module):
         out = None
         try:
             # Try keyword arguments first (most explicit)
-            out = self.temporal_encoder(query=target_spatial, keys=target_spatial, values=target_spatial)
+            out = self.temporal_encoder(query=target_spatial, key=target_spatial, value=target_spatial)
         except TypeError:
             try:
                 # Fallback to positional Q, K, V

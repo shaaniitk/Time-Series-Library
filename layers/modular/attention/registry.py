@@ -1,4 +1,3 @@
-
 # Import AutoCorrelation components from modular structure
 from .timeseries.autocorrelation import AutoCorrelationAttention
 from .enhanced_autocorrelation import AdaptiveAutoCorrelationLayer, EnhancedAutoCorrelation, HierarchicalAutoCorrelation
@@ -25,10 +24,10 @@ from .graph_attention import MultiGraphAttention
 from .multihead_graph_attention import MultiHeadGraphAttention, GraphTransformerLayer
 from .temporal_attention import TemporalAttention
 
-from ..core.registry import ComponentRegistry
 from utils.logger import logger
 
-class AttentionRegistry(ComponentRegistry):
+
+class AttentionRegistry:
     """
     A registry for all available attention components.
     """
@@ -78,21 +77,21 @@ class AttentionRegistry(ComponentRegistry):
     }
 
     @classmethod
-    def register(cls, name, component_class):
+    def register(cls, name: str, component_class):
         if name in cls._registry:
             logger.warning(f"Component '{name}' is already registered and will be overwritten.")
         cls._registry[name] = component_class
         logger.info(f"Registered attention component: {name}")
 
     @classmethod
-    def get(cls, name):
+    def get(cls, name: str):
         if name in cls._registry:
             return cls._registry[name]
         logger.error(f"Attention component '{name}' not found.")
         raise ValueError(f"Attention component '{name}' not found.")
     
     @classmethod
-    def create(cls, name, **kwargs):
+    def create(cls, name: str, **kwargs):
         """Create an attention component instance with given parameters"""
         component_class = cls.get(name)
         
@@ -120,76 +119,28 @@ class AttentionRegistry(ComponentRegistry):
             except:
                 raise ValueError(f"Could not instantiate {name} with any parameter combination")
 
-# ---------------- Deprecation Shim: Forward to unified registry -----------------
-try:
-    from layers.modular.core import unified_registry, ComponentFamily  # type: ignore
-    import warnings
-    _attn_deprecation_emitted = False
+    @classmethod
+    def list_components(cls):
+        """Return all registered attention component names."""
+        return list(cls._registry.keys())
 
-    def _warn_attn():
-        global _attn_deprecation_emitted
-        if not _attn_deprecation_emitted:
-            warnings.warn(
-                "AttentionRegistry is deprecated – use unified_registry.create(ComponentFamily.ATTENTION, name, **kwargs)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            _attn_deprecation_emitted = True
-
-    # Legacy → unified name mapping (if any divergence later)
-    _LEGACY_TO_UNIFIED = {}
-
-    @classmethod  # type: ignore
-    def _shim_register(cls, name, component_class):  # noqa: D401
-        _warn_attn()
-        unified_registry.register(ComponentFamily.ATTENTION, name, component_class)
-
-    @classmethod  # type: ignore
-    def _shim_get(cls, name):  # noqa: D401
-        _warn_attn()
-        lookup = _LEGACY_TO_UNIFIED.get(name, name)
-        try:
-            return unified_registry.resolve(ComponentFamily.ATTENTION, lookup).cls
-        except Exception:
-            # Fall back to legacy dict for anything not yet migrated
-            return cls._registry.get(name)
-
-    @classmethod  # type: ignore
-    def _shim_list(cls):  # noqa: D401
-        _warn_attn()
-        names = list(unified_registry.list(ComponentFamily.ATTENTION)[ComponentFamily.ATTENTION.value])
-        # Include any legacy-only names (not yet migrated) for backward compatibility
-        for n in cls._registry.keys():
-            if n not in names:
-                names.append(n)
-        return sorted(names)
-
-    # Monkey-patch class methods
-    AttentionRegistry.register = _shim_register  # type: ignore
-    AttentionRegistry.get = _shim_get  # type: ignore
-    AttentionRegistry.list_components = _shim_list  # type: ignore
-except Exception:  # pragma: no cover - fail silently if unified not available early in bootstrap
-    pass
+    # Legacy helpers retained for backward compatibility ---------------------------------
 
     @classmethod
     def list_available(cls):
-        """List all available attention component names"""
-        return list(cls._registry.keys())
+        """Alias for list_components maintained for legacy call-sites."""
+        return cls.list_components()
 
     @classmethod
-    def list_components(cls):
-        return list(cls._registry.keys())
-
-    @classmethod
-    def create_component(cls, component_name, **kwargs):
-        """Create an attention component instance with given parameters"""
+    def create_component(cls, component_name: str, **kwargs):
+        """Backward compatible factory wrapper."""
         if component_name in ["autocorrelation_attention", "enhanced_autocorrelation", "hierarchical_autocorrelation"]:
             return cls._registry[component_name](**kwargs)
-        
+
         if component_name in cls._registry:
-            return cls._registry[component_name](**kwargs)
-        else:
-            raise ValueError(f"Unknown attention component: {component_name}. Available: {list(cls._registry.keys())}")
+            return cls.create(component_name, **kwargs)
+
+        raise ValueError(f"Unknown attention component: {component_name}. Available: {list(cls._registry.keys())}")
 
 def get_attention_component(name, **kwargs):
     component_class = AttentionRegistry.get(name)
@@ -398,6 +349,13 @@ def get_attention_component(name, **kwargs):
             d_model=kwargs.get('d_model'),
             n_heads=kwargs.get('n_heads'),
             dropout=kwargs.get('dropout', 0.1)
+        )
+    elif name == "temporal_attention":
+        return component_class(
+            d_model=kwargs.get('d_model'),
+            n_heads=kwargs.get('n_heads'),
+            dropout=kwargs.get('dropout', 0.1),
+            return_attention=kwargs.get('return_attention', False),
         )
     
     raise ValueError(f"Factory not implemented for attention type: {name}")
