@@ -26,6 +26,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, Iterable, List, Tuple
 
+try:  # pragma: no cover - resource is unavailable on Windows
+    import resource
+except ImportError:  # pragma: no cover
+    resource = None  # type: ignore[assignment]
+
 import torch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -44,12 +49,14 @@ except ImportError:  # pragma: no cover - guard for refactors
 
 @dataclass
 class GradientTracker:
-    """Collect gradient norms for post-run diagnostics."""
+    """Collect gradient norms and memory metrics for post-run diagnostics."""
 
     global_norms: List[float] = field(default_factory=list)
     per_parameter: Dict[str, List[float]] = field(default_factory=dict)
     vanishing_threshold: float = 1e-8
     vanishing_steps: List[int] = field(default_factory=list)
+    rss_history_mb: List[float] = field(default_factory=list)
+    cuda_allocated_mb: List[float] = field(default_factory=list)
 
     def log_step(self, named_parameters: Iterable[Tuple[str, torch.nn.Parameter]]) -> None:
         total = 0.0
@@ -64,20 +71,61 @@ class GradientTracker:
         if total == 0.0:
             self.vanishing_steps.append(len(self.global_norms))
             self.global_norms.append(0.0)
+            self._record_memory_stats()
             return
         global_norm = math.sqrt(total)
         if global_norm < self.vanishing_threshold:
             self.vanishing_steps.append(len(self.global_norms))
         self.global_norms.append(global_norm)
+        self._record_memory_stats()
 
     def summary(self) -> Dict[str, float]:
-        if not self.global_norms:
-            return {"min": 0.0, "max": 0.0, "mean": 0.0}
-        return {
-            "min": float(min(self.global_norms)),
-            "max": float(max(self.global_norms)),
-            "mean": float(sum(self.global_norms) / len(self.global_norms)),
+        summary: Dict[str, float] = {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
         }
+        if self.global_norms:
+            summary.update(
+                {
+                    "min": float(min(self.global_norms)),
+                    "max": float(max(self.global_norms)),
+                    "mean": float(sum(self.global_norms) / len(self.global_norms)),
+                }
+            )
+        if self.rss_history_mb:
+            summary["rss_mb_max"] = float(max(self.rss_history_mb))
+            summary["rss_mb_last"] = float(self.rss_history_mb[-1])
+        if self.cuda_allocated_mb:
+            summary["cuda_allocated_mb_max"] = float(max(self.cuda_allocated_mb))
+            summary["cuda_allocated_mb_last"] = float(self.cuda_allocated_mb[-1])
+        return summary
+
+    def _record_memory_stats(self) -> None:
+        rss_mb = 0.0
+        if resource is not None:
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            rss = usage.ru_maxrss
+            if sys.platform == "darwin":
+                rss_mb = rss / (1024.0 * 1024.0)
+            else:
+                rss_mb = rss / 1024.0
+        else:  # pragma: no cover - fallback for platforms without resource
+            try:
+                import psutil
+
+                process = psutil.Process()
+                rss_mb = process.memory_info().rss / (1024.0 ** 2)
+            except (ImportError, AttributeError):
+                rss_mb = 0.0
+        self.rss_history_mb.append(float(rss_mb))
+        cuda_mb = 0.0
+        if torch.cuda.is_available():
+            try:
+                cuda_mb = torch.cuda.memory_allocated() / (1024.0 ** 2)
+            except RuntimeError:
+                cuda_mb = 0.0
+        self.cuda_allocated_mb.append(float(cuda_mb))
 
 
 class GradientMonitoringExperiment(Exp_Long_Term_Forecast):
@@ -199,6 +247,8 @@ def main() -> None:
     _ensure_attr(args, "root_path", os.path.join(PROJECT_ROOT, "data"))
     _ensure_attr(args, "data_path", Path(cli_args.dataset_path).name)
     _ensure_attr(args, "target", "target_0,target_1,target_2")
+    _ensure_attr(args, "checkpoints", os.path.join(PROJECT_ROOT, "checkpoints"))
+    Path(str(args.checkpoints)).mkdir(parents=True, exist_ok=True)
 
     min_required = getattr(args, "seq_len", 0) + getattr(args, "pred_len", 0)
     _ensure_attr(args, "validation_length", max(150, min_required))
