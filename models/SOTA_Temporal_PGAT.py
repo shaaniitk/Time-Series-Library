@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 import inspect
-from typing import Optional
+from typing import Optional, Any
 
-from layers.modular.attention.registry import AttentionRegistry
-from layers.modular.decoder.registry import DecoderRegistry
+from layers.modular.attention.registry import AttentionRegistry, get_attention_component
+from layers.modular.decoder.registry import DecoderRegistry, get_decoder_component
 from layers.modular.graph.registry import GraphComponentRegistry
 from layers.modular.embedding.registry import EmbeddingRegistry
 from layers.modular.graph.dynamic_graph import DynamicGraphConstructor, AdaptiveGraphStructure
@@ -116,7 +116,9 @@ class SOTA_Temporal_PGAT(nn.Module):
                 factor=getattr(config, 'autocorr_factor', 1)
             )
         else:
-            self.temporal_encoder = self.attention_registry.get('temporal_attention')(
+            # Use the attention factory for robust instantiation
+            self.temporal_encoder = get_attention_component(
+                'temporal_attention',
                 d_model=config.d_model,
                 n_heads=getattr(config, 'n_heads', 8),
                 dropout=getattr(config, 'dropout', 0.1)
@@ -129,7 +131,7 @@ class SOTA_Temporal_PGAT(nn.Module):
         
         # Enhanced decoder selection with mixture density network
         if self.mode == 'standard':
-            self.decoder = self.decoder_registry.get('custom_standard')(config.d_model)
+            self.decoder = get_decoder_component('custom_standard', d_model=config.d_model)
         elif self._use_mdn_outputs:
             self.decoder = MixtureDensityDecoder(
                 d_model=config.d_model,
@@ -137,7 +139,7 @@ class SOTA_Temporal_PGAT(nn.Module):
                 num_components=getattr(config, 'mdn_components', 3)
             )
         else:
-            self.decoder = self.decoder_registry.get('probabilistic')(config.d_model)
+            self.decoder = get_decoder_component('probabilistic', d_model=config.d_model)
         
         # Add structural positional encoding
         self.structural_pos_encoding = StructuralPositionalEncoding(
@@ -529,7 +531,7 @@ class SOTA_Temporal_PGAT(nn.Module):
             return self.mixture_loss
         return base_criterion
     
-    def _initialize_embedding(self, config: object) -> nn.Module:
+    def _initialize_embedding(self, config: Any) -> nn.Module:
         """Select an embedding module with robust fallbacks for tensor-only inputs.
 
         The production architecture registers a bespoke InitialEmbedding that
@@ -567,7 +569,7 @@ class SOTA_Temporal_PGAT(nn.Module):
         self._embedding_source = 'lazy_linear_fallback'
         return _LazyLinearEmbedding(d_model)
 
-    def _infer_input_feature_dim(self, config: object) -> Optional[int]:
+    def _infer_input_feature_dim(self, config: Any) -> Optional[int]:
         """Infer the raw feature dimension used by the fallback embedding path."""
         candidate_attrs = (
             'enc_in',

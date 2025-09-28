@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import pytest
 import torch
 
@@ -10,7 +12,7 @@ class DummyDims:
 
 
 class MinimalConfig:
-    def __init__(self, d_model=8, n_heads=2, dropout=0.0, seq_len=2, pred_len=1):
+    def __init__(self, d_model=8, n_heads=2, dropout=0.0, seq_len=2, pred_len=1, enc_in=7):
         self.d_model = d_model
         self.n_heads = n_heads
         self.dropout = dropout
@@ -24,7 +26,7 @@ class MinimalConfig:
         self.use_mixture_density = False
         # misc defaults referenced in model
         self.features = 'M'
-        self.enc_in = 7
+        self.enc_in = enc_in
         self.mdn_components = 1
 
 
@@ -38,6 +40,14 @@ def minimal_windows(batch=1, seq_len=2, pred_len=1, d_model=8):
     torch.manual_seed(0)
     wave_window = torch.randn(batch, seq_len, d_model)
     target_window = torch.randn(batch, pred_len, d_model)
+    return wave_window, target_window
+
+
+def fallback_windows(batch: int = 2, seq_len: int = 2, pred_len: int = 1, feature_dim: int = 3) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Generate synthetic windows whose feature dim differs from d_model to trigger fallback."""
+    torch.manual_seed(1)
+    wave_window = torch.randn(batch, seq_len, feature_dim)
+    target_window = torch.randn(batch, pred_len, feature_dim)
     return wave_window, target_window
 
 
@@ -69,3 +79,24 @@ def test_pgat_validations_trigger_on_bad_inputs():
 
     with pytest.raises(ValueError, match=r"contains negative indices"):
         model.forward(wave_window, target_window, graph=None)
+
+
+def test_pgat_fallback_embedding_path() -> None:
+    """Ensure PGAT uses tensor-compatible fallback embedding when registry entry is absent."""
+    cfg = MinimalConfig(d_model=8, n_heads=2, dropout=0.0, seq_len=2, pred_len=1, enc_in=3)
+    model = SOTA_Temporal_PGAT(cfg)
+
+    assert model._embedding_source in {'linear_fallback', 'lazy_linear_fallback'}
+
+    wave_window, target_window = fallback_windows(
+        batch=2,
+        seq_len=cfg.seq_len,
+        pred_len=cfg.pred_len,
+        feature_dim=cfg.enc_in,
+    )
+    output = model(wave_window, target_window, graph=None)
+    output_tensor = output[0] if isinstance(output, tuple) else output
+
+    assert output_tensor.shape[0] == 2
+    assert output_tensor.shape[1] == cfg.pred_len
+    assert torch.isfinite(output_tensor).all()
