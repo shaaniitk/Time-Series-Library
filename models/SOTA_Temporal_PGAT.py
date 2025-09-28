@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import inspect
-from typing import Optional, Any
+from typing import Any, Dict, Optional, Tuple, cast
 
 from layers.modular.attention.registry import AttentionRegistry, get_attention_component
 from layers.modular.decoder.registry import DecoderRegistry, get_decoder_component
@@ -42,6 +42,8 @@ class SOTA_Temporal_PGAT(nn.Module):
         super().__init__()
         self.config = config
         self.mode = mode
+
+        self._validate_config()
         
         # Track probabilistic configuration early for loss/decoder wiring
         self._use_mdn_outputs = bool(getattr(config, 'use_mixture_density', True) and mode != 'standard')
@@ -168,6 +170,8 @@ class SOTA_Temporal_PGAT(nn.Module):
         Returns:
             Model output (single tensor for standard mode, tuple for probabilistic mode)
         """
+        self._validate_forward_inputs(wave_window, target_window)
+
         # Initial embedding - concatenate wave and target windows
         # wave_window: [batch, seq_len, features], target_window: [batch, pred_len, features]
         combined_input = torch.cat([wave_window, target_window], dim=1)  # [batch, seq_len+pred_len, features]
@@ -179,6 +183,8 @@ class SOTA_Temporal_PGAT(nn.Module):
         else:
             embedded = self.embedding(combined_input.view(-1, features)).view(batch_size, seq_len, -1)
         
+        self._validate_embedding_output(embedded, batch_size, seq_len)
+
         # Apply enhanced temporal positional encoding
         embedded = self.temporal_pos_encoding(embedded)
         
@@ -188,7 +194,10 @@ class SOTA_Temporal_PGAT(nn.Module):
         target_len = target_window.shape[1]
         wave_embedded = embedded[:, :wave_len, :]
         target_embedded = embedded[:, wave_len:wave_len+target_len, :]
-        
+
+        self._validate_node_tensor(wave_embedded, "wave_embedded", batch_size, wave_len)
+        self._validate_node_tensor(target_embedded, "target_embedded", batch_size, target_len)
+
         graph_counts = getattr(self.dim_manager, 'node_counts', {})
         wave_nodes = graph_counts.get('wave', wave_len)
         target_nodes = graph_counts.get('target', target_len)
@@ -249,6 +258,7 @@ class SOTA_Temporal_PGAT(nn.Module):
  
         transition_features_param = self.transition_features
         transition_broadcast = transition_features_param.unsqueeze(0).expand(batch_size, -1, -1)
+        self._validate_node_tensor(transition_broadcast, "transition_broadcast", batch_size, transition_nodes)
         x_dict['transition'] = transition_broadcast.mean(dim=0)
         
         # Prepare topology features
@@ -313,6 +323,8 @@ class SOTA_Temporal_PGAT(nn.Module):
             'transition': transition_broadcast,
             'target': target_embedded
         }
+
+        self._validate_node_feature_dict(node_features_dict, batch_size)
         
         # Dynamic graph construction with enhanced edge weights
         # Replace hard-disabled path with config gate and fallback
@@ -332,6 +344,8 @@ class SOTA_Temporal_PGAT(nn.Module):
             # Use simple adjacency matrix for now
             adjacency_matrix = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
             edge_weights = None
+
+        self._validate_dynamic_graph_outputs(adjacency_matrix, edge_weights, num_nodes)
         
         # Reshape embedded features for spatial-temporal processing
         spatiotemporal_input = embedded.unsqueeze(2).expand(-1, -1, num_nodes, -1)  # [batch, seq, nodes, d_model]
@@ -374,6 +388,8 @@ class SOTA_Temporal_PGAT(nn.Module):
         spatiotemporal_encoded = self.spatiotemporal_encoder(
             spatiotemporal_input, adj_matrix_tensor
         )
+
+        self._validate_spatiotemporal_encoding(spatiotemporal_encoded, batch_size, seq_len, num_nodes)
         
         # Derive enhanced node features and edge indices before validations
         enhanced_x_dict = {
@@ -457,6 +473,10 @@ class SOTA_Temporal_PGAT(nn.Module):
                 'transition': transition_features,
                 'target': target_features
             }
+
+        self._validate_node_tensor(spatial_encoded['wave'], 'spatial_wave', batch_size, wave_nodes)
+        self._validate_node_tensor(spatial_encoded['transition'], 'spatial_transition', batch_size, transition_nodes)
+        self._validate_node_tensor(spatial_encoded['target'], 'spatial_target', batch_size, target_nodes)
         
         # Store graph information if enabled
         # Store graph information if enabled
@@ -512,6 +532,8 @@ class SOTA_Temporal_PGAT(nn.Module):
                 self.final_projection = nn.Linear(final_embedding.size(-1), self.d_model).to(final_embedding.device)
             final_embedding = self.final_projection(final_embedding)
         
+        self._validate_decoder_ready(final_embedding)
+
         # Decode to final output
         return self.decoder(final_embedding)
     
@@ -531,6 +553,187 @@ class SOTA_Temporal_PGAT(nn.Module):
             return self.mixture_loss
         return base_criterion
     
+    def _validate_config(self) -> None:
+        """Validate critical configuration attributes before component construction."""
+        d_model = getattr(self.config, 'd_model', None)
+        seq_len = getattr(self.config, 'seq_len', None)
+        pred_len = getattr(self.config, 'pred_len', None)
+        n_heads = getattr(self.config, 'n_heads', None)
+        dropout = getattr(self.config, 'dropout', 0.0)
+
+        for name, value in {
+            'd_model': d_model,
+            'seq_len': seq_len,
+            'pred_len': pred_len,
+        }.items():
+            if not isinstance(value, int) or value <= 0:
+                raise ValueError(f"SOTA_Temporal_PGAT requires config.{name} as positive int, received {value!r}.")
+
+        if not isinstance(n_heads, int) or n_heads <= 0:
+            raise ValueError(f"SOTA_Temporal_PGAT requires config.n_heads as positive int, received {n_heads!r}.")
+
+        d_model_int = cast(int, d_model)
+        n_heads_int = cast(int, n_heads)
+        if d_model_int % n_heads_int != 0:
+            raise ValueError(
+                f"SOTA_Temporal_PGAT expects d_model divisible by n_heads; received d_model={d_model_int}, n_heads={n_heads_int}."
+            )
+
+        if not isinstance(dropout, (float, int)) or not 0.0 <= float(dropout) <= 1.0:
+            raise ValueError(f"SOTA_Temporal_PGAT requires dropout within [0, 1]; received {dropout!r}.")
+
+    def _validate_forward_inputs(self, wave_window: torch.Tensor, target_window: torch.Tensor) -> None:
+        """Ensure forward inputs share batch/device/dtype and expected dimensionality."""
+        if not isinstance(wave_window, torch.Tensor) or not isinstance(target_window, torch.Tensor):
+            raise TypeError("wave_window and target_window must be torch.Tensor instances.")
+
+        if wave_window.ndim != 3 or target_window.ndim != 3:
+            raise ValueError("wave_window and target_window must be 3D tensors shaped [batch, seq, features].")
+
+        if wave_window.size(0) != target_window.size(0):
+            raise ValueError(
+                f"Batch size mismatch between wave ({wave_window.size(0)}) and target ({target_window.size(0)}) windows."
+            )
+
+        if wave_window.device != target_window.device:
+            raise ValueError("wave_window and target_window must reside on the same device.")
+
+        if wave_window.dtype != target_window.dtype:
+            raise ValueError("wave_window and target_window must share the same dtype.")
+
+        if wave_window.size(1) <= 0 or target_window.size(1) <= 0:
+            raise ValueError("wave_window and target_window must contain at least one timestep.")
+
+        if wave_window.size(2) <= 0 or target_window.size(2) <= 0:
+            raise ValueError("wave_window and target_window must contain non-empty feature dimensions.")
+
+    def _validate_embedding_output(self, embedded: torch.Tensor, batch_size: int, seq_len: int) -> None:
+        """Validate embedded tensor matches expected batch/sequence/model dimensions."""
+        if not isinstance(embedded, torch.Tensor):
+            raise TypeError("Embedded representation must be a torch.Tensor.")
+
+        if embedded.ndim != 3:
+            raise ValueError("Embedded representation must be 3D shaped [batch, sequence, d_model].")
+
+        if embedded.size(0) != batch_size or embedded.size(1) != seq_len:
+            raise ValueError(
+                f"Embedded tensor shape mismatch: expected batch={batch_size}, seq={seq_len}; got {tuple(embedded.shape)}."
+            )
+
+        if embedded.size(2) != self.d_model:
+            raise ValueError(
+                f"Embedded tensor last dimension must equal d_model={self.d_model}; received {embedded.size(2)}."
+            )
+
+        if not self.dim_manager.validate_tensor_shape(embedded, 'embedded', batch_size):
+            raise ValueError("Embedded tensor does not align with dimension manager expectations.")
+
+    def _validate_node_tensor(self, tensor: torch.Tensor, name: str, batch_size: int, expected_nodes: int) -> None:
+        """Validate node-specific tensor adheres to [batch, nodes, d_model] layout."""
+        if not isinstance(tensor, torch.Tensor):
+            raise TypeError(f"{name} must be a torch.Tensor.")
+
+        if tensor.ndim != 3:
+            raise ValueError(f"{name} must be 3D shaped [batch, nodes, d_model]; got shape {tuple(tensor.shape)}.")
+
+        if tensor.size(0) != batch_size or tensor.size(1) != expected_nodes:
+            raise ValueError(
+                f"{name} expected batch={batch_size}, nodes={expected_nodes}; received {tuple(tensor.shape)}."
+            )
+
+        if tensor.size(2) != self.d_model:
+            raise ValueError(f"{name} last dimension must equal d_model={self.d_model}; received {tensor.size(2)}.")
+
+    def _validate_node_feature_dict(self, node_features: Dict[str, torch.Tensor], batch_size: int) -> None:
+        """Validate node feature dictionary prior to dynamic graph construction."""
+        required_nodes = ('wave', 'transition', 'target')
+        for node_type in required_nodes:
+            if node_type not in node_features:
+                raise ValueError(f"node_features missing required key '{node_type}'.")
+
+        node_counts = getattr(self.dim_manager, 'node_counts', {})
+        for node_type in required_nodes:
+            expected_nodes = node_counts.get(node_type)
+            if expected_nodes is None:
+                continue
+            self._validate_node_tensor(node_features[node_type], f"{node_type}_features", batch_size, expected_nodes)
+
+    def _validate_dynamic_graph_outputs(
+        self,
+        adjacency_matrix: Any,
+        edge_weights: Optional[Any],
+        expected_nodes: int,
+    ) -> None:
+        """Ensure dynamic/adaptive graph outputs expose expected topology data."""
+        if adjacency_matrix is None:
+            return
+
+        if isinstance(adjacency_matrix, torch.Tensor):
+            if adjacency_matrix.ndim != 2:
+                raise ValueError("Adjacency matrix tensor must be 2D.")
+            if adjacency_matrix.size(0) != expected_nodes or adjacency_matrix.size(1) != expected_nodes:
+                raise ValueError(
+                    f"Adjacency matrix tensor must be square with dimension {expected_nodes}; got {tuple(adjacency_matrix.shape)}."
+                )
+        elif hasattr(adjacency_matrix, 'edge_types'):
+            required_edges = [
+                ('wave', 'interacts_with', 'transition'),
+                ('transition', 'influences', 'target'),
+            ]
+            missing_edges = [edge for edge in required_edges if edge not in getattr(adjacency_matrix, 'edge_types', [])]
+            if missing_edges:
+                raise ValueError(f"Dynamic graph output missing edge types: {missing_edges}.")
+        else:
+            raise TypeError(
+                f"Unsupported adjacency_matrix type {type(adjacency_matrix)}; expected torch.Tensor or HeteroData-like object."
+            )
+
+        if isinstance(edge_weights, dict):
+            for edge_type, weights in edge_weights.items():
+                if not isinstance(weights, torch.Tensor):
+                    raise TypeError(f"Edge weights for {edge_type} must be torch.Tensor, received {type(weights)}.")
+                if weights.ndim <= 0:
+                    raise ValueError(f"Edge weights for {edge_type} must contain at least one dimension.")
+                if not torch.isfinite(weights).all():
+                    raise ValueError(f"Edge weights for {edge_type} contain non-finite values.")
+
+    def _validate_spatiotemporal_encoding(
+        self,
+        encoded: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+        num_nodes: int,
+    ) -> None:
+        """Validate joint spatiotemporal encoding output dimensions."""
+        if not isinstance(encoded, torch.Tensor):
+            raise TypeError("Spatiotemporal encoding output must be a torch.Tensor.")
+
+        if encoded.ndim != 4:
+            raise ValueError("Spatiotemporal encoding output must be 4D shaped [batch, seq, nodes, d_model].")
+
+        if encoded.size(0) != batch_size or encoded.size(1) != seq_len or encoded.size(2) != num_nodes:
+            raise ValueError(
+                f"Spatiotemporal encoding output shape mismatch; expected ({batch_size}, {seq_len}, {num_nodes}, *)."
+            )
+
+        if encoded.size(3) != self.d_model:
+            raise ValueError(
+                f"Spatiotemporal encoding output last dimension must equal d_model={self.d_model}; got {encoded.size(3)}."
+            )
+
+    def _validate_decoder_ready(self, embedding: torch.Tensor) -> None:
+        """Validate final embedding prior to decoder invocation."""
+        if not isinstance(embedding, torch.Tensor):
+            raise TypeError("Decoder input must be a torch.Tensor.")
+
+        if embedding.ndim != 3:
+            raise ValueError("Decoder input must be 3D shaped [batch, nodes, d_model].")
+
+        if embedding.size(2) != self.d_model:
+            raise ValueError(
+                f"Decoder input last dimension must equal d_model={self.d_model}; received {embedding.size(2)}."
+            )
+
     def _initialize_embedding(self, config: Any) -> nn.Module:
         """Select an embedding module with robust fallbacks for tensor-only inputs.
 

@@ -100,3 +100,26 @@ def test_pgat_fallback_embedding_path() -> None:
     assert output_tensor.shape[0] == 2
     assert output_tensor.shape[1] == cfg.pred_len
     assert torch.isfinite(output_tensor).all()
+
+
+def test_pgat_rejects_mismatched_batch_sizes() -> None:
+    """Forward should raise when wave and target windows disagree on batch size."""
+    model = minimal_model(d_model=8)
+    wave_window, target_window = minimal_windows(batch=2, d_model=8)
+    with pytest.raises(ValueError, match="Batch size mismatch"):
+        model.forward(wave_window, target_window[:1], graph=None)
+
+
+def test_pgat_rejects_dtype_mismatch() -> None:
+    """Forward should enforce consistent dtypes across wave and target inputs."""
+    model = minimal_model(d_model=8)
+    wave_window, target_window = minimal_windows(d_model=8)
+    with pytest.raises(ValueError, match="same dtype"):
+        model.forward(wave_window, target_window.to(torch.float64), graph=None)
+
+
+def test_pgat_config_requires_divisible_heads() -> None:
+    """Initialization should fail when d_model is not divisible by n_heads."""
+    cfg = MinimalConfig(d_model=10, n_heads=3, dropout=0.0, seq_len=2, pred_len=1)
+    with pytest.raises(ValueError, match="divisible"):
+        SOTA_Temporal_PGAT(cfg)
