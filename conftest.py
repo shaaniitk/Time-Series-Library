@@ -69,12 +69,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:  # type: ignore[name-define
         default=os.environ.get("PYTEST_GLOBAL_TIMEOUT", "60"),
         help="Default per-test timeout in seconds (requires pytest-timeout)",
     )
-    parser.addoption(
-        "--reruns",
-        action="store",
-        default=os.environ.get("PYTEST_RERUNS", "0"),
-        help="Reruns on failure for extended tests (requires pytest-rerunfailures)",
-    )
 
 
 def _is_legacy_path(p: Path) -> bool:
@@ -230,10 +224,18 @@ def pytest_runtest_setup(item: pytest.Item) -> None:  # type: ignore[name-define
         item.add_marker(pytest.mark.timeout(timeout_val))  # type: ignore[attr-defined]
 
     # Reruns for extended tests only
+    reruns = 0
     try:
         import pytest_rerunfailures  # noqa: F401
 
-        reruns = int(item.config.getoption("reruns"))
+        try:
+            reruns = int(item.config.getoption("reruns"))
+        except Exception:
+            reruns_env = os.environ.get("PYTEST_RERUNS", "0")
+            try:
+                reruns = int(reruns_env)
+            except ValueError:
+                reruns = 0
     except Exception:
         reruns = 0
     if reruns and any(m.name == "extended" for m in item.iter_markers()):

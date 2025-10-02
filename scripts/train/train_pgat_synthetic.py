@@ -24,7 +24,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 try:  # pragma: no cover - resource is unavailable on Windows
     import resource
@@ -40,6 +40,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from data_provider.data_factory import setup_financial_forecasting_data
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
 from scripts.train import train_dynamic_pgat
+from utils.memory_diagnostics import MemoryDiagnostics
 
 try:
     from scripts.train.generate_synthetic_multi_wave import generate_dataset as _generate_dataset
@@ -48,26 +49,63 @@ except ImportError:  # pragma: no cover - guard for refactors
 
 
 @dataclass
+class ParameterStats:
+    """Track streaming statistics for an individual parameter's gradient norms."""
+
+    count: int = 0
+    mean: float = 0.0
+    m2: float = 0.0
+    minimum: float = math.inf
+    maximum: float = 0.0
+    last: float = 0.0
+
+    def update(self, value: float) -> None:
+        self.count += 1
+        delta = value - self.mean
+        self.mean += delta / self.count
+        self.m2 += delta * (value - self.mean)
+        self.minimum = min(self.minimum, value)
+        self.maximum = max(self.maximum, value)
+        self.last = value
+
+    def variance(self) -> float:
+        if self.count <= 1:
+            return 0.0
+        return self.m2 / (self.count - 1)
+
+    def to_dict(self) -> Dict[str, float]:
+        minimum = 0.0 if self.minimum is math.inf else self.minimum
+        return {
+            "count": int(self.count),
+            "mean": float(self.mean),
+            "min": float(minimum),
+            "max": float(self.maximum),
+            "last": float(self.last),
+            "variance": float(self.variance()),
+        }
+
+
+@dataclass
 class GradientTracker:
     """Collect gradient norms and memory metrics for post-run diagnostics."""
 
     global_norms: List[float] = field(default_factory=list)
-    per_parameter: Dict[str, List[float]] = field(default_factory=dict)
+    per_parameter: Dict[str, ParameterStats] = field(default_factory=dict)
     vanishing_threshold: float = 1e-8
     vanishing_steps: List[int] = field(default_factory=list)
     rss_history_mb: List[float] = field(default_factory=list)
     cuda_allocated_mb: List[float] = field(default_factory=list)
+    max_memory_history: int = 4096
 
     def log_step(self, named_parameters: Iterable[Tuple[str, torch.nn.Parameter]]) -> None:
         total = 0.0
-        step_param_norms: Dict[str, float] = {}
         for name, param in named_parameters:
             if param.grad is None:
                 continue
             norm = param.grad.norm(p=2).item()
-            step_param_norms[name] = norm
             total += norm * norm
-            self.per_parameter.setdefault(name, []).append(norm)
+            stats = self.per_parameter.setdefault(name, ParameterStats())
+            stats.update(norm)
         if total == 0.0:
             self.vanishing_steps.append(len(self.global_norms))
             self.global_norms.append(0.0)
@@ -101,6 +139,16 @@ class GradientTracker:
             summary["cuda_allocated_mb_last"] = float(self.cuda_allocated_mb[-1])
         return summary
 
+    def parameter_summary(self, limit: int = 15) -> Dict[str, Dict[str, float]]:
+        if not self.per_parameter:
+            return {}
+        ranked = sorted(
+            self.per_parameter.items(),
+            key=lambda pair: pair[1].maximum,
+            reverse=True,
+        )[:limit]
+        return {name: stats.to_dict() for name, stats in ranked}
+
     def _record_memory_stats(self) -> None:
         rss_mb = 0.0
         if resource is not None:
@@ -126,13 +174,24 @@ class GradientTracker:
             except RuntimeError:
                 cuda_mb = 0.0
         self.cuda_allocated_mb.append(float(cuda_mb))
+        if len(self.rss_history_mb) > self.max_memory_history:
+            self.rss_history_mb.pop(0)
+        if len(self.cuda_allocated_mb) > self.max_memory_history:
+            self.cuda_allocated_mb.pop(0)
 
 
 class GradientMonitoringExperiment(Exp_Long_Term_Forecast):
     """Specialised experiment that wraps the optimiser for gradient logging."""
 
-    def __init__(self, args: SimpleNamespace, tracker: GradientTracker) -> None:
+    def __init__(
+        self,
+        args: SimpleNamespace,
+        tracker: GradientTracker,
+        memory_diagnostics: Optional[MemoryDiagnostics] = None,
+    ) -> None:
         self.gradient_tracker = tracker
+        if memory_diagnostics is not None:
+            args.memory_diagnostics = memory_diagnostics
         super().__init__(args)
 
     def _select_optimizer(self):  # type: ignore[override]
@@ -226,18 +285,44 @@ def parse_cli() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--gradient-threshold", type=float, default=1e-6)
     parser.add_argument("--report", type=Path, default=Path("reports/pgat_synthetic_gradient.json"))
+    parser.add_argument(
+        "--memory-report",
+        type=Path,
+        default=Path("reports/pgat_synthetic_memory.json"),
+        help="Destination file for serialized memory diagnostics snapshots.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     cli_args = parse_cli()
     log = _setup_logging(cli_args.verbose)
+    memory_diagnostics = MemoryDiagnostics(log)
+
+    memory_diagnostics.snapshot(
+        "startup",
+        {
+            "config": str(cli_args.config),
+            "regenerate_data": cli_args.regenerate_data,
+            "gradient_threshold": cli_args.gradient_threshold,
+        },
+    )
 
     regenerate_dataset_if_needed(cli_args, log)
+    if cli_args.regenerate_data:
+        memory_diagnostics.snapshot(
+            "dataset_regenerated",
+            {
+                "rows": cli_args.rows,
+                "waves": cli_args.waves,
+                "targets": cli_args.targets,
+            },
+        )
 
     raw_config = _load_config(cli_args.config)
     raw_config["config"] = str(cli_args.config)
     args = _prepare_args(raw_config)
+    args.memory_diagnostics = memory_diagnostics
 
     # Ensure dataset pointers align with CLI when regen happens
     args.root_path = raw_config.get("root_path", "data")
@@ -261,6 +346,18 @@ def main() -> None:
     loaders = setup_financial_forecasting_data(args)
     train_loader, vali_loader, test_loader, scaler_manager, dim_manager = loaders
 
+    memory_diagnostics.log_dataloader("train", train_loader)
+    memory_diagnostics.log_dataloader("validation", vali_loader)
+    memory_diagnostics.log_dataloader("test", test_loader)
+    memory_diagnostics.snapshot(
+        "dataloaders_built",
+        {
+            "train_steps": len(train_loader) if hasattr(train_loader, "__len__") else None,
+            "validation_steps": len(vali_loader) if hasattr(vali_loader, "__len__") else None,
+            "test_steps": len(test_loader) if hasattr(test_loader, "__len__") else None,
+        },
+    )
+
     args.train_loader = train_loader
     args.vali_loader = vali_loader
     args.test_loader = test_loader
@@ -273,26 +370,43 @@ def main() -> None:
     args.c_out_evaluation = getattr(args, "c_out_evaluation", dim_manager.c_out_evaluation)
 
     tracker = GradientTracker(vanishing_threshold=cli_args.gradient_threshold)
-    experiment = GradientMonitoringExperiment(args, tracker)
+    experiment = GradientMonitoringExperiment(args, tracker, memory_diagnostics)
 
     setting_id = f"synthetic_pgat_{args.features}_{args.seq_len}_{args.pred_len}"
     log.info("Starting training session -> %s", setting_id)
-    experiment.train(setting_id)
-    log.info("Training finished; launching evaluation")
-    experiment.test(setting_id, test=1)
+    memory_diagnostics.reset_cuda_peaks()
+    memory_diagnostics.snapshot(
+        "training_start",
+        {
+            "setting": setting_id,
+            "train_epochs": args.train_epochs,
+            "batch_size": args.batch_size,
+        },
+    )
+    try:
+        experiment.train(setting_id)
+        log.info("Training finished; launching evaluation")
+        memory_diagnostics.snapshot("training_finished", {"setting": setting_id})
+        experiment.test(setting_id, test=1)
+        memory_diagnostics.snapshot("evaluation_finished", {"setting": setting_id})
 
-    summary = tracker.summary()
-    summary_data: Dict[str, object] = {
-        **summary,
-        "steps": len(tracker.global_norms),
-        "vanishing_steps": tracker.vanishing_steps,
-    }
+        summary = tracker.summary()
+        summary_data: Dict[str, object] = {
+            **summary,
+            "steps": len(tracker.global_norms),
+            "vanishing_steps": tracker.vanishing_steps,
+            "parameter_summary_top": tracker.parameter_summary(),
+        }
 
-    cli_args.report.parent.mkdir(parents=True, exist_ok=True)
-    with cli_args.report.open("w", encoding="utf-8") as handle:
-        json.dump(summary_data, handle, indent=2)
+        cli_args.report.parent.mkdir(parents=True, exist_ok=True)
+        with cli_args.report.open("w", encoding="utf-8") as handle:
+            json.dump(summary_data, handle, indent=2)
 
-    log.info("Gradient summary -> %s", summary_data)
+        log.info("Gradient summary -> %s", summary_data)
+    finally:
+        dump_location = memory_diagnostics.dump_history(cli_args.memory_report)
+        if dump_location is not None:
+            log.info("Memory diagnostics history written -> %s", dump_location)
 
 
 if __name__ == "__main__":

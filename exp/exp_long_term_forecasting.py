@@ -17,6 +17,9 @@ import numpy as np
 import inspect # For checking model constructor arguments
 from utils.dtw_metric import dtw, accelerated_dtw
 from utils.augmentation import run_augmentation, run_augmentation_single
+from typing import List, Optional, Sequence, Tuple, Union, cast
+
+from utils.memory_diagnostics import MemoryDiagnostics
 
 warnings.filterwarnings('ignore')
 
@@ -30,6 +33,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         # The actual DM and ScalerManager are passed as separate arguments.
         logger.info(f"Initializing Exp_Long_Term_Forecast with provided managers and loaders.")
         logger.debug(f"Exp_Long_Term_Forecast __init__: args.scaler_manager is not None = {args.scaler_manager is not None}")
+
+        self.memory_diagnostics: Optional[MemoryDiagnostics] = getattr(args, "memory_diagnostics", None)
+        if self.memory_diagnostics is not None:
+            self.memory_diagnostics.snapshot(
+                "experiment_init_start",
+                {
+                    "model": getattr(args, "model", "unknown"),
+                    "features": getattr(args, "features", None),
+                },
+            )
         
         # Store the managers and loaders
         self.dm = args.dim_manager # DimensionManager instance
@@ -75,6 +88,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.args.dim_manager = self.dm
         self.args.scaler_manager = self.scaler_manager
 
+        if self.memory_diagnostics is not None:
+            parameter_count = sum(param.numel() for param in self.model.parameters())
+            self.memory_diagnostics.snapshot(
+                "experiment_model_ready",
+                {
+                    "parameters": parameter_count,
+                    "device": str(self.device),
+                },
+            )
+
     def _build_model(self):
         ModelClass = self.model_dict[self.args.model]
         # Get model initialization parameters from the DimensionManager
@@ -101,21 +124,22 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         is_multi_quantile_scenario = isinstance(q_levels, list) and len(q_levels) > 0
 
         if loss_name == 'pinball' or (loss_name == 'quantile' and is_multi_quantile_scenario):
-            levels_for_pinball = q_levels
-            if not is_multi_quantile_scenario:
-                levels_for_pinball = [0.1, 0.5, 0.9]
-                logger.warning(f"Loss is 'pinball' but no quantile_levels provided in args. Defaulting to {levels_for_pinball}")
-            
-            if not all(isinstance(q, float) and 0 < q < 1 for q in levels_for_pinball):
-                logger.error(f"Invalid quantile_levels for PinballLoss: {levels_for_pinball}. Must be list of floats between 0 and 1.")
+            if is_multi_quantile_scenario and q_levels is not None:
+                levels_for_pinball_list: List[float] = [float(q) for q in q_levels]
+            else:
+                levels_for_pinball_list = [0.1, 0.5, 0.9]
+                logger.warning(f"Loss is 'pinball' but no quantile_levels provided in args. Defaulting to {levels_for_pinball_list}")
+
+            if not all(isinstance(q, float) and 0 < q < 1 for q in levels_for_pinball_list):
+                logger.error(f"Invalid quantile_levels for PinballLoss: {levels_for_pinball_list}. Must be list of floats between 0 and 1.")
                 logger.warning("Falling back to MSELoss due to invalid quantile_levels for PinballLoss.")
                 criterion = nn.MSELoss()
             else:
-                criterion = get_loss_function('pinball', quantile_levels=levels_for_pinball)
-                logger.info(f"Using PinballLoss with quantiles: {levels_for_pinball}")
+                criterion = get_loss_function('pinball', quantile_levels=levels_for_pinball_list)
+                logger.info(f"Using PinballLoss with quantiles: {levels_for_pinball_list}")
                 logger.debug(
                     "PinballLoss activated | quantiles=%s | c_out_model=%s | c_out_eval=%s",
-                    levels_for_pinball,
+                    levels_for_pinball_list,
                     self.dm.c_out_model,
                     self.dm.c_out_evaluation,
                 )
@@ -164,10 +188,29 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         logger.debug("Selected criterion: %s", type(criterion).__name__)
         return criterion
 
-    def vali(self, vali_loader, criterion):
+    @staticmethod
+    def _extract_auxiliary_loss(candidate: object) -> Tuple[Optional[float], Optional[torch.Tensor]]:
+        """Distinguish scalar auxiliary loss terms from structured tensor outputs."""
+        if isinstance(candidate, torch.Tensor):
+            if candidate.numel() == 1:
+                return float(candidate.item()), None
+            return None, candidate
+        if isinstance(candidate, (int, float)):
+            return float(candidate), None
+        return None, None
+
+    def vali(self, vali_loader, criterion):  # type: ignore[override]
         logger.info("Running validation phase")
         total_loss = []
         self.model.eval()
+        if self.memory_diagnostics is not None:
+            self.memory_diagnostics.snapshot(
+                "validation_start",
+                {
+                    "len_vali_loader": len(vali_loader) if hasattr(vali_loader, "__len__") else None,
+                    "criterion": type(criterion).__name__,
+                },
+            )
         with torch.no_grad(): # Use self.vali_loader directly
             for i, batch_data in enumerate(vali_loader):
                 batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
@@ -222,19 +265,32 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 
                 # Handle auxiliary loss or MDN triple if model returns tuple/list
-                aux_loss_val = 0
-                mdn_outputs_val = None
+                aux_loss_val = 0.0
+                mdn_outputs_val: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None
                 if isinstance(outputs_raw, (tuple, list)):
                     if len(outputs_raw) == 3:
-                        mdn_outputs_val = outputs_raw  # (means, std_devs, mixture_weights)
-                    elif len(outputs_raw) == 2:
-                        outputs_raw, aux_loss_val = outputs_raw
-                    elif len(outputs_raw) >= 1:
+                        mdn_outputs_val = (
+                            cast(torch.Tensor, outputs_raw[0]),
+                            cast(torch.Tensor, outputs_raw[1]),
+                            cast(torch.Tensor, outputs_raw[2]),
+                        )
                         outputs_raw = outputs_raw[0]
+                    elif len(outputs_raw) == 2:
+                        primary_val, secondary_val = outputs_raw
+                        scalar_loss_val, _ = self._extract_auxiliary_loss(secondary_val)
+                        outputs_raw = primary_val
+                        if scalar_loss_val is not None:
+                            aux_loss_val = scalar_loss_val
+
+                if not isinstance(outputs_raw, torch.Tensor):
+                    raise TypeError("Expected tensor output from model forward pass during validation.")
+
+                outputs_tensor_val, aux_loss_val, mdn_outputs_val = self._normalize_model_output(outputs_raw)
+
                 if logger.isEnabledFor(10):
                     logger.debug(
                         "VAL forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
-                        tuple(outputs_raw.shape) if (outputs_raw is not None and hasattr(outputs_raw, 'shape')) else ('MDN' if mdn_outputs_val is not None else 'n/a'),
+                        tuple(outputs_tensor_val.shape),
                         self.args.pred_len,
                         self.dm.c_out_model,
                     )
@@ -249,8 +305,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                                        (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
 
                 if isinstance(criterion, MixtureNLLLoss) or mdn_outputs_val is not None:
-                    means_v, stds_v, weights_v = mdn_outputs_val if mdn_outputs_val is not None else outputs_raw
-                    # Ensure we only use prediction segment if decoder produced longer sequences
+                    if mdn_outputs_val is None:
+                        raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple.")
+                    means_v, stds_v, weights_v = mdn_outputs_val
                     if means_v.size(1) > self.args.pred_len:
                         means_v = means_v[:, -self.args.pred_len:, :]
                         stds_v = stds_v[:, -self.args.pred_len:, :]
@@ -259,9 +316,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     loss = criterion(means_v, stds_v, weights_v, targets_v)
                 else:
                     if is_criterion_pinball:
-                        y_pred_for_loss_val = outputs_raw[:, -self.args.pred_len:, :] # Use full model output (c_out_model)
+                        y_pred_for_loss_val = outputs_tensor_val[:, -self.args.pred_len:, :]
                     else:
-                        y_pred_for_loss_val = outputs_raw[:, -self.args.pred_len:, :c_out_evaluation]
+                        y_pred_for_loss_val = outputs_tensor_val[:, -self.args.pred_len:, :c_out_evaluation]
                     loss = criterion(y_pred_for_loss_val, y_true_for_loss_val)
                 if logger.isEnabledFor(10):
                     logger.debug(
@@ -275,9 +332,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         
         total_loss_avg = np.average(total_loss)
         self.model.train()
+        if self.memory_diagnostics is not None:
+            self.memory_diagnostics.snapshot(
+                "validation_complete",
+                {
+                    "len_vali_loader": len(vali_loader) if hasattr(vali_loader, "__len__") else None,
+                    "loss": float(total_loss_avg),
+                },
+            )
         return total_loss_avg
 
-    def train(self, setting):
+    def train(self, setting):  # type: ignore[override]
         logger.info(f"Starting training with setting: {setting}")
         # Data loaders are passed in during initialization
         train_loader = self.train_loader
@@ -297,8 +362,22 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         model_optim = self._select_optimizer()
         criterion = self._select_criterion()
 
+        scaler_amp: Optional[torch.cuda.amp.GradScaler]
+        scaler_amp = None
         if self.args.use_amp:
-            scaler_amp = torch.cuda.amp.GradScaler() # type: ignore
+            scaler_amp = torch.cuda.amp.GradScaler(enabled=torch.cuda.is_available())  # type: ignore[call-arg]
+
+        if self.memory_diagnostics is not None:
+            self.memory_diagnostics.snapshot(
+                "train_loop_start",
+                {
+                    "setting": setting,
+                    "train_steps": train_steps,
+                    "epochs": self.args.train_epochs,
+                },
+            )
+
+        epochs_completed = 0
 
         for epoch in range(self.args.train_epochs):
             iter_count = 0
@@ -308,6 +387,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             epoch_time = time.time()
             print(f"\n=== Starting Epoch {epoch + 1}/{self.args.train_epochs} ===")
             print(f"Expected training steps: {train_steps}")
+
+            if self.memory_diagnostics is not None:
+                self.memory_diagnostics.snapshot(
+                    "epoch_begin",
+                    {
+                        "epoch": epoch + 1,
+                        "train_steps": train_steps,
+                    },
+                )
             
             for i, batch_data in enumerate(train_loader):
                 batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
@@ -362,20 +450,18 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     else:
                         outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Handle auxiliary loss or MDN triple if model returns tuple/list
-                aux_loss_train = 0
-                mdn_outputs_train = None
-                if isinstance(outputs_raw_train, (tuple, list)):
-                    if len(outputs_raw_train) == 3:
-                        mdn_outputs_train = outputs_raw_train  # (means, std_devs, mixture_weights)
-                    elif len(outputs_raw_train) == 2:
-                        outputs_raw_train, aux_loss_train = outputs_raw_train
-                    elif len(outputs_raw_train) >= 1:
-                        outputs_raw_train = outputs_raw_train[0]
+                outputs_tensor_train, aux_loss_train, mdn_outputs_train = self._normalize_model_output(outputs_raw_train)
                 if logger.isEnabledFor(10):
                     logger.debug(
                         "TRAIN forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
-                        tuple(outputs_raw_train.shape) if (outputs_raw_train is not None and hasattr(outputs_raw_train, 'shape')) else ('MDN' if mdn_outputs_train is not None else 'n/a'),
+                        tuple(outputs_tensor_train.shape),
+                        self.args.pred_len,
+                        self.dm.c_out_model,
+                    )
+                if logger.isEnabledFor(10):
+                    logger.debug(
+                        "TRAIN forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
+                        tuple(outputs_tensor_train.shape),
                         self.args.pred_len,
                         self.dm.c_out_model,
                     )
@@ -389,7 +475,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 # Compute loss (handle MDN vs deterministic)
                 if isinstance(criterion, MixtureNLLLoss) or mdn_outputs_train is not None:
-                    means_t, stds_t, weights_t = mdn_outputs_train if mdn_outputs_train is not None else outputs_raw_train
+                    if mdn_outputs_train is None:
+                        raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple during training.")
+                    means_t, stds_t, weights_t = mdn_outputs_train
                     if means_t.size(1) > self.args.pred_len:
                         means_t = means_t[:, -self.args.pred_len:, :]
                         stds_t = stds_t[:, -self.args.pred_len:, :]
@@ -397,7 +485,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     targets_t = y_true_for_loss_train.squeeze(-1) if y_true_for_loss_train.dim() == 3 and y_true_for_loss_train.size(-1) == 1 else y_true_for_loss_train
                     loss_train = criterion(means_t, stds_t, weights_t, targets_t)
                 else:
-                    y_pred_for_loss_train = outputs_raw_train[:, -self.args.pred_len:, :] if is_criterion_pinball_train else outputs_raw_train[:, -self.args.pred_len:, :c_out_evaluation_train]
+                    if is_criterion_pinball_train:
+                        y_pred_for_loss_train = outputs_tensor_train[:, -self.args.pred_len:, :]
+                    else:
+                        y_pred_for_loss_train = outputs_tensor_train[:, -self.args.pred_len:, :c_out_evaluation_train]
                     loss_train = criterion(y_pred_for_loss_train, y_true_for_loss_train)
                 if logger.isEnabledFor(10):
                     logger.debug(
@@ -409,7 +500,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     )
                 
                 # Add auxiliary loss if present
-                if aux_loss_train != 0:
+                if aux_loss_train:
                     loss_train = loss_train + aux_loss_train
                 
                 train_loss_epoch_list.append(loss_train.item())
@@ -429,10 +520,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 # Debug every 50 iterations if debug is enabled
                 if (i + 1) % 50 == 0 and logger.isEnabledFor(10):
-                    logger.debug(f"Training Step {i + 1}: batch_x={batch_x.shape}, outputs={(outputs_raw_train.shape if (outputs_raw_train is not None and hasattr(outputs_raw_train, 'shape')) else 'MDN')} ")
-                    logger.debug(f"  aux_loss: {aux_loss_train}, main_loss: {loss_train.item() - (aux_loss_train if aux_loss_train != 0 else 0):.7f}")
+                    logger.debug(f"Training Step {i + 1}: batch_x={batch_x.shape}, outputs={tuple(outputs_tensor_train.shape)}")
+                    adjusted_core_loss = loss_train.item() - (aux_loss_train if aux_loss_train else 0.0)
+                    logger.debug(f"  aux_loss: {aux_loss_train}, main_loss: {adjusted_core_loss:.7f}")
 
-                if self.args.use_amp:
+                if self.args.use_amp and scaler_amp is not None:
                     scaler_amp.scale(loss_train).backward()
                     scaler_amp.step(model_optim)
                     scaler_amp.update()
@@ -447,6 +539,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss_avg, vali_loss, test_loss))
+            if self.memory_diagnostics is not None:
+                self.memory_diagnostics.snapshot(
+                    "epoch_end",
+                    {
+                        "epoch": epoch + 1,
+                        "train_loss": float(train_loss_avg),
+                        "vali_loss": float(vali_loss),
+                        "test_loss": float(test_loss),
+                    },
+                )
+            epochs_completed = epoch + 1
             early_stopping(vali_loss, self.model, path, epoch)
             if early_stopping.early_stop:
                 print("Early stopping")
@@ -457,14 +560,33 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         best_model_path = path + '/' + 'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
 
+        if self.memory_diagnostics is not None:
+            self.memory_diagnostics.snapshot(
+                "train_complete",
+                {
+                    "setting": setting,
+                    "epochs_trained": epochs_completed,
+                    "train_steps": train_steps,
+                },
+            )
+
         return self.model
 
-    def test(self, setting, test=0):
+    def test(self, setting: str, test: int = 0) -> None:  # type: ignore[override]
         logger.info(f"Starting test with setting: {setting}, test={test}")
         test_loader = self.test_loader # Use pre-stored test_loader from init
         if test:
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+
+        if self.memory_diagnostics is not None:
+            self.memory_diagnostics.snapshot(
+                "test_start",
+                {
+                    "setting": setting,
+                    "len_test_loader": len(test_loader) if hasattr(test_loader, "__len__") else None,
+                },
+            )
 
         preds_scaled_np = []
         trues_original_np_targets_only = [] # Store original scale targets for direct comparison if needed
@@ -529,28 +651,42 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 # Construct decoder input with historical (scaled) and future parts
                 dec_inp_test = self._construct_dec_inp(hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled)
                 
-                outputs_raw_test = None # Initialize
-                if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
+                outputs_raw_test = None  # Initialize
+                if self.args.use_amp:  # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
                         if self.args.model == 'SOTA_Temporal_PGAT':
                             wave_window = batch_x
-                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                            target_window = torch.zeros(
+                                batch_x.size(0),
+                                self.args.pred_len,
+                                batch_x.size(-1),
+                                device=batch_x.device,
+                                dtype=batch_x.dtype,
+                            )
                             outputs_raw_test = self.model(wave_window, target_window, None)
                         else:
                             outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
                 else:
                     if self.args.model == 'SOTA_Temporal_PGAT':
                         wave_window = batch_x
-                        target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                        target_window = torch.zeros(
+                            batch_x.size(0),
+                            self.args.pred_len,
+                            batch_x.size(-1),
+                            device=batch_x.device,
+                            dtype=batch_x.dtype,
+                        )
                         outputs_raw_test = self.model(wave_window, target_window, None)
                     else:
                         outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
 
-                # Unify outputs for downstream metric computations
-                mdn_outputs_test = None
-                if isinstance(outputs_raw_test, (tuple, list)) and len(outputs_raw_test) == 3:
-                    mdn_outputs_test = outputs_raw_test
-                
+                if outputs_raw_test is None:
+                    raise ValueError("Model forward pass returned None during testing.")
+
+                outputs_tensor_test, aux_loss_test, mdn_outputs_test = self._normalize_model_output(outputs_raw_test)
+                if aux_loss_test:
+                    logger.debug("TEST auxiliary loss detected: %s", aux_loss_test)
+
                 if mdn_outputs_test is not None:
                     means_te, stds_te, weights_te = mdn_outputs_test
                     if means_te.size(1) > self.args.pred_len:
@@ -560,11 +696,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     # Use mixture mean as point prediction for evaluation
                     model_outputs_pred_len_segment = (weights_te * means_te).sum(dim=-1).unsqueeze(-1)
                 else:
-                    model_outputs_pred_len_segment = outputs_raw_test[:, -self.args.pred_len:, :] # [B, pred_len, c_out_model]
+                    model_outputs_pred_len_segment = outputs_tensor_test[:, -self.args.pred_len:, :]
+
                 if logger.isEnabledFor(10):
                     logger.debug(
-                        "TEST forward | outputs_raw=%s | pred_len_segment=%s | c_out_model=%s | quantile_mode=%s | mdn=%s",
-                        (tuple(outputs_raw_test.shape) if hasattr(outputs_raw_test, 'shape') else 'MDN'),
+                        "TEST forward | outputs_tensor=%s | pred_len_segment=%s | c_out_model=%s | quantile_mode=%s | mdn=%s",
+                        tuple(outputs_tensor_test.shape),
                         tuple(model_outputs_pred_len_segment.shape),
                         self.dm.c_out_model,
                         is_quantile_mode_test,
@@ -615,7 +752,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         if input_for_viz_original.shape[-1] > 0 and true_for_viz_original.shape[-1] > 0 and pred_for_viz_original.shape[-1] > 0: # Ensure dimensions are valid for plotting
                             gt_plot = np.concatenate((input_for_viz_original[:, 0], true_for_viz_original[:, 0]), axis=0)
                             pd_plot = np.concatenate((input_for_viz_original[:, 0], pred_for_viz_original[:, 0]), axis=0)
-                            visual(gt_plot, pd_plot, os.path.join(folder_path, str(i) + '.pdf'))
+                            visual(gt_plot, pd_plot, os.path.join(folder_path, f"{i}.pdf"))
                         else: # This branch is taken if the shapes are invalid for plotting (e.g., 0-dimension)
                             logger.warning("Cannot visualize: insufficient target features after inverse transform.") 
                     else:
@@ -671,13 +808,61 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         np.save(os.path.join(folder_path, 'pred_original.npy'), preds_final_original) # Save original scale predictions (all c_out_eval)
         np.save(os.path.join(folder_path, 'true_original_targets.npy'), trues_final_original_targets_only) # Save original scale true targets
 
+        if self.memory_diagnostics is not None:
+            self.memory_diagnostics.snapshot(
+                "test_complete",
+                {
+                    "setting": setting,
+                    "mse": float(mse),
+                    "mae": float(mae),
+                    "rmse": float(rmse),
+                },
+            )
+
         return
 
-    def _construct_dec_inp(self, hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled):
+    @staticmethod
+    def _normalize_model_output(
+        raw_output: Union[torch.Tensor, Sequence[torch.Tensor]],
+    ) -> Tuple[torch.Tensor, float, Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]]:
+        """Convert mixed forward outputs into tensor, scalar aux loss, and optional MDN tuple."""
+        aux_loss = 0.0
+        mdn_tuple: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None
+        output_tensor: Union[torch.Tensor, Sequence[torch.Tensor]] = raw_output
+
+        if isinstance(raw_output, (tuple, list)):
+            if len(raw_output) == 3 and all(isinstance(part, torch.Tensor) for part in raw_output):
+                mdn_tuple = (cast(torch.Tensor, raw_output[0]), cast(torch.Tensor, raw_output[1]), cast(torch.Tensor, raw_output[2]))
+                output_tensor = raw_output[0]
+            elif len(raw_output) == 2:
+                primary, secondary = raw_output
+                scalar_aux, _ = Exp_Long_Term_Forecast._extract_auxiliary_loss(secondary)
+                output_tensor = primary
+                if scalar_aux is not None:
+                    aux_loss = scalar_aux
+            elif len(raw_output) >= 1:
+                output_tensor = raw_output[0]
+
+        if not isinstance(output_tensor, torch.Tensor):
+            raise TypeError("Model forward pass must yield a tensor as primary output.")
+
+        return output_tensor, aux_loss, mdn_tuple
+
+    def _construct_dec_inp(
+        self,
+        hist_targets_scaled: np.ndarray,
+        hist_covariates_scaled: Optional[np.ndarray],
+        future_targets_zeros: torch.Tensor,
+        future_covariates_scaled: Optional[np.ndarray],
+    ) -> torch.Tensor:
         """Helper to construct decoder input based on feature mode."""
         # Convert numpy arrays to tensors and move to device
         hist_targets_scaled_t = torch.from_numpy(hist_targets_scaled).float().to(self.device)
         future_targets_zeros_t = future_targets_zeros.float().to(self.device)
+
+        # Initialize decoder input tensors to satisfy static analysis and handle default case
+        dec_inp_hist: torch.Tensor = hist_targets_scaled_t
+        dec_inp_future: torch.Tensor = future_targets_zeros_t
 
         # Determine if covariates should be included in decoder input based on feature mode
         if self.args.features in ['M', 'MS']:
@@ -699,6 +884,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             # For S mode, only targets are used in the decoder input
             dec_inp_hist = hist_targets_scaled_t
             dec_inp_future = future_targets_zeros_t
+        else:
+            logger.warning("Feature mode %s not explicitly handled; defaulting to targets only in decoder input.", self.args.features)
 
         # Combine historical and future parts
         dec_inp = torch.cat([dec_inp_hist, dec_inp_future], dim=1)

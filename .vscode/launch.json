@@ -14,6 +14,28 @@
             ]
         },
         {
+            "name": "Debug: PGAT Synthetic Training",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/tsl-env/bin/python",
+            "program": "${workspaceFolder}/scripts/train/train_pgat_synthetic.py",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "args": [
+                "--config", "configs/sota_pgat_synthetic.yaml",
+                "--verbose"
+            ],
+            "justMyCode": false,
+            "stopOnEntry": false,
+            "showReturnValue": true,
+            "redirectOutput": true,
+            // To regenerate data add: "--regenerate-data" and dataset sizing flags as needed.
+            "internalConsoleOptions": "neverOpen"
+        },
+        {
              "name": "Python: Current File",
              "type": "debugpy",
             "request": "launch",

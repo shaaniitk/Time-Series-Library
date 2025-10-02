@@ -13,5 +13,6 @@
         "cursor-global": true,
         "cursor-workspace": true
     },
-    "kiroAgent.configureMCP": "Enabled"
+    "kiroAgent.configureMCP": "Enabled",
+    "python-envs.pythonProjects": []
 }

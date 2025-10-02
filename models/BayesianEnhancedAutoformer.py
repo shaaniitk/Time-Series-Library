@@ -11,6 +11,12 @@ from layers.modular.sampling.monte_carlo_sampling import MonteCarloSampling
 from layers.modular.loss.adaptive_bayesian_losses import BayesianLoss
 from layers.Autoformer_EncDec import series_decomp
 
+__all__ = [
+    "BayesianEnhancedAutoformer",
+    "Model",
+]
+
+
 class Model(ModularAutoformer):
     def __init__(self, config):
         super().__init__(config)
@@ -102,3 +108,10 @@ class Model(ModularAutoformer):
 
     def loss(self, pred, target, kl_term):
         return self.loss_fn(pred, target) + self.config.bayesian.kl_weight * kl_term
+
+
+class BayesianEnhancedAutoformer(Model):
+    """Backward-compatible alias for the Bayesian enhanced Autoformer model."""
+
+    def __init__(self, config):
+        super().__init__(config)

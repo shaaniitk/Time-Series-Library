@@ -1,5 +1,5 @@
 from argparse import Namespace
-from layers.modular.losses import get_loss_component
+from layers.modular.loss.registry import get_loss_component
 
 class DimensionManager:
     """

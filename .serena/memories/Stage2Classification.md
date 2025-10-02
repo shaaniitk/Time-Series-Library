@@ -1,1 +1,1 @@
-Stage 2 analyzer enhancement complete: added domain_keywords + suggested_marker heuristics, included TestsModule path. Stage2 inventory file internal_test_inventory_stage2.json generated (154 files). Next: derive move plan for SPLIT & marker tagging.
+Attempting direct manage_todo_list invocation now.

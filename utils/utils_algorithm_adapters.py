@@ -5,7 +5,7 @@ that preserve algorithmic complexity from legacy implementations.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from typing import Dict, Any, Optional
 
 from layers.modular.core.registry import component_registry as _global_registry, ComponentFamily
@@ -66,22 +66,11 @@ class RestoredFourierAttention:
     """Restored Fourier attention with sophisticated frequency filtering."""
     
     def __init__(self, config=None, **kwargs):
-        # Handle both direct config dict and registry-style config
-        if config is not None and isinstance(config, dict):
-            cfg = config
-        else:
-            cfg = kwargs
-            
-        if isinstance(cfg, dict):
-            self.d_model = cfg['d_model']
-            self.num_heads = cfg['num_heads']
-            self.seq_len = cfg['seq_len']
-            self.dropout = cfg.get('dropout', 0.0)
-        else:
-            self.d_model = cfg.d_model
-            self.num_heads = cfg.num_heads
-            self.seq_len = cfg.seq_len
-            self.dropout = cfg.dropout
+        cfg = _resolve_config_dict(config, kwargs)
+        self.d_model = cfg['d_model']
+        self.num_heads = cfg['num_heads']
+        self.seq_len = cfg['seq_len']
+        self.dropout = cfg.get('dropout', 0.0)
         self.config = cfg
         
     def apply_attention(self, query, key, value):
@@ -105,28 +94,17 @@ class RestoredAutoCorrelationAttention:
     """Restored AutoCorrelation attention with k-predictor complexity."""
     
     def __init__(self, config=None, **kwargs):
-        # Handle both direct config dict and registry-style config
-        if config is not None and isinstance(config, dict):
-            cfg = config
-        else:
-            cfg = kwargs
-            
-        if isinstance(cfg, dict):
-            self.d_model = cfg['d_model']
-            self.num_heads = cfg['num_heads']
-            self.dropout = cfg.get('dropout', 0.0)
-            self.factor = cfg.get('factor', 1)
-        else:
-            self.d_model = cfg.d_model
-            self.num_heads = cfg.num_heads
-            self.dropout = cfg.dropout
-            self.factor = cfg.factor
+        cfg = _resolve_config_dict(config, kwargs)
+        self.d_model = cfg['d_model']
+        self.num_heads = cfg['num_heads']
+        self.dropout = cfg.get('dropout', 0.0)
+        self.factor = cfg.get('factor', 1)
         self.config = cfg
         
         # Create k_predictor with sufficient complexity
         import torch.nn as nn
         self.autocorr_attention = type('AutoCorrAttention', (), {})()
-        self.autocorr_attention.k_predictor = nn.Sequential(
+        self.autocorr_attention.k_predictor = nn.Sequential(  # type: ignore[attr-defined]
             nn.Linear(self.d_model, self.d_model * 2),
             nn.ReLU(),
             nn.Linear(self.d_model * 2, self.d_model),
@@ -149,28 +127,17 @@ class RestoredMetaLearningAttention:
     """Restored Meta-Learning attention with fast weights."""
     
     def __init__(self, config=None, **kwargs):
-        # Handle both direct config dict and registry-style config
-        if config is not None and isinstance(config, dict):
-            cfg = config
-        else:
-            cfg = kwargs
-            
-        if isinstance(cfg, dict):
-            self.d_model = cfg['d_model']
-            self.num_heads = cfg['num_heads']
-            self.dropout = cfg.get('dropout', 0.0)
-            self.fast_lr = cfg.get('fast_lr', 0.01)
-        else:
-            self.d_model = cfg.d_model
-            self.num_heads = cfg.num_heads
-            self.dropout = cfg.dropout
-            self.fast_lr = cfg.fast_lr
+        cfg = _resolve_config_dict(config, kwargs)
+        self.d_model = cfg['d_model']
+        self.num_heads = cfg['num_heads']
+        self.dropout = cfg.get('dropout', 0.0)
+        self.fast_lr = cfg.get('fast_lr', 0.01)
         self.config = cfg
         
         # Create meta attention with fast weights
         import torch
         self.meta_attention = type('MetaAttention', (), {})()
-        self.meta_attention.fast_weights = torch.nn.Parameter(
+        self.meta_attention.fast_weights = torch.nn.Parameter(  # type: ignore[attr-defined]
             torch.randn(self.num_heads, self.d_model, self.d_model) * 0.02
         )
         
@@ -184,6 +151,32 @@ class RestoredMetaLearningAttention:
         output = torch.matmul(attn_weights, value)
         
         return output, attn_weights
+
+
+def _resolve_config_dict(config: Optional[object], kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a plain dict for adapter initialization regardless of wrapper format."""
+    candidate: object
+    if config is not None:
+        candidate = config
+    elif kwargs:
+        candidate = kwargs
+    else:
+        candidate = {}
+
+    if isinstance(candidate, dict):
+        cfg: Dict[str, Any] = dict(candidate)
+    elif is_dataclass(candidate) and not isinstance(candidate, type):
+        cfg = {field.name: getattr(candidate, field.name) for field in fields(candidate)}
+    elif hasattr(candidate, "to_dict") and callable(getattr(candidate, "to_dict")):
+        cfg = dict(getattr(candidate, "to_dict")())
+    else:
+        cfg = dict(kwargs)
+
+    nested = cfg.get("config")
+    if isinstance(nested, dict):
+        cfg = dict(nested)
+
+    return cfg
 
 
 def register_restored_algorithms() -> None:

@@ -48,6 +48,11 @@ class SOTA_Temporal_PGAT(nn.Module):
         # Track probabilistic configuration early for loss/decoder wiring
         self._use_mdn_outputs = bool(getattr(config, 'use_mixture_density', True) and mode != 'standard')
         self.mixture_loss = MixtureNLLLoss() if self._use_mdn_outputs else None
+        decoder_output_dim = getattr(config, 'c_out', None)
+        if not isinstance(decoder_output_dim, int) or decoder_output_dim <= 0:
+            fallback_dim = getattr(config, 'c_out_evaluation', 1)
+            decoder_output_dim = fallback_dim if isinstance(fallback_dim, int) and fallback_dim > 0 else 1
+        self.decoder_output_dim = decoder_output_dim
         
         # Initialize registries
         self.attention_registry = AttentionRegistry()
@@ -133,7 +138,11 @@ class SOTA_Temporal_PGAT(nn.Module):
         
         # Enhanced decoder selection with mixture density network
         if self.mode == 'standard':
-            self.decoder = get_decoder_component('custom_standard', d_model=config.d_model)
+            self.decoder = get_decoder_component(
+                'custom_standard',
+                d_model=config.d_model,
+                output_dim=self.decoder_output_dim,
+            )
         elif self._use_mdn_outputs:
             self.decoder = MixtureDensityDecoder(
                 d_model=config.d_model,
@@ -141,7 +150,11 @@ class SOTA_Temporal_PGAT(nn.Module):
                 num_components=getattr(config, 'mdn_components', 3)
             )
         else:
-            self.decoder = get_decoder_component('probabilistic', d_model=config.d_model)
+            self.decoder = get_decoder_component(
+                'probabilistic',
+                d_model=config.d_model,
+                output_dim=self.decoder_output_dim,
+            )
         
         # Add structural positional encoding
         self.structural_pos_encoding = StructuralPositionalEncoding(
@@ -156,10 +169,12 @@ class SOTA_Temporal_PGAT(nn.Module):
             d_model=config.d_model,
             max_seq_len=getattr(config, 'seq_len', 96) + getattr(config, 'pred_len', 96),
             use_adaptive=getattr(config, 'use_adaptive_temporal', True)
+            use_adaptive=getattr(config, 'use_adaptive_temporal', True),
         )
     
     def forward(self, wave_window, target_window, graph):
         """
+        Memory-efficient forward pass for SOTA Temporal PGAT.
         Forward pass through the SOTA Temporal PGAT model
         
         Args:
@@ -171,9 +186,12 @@ class SOTA_Temporal_PGAT(nn.Module):
             Model output (single tensor for standard mode, tuple for probabilistic mode)
         """
         self._validate_forward_inputs(wave_window, target_window)
+        self._validate_forward_inputs(wave_window, target_window) # Ensure inputs are valid
 
         # Initial embedding - concatenate wave and target windows
         # wave_window: [batch, seq_len, features], target_window: [batch, pred_len, features]
+        # 1. Initial Embedding and Temporal Encoding
+        # Concatenate wave and target windows for a unified temporal sequence
         combined_input = torch.cat([wave_window, target_window], dim=1)  # [batch, seq_len+pred_len, features]
         batch_size, seq_len, features = combined_input.shape
         
@@ -197,6 +215,7 @@ class SOTA_Temporal_PGAT(nn.Module):
 
         self._validate_node_tensor(wave_embedded, "wave_embedded", batch_size, wave_len)
         self._validate_node_tensor(target_embedded, "target_embedded", batch_size, target_len)
+
 
         graph_counts = getattr(self.dim_manager, 'node_counts', {})
         wave_nodes = graph_counts.get('wave', wave_len)
@@ -226,6 +245,7 @@ class SOTA_Temporal_PGAT(nn.Module):
             self.config.num_transitions = min(wave_len, target_len)
         
         # Get graph structure
+        from utils.graph_utils import get_pyg_graph
         graph_data = get_pyg_graph(self.config, wave_embedded.device)
         
         # Prepare node features for graph processing
@@ -261,6 +281,7 @@ class SOTA_Temporal_PGAT(nn.Module):
         self._validate_node_tensor(transition_broadcast, "transition_broadcast", batch_size, transition_nodes)
         x_dict['transition'] = transition_broadcast.mean(dim=0)
         
+
         # Prepare topology features
         t_dict = {
             'wave': graph_data['wave'].t if hasattr(graph_data['wave'], 't') else torch.zeros_like(x_dict['wave']),
@@ -273,6 +294,9 @@ class SOTA_Temporal_PGAT(nn.Module):
             ('wave', 'interacts_with', 'transition'): graph_data['wave', 'interacts_with', 'transition'].edge_index,
             ('transition', 'influences', 'target'): graph_data['transition', 'influences', 'target'].edge_index
         }
+
+        # 2. Spatial and Spatio-Temporal Encoding (Memory-Efficient Path)
+        num_nodes = total_graph_nodes
         
         # Enhanced spatial encoding with dynamic graph components
         num_nodes = total_graph_nodes
@@ -285,6 +309,7 @@ class SOTA_Temporal_PGAT(nn.Module):
                 num_targets=target_nodes,
                 num_transitions=transition_nodes
             ).to(combined_input.device)
+            ).to(embedded.device)
 
         if self.adaptive_graph is None:
             self.adaptive_graph = AdaptiveGraphStructure(
@@ -293,6 +318,7 @@ class SOTA_Temporal_PGAT(nn.Module):
                 num_targets=target_nodes,
                 num_transitions=transition_nodes
             ).to(combined_input.device)
+            ).to(embedded.device)
 
         if self.spatiotemporal_encoder is None:
             self.spatiotemporal_encoder = AdaptiveSpatioTemporalEncoder(
@@ -300,8 +326,12 @@ class SOTA_Temporal_PGAT(nn.Module):
                 max_seq_len=seq_len,
                 max_nodes=num_nodes,
                 num_layers=2,
-                num_heads=self.n_heads
+                num_heads=self.n_heads,
+                dropout=getattr(self.config, "dropout", 0.1),
+                max_tokens=getattr(self.config, "max_attention_tokens", None),
             ).to(combined_input.device)
+                max_tokens=getattr(self.config, "max_attention_tokens", 4096),
+            ).to(embedded.device)
 
         if self.graph_pos_encoding is None:
             self.graph_pos_encoding = GraphAwarePositionalEncoding(
@@ -310,12 +340,16 @@ class SOTA_Temporal_PGAT(nn.Module):
                 max_seq_len=seq_len,
                 encoding_types=['distance', 'centrality', 'spectral']
             ).to(combined_input.device)
+                encoding_types=['distance', 'centrality']
+            ).to(embedded.device)
 
         if self.graph_attention is None:
             self.graph_attention = MultiHeadGraphAttention(
                 d_model=self.d_model,
                 num_heads=self.n_heads
             ).to(combined_input.device)
+                num_heads=self.n_heads,
+            ).to(embedded.device)
 
         # Create dynamic adjacency matrix
         node_features_dict = {
@@ -343,13 +377,23 @@ class SOTA_Temporal_PGAT(nn.Module):
         else:
             # Use simple adjacency matrix for now
             adjacency_matrix = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
+            adjacency_matrix = self._create_adjacency_matrix(num_nodes, embedded.device)
             edge_weights = None
 
         self._validate_dynamic_graph_outputs(adjacency_matrix, edge_weights, num_nodes)
+
+        # Reshape for spatiotemporal encoder: [B, T, F] -> [B, T, N, D_model]
+        # This is the memory-intensive step we are avoiding.
+        # Instead, we process spatially first, then temporally.
         
         # Reshape embedded features for spatial-temporal processing
         spatiotemporal_input = embedded.unsqueeze(2).expand(-1, -1, num_nodes, -1)  # [batch, seq, nodes, d_model]
         # Add structural positional encoding for enhanced graph structure awareness
+        # Create a node-centric representation by averaging over the time dimension.
+        # This is a simplification; more sophisticated methods could be used.
+        node_centric_features = temporal_encoded.mean(dim=1).unsqueeze(1).expand(-1, num_nodes, -1)
+
+        # Apply structural and graph positional encodings
         if getattr(self.config, 'enable_structural_pos_encoding', True):
             try:
                 # Lazily initialize structural positional encoding module if needed
@@ -369,9 +413,12 @@ class SOTA_Temporal_PGAT(nn.Module):
                 # Broadcast across batch and sequence length
                 node_struct_encoding = node_struct_encoding.unsqueeze(0).unsqueeze(0).expand(batch_size, seq_len, -1, -1)
                 spatiotemporal_input = spatiotemporal_input + node_struct_encoding
+                struct_pe = self.structural_pos_encoding(node_centric_features, adjacency_matrix)
+                node_centric_features = node_centric_features + struct_pe
             except Exception as e:
                 print(f"Info: Structural positional encoding skipped: {e}")
         # Add graph-aware positional encoding (config gated)
+
         if getattr(self.config, 'enable_graph_positional_encoding', True):
             try:
                 adj_matrix_tensor = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
@@ -379,17 +426,32 @@ class SOTA_Temporal_PGAT(nn.Module):
                     batch_size, seq_len, num_nodes, adj_matrix_tensor, combined_input.device
                 )
                 spatiotemporal_input = spatiotemporal_input + pos_encoding
+                graph_pe = self.graph_pos_encoding(batch_size, num_nodes, adjacency_matrix, embedded.device)
+                node_centric_features = node_centric_features + graph_pe.squeeze(1)
             except Exception as e:
                 print(f"Info: Graph positional encoding skipped: {e}")
         # Create adjacency matrix for spatiotemporal encoder
         adj_matrix_tensor = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
         
         # Apply joint spatial-temporal encoding
+
+        # Apply spatiotemporal encoding on the node-centric view
+        # The spatiotemporal encoder expects a 4D tensor, so we give it a time dimension of 1.
+        spatiotemporal_input = node_centric_features.unsqueeze(1) # [B, 1, N, D]
         spatiotemporal_encoded = self.spatiotemporal_encoder(
             spatiotemporal_input, adj_matrix_tensor
         )
 
         self._validate_spatiotemporal_encoding(spatiotemporal_encoded, batch_size, seq_len, num_nodes)
+            spatiotemporal_input, adjacency_matrix
+        ) # Output: [B, 1, N, D]
+        
+        # Squeeze out the time dimension and combine with original temporal encoding
+        spatial_features = spatiotemporal_encoded.squeeze(1) # [B, N, D]
+        
+        # Project spatial features to match temporal sequence length for fusion
+        spatial_features_proj = nn.Linear(num_nodes, seq_len).to(embedded.device)
+        fused_embedding = temporal_encoded + spatial_features_proj(spatial_features.transpose(1, 2)).transpose(1, 2)
         
         # Derive enhanced node features and edge indices before validations
         enhanced_x_dict = {
@@ -401,6 +463,8 @@ class SOTA_Temporal_PGAT(nn.Module):
         enhanced_edge_index_dict = {
             ('wave', 'interacts_with', 'transition'): self._create_edge_index(wave_nodes, transition_nodes, combined_input.device),
             ('transition', 'influences', 'target'): self._create_edge_index(transition_nodes, target_nodes, combined_input.device)
+            ('wave', 'interacts_with', 'transition'): self._create_edge_index(wave_nodes, transition_nodes, embedded.device),
+            ('transition', 'influences', 'target'): self._create_edge_index(transition_nodes, target_nodes, embedded.device)
         }
 
         # Runtime validations for enhanced_x_dict and enhanced_edge_index_dict
@@ -496,6 +560,7 @@ class SOTA_Temporal_PGAT(nn.Module):
         
         # Temporal encoding with temporal attention
         # Extract target embeddings from spatial encoded output
+        # Extract target embeddings from spatial encoded output for the decoder
         target_spatial = spatial_encoded['target']
         
         # Call temporal encoder robustly: prefer (query, keys, values), then fallbacks
@@ -520,7 +585,11 @@ class SOTA_Temporal_PGAT(nn.Module):
         
         # Combine spatial and temporal features
         # Use target spatial features for combination
+        # Use target spatial features for combination with the fused embedding
         if temporal_encoded.shape == target_spatial.shape:
+            final_embedding = fused_embedding[:, -target_len:, :] + target_spatial
+        else:
+            # Fallback if shapes don't align
             final_embedding = temporal_encoded + target_spatial
         else:
             # Handle dimension mismatch by using only temporal encoded features
@@ -849,12 +918,14 @@ class SOTA_Temporal_PGAT(nn.Module):
             return edge_index
     
     def _create_adjacency_matrix(self, seq_len, num_nodes, device):
+    def _create_adjacency_matrix(self, num_nodes, device):
         """Create adjacency matrix for temporal connections
         Returns a [num_nodes, num_nodes] adjacency matrix
         """
         # Create a simple fully connected graph for demonstration
         # In practice, this should be based on actual spatial relationships
         adj_matrix = torch.ones(num_nodes, num_nodes, device=device)
+        adj_matrix = torch.ones(num_nodes, num_nodes, device=device, dtype=torch.float32)
         # Remove self-loops for better graph structure
         adj_matrix.fill_diagonal_(0)
         # Add small values to diagonal to avoid numerical issues

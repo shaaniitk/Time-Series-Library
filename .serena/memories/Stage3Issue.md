@@ -1,1 +1,1 @@
-Stage 3: Analyzer updated to include tests_legacy; stage3 inventory generated. Encountered PowerShell parser errors building SPLIT move plan; need alternative (Python helper script) to extract SPLIT candidates.
+Need to ensure logging additions do not degrade training performance or break non-CUDA environments; guard memory queries appropriately.

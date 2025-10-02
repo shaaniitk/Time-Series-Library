@@ -9,7 +9,19 @@ from layers.modular.attention.enhanced_autocorrelation import EnhancedAutoCorrel
 from layers.modular.output_heads.standard_output_head import StandardOutputHead
 from configs.autoformer.hierarchical_config import get_hierarchical_autoformer_config
 
+__all__ = [
+    "HierarchicalEnhancedAutoformer",
+    "Model",
+]
+
 class Model(ModularAutoformer):
     def __init__(self, configs):
         config = get_hierarchical_autoformer_config(num_targets=configs.c_out, num_covariates=0, **vars(configs))
         super().__init__(config)
+
+
+class HierarchicalEnhancedAutoformer(Model):
+    """Backward-compatible alias for the hierarchical enhanced Autoformer."""
+
+    def __init__(self, configs):
+        super().__init__(configs)

@@ -1,23 +1,35 @@
+import logging
+import math
+import os
+from typing import Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Tuple, Optional
-import math
 
 class JointSpatioTemporalEncoding(nn.Module):
-    """
-    Joint Spatial-Temporal Encoding that processes spatial and temporal information simultaneously
-    instead of sequentially, enabling better interaction between spatial and temporal patterns.
+    """Jointly encode spatial and temporal patterns with optional token budgeting.
+
+    The encoder processes spatial and temporal information simultaneously instead of
+    sequentially, enabling richer cross-domain interactions. When ``max_tokens`` is
+    provided, the cross-attention sub-module will subsample tokens adaptively to
+    avoid quadratic memory spikes on large spatio-temporal grids.
     """
     
     def __init__(self, d_model: int, seq_len: int, num_nodes: int, 
-                 num_heads: int = 8, dropout: float = 0.1):
+                 num_heads: int = 8, dropout: float = 0.1, max_tokens: Optional[int] = None):
         super().__init__()
         self.d_model = d_model
         self.seq_len = seq_len
         self.num_nodes = num_nodes
         self.num_heads = num_heads
         self.dropout = dropout
+        default_cap = int(os.environ.get("PGAT_MAX_ATTENTION_TOKENS", "4096"))
+        if max_tokens is None or max_tokens <= 0:
+            self.max_tokens = default_cap
+        else:
+            self.max_tokens = min(max_tokens, default_cap)
+        self._token_budget_warned = False
         
         # Spatial-temporal interaction matrices
         self.spatial_temporal_interaction = nn.Parameter(
@@ -184,26 +196,111 @@ class JointSpatioTemporalEncoding(nn.Module):
         
         return interaction_output
     
-    def _cross_attention_processing(self, temporal_features: torch.Tensor, 
-                                  spatial_features: torch.Tensor) -> torch.Tensor:
+    def _cross_attention_processing(
+        self,
+        temporal_features: torch.Tensor,
+        spatial_features: torch.Tensor,
+    ) -> torch.Tensor:
+        """Apply cross-attention between spatial and temporal features.
+
+        The method can optionally subsample tokens before attention to
+        respect ``max_tokens`` limits, then upsamples the attended output to
+        match the original spatial-temporal resolution for downstream fusion.
         """
-        Apply cross-attention between spatial and temporal features
-        """
-        batch_size, seq_len, num_nodes, d_model = temporal_features.shape
-        
-        # Flatten spatial and temporal dimensions for cross-attention
-        # Temporal as query, spatial as key-value
-        temp_flat = temporal_features.view(batch_size, seq_len * num_nodes, d_model)
-        spatial_flat = spatial_features.view(batch_size, seq_len * num_nodes, d_model)
-        
-        # Cross-attention: temporal attends to spatial
+        batch_size, original_seq_len, original_num_nodes, d_model = temporal_features.shape
+
+        # Prepare potentially downsampled representations for attention.
+        temp_tokens = temporal_features
+        spatial_tokens = spatial_features
+        seq_len = original_seq_len
+        num_nodes = original_num_nodes
+
+        if self.max_tokens is not None:
+            token_cap = max(1, self.max_tokens)
+            total_tokens = seq_len * num_nodes
+
+            if total_tokens > token_cap:
+                if not self._token_budget_warned:
+                    logging.warning(
+                        "JointSpatioTemporalEncoding downsampling tokens from %s to %s",
+                        total_tokens,
+                        token_cap,
+                    )
+                    self._token_budget_warned = True
+                # Preferentially reduce the node dimension.
+                max_nodes = max(1, token_cap // seq_len) if seq_len > 0 else num_nodes
+                if max_nodes < num_nodes:
+                    node_stride = max(1, math.ceil(num_nodes / max_nodes))
+                    node_indices = torch.arange(
+                        0,
+                        num_nodes,
+                        node_stride,
+                        device=temp_tokens.device,
+                        dtype=torch.long,
+                    )
+                    if node_indices[-1] != num_nodes - 1:
+                        node_indices = torch.cat(
+                            [node_indices, node_indices.new_tensor([num_nodes - 1])]
+                        )
+                    node_indices = node_indices[:max_nodes]
+                    temp_tokens = temp_tokens.index_select(2, node_indices)
+                    spatial_tokens = spatial_tokens.index_select(2, node_indices)
+                    num_nodes = temp_tokens.size(2)
+                    total_tokens = seq_len * num_nodes
+
+                # Reduce the temporal dimension if tokens remain above the cap.
+                if total_tokens > token_cap and seq_len > 0:
+                    max_seq = max(1, token_cap // num_nodes) if num_nodes > 0 else seq_len
+                    if max_seq < seq_len:
+                        time_stride = max(1, math.ceil(seq_len / max_seq))
+                        time_indices = torch.arange(
+                            0,
+                            seq_len,
+                            time_stride,
+                            device=temp_tokens.device,
+                            dtype=torch.long,
+                        )
+                        if time_indices[-1] != seq_len - 1:
+                            time_indices = torch.cat(
+                                [time_indices, time_indices.new_tensor([seq_len - 1])]
+                            )
+                        time_indices = time_indices[:max_seq]
+                        temp_tokens = temp_tokens.index_select(1, time_indices)
+                        spatial_tokens = spatial_tokens.index_select(1, time_indices)
+                        seq_len = temp_tokens.size(1)
+
+        seq_len = max(1, seq_len)
+        num_nodes = max(1, num_nodes)
+
+        temp_flat = temp_tokens.contiguous().view(batch_size, seq_len * num_nodes, d_model)
+        spatial_flat = spatial_tokens.contiguous().view(batch_size, seq_len * num_nodes, d_model)
+
         cross_attn_output, _ = self.spatial_temporal_cross_attention(
-            temp_flat, spatial_flat, spatial_flat
+            temp_flat,
+            spatial_flat,
+            spatial_flat,
         )
-        
-        # Reshape back
+
         cross_attn_output = cross_attn_output.view(batch_size, seq_len, num_nodes, d_model)
-        
+
+        if seq_len != original_seq_len or num_nodes != original_num_nodes:
+            cross_attn_output = cross_attn_output.permute(0, 3, 1, 2).contiguous()
+            target_size = (original_seq_len, original_num_nodes)
+            if seq_len > 1 and num_nodes > 1:
+                cross_attn_output = F.interpolate(
+                    cross_attn_output,
+                    size=target_size,
+                    mode="bilinear",
+                    align_corners=False,
+                )
+            else:
+                cross_attn_output = F.interpolate(
+                    cross_attn_output,
+                    size=target_size,
+                    mode="nearest",
+                )
+            cross_attn_output = cross_attn_output.permute(0, 2, 3, 1).contiguous()
+
         return cross_attn_output
     
     def _adaptive_fusion(self, interaction_features: torch.Tensor, 
@@ -239,41 +336,63 @@ class JointSpatioTemporalEncoding(nn.Module):
 
 
 class AdaptiveSpatioTemporalEncoder(nn.Module):
+    """Stacked joint spatial-temporal encoder with optional token budgeting.
+
+    Args:
+        d_model: Embedding dimension for model representations.
+        max_seq_len: Maximum sequence length expected by the encoder.
+        max_nodes: Maximum number of spatial nodes handled by the encoder.
+        num_layers: Number of joint spatial-temporal encoding layers to stack.
+        num_heads: Number of attention heads in each joint layer.
+        dropout: Dropout probability applied within each encoding layer.
+        max_tokens: Optional cap on the total tokens processed during cross-attention.
+            When provided, each encoding layer enforces the limit to avoid quadratic
+            memory blow-ups.
     """
-    Adaptive encoder that can handle varying spatial and temporal scales
-    """
-    
-    def __init__(self, d_model: int, max_seq_len: int, max_nodes: int,
-                 num_layers: int = 3, num_heads: int = 8, dropout: float = 0.1):
+
+    def __init__(
+        self,
+        d_model: int,
+        max_seq_len: int,
+        max_nodes: int,
+        num_layers: int = 3,
+        num_heads: int = 8,
+        dropout: float = 0.1,
+        max_tokens: Optional[int] = None,
+    ) -> None:
         super().__init__()
         self.d_model = d_model
         self.num_layers = num_layers
-        
-        # Stack of joint spatial-temporal encoding layers
-        self.encoding_layers = nn.ModuleList([
-            JointSpatioTemporalEncoding(
-                d_model, max_seq_len, max_nodes, num_heads, dropout
-            ) for _ in range(num_layers)
-        ])
-        
-        # Adaptive pooling for variable sequence lengths
+        self.max_tokens = max_tokens
+
+        self.encoding_layers = nn.ModuleList(
+            [
+                JointSpatioTemporalEncoding(
+                    d_model,
+                    max_seq_len,
+                    max_nodes,
+                    num_heads,
+                    dropout,
+                    max_tokens,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
         self.adaptive_temporal_pool = nn.AdaptiveAvgPool1d(max_seq_len)
-        
-        # Final projection
         self.output_projection = nn.Linear(d_model, d_model)
-        
-    def forward(self, x: torch.Tensor, adjacency_matrix: torch.Tensor,
-                temporal_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        Forward pass through multiple joint spatial-temporal encoding layers
-        """
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        adjacency_matrix: torch.Tensor,
+        temporal_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Run stacked encoding layers with optional temporal masking."""
         current_features = x
-        
-        # Apply each encoding layer
+
         for layer in self.encoding_layers:
             current_features = layer(current_features, adjacency_matrix, temporal_mask)
-        
-        # Final projection
+
         output = self.output_projection(current_features)
-        
         return output

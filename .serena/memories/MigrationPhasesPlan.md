@@ -1,1 +1,1 @@
-Phases: 1 inventory freeze, 2 monolith splits, 3 marker tagging, 4 helper consolidation, 5 redundancy prune, 6 perf calibration, 7 quarantine workflow. Tooling: analyzer, apply_markers.py, split_report.py, flake_ingest.py.
+Phase alignment: instrumentation task corresponds to Phase 3 (diagnostic enhancements).

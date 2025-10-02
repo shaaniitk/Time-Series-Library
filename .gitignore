@@ -196,6 +196,7 @@ synthetic_timeseries.csv
 .mypy_cache/
 .dmypy.json
 dmypy.json
+.serena
 
 # Large directories that slow down VS Code
 checkpoints/
@@ -212,7 +213,6 @@ pic/
 *.temp
 *~
 .DS_Store
-Thumbs.db
 
 # Performance optimization - exclude from VS Code indexing
 **/__pycache__/
@@ -243,12 +243,7 @@ pic/
 *.temp
 *~
 .DS_Store
-Thumbs.db
-# Ignore all hidden dot-directories at any depth
-.*/
-*/.*/
-.gemini/Gemini.md
-.vscode/settings.json
-.gemini/settings.json
-.vscode/mcp.json
-checking
+
+# Ignore all hidden dot-directories and dot-files at any depth
+**/.*/
+**/.*

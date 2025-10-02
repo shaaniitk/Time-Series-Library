@@ -1,1 +1,1 @@
-Planned tests/ structure: helpers/{data_generation,registry_builders,assertions,sampling}. Subfolders: smoke/, components/<area>/, integration/, extended/, perf/, quarantine/, meta/. Files: README.md, CONSOLIDATION_MANIFEST.md, SPLIT_PLAN.md, internal_test_inventory.json (generated).
+Switching todo tracking from .serena/todo.md to manage_todo_list tool due to path access restrictions.

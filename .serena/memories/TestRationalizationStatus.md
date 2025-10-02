@@ -1,1 +1,1 @@
-Analyzer enhanced (runtime sampling, semantic duplication, classification). Markers in pytest.ini: smoke, extended, perf, quarantine. Split plan authored; workflow monolith already split. Pending: run analyzer baseline JSON, apply markers to files, split remaining large suites, create helpers (registry_builders, data_generation, assertions), remove redundant run_* scripts after tagging.
+manage_todo_list tool invocation failed due to handling; consider writing custom script or confirming tool availability.
