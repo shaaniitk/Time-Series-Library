@@ -404,34 +404,45 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 # batch_x is already scaled by ForecastingDataset
                 batch_x = batch_x.float().to(self.device)
                 # batch_y_unscaled_all_features is UNCALED from ForecastingDataset
+                batch_y = batch_y.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
                 # Decoder input construction for training
                 # batch_y contains ALL features (targets + covariates) in original scale
                 total_features_in_batch_y = batch_y.shape[-1]
-                c_out_evaluation_train = self.eval_info['c_out_evaluation'] # Number of actual targets
+                c_out_evaluation_train = self.eval_info['c_out_evaluation']  # Number of actual targets
 
-                # Historical part of decoder input (label_len)
-                # Use batch_y which is available in the training loop - skip scaling for now to avoid NotFittedError
-                hist_targets_unscaled_train = batch_y[:, :self.args.label_len, :c_out_evaluation_train].cpu().numpy()
-                # hist_targets_scaled_train = self.scaler_manager.target_scaler.transform(hist_targets_unscaled_train.reshape(-1, c_out_evaluation_train)).reshape(hist_targets_unscaled_train.shape)
-                hist_targets_scaled_train = hist_targets_unscaled_train  # Use unscaled data temporarily
-                
-                hist_covariates_scaled_train = None
-                if total_features_in_batch_y > c_out_evaluation_train and self.scaler_manager.scaler: # Check if covariates exist
-                    hist_covariates_unscaled_train = batch_y[:, :self.args.label_len, c_out_evaluation_train:].cpu().numpy()
-                    hist_covariates_scaled_train = self.scaler_manager.scaler.transform(hist_covariates_unscaled_train.reshape(-1, total_features_in_batch_y - c_out_evaluation_train)).reshape(hist_covariates_unscaled_train.shape)
-                
+                hist_targets_unscaled_train = batch_y[:, :self.args.label_len, :c_out_evaluation_train]
+                hist_targets_scaled_train = self.scaler_manager.scale_targets_tensor(
+                    hist_targets_unscaled_train, device=self.device
+                )
+
+                hist_covariates_scaled_train: Optional[torch.Tensor] = None
+                if total_features_in_batch_y > c_out_evaluation_train and self.scaler_manager.has_covariate_scaler():
+                    hist_covariates_unscaled_train = batch_y[:, :self.args.label_len, c_out_evaluation_train:]
+                    hist_covariates_scaled_train = self.scaler_manager.scale_covariates_tensor(
+                        hist_covariates_unscaled_train, device=self.device
+                    )
+
                 # Future part of decoder input (pred_len) - zero targets, real covariates
-                future_targets_zeros_train = torch.zeros_like(batch_y[:, -self.args.pred_len:, :c_out_evaluation_train]).float().to(self.device)
-                
-                future_covariates_scaled_train = None
-                if total_features_in_batch_y > c_out_evaluation_train and self.scaler_manager.scaler:
-                    future_covariates_unscaled_train = batch_y[:, -self.args.pred_len:, c_out_evaluation_train:].cpu().numpy()
-                    future_covariates_scaled_train = self.scaler_manager.scaler.transform(future_covariates_unscaled_train.reshape(-1, total_features_in_batch_y - c_out_evaluation_train)).reshape(future_covariates_unscaled_train.shape)
+                future_targets_zeros_train = hist_targets_unscaled_train.new_zeros(
+                    (batch_y.size(0), self.args.pred_len, c_out_evaluation_train)
+                )
 
-                dec_inp = self._construct_dec_inp(hist_targets_scaled_train, hist_covariates_scaled_train, future_targets_zeros_train, future_covariates_scaled_train)
+                future_covariates_scaled_train: Optional[torch.Tensor] = None
+                if total_features_in_batch_y > c_out_evaluation_train and self.scaler_manager.has_covariate_scaler():
+                    future_covariates_unscaled_train = batch_y[:, -self.args.pred_len:, c_out_evaluation_train:]
+                    future_covariates_scaled_train = self.scaler_manager.scale_covariates_tensor(
+                        future_covariates_unscaled_train, device=self.device
+                    )
+
+                dec_inp = self._construct_dec_inp(
+                    hist_targets_scaled_train,
+                    hist_covariates_scaled_train,
+                    future_targets_zeros_train,
+                    future_covariates_scaled_train,
+                )
 
                 outputs_raw_train = None # Initialize
                 if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
@@ -467,8 +478,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     )
                 
                 # Prepare y_true for loss: scale the target part of batch_y
-                y_true_targets_unscaled_train_loss = batch_y[:, -self.args.pred_len:, :c_out_evaluation_train].cpu().numpy()
-                y_true_for_loss_train = torch.from_numpy(self.scaler_manager.target_scaler.transform(y_true_targets_unscaled_train_loss.reshape(-1, c_out_evaluation_train)).reshape(y_true_targets_unscaled_train_loss.shape)).float().to(self.device)
+                y_true_targets_unscaled_train_loss = batch_y[:, -self.args.pred_len:, :c_out_evaluation_train]
+                y_true_for_loss_train = self.scaler_manager.scale_targets_tensor(
+                    y_true_targets_unscaled_train_loss, device=self.device
+                )
 
                 is_criterion_pinball_train = isinstance(criterion, PinballLoss) or \
                                              (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
@@ -850,43 +863,50 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
     def _construct_dec_inp(
         self,
-        hist_targets_scaled: np.ndarray,
-        hist_covariates_scaled: Optional[np.ndarray],
+        hist_targets_scaled: torch.Tensor,
+        hist_covariates_scaled: Optional[torch.Tensor],
         future_targets_zeros: torch.Tensor,
-        future_covariates_scaled: Optional[np.ndarray],
+        future_covariates_scaled: Optional[torch.Tensor],
     ) -> torch.Tensor:
-        """Helper to construct decoder input based on feature mode."""
-        # Convert numpy arrays to tensors and move to device
-        hist_targets_scaled_t = torch.from_numpy(hist_targets_scaled).float().to(self.device)
-        future_targets_zeros_t = future_targets_zeros.float().to(self.device)
+        """Construct decoder input without leaving the torch tensor domain."""
 
-        # Initialize decoder input tensors to satisfy static analysis and handle default case
+        # Convert numpy arrays to tensors if needed
+        if isinstance(hist_targets_scaled, np.ndarray):
+            hist_targets_scaled_t = torch.from_numpy(hist_targets_scaled).float().to(self.device)
+        else:
+            hist_targets_scaled_t = hist_targets_scaled.to(self.device)
+            
+        future_targets_zeros_t = future_targets_zeros.to(self.device)
+
         dec_inp_hist: torch.Tensor = hist_targets_scaled_t
         dec_inp_future: torch.Tensor = future_targets_zeros_t
 
-        # Determine if covariates should be included in decoder input based on feature mode
         if self.args.features in ['M', 'MS']:
             if hist_covariates_scaled is not None and future_covariates_scaled is not None:
-                hist_covariates_scaled_t = torch.from_numpy(hist_covariates_scaled).float().to(self.device)
-                future_covariates_scaled_t = torch.from_numpy(future_covariates_scaled).float().to(self.device)
+                # Convert numpy arrays to tensors if needed
+                if isinstance(hist_covariates_scaled, np.ndarray):
+                    hist_covariates_scaled_t = torch.from_numpy(hist_covariates_scaled).float().to(self.device)
+                else:
+                    hist_covariates_scaled_t = hist_covariates_scaled.to(self.device)
+                    
+                if isinstance(future_covariates_scaled, np.ndarray):
+                    future_covariates_scaled_t = torch.from_numpy(future_covariates_scaled).float().to(self.device)
+                else:
+                    future_covariates_scaled_t = future_covariates_scaled.to(self.device)
 
-                # Concatenate targets and covariates for historical part
                 dec_inp_hist = torch.cat([hist_targets_scaled_t, hist_covariates_scaled_t], dim=-1)
-                # Concatenate zeros for targets and scaled covariates for future part
                 dec_inp_future = torch.cat([future_targets_zeros_t, future_covariates_scaled_t], dim=-1)
             else:
-                # This case should ideally not happen if covariates exist and mode is M/MS,
-                # but as a fallback, just use targets.
-                logger.warning("Covariates expected for M/MS mode but not provided to _construct_dec_inp. Proceeding with targets only.")
-                dec_inp_hist = hist_targets_scaled_t
-                dec_inp_future = future_targets_zeros_t
+                logger.warning(
+                    "Covariates expected for M/MS mode but not provided to _construct_dec_inp. Proceeding with targets only."
+                )
         elif self.args.features == 'S':
-            # For S mode, only targets are used in the decoder input
             dec_inp_hist = hist_targets_scaled_t
             dec_inp_future = future_targets_zeros_t
         else:
-            logger.warning("Feature mode %s not explicitly handled; defaulting to targets only in decoder input.", self.args.features)
+            logger.warning(
+                "Feature mode %s not explicitly handled; defaulting to targets only in decoder input.",
+                self.args.features,
+            )
 
-        # Combine historical and future parts
-        dec_inp = torch.cat([dec_inp_hist, dec_inp_future], dim=1)
-        return dec_inp
+        return torch.cat([dec_inp_hist, dec_inp_future], dim=1)

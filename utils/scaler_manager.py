@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
+import torch
 from sklearn.preprocessing import StandardScaler
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # ... (imports and class definition remain the same) ...
 
@@ -16,6 +17,8 @@ class ScalerManager:
         
         self.target_scaler = StandardScaler()
         self.scaler: Optional[StandardScaler] = StandardScaler() if self.covariate_features else None # Renamed for consistency
+        self._target_stats_cache: Dict[Tuple[torch.device, torch.dtype], Tuple[torch.Tensor, torch.Tensor]] = {}
+        self._cov_stats_cache: Dict[Tuple[torch.device, torch.dtype], Tuple[torch.Tensor, torch.Tensor]] = {}
 
     def fit(self, train_df: pd.DataFrame, full_df: pd.DataFrame):
         """
@@ -32,6 +35,8 @@ class ScalerManager:
             self.scaler.fit(full_df[self.covariate_features])
         
         print("Scalers fitted successfully.")
+        self._target_stats_cache.clear()
+        self._cov_stats_cache.clear()
     
     # ... (the transform and inverse_transform_targets methods remain exactly the same) ...
 # ... existing code ...
@@ -87,3 +92,79 @@ class ScalerManager:
         else:
             # If no covariates, just return the unscaled targets
             return target_data_unscaled
+
+    # ------------------------------------------------------------------
+    # Torch-native scaling helpers to avoid repeated numpy round-trips
+    # ------------------------------------------------------------------
+
+    def _get_target_stats_tensors(
+        self,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        key = (device, dtype)
+        cached = self._target_stats_cache.get(key)
+        if cached is None:
+            mean = torch.as_tensor(self.target_scaler.mean_, device=device, dtype=dtype)
+            scale = torch.as_tensor(self.target_scaler.scale_, device=device, dtype=dtype)
+            self._target_stats_cache[key] = (mean, scale)
+            return mean, scale
+        return cached
+
+    def _get_cov_stats_tensors(
+        self,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if self.scaler is None:
+            raise RuntimeError("Covariate scaler is not initialised.")
+        key = (device, dtype)
+        cached = self._cov_stats_cache.get(key)
+        if cached is None:
+            mean = torch.as_tensor(self.scaler.mean_, device=device, dtype=dtype)
+            scale = torch.as_tensor(self.scaler.scale_, device=device, dtype=dtype)
+            self._cov_stats_cache[key] = (mean, scale)
+            return mean, scale
+        return cached
+
+    def scale_targets_tensor(
+        self,
+        tensor: torch.Tensor,
+        *,
+        device: Optional[torch.device] = None,
+    ) -> torch.Tensor:
+        """Scale target features in-place using torch operations."""
+
+        if tensor.numel() == 0:
+            return tensor.to(device or tensor.device)
+
+        device = device or tensor.device
+        tensor_on_device = tensor.to(device=device)
+        mean, scale = self._get_target_stats_tensors(device, tensor_on_device.dtype)
+        original_shape = tensor_on_device.shape
+        # Use reshape instead of view for non-contiguous tensors
+        reshaped = tensor_on_device.reshape(-1, mean.numel())
+        scaled = (reshaped - mean) / scale
+        return scaled.reshape(original_shape).contiguous()
+
+    def scale_covariates_tensor(
+        self,
+        tensor: torch.Tensor,
+        *,
+        device: Optional[torch.device] = None,
+    ) -> torch.Tensor:
+        """Scale covariate features with torch operations when available."""
+
+        if self.scaler is None or tensor.numel() == 0:
+            return tensor.to(device or tensor.device)
+
+        device = device or tensor.device
+        tensor_on_device = tensor.to(device=device)
+        mean, scale = self._get_cov_stats_tensors(device, tensor_on_device.dtype)
+        original_shape = tensor_on_device.shape
+        reshaped = tensor_on_device.reshape(-1, mean.numel())
+        scaled = (reshaped - mean) / scale
+        return scaled.reshape(original_shape).contiguous()
+
+    def has_covariate_scaler(self) -> bool:
+        return self.scaler is not None and len(self.covariate_features) > 0

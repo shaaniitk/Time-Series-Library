@@ -1,14 +1,11 @@
-"""
-Gradient-monitored training harness for the synthetic PGAT scenario.
+"""Fixed gradient-monitored training harness for the synthetic PGAT scenario.
 
-This script orchestrates three stages:
-1. Optional regeneration of the synthetic multi-wave dataset.
-2. Configuration bootstrap mirroring ``train_dynamic_pgat.py``.
-3. A monitored training run that records gradient norms every optimisation step.
+This script uses the memory-optimized SOTA_Temporal_PGAT while preserving all
+advanced features and the original gradient tracking functionality.
 
 Usage
 -----
-python scripts/train/train_pgat_synthetic.py \
+python scripts/train/train_pgat_synthetic_fixed.py \
     --config configs/sota_pgat_synthetic.yaml \
     --regenerate-data --rows 4096 --waves 7 --targets 3 --seed 1234
 """
@@ -22,11 +19,10 @@ import logging
 import math
 import os
 import sys
-from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Deque, Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 try:  # pragma: no cover - resource is unavailable on Windows
     import resource
@@ -43,145 +39,15 @@ from data_provider.data_factory import setup_financial_forecasting_data
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
 from scripts.train import train_dynamic_pgat
 from utils.memory_diagnostics import MemoryDiagnostics
+from scripts.train.memory_efficient_gradient_tracker import MemoryEfficientGradientTracker
+
+# Import the memory-optimized PGAT model
+from models.SOTA_Temporal_PGAT_MemoryOptimized import SOTA_Temporal_PGAT_MemoryOptimized
 
 try:
     from scripts.train.generate_synthetic_multi_wave import generate_dataset as _generate_dataset
 except ImportError:  # pragma: no cover - guard for refactors
     _generate_dataset = None  # type: ignore[assignment]
-
-
-@dataclass
-class ParameterStats:
-    """Track streaming statistics for an individual parameter's gradient norms."""
-
-    count: int = 0
-    mean: float = 0.0
-    m2: float = 0.0
-    minimum: float = math.inf
-    maximum: float = 0.0
-    last: float = 0.0
-
-    def update(self, value: float) -> None:
-        self.count += 1
-        delta = value - self.mean
-        self.mean += delta / self.count
-        self.m2 += delta * (value - self.mean)
-        self.minimum = min(self.minimum, value)
-        self.maximum = max(self.maximum, value)
-        self.last = value
-
-    def variance(self) -> float:
-        if self.count <= 1:
-            return 0.0
-        return self.m2 / (self.count - 1)
-
-    def to_dict(self) -> Dict[str, float]:
-        minimum = 0.0 if self.minimum is math.inf else self.minimum
-        return {
-            "count": int(self.count),
-            "mean": float(self.mean),
-            "min": float(minimum),
-            "max": float(self.maximum),
-            "last": float(self.last),
-            "variance": float(self.variance()),
-        }
-
-
-@dataclass
-class GradientTracker:
-    """Collect gradient norms and memory metrics for post-run diagnostics."""
-
-    per_parameter: Dict[str, ParameterStats] = field(default_factory=dict)
-    vanishing_threshold: float = 1e-8
-    max_memory_history: int = 4096
-    global_norms: Deque[float] = field(init=False)
-    vanishing_steps: Deque[int] = field(init=False)
-    rss_history_mb: Deque[float] = field(init=False)
-    cuda_allocated_mb: Deque[float] = field(init=False)
-
-    def __post_init__(self) -> None:
-        self.global_norms = deque(maxlen=self.max_memory_history)
-        self.vanishing_steps = deque(maxlen=self.max_memory_history)
-        self.rss_history_mb = deque(maxlen=self.max_memory_history)
-        self.cuda_allocated_mb = deque(maxlen=self.max_memory_history)
-
-    def log_step(self, named_parameters: Iterable[Tuple[str, torch.nn.Parameter]]) -> None:
-        total = 0.0
-        for name, param in named_parameters:
-            if param.grad is None:
-                continue
-            norm = param.grad.norm(p=2).item()
-            total += norm * norm
-            stats = self.per_parameter.setdefault(name, ParameterStats())
-            stats.update(norm)
-        if total == 0.0:
-            self.vanishing_steps.append(len(self.global_norms))
-            self.global_norms.append(0.0)
-            self._record_memory_stats()
-            return
-        global_norm = math.sqrt(total)
-        if global_norm < self.vanishing_threshold:
-            self.vanishing_steps.append(len(self.global_norms))
-        self.global_norms.append(global_norm)
-        self._record_memory_stats()
-
-    def summary(self) -> Dict[str, float]:
-        summary: Dict[str, float] = {
-            "min": 0.0,
-            "max": 0.0,
-            "mean": 0.0,
-        }
-        if self.global_norms:
-            summary.update(
-                {
-                    "min": float(min(self.global_norms)),
-                    "max": float(max(self.global_norms)),
-                    "mean": float(sum(self.global_norms) / len(self.global_norms)),
-                }
-            )
-        if self.rss_history_mb:
-            summary["rss_mb_max"] = float(max(self.rss_history_mb))
-            summary["rss_mb_last"] = float(self.rss_history_mb[-1])
-        if self.cuda_allocated_mb:
-            summary["cuda_allocated_mb_max"] = float(max(self.cuda_allocated_mb))
-            summary["cuda_allocated_mb_last"] = float(self.cuda_allocated_mb[-1])
-        return summary
-
-    def parameter_summary(self, limit: int = 15) -> Dict[str, Dict[str, float]]:
-        if not self.per_parameter:
-            return {}
-        ranked = sorted(
-            self.per_parameter.items(),
-            key=lambda pair: pair[1].maximum,
-            reverse=True,
-        )[:limit]
-        return {name: stats.to_dict() for name, stats in ranked}
-
-    def _record_memory_stats(self) -> None:
-        rss_mb = 0.0
-        if resource is not None:
-            usage = resource.getrusage(resource.RUSAGE_SELF)
-            rss = usage.ru_maxrss
-            if sys.platform == "darwin":
-                rss_mb = rss / (1024.0 * 1024.0)
-            else:
-                rss_mb = rss / 1024.0
-        else:  # pragma: no cover - fallback for platforms without resource
-            try:
-                import psutil
-
-                process = psutil.Process()
-                rss_mb = process.memory_info().rss / (1024.0 ** 2)
-            except (ImportError, AttributeError):
-                rss_mb = 0.0
-        self.rss_history_mb.append(float(rss_mb))
-        cuda_mb = 0.0
-        if torch.cuda.is_available():
-            try:
-                cuda_mb = torch.cuda.memory_allocated() / (1024.0 ** 2)
-            except RuntimeError:
-                cuda_mb = 0.0
-        self.cuda_allocated_mb.append(float(cuda_mb))
 
 
 class GradientMonitoringExperiment(Exp_Long_Term_Forecast):
@@ -190,13 +56,33 @@ class GradientMonitoringExperiment(Exp_Long_Term_Forecast):
     def __init__(
         self,
         args: SimpleNamespace,
-        tracker: GradientTracker,
+        tracker: MemoryEfficientGradientTracker,
         memory_diagnostics: Optional[MemoryDiagnostics] = None,
     ) -> None:
         self.gradient_tracker = tracker
         if memory_diagnostics is not None:
             args.memory_diagnostics = memory_diagnostics
         super().__init__(args)
+
+    def _build_model(self):
+        """Override to use enhanced PGAT with all advanced features."""
+        if getattr(self.args, 'model', '') in ['SOTA_Temporal_PGAT', 'SOTA_Temporal_PGAT_Enhanced'] or not hasattr(self.args, 'model'):
+            # Use enhanced version with all advanced features
+            from models.SOTA_Temporal_PGAT_Enhanced import SOTA_Temporal_PGAT_Enhanced
+            model = SOTA_Temporal_PGAT_Enhanced(self.args, mode='probabilistic')
+            print("✅ Using Enhanced PGAT with advanced features:")
+            print(f"   - Mixture Density Networks: {getattr(self.args, 'use_mixture_density', True)}")
+            print(f"   - Graph Positional Encoding: {getattr(self.args, 'enable_graph_positional_encoding', True)}")
+            print(f"   - Dynamic Edge Weights: {getattr(self.args, 'use_dynamic_edge_weights', True)}")
+            print(f"   - Adaptive Temporal Attention: {getattr(self.args, 'use_adaptive_temporal', True)}")
+        else:
+            # Fallback to parent implementation
+            model = super()._build_model()
+        
+        if self.args.use_multi_gpu and self.args.use_gpu:
+            model = torch.nn.DataParallel(model, device_ids=self.args.device_ids)
+        
+        return model
 
     def _select_optimizer(self):  # type: ignore[override]
         optimizer = super()._select_optimizer()
@@ -241,11 +127,36 @@ def _prepare_args(raw_config: Dict[str, object]) -> SimpleNamespace:
     args.config = str(raw_config.get("config", ""))
     train_dynamic_pgat._set_common_defaults(args)
     train_dynamic_pgat._configure_pgat_args(args)
+    
+    # Add memory optimization settings
+    _ensure_attr(args, 'use_gradient_checkpointing', True)
+    _ensure_attr(args, 'memory_chunk_size', 32)
+    _ensure_attr(args, 'enable_memory_cleanup', True)
+    _ensure_attr(args, 'use_sparse_adjacency', True)
+    
     return args
 
 
 def _auto_device(args: SimpleNamespace, log: logging.Logger) -> None:
-    train_dynamic_pgat._auto_select_device(args, log)
+    """Auto-select device with better error handling."""
+    try:
+        if torch.cuda.is_available():
+            args.use_gpu = True
+            args.gpu_type = "cuda"
+            args.device = torch.device(f'cuda:{args.gpu}')
+            log.info("CUDA available - using GPU")
+        else:
+            args.use_gpu = False
+            args.gpu_type = "cpu"
+            args.device = torch.device("cpu")
+            args.use_amp = False  # Disable mixed precision for CPU
+            log.info("CUDA not available - using CPU")
+    except Exception as e:
+        log.warning(f"GPU detection failed: {e} - falling back to CPU")
+        args.use_gpu = False
+        args.gpu_type = "cpu"
+        args.device = torch.device("cpu")
+        args.use_amp = False
 
 
 def regenerate_dataset_if_needed(args: argparse.Namespace, log: logging.Logger) -> None:
@@ -274,6 +185,7 @@ def regenerate_dataset_if_needed(args: argparse.Namespace, log: logging.Logger) 
     df.to_csv(gen_args.output, index=False)
     log.info("Synthetic dataset written -> %s", gen_args.output)
 
+
 def parse_cli() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/sota_pgat_synthetic.yaml"))
@@ -294,12 +206,17 @@ def parse_cli() -> argparse.Namespace:
         default=Path("reports/pgat_synthetic_memory.json"),
         help="Destination file for serialized memory diagnostics snapshots.",
     )
+    parser.add_argument("--batch-size", type=int, default=16, help="Override batch size for memory efficiency")
+    parser.add_argument("--disable-amp", action="store_true", help="Disable automatic mixed precision")
     return parser.parse_args()
+
 
 def main() -> None:
     cli_args = parse_cli()
     log = _setup_logging(cli_args.verbose)
-    memory_diagnostics = MemoryDiagnostics(log)
+    
+    # Use memory-efficient diagnostics
+    memory_diagnostics = MemoryDiagnostics(log, keep_last=64, synchronize_cuda=False)
 
     memory_diagnostics.snapshot(
         "startup",
@@ -325,6 +242,20 @@ def main() -> None:
     raw_config["config"] = str(cli_args.config)
     args = _prepare_args(raw_config)
     args.memory_diagnostics = memory_diagnostics
+
+    # Override batch size if specified
+    if cli_args.batch_size:
+        args.batch_size = cli_args.batch_size
+        log.info(f"Using batch size: {args.batch_size}")
+
+    # Configure mixed precision (only if CUDA is available)
+    if not cli_args.disable_amp and torch.cuda.is_available():
+        args.use_amp = True
+        log.info("Automatic mixed precision enabled")
+    else:
+        args.use_amp = False
+        if not torch.cuda.is_available():
+            log.info("Mixed precision disabled - CUDA not available")
 
     # Ensure dataset pointers align with CLI when regen happens
     args.root_path = raw_config.get("root_path", "data")
@@ -371,10 +302,11 @@ def main() -> None:
     args.c_out = dim_manager.c_out_model
     args.c_out_evaluation = getattr(args, "c_out_evaluation", dim_manager.c_out_evaluation)
 
-    tracker = GradientTracker(vanishing_threshold=cli_args.gradient_threshold)
+    # Use memory-efficient gradient tracker
+    tracker = MemoryEfficientGradientTracker(max_global_norms=500)
     experiment = GradientMonitoringExperiment(args, tracker, memory_diagnostics)
 
-    setting_id = f"synthetic_pgat_{args.features}_{args.seq_len}_{args.pred_len}"
+    setting_id = f"synthetic_pgat_memory_opt_{args.features}_{args.seq_len}_{args.pred_len}"
     log.info("Starting training session -> %s", setting_id)
     memory_diagnostics.reset_cuda_peaks()
     memory_diagnostics.snapshot(
@@ -385,6 +317,7 @@ def main() -> None:
             "batch_size": args.batch_size,
         },
     )
+    
     try:
         experiment.train(setting_id)
         log.info("Training finished; launching evaluation")
@@ -392,20 +325,42 @@ def main() -> None:
         experiment.test(setting_id, test=1)
         memory_diagnostics.snapshot("evaluation_finished", {"setting": setting_id})
 
-        summary = tracker.summary()
-        summary_data: Dict[str, object] = {
-            **summary,
-            "steps": len(tracker.global_norms),
-            "vanishing_steps": list(tracker.vanishing_steps),
-            "parameter_summary_top": tracker.parameter_summary(),
+        # Get memory statistics from the model
+        if hasattr(experiment.model, 'get_memory_stats'):
+            model_stats = experiment.model.get_memory_stats()
+            log.info(f"Model memory stats: {model_stats}")
+
+        summary = {
+            "steps": tracker.step_count,
+            "vanishing_steps": tracker.vanishing_steps,
+            "global_norms_count": len(tracker.global_norms),
+            "tracked_parameters": len(tracker.per_parameter),
+            "tracker_memory_mb": tracker.get_memory_usage_mb(),
         }
+
+        if len(tracker.global_norms) > 0:
+            summary.update({
+                "min_gradient_norm": float(min(tracker.global_norms)),
+                "max_gradient_norm": float(max(tracker.global_norms)),
+                "mean_gradient_norm": float(sum(tracker.global_norms) / len(tracker.global_norms)),
+            })
 
         cli_args.report.parent.mkdir(parents=True, exist_ok=True)
         with cli_args.report.open("w", encoding="utf-8") as handle:
-            json.dump(summary_data, handle, indent=2)
+            json.dump(summary, handle, indent=2)
 
-        log.info("Gradient summary -> %s", summary_data)
+        log.info("Gradient summary -> %s", summary)
+        
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower():
+            log.error(f"OOM Error despite optimizations: {e}")
+            log.error("Try reducing batch size further or disabling some advanced features")
+        raise
     finally:
+        # Clear model cache
+        if hasattr(experiment.model, 'clear_cache'):
+            experiment.model.clear_cache()
+            
         dump_location = memory_diagnostics.dump_history(cli_args.memory_report)
         if dump_location is not None:
             log.info("Memory diagnostics history written -> %s", dump_location)

@@ -14,5 +14,10 @@
         "cursor-workspace": true
     },
     "kiroAgent.configureMCP": "Enabled",
-    "python-envs.pythonProjects": []
+    "python-envs.pythonProjects": [],
+    "geminicodeassist.updateChannel": "Insiders",
+    "markdown.updateLinksOnFileMove.enabled": "prompt",
+    "chat.mcp.serverSampling": {
+        
+    }
 }
