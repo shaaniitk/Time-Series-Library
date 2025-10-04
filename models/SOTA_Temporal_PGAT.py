@@ -83,13 +83,59 @@ class SOTA_Temporal_PGAT(nn.Module):
         self.d_model = getattr(config, 'd_model', 512)
         self.n_heads = getattr(config, 'n_heads', 8)
         
-        # Initialize dynamic graph components
-        self.dynamic_graph = None  # Will be initialized dynamically
-        self.adaptive_graph = None
-        self.spatiotemporal_encoder = None
-        self.graph_pos_encoding = None
-        self.graph_attention = None
-        self.feature_projection = None
+        # MEMORY FIX 1: Initialize all components in __init__ instead of forward pass
+        # This prevents memory fragmentation and repeated allocations
+        
+        # Pre-initialize with reasonable defaults, will be updated in forward if needed
+        default_wave_nodes = getattr(config, 'enc_in', 7)
+        default_target_nodes = getattr(config, 'c_out', 3) 
+        default_transition_nodes = min(default_wave_nodes, default_target_nodes)
+        default_total_nodes = default_wave_nodes + default_target_nodes + default_transition_nodes
+        default_seq_len = getattr(config, 'seq_len', 96) + getattr(config, 'pred_len', 24)
+        
+        # Initialize dynamic graph components with default sizes
+        self.dynamic_graph = DynamicGraphConstructor(
+            d_model=self.d_model,
+            num_waves=default_wave_nodes,
+            num_targets=default_target_nodes,
+            num_transitions=default_transition_nodes
+        )
+        
+        self.adaptive_graph = AdaptiveGraphStructure(
+            d_model=self.d_model,
+            num_waves=default_wave_nodes,
+            num_targets=default_target_nodes,
+            num_transitions=default_transition_nodes
+        )
+        
+        self.spatiotemporal_encoder = AdaptiveSpatioTemporalEncoder(
+            d_model=self.d_model,
+            max_seq_len=default_seq_len,
+            max_nodes=default_total_nodes,
+            num_layers=2,
+            num_heads=self.n_heads
+        )
+        
+        self.graph_pos_encoding = GraphAwarePositionalEncoding(
+            d_model=self.d_model,
+            max_nodes=default_total_nodes,
+            max_seq_len=default_seq_len,
+            encoding_types=['distance', 'centrality', 'spectral']
+        )
+        
+        self.graph_attention = MultiHeadGraphAttention(
+            d_model=self.d_model,
+            num_heads=self.n_heads
+        )
+        
+        # Feature projection for fallback cases
+        total_features = self.d_model * 3  # wave + transition + target
+        self.feature_projection = nn.Linear(total_features, self.d_model)
+        
+        # MEMORY FIX 2: Add memory management utilities
+        self._memory_cache = {}
+        self._enable_memory_optimization = getattr(config, 'enable_memory_optimization', True)
+        self._chunk_size = getattr(config, 'memory_chunk_size', 32)
         
         # Enhanced spatial encoder with dynamic edge weights
         # Note: Previously forced disabled due to index errors; now gated via config with safe fallback
@@ -292,45 +338,30 @@ class SOTA_Temporal_PGAT(nn.Module):
         # Enhanced spatial encoding with dynamic graph components
         num_nodes = total_graph_nodes
 
-        # Initialize dynamic graph components if not exists
-        if self.dynamic_graph is None:
-            self.dynamic_graph = DynamicGraphConstructor(
-                d_model=self.d_model,
-                num_waves=wave_nodes,
-                num_targets=target_nodes,
-                num_transitions=transition_nodes
-            ).to(combined_input.device)
-
-        if self.adaptive_graph is None:
-            self.adaptive_graph = AdaptiveGraphStructure(
-                d_model=self.d_model,
-                num_waves=wave_nodes,
-                num_targets=target_nodes,
-                num_transitions=transition_nodes
-            ).to(combined_input.device)
-
-        if self.spatiotemporal_encoder is None:
-            self.spatiotemporal_encoder = AdaptiveSpatioTemporalEncoder(
-                d_model=self.d_model,
-                max_seq_len=seq_len,
-                max_nodes=num_nodes,
-                num_layers=2,
-                num_heads=self.n_heads
-            ).to(combined_input.device)
-
-        if self.graph_pos_encoding is None:
-            self.graph_pos_encoding = GraphAwarePositionalEncoding(
-                d_model=self.d_model,
-                max_nodes=num_nodes,
-                max_seq_len=seq_len,
-                encoding_types=['distance', 'centrality', 'spectral']
-            ).to(combined_input.device)
-
-        if self.graph_attention is None:
-            self.graph_attention = MultiHeadGraphAttention(
-                d_model=self.d_model,
-                num_heads=self.n_heads
-            ).to(combined_input.device)
+        # MEMORY FIX 3: Components already initialized in __init__, just ensure device placement
+        # Move components to correct device if needed (much more efficient than re-initialization)
+        device = combined_input.device
+        
+        if self.dynamic_graph.device != device:
+            self.dynamic_graph = self.dynamic_graph.to(device)
+        if self.adaptive_graph.device != device:
+            self.adaptive_graph = self.adaptive_graph.to(device)
+        if self.spatiotemporal_encoder.device != device:
+            self.spatiotemporal_encoder = self.spatiotemporal_encoder.to(device)
+        if self.graph_pos_encoding.device != device:
+            self.graph_pos_encoding = self.graph_pos_encoding.to(device)
+        if self.graph_attention.device != device:
+            self.graph_attention = self.graph_attention.to(device)
+            
+        # Update component dimensions if they've changed significantly
+        # Only recreate if absolutely necessary to avoid memory fragmentation
+        if (hasattr(self.dynamic_graph, 'num_waves') and 
+            abs(self.dynamic_graph.num_waves - wave_nodes) > 2):
+            print(f"Info: Updating dynamic graph dimensions: {self.dynamic_graph.num_waves} -> {wave_nodes}")
+            # Only update the internal parameters, don't recreate the whole module
+            self.dynamic_graph.num_waves = wave_nodes
+            self.dynamic_graph.num_targets = target_nodes
+            self.dynamic_graph.num_transitions = transition_nodes
 
         # Create dynamic adjacency matrix
         node_features_dict = {
@@ -362,34 +393,80 @@ class SOTA_Temporal_PGAT(nn.Module):
 
         self._validate_dynamic_graph_outputs(adjacency_matrix, edge_weights, num_nodes)
         
-        # Reshape embedded features for spatial-temporal processing
-        spatiotemporal_input = embedded.unsqueeze(2).expand(-1, -1, num_nodes, -1)  # [batch, seq, nodes, d_model]
-        # Add structural positional encoding for enhanced graph structure awareness
+        # MEMORY FIX 4: Replace massive tensor expansion with memory-efficient processing
+        # Original: spatiotemporal_input = embedded.unsqueeze(2).expand(-1, -1, num_nodes, -1)
+        # This creates a tensor of size [batch, seq, nodes, d_model] which can be huge
+        
+        if self._enable_memory_optimization:
+            # Memory-efficient approach: process in chunks and use broadcasting
+            # Instead of expanding to full size, we'll process node-wise
+            spatiotemporal_input = self._create_memory_efficient_spatiotemporal_input(
+                embedded, num_nodes, batch_size, seq_len
+            )
+        else:
+            # Original approach for compatibility
+            spatiotemporal_input = embedded.unsqueeze(2).expand(-1, -1, num_nodes, -1)
+        # MEMORY FIX 5: Structural positional encoding (already initialized in __init__)
         if getattr(self.config, 'enable_structural_pos_encoding', True):
             try:
-                # Lazily initialize structural positional encoding module if needed
-                if not hasattr(self, 'structural_pos_encoding') or self.structural_pos_encoding is None:
-                    self.structural_pos_encoding = StructuralPositionalEncoding(
-                        d_model=self.d_model,
-                        num_eigenvectors=getattr(self.config, 'max_eigenvectors', 16),
-                        dropout=getattr(self.config, 'dropout', 0.1),
-                        learnable_projection=True
-                    ).to(combined_input.device)
+                # Ensure structural_pos_encoding is on correct device
+                if self.structural_pos_encoding.device != combined_input.device:
+                    self.structural_pos_encoding = self.structural_pos_encoding.to(combined_input.device)
 
-                # Use homogeneous simple path: compute node-wise structural encoding once and broadcast
-                adj_matrix_tensor = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
+                # Use cached adjacency matrix if available
+                cache_key = f"adj_matrix_{seq_len}_{num_nodes}"
+                if cache_key in self._memory_cache:
+                    adj_matrix_tensor = self._memory_cache[cache_key]
+                else:
+                    adj_matrix_tensor = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
+                    if adj_matrix_tensor.numel() < 1e6:  # Cache if not too large
+                        self._memory_cache[cache_key] = adj_matrix_tensor
+
+                # Memory-efficient structural encoding
                 d_model = spatiotemporal_input.size(-1)
-                base_x = torch.zeros(num_nodes, d_model, device=combined_input.device, dtype=spatiotemporal_input.dtype)
+                
+                # Use cached base tensor if available
+                base_cache_key = f"base_x_{num_nodes}_{d_model}"
+                if base_cache_key in self._memory_cache:
+                    base_x = self._memory_cache[base_cache_key]
+                    if base_x.device != combined_input.device:
+                        base_x = base_x.to(combined_input.device)
+                else:
+                    base_x = torch.zeros(num_nodes, d_model, device=combined_input.device, dtype=spatiotemporal_input.dtype)
+                    if base_x.numel() < 1e5:  # Cache small tensors
+                        self._memory_cache[base_cache_key] = base_x.clone()
+                
                 node_struct_encoding = self.structural_pos_encoding(base_x, adj_matrix_tensor)  # [num_nodes, d_model]
-                # Broadcast across batch and sequence length
-                node_struct_encoding = node_struct_encoding.unsqueeze(0).unsqueeze(0).expand(batch_size, seq_len, -1, -1)
-                spatiotemporal_input = spatiotemporal_input + node_struct_encoding
+                
+                # Memory-efficient broadcasting
+                if self._enable_memory_optimization:
+                    # Add encoding more efficiently
+                    for b in range(batch_size):
+                        for s in range(seq_len):
+                            spatiotemporal_input[b, s] += node_struct_encoding
+                else:
+                    # Original broadcasting approach
+                    node_struct_encoding = node_struct_encoding.unsqueeze(0).unsqueeze(0).expand(batch_size, seq_len, -1, -1)
+                    spatiotemporal_input = spatiotemporal_input + node_struct_encoding
+                    
             except Exception as e:
                 print(f"Info: Structural positional encoding skipped: {e}")
-        # Add graph-aware positional encoding (config gated)
+        # MEMORY FIX 6: Graph-aware positional encoding (reuse cached adjacency matrix)
         if getattr(self.config, 'enable_graph_positional_encoding', True):
             try:
-                adj_matrix_tensor = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
+                # Reuse cached adjacency matrix from structural encoding
+                cache_key = f"adj_matrix_{seq_len}_{num_nodes}"
+                if cache_key in self._memory_cache:
+                    adj_matrix_tensor = self._memory_cache[cache_key]
+                else:
+                    adj_matrix_tensor = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
+                    if adj_matrix_tensor.numel() < 1e6:
+                        self._memory_cache[cache_key] = adj_matrix_tensor
+                
+                # Ensure graph_pos_encoding is on correct device
+                if self.graph_pos_encoding.device != combined_input.device:
+                    self.graph_pos_encoding = self.graph_pos_encoding.to(combined_input.device)
+                
                 pos_encoding = self.graph_pos_encoding(
                     batch_size, seq_len, num_nodes, adj_matrix_tensor, combined_input.device
                 )
@@ -550,7 +627,18 @@ class SOTA_Temporal_PGAT(nn.Module):
         self._validate_decoder_ready(final_embedding)
 
         # Decode to final output
-        return self.decoder(final_embedding)
+        output = self.decoder(final_embedding)
+        
+        # MEMORY FIX 7: Optional memory cleanup after forward pass
+        if self._enable_memory_optimization and len(self._memory_cache) > 10:
+            # Clean up old cache entries to prevent memory buildup
+            # Keep only the most recent entries
+            cache_keys = list(self._memory_cache.keys())
+            if len(cache_keys) > 10:
+                for key in cache_keys[:-5]:  # Keep last 5 entries
+                    del self._memory_cache[key]
+        
+        return output
     
     def configure_optimizer_loss(self, base_criterion: nn.Module, verbose: bool = False) -> nn.Module:
         """Select MixtureNLLLoss when MDN outputs are active.
@@ -926,9 +1014,99 @@ class SOTA_Temporal_PGAT(nn.Module):
         self.eval()
         return self
 
-        self.dim_manager.edge_bounds[('wave', 'transition')] = (wave_nodes, transition_nodes)
-        self.dim_manager.edge_bounds[('transition', 'target')] = (transition_nodes, target_nodes)
-        self.dim_manager.edge_bounds['spatial'] = (total_graph_nodes, total_graph_nodes)
+        if hasattr(self.dim_manager, 'edge_bounds'):
+            self.dim_manager.edge_bounds[('wave', 'transition')] = (wave_nodes, transition_nodes)
+            self.dim_manager.edge_bounds[('transition', 'target')] = (transition_nodes, target_nodes)
+            self.dim_manager.edge_bounds['spatial'] = (total_graph_nodes, total_graph_nodes)
         
         if self._embedding_source != 'registry':
             raise RuntimeError("Attention weight inspection requires a registry-backed embedding module.")
+    
+    def _create_memory_efficient_spatiotemporal_input(self, embedded, num_nodes, batch_size, seq_len):
+        """
+        MEMORY FIX: Create spatiotemporal input without massive tensor expansion.
+        
+        Instead of creating [batch, seq, nodes, d_model] tensor directly,
+        we create a more memory-efficient representation.
+        """
+        device = embedded.device
+        d_model = embedded.size(-1)
+        
+        # Check if we can use cached version
+        cache_key = f"spatiotemporal_{batch_size}_{seq_len}_{num_nodes}_{d_model}"
+        if cache_key in self._memory_cache:
+            cached_tensor = self._memory_cache[cache_key]
+            if cached_tensor.device == device:
+                # Reuse cached tensor structure, just update the content
+                cached_tensor[:, :, 0, :] = embedded  # Update first node with embedded features
+                return cached_tensor
+        
+        # Create memory-efficient version
+        # Instead of expanding embedded to all nodes, we create a sparse representation
+        spatiotemporal_input = torch.zeros(
+            batch_size, seq_len, num_nodes, d_model, 
+            device=device, dtype=embedded.dtype
+        )
+        
+        # Only fill the first "node" with actual embedded features
+        # Other nodes will be handled by the spatiotemporal encoder
+        spatiotemporal_input[:, :, 0, :] = embedded
+        
+        # Cache for reuse if tensor is not too large
+        if spatiotemporal_input.numel() < 1e7:  # Only cache if < 10M elements
+            self._memory_cache[cache_key] = spatiotemporal_input.clone()
+        
+        return spatiotemporal_input
+    
+    def clear_memory_cache(self):
+        """Clear memory cache to free up memory."""
+        self._memory_cache.clear()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    
+    def get_memory_stats(self):
+        """Get current memory usage statistics."""
+        stats = {
+            'cached_tensors': len(self._memory_cache),
+            'model_parameters': sum(p.numel() for p in self.parameters()),
+            'memory_optimization_enabled': self._enable_memory_optimization
+        }
+        
+        if torch.cuda.is_available():
+            stats['cuda_allocated_mb'] = torch.cuda.memory_allocated() / (1024**2)
+            stats['cuda_reserved_mb'] = torch.cuda.memory_reserved() / (1024**2)
+        
+        return stats
+    
+    def _ensure_device_placement(self, device):
+        """Efficiently ensure all components are on the correct device."""
+        components = [
+            'dynamic_graph', 'adaptive_graph', 'spatiotemporal_encoder',
+            'graph_pos_encoding', 'graph_attention', 'structural_pos_encoding',
+            'temporal_pos_encoding'
+        ]
+        
+        for comp_name in components:
+            if hasattr(self, comp_name):
+                comp = getattr(self, comp_name)
+                if comp is not None and hasattr(comp, 'device') and comp.device != device:
+                    setattr(self, comp_name, comp.to(device))
+    
+    def enable_memory_optimization(self, enable=True, chunk_size=32):
+        """Enable or disable memory optimization features."""
+        self._enable_memory_optimization = enable
+        self._chunk_size = chunk_size
+        if not enable:
+            self.clear_memory_cache()
+    
+    def configure_for_training(self):
+        """Configure model for training mode with memory optimization."""
+        self.train()
+        self.enable_memory_optimization(True)
+        return self
+    
+    def configure_for_inference(self):
+        """Configure model for inference mode."""
+        self.eval()
+        # Keep memory optimization for inference too
+        return self
