@@ -122,7 +122,8 @@ class MultiHeadGraphAttention(nn.Module):
         """
         Compute attention between source and target nodes
         """
-        source_idx, target_idx = edge_index[0], edge_index[1]
+        # CRITICAL FIX: Correct edge index convention - edge_index[0] = target, edge_index[1] = source
+        target_idx, source_idx = edge_index[0], edge_index[1]
         
         # Get queries, keys, values
         queries = self.node_projections[target_type]['query'](target_x)  # Target nodes as queries

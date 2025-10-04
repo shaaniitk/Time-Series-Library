@@ -59,5 +59,5 @@ def get_pyg_graph(config, device: str) -> HeteroData:
     data['wave'].t = topo_features['wave']
     data['target'].t = topo_features['target']
     
-    print("PyG HeteroData graph created with feature and topology placeholders.")
+    # Graph created successfully with topology features
     return data.to(device)

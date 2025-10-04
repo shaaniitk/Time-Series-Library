@@ -174,7 +174,8 @@ class GraphAwareDimensionManager(DimensionManager):
         # Create fully connected bipartite graph
         src_indices = torch.arange(src_nodes, device=device).repeat(tgt_nodes)
         tgt_indices = torch.arange(tgt_nodes, device=device).repeat_interleave(src_nodes)
-        edge_index = torch.stack([src_indices, tgt_indices], dim=0)
+        # CRITICAL FIX: Swap order to match enhanced_pgat_layer convention: edge_index[0] = target, edge_index[1] = source
+        edge_index = torch.stack([tgt_indices, src_indices], dim=0)
         
         return edge_index
     
