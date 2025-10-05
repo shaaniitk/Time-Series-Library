@@ -126,15 +126,19 @@ class SOTA_Temporal_PGAT(nn.Module):
             num_heads=self.n_heads
         )
         
-        # Feature projection for fallback cases
-        total_features = self.d_model * 3  # wave + transition + target
-        self.feature_projection = nn.Linear(total_features, self.d_model)
+        # Feature projection for fallback cases - only create when needed
+        # (Removed duplicate - will be created in exception handler if needed)
         
         # MEMORY FIX 2: Add memory management utilities
         self._memory_cache = {}
         self._enable_memory_optimization = getattr(config, 'enable_memory_optimization', True)
         self._chunk_size = getattr(config, 'memory_chunk_size', 32)
         self._use_gradient_checkpointing = getattr(config, 'use_gradient_checkpointing', False)
+        
+        # CRITICAL FIX: Initialize temporal-to-spatial conversion modules properly
+        # These MUST be in __init__ to be registered with PyTorch's module system
+        self.wave_temporal_to_spatial = None  # Will be initialized on first forward pass
+        self.target_temporal_to_spatial = None  # Will be initialized on first forward pass
         
         # Enhanced spatial encoder with dynamic edge weights
         # Note: Previously forced disabled due to index errors; now gated via config with safe fallback
@@ -224,7 +228,7 @@ class SOTA_Temporal_PGAT(nn.Module):
         Args:
             wave_window: Wave input data
             target_window: Target input data
-            graph: Graph adjacency matrix
+            graph: Graph adjacency matrix (currently unused - reserved for future use)
             
         Returns:
             Model output (single tensor for standard mode, tuple for probabilistic mode)
@@ -264,12 +268,20 @@ class SOTA_Temporal_PGAT(nn.Module):
         # wave_embedded: [batch, seq_len=96, d_model] -> [batch, wave_nodes=7, d_model]
         # target_embedded: [batch, pred_len=24, d_model] -> [batch, target_nodes=3, d_model]
         
-        # For time series, we need to map temporal sequences to feature nodes
-        # Method: Use learnable projections to map from sequence length to node count
-        if not hasattr(self, 'wave_temporal_to_spatial'):
-            self.wave_temporal_to_spatial = nn.Linear(wave_len, wave_nodes).to(wave_embedded.device)
-        if not hasattr(self, 'target_temporal_to_spatial'):
-            self.target_temporal_to_spatial = nn.Linear(target_len, target_nodes).to(target_embedded.device)
+        # CRITICAL FIX: Properly initialize temporal-to-spatial conversion modules
+        # These modules MUST be registered with PyTorch for training to work
+        if self.wave_temporal_to_spatial is None:
+            self.wave_temporal_to_spatial = nn.Linear(wave_len, wave_nodes)
+            # Properly register the module
+            self.add_module('wave_temporal_to_spatial', self.wave_temporal_to_spatial)
+        if self.target_temporal_to_spatial is None:
+            self.target_temporal_to_spatial = nn.Linear(target_len, target_nodes)
+            # Properly register the module
+            self.add_module('target_temporal_to_spatial', self.target_temporal_to_spatial)
+        
+        # Ensure modules are on correct device
+        self.wave_temporal_to_spatial = self.wave_temporal_to_spatial.to(wave_embedded.device)
+        self.target_temporal_to_spatial = self.target_temporal_to_spatial.to(target_embedded.device)
         
         # Convert temporal to spatial: [batch, seq_len, d_model] -> [batch, d_model, seq_len] -> [batch, d_model, nodes] -> [batch, nodes, d_model]
         wave_spatial = self.wave_temporal_to_spatial(wave_embedded.transpose(1, 2)).transpose(1, 2)  # [batch, wave_nodes, d_model]
@@ -634,7 +646,6 @@ class SOTA_Temporal_PGAT(nn.Module):
         self._validate_node_tensor(spatial_encoded['transition'], 'spatial_transition', batch_size, transition_nodes)
         self._validate_node_tensor(spatial_encoded['target'], 'spatial_target', batch_size, target_nodes)
         
-        # Store graph information if enabled
         # Store graph information if enabled
         if self.store_graph_info:
             adj_to_store = adjacency_matrix
@@ -1085,9 +1096,10 @@ class SOTA_Temporal_PGAT(nn.Module):
         if cache_key in self._memory_cache:
             cached_tensor = self._memory_cache[cache_key]
             if cached_tensor.device == device:
-                # Reuse cached tensor structure, just update the content
-                cached_tensor[:, :, 0, :] = embedded  # Update first node with embedded features
-                return cached_tensor
+                # CRITICAL FIX: Clone cached tensor before modifying to prevent data corruption
+                result_tensor = cached_tensor.clone()
+                result_tensor[:, :, 0, :] = embedded  # Update first node with embedded features
+                return result_tensor
         
         # Create memory-efficient version
         # Instead of expanding embedded to all nodes, we create a sparse representation
@@ -1158,9 +1170,13 @@ class SOTA_Temporal_PGAT(nn.Module):
             # Convert model to half precision for forward pass
             # Note: This should be used with torch.cuda.amp.autocast() during training
             for module in self.modules():
-                if hasattr(module, 'half') and not isinstance(module, (nn.LayerNorm, nn.BatchNorm1d, nn.BatchNorm2d)):
+                # CRITICAL FIX: Actually call .half() on modules (logic was backwards before)
+                if not isinstance(module, (nn.LayerNorm, nn.BatchNorm1d, nn.BatchNorm2d)):
                     # Keep normalization layers in FP32 for stability
-                    continue
+                    module.half()
+        else:
+            # CRITICAL FIX: Add path to revert to FP32
+            self.float()
         return self
     
     def configure_for_training(self):
