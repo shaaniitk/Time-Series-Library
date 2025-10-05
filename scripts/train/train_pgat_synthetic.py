@@ -51,49 +51,44 @@ except ImportError:  # pragma: no cover - guard for refactors
 
 
 @dataclass
-class ParameterStats:
-    """Track streaming statistics for an individual parameter's gradient norms."""
+class SimpleGradientStats:
+    """Track simple gradient statistics without per-parameter overhead."""
 
     count: int = 0
-    mean: float = 0.0
-    m2: float = 0.0
-    minimum: float = math.inf
-    maximum: float = 0.0
-    last: float = 0.0
+    norm_sum: float = 0.0
+    norm_min: float = math.inf
+    norm_max: float = 0.0
+    last_norm: float = 0.0
 
-    def update(self, value: float) -> None:
+    def update(self, global_norm: float) -> None:
         self.count += 1
-        delta = value - self.mean
-        self.mean += delta / self.count
-        self.m2 += delta * (value - self.mean)
-        self.minimum = min(self.minimum, value)
-        self.maximum = max(self.maximum, value)
-        self.last = value
-
-    def variance(self) -> float:
-        if self.count <= 1:
-            return 0.0
-        return self.m2 / (self.count - 1)
+        self.norm_sum += global_norm
+        self.norm_min = min(self.norm_min, global_norm)
+        self.norm_max = max(self.norm_max, global_norm)
+        self.last_norm = global_norm
 
     def to_dict(self) -> Dict[str, float]:
-        minimum = 0.0 if self.minimum is math.inf else self.minimum
+        norm_min = 0.0 if self.norm_min is math.inf else self.norm_min
+        norm_mean = self.norm_sum / self.count if self.count > 0 else 0.0
         return {
             "count": int(self.count),
-            "mean": float(self.mean),
-            "min": float(minimum),
-            "max": float(self.maximum),
-            "last": float(self.last),
-            "variance": float(self.variance()),
+            "mean": float(norm_mean),
+            "min": float(norm_min),
+            "max": float(self.norm_max),
+            "last": float(self.last_norm),
         }
 
 
 @dataclass
 class GradientTracker:
-    """Collect gradient norms and memory metrics for post-run diagnostics."""
+    """Memory-efficient gradient tracking without per-parameter overhead."""
 
-    per_parameter: Dict[str, ParameterStats] = field(default_factory=dict)
     vanishing_threshold: float = 1e-8
-    max_memory_history: int = 4096
+    max_memory_history: int = 1000  # Reduced from 4096
+    tracking_frequency: int = 5  # Track every 5 steps instead of every step
+    step_count: int = 0
+    
+    gradient_stats: SimpleGradientStats = field(default_factory=SimpleGradientStats)
     global_norms: Deque[float] = field(init=False)
     vanishing_steps: Deque[int] = field(init=False)
     rss_history_mb: Deque[float] = field(init=False)
@@ -106,56 +101,53 @@ class GradientTracker:
         self.cuda_allocated_mb = deque(maxlen=self.max_memory_history)
 
     def log_step(self, named_parameters: Iterable[Tuple[str, torch.nn.Parameter]]) -> None:
-        total = 0.0
+        self.step_count += 1
+        
+        # Only track every N steps to reduce overhead
+        if self.step_count % self.tracking_frequency != 0:
+            return
+        
+        # Compute only global gradient norm (much more efficient)
+        total_norm_squared = 0.0
         for name, param in named_parameters:
-            if param.grad is None:
-                continue
-            norm = param.grad.norm(p=2).item()
-            total += norm * norm
-            stats = self.per_parameter.setdefault(name, ParameterStats())
-            stats.update(norm)
-        if total == 0.0:
+            if param.grad is not None:
+                total_norm_squared += param.grad.norm(p=2).item() ** 2
+        
+        if total_norm_squared == 0.0:
             self.vanishing_steps.append(len(self.global_norms))
             self.global_norms.append(0.0)
+            self.gradient_stats.update(0.0)
             self._record_memory_stats()
             return
-        global_norm = math.sqrt(total)
+        
+        global_norm = math.sqrt(total_norm_squared)
         if global_norm < self.vanishing_threshold:
             self.vanishing_steps.append(len(self.global_norms))
+        
         self.global_norms.append(global_norm)
+        self.gradient_stats.update(global_norm)
         self._record_memory_stats()
 
     def summary(self) -> Dict[str, float]:
-        summary: Dict[str, float] = {
-            "min": 0.0,
-            "max": 0.0,
-            "mean": 0.0,
-        }
-        if self.global_norms:
-            summary.update(
-                {
-                    "min": float(min(self.global_norms)),
-                    "max": float(max(self.global_norms)),
-                    "mean": float(sum(self.global_norms) / len(self.global_norms)),
-                }
-            )
+        summary = self.gradient_stats.to_dict()
+        
         if self.rss_history_mb:
             summary["rss_mb_max"] = float(max(self.rss_history_mb))
             summary["rss_mb_last"] = float(self.rss_history_mb[-1])
         if self.cuda_allocated_mb:
             summary["cuda_allocated_mb_max"] = float(max(self.cuda_allocated_mb))
             summary["cuda_allocated_mb_last"] = float(self.cuda_allocated_mb[-1])
+        
+        summary["total_steps"] = self.step_count
+        summary["tracked_steps"] = len(self.global_norms)
+        summary["tracking_frequency"] = self.tracking_frequency
+        summary["vanishing_episodes"] = len(self.vanishing_steps)
+        
         return summary
 
     def parameter_summary(self, limit: int = 15) -> Dict[str, Dict[str, float]]:
-        if not self.per_parameter:
-            return {}
-        ranked = sorted(
-            self.per_parameter.items(),
-            key=lambda pair: pair[1].maximum,
-            reverse=True,
-        )[:limit]
-        return {name: stats.to_dict() for name, stats in ranked}
+        # Return empty dict since we don't track per-parameter stats anymore
+        return {}
 
     def _record_memory_stats(self) -> None:
         rss_mb = 0.0
@@ -205,6 +197,7 @@ class GradientMonitoringExperiment(Exp_Long_Term_Forecast):
         model = self.model
 
         def tracked_step(*args, **kwargs):
+            # Memory-efficient gradient tracking
             tracker.log_step(model.named_parameters())
             return original_step(*args, **kwargs)
 
@@ -397,7 +390,7 @@ def main() -> None:
             **summary,
             "steps": len(tracker.global_norms),
             "vanishing_steps": list(tracker.vanishing_steps),
-            "parameter_summary_top": tracker.parameter_summary(),
+            "note": "Per-parameter tracking removed for memory efficiency",
         }
 
         cli_args.report.parent.mkdir(parents=True, exist_ok=True)

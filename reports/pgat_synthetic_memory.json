@@ -1,763 +1,262 @@
 [
   {
     "stage": "startup",
-    "cpu_rss_mb": 0.505,
+    "cpu_rss_mb": 0.508,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501246.296299,
+    "timestamp": 1759642893.955777,
     "extras": {
-      "config": "configs/sota_pgat_synthetic_cpu.yaml",
-      "regenerate_data": false,
+      "config": "configs/sota_pgat_synthetic_memory_optimized.yaml",
+      "regenerate_data": true,
       "gradient_threshold": 1e-06
     }
   },
   {
-    "stage": "dataloaders_built",
-    "cpu_rss_mb": 0.511,
+    "stage": "dataset_regenerated",
+    "cpu_rss_mb": 0.51,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501246.317783,
+    "timestamp": 1759642893.9614267,
     "extras": {
-      "train_steps": 965,
-      "validation_steps": 11,
-      "test_steps": 6
+      "rows": 400,
+      "waves": 7,
+      "targets": 3
+    }
+  },
+  {
+    "stage": "dataloaders_built",
+    "cpu_rss_mb": 0.512,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759642893.973995,
+    "extras": {
+      "train_steps": 2,
+      "validation_steps": 4,
+      "test_steps": 1
     }
   },
   {
     "stage": "experiment_init_start",
-    "cpu_rss_mb": 0.511,
+    "cpu_rss_mb": 0.512,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501246.3178384,
+    "timestamp": 1759642893.9740357,
     "extras": {
       "model": "SOTA_Temporal_PGAT",
-      "features": "MS"
+      "features": "M"
     }
   },
   {
     "stage": "experiment_model_ready",
-    "cpu_rss_mb": 0.519,
+    "cpu_rss_mb": 0.547,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501246.3395317,
+    "timestamp": 1759642894.01368,
     "extras": {
-      "parameters": 1398938,
+      "parameters": 8083513,
       "device": "cpu"
     }
   },
   {
     "stage": "training_start",
-    "cpu_rss_mb": 0.519,
+    "cpu_rss_mb": 0.547,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501246.3396726,
+    "timestamp": 1759642894.0138125,
     "extras": {
-      "setting": "synthetic_pgat_memory_opt_MS_48_12",
-      "train_epochs": 10,
-      "batch_size": 4
+      "setting": "synthetic_pgat_M_96_24",
+      "train_epochs": 1,
+      "batch_size": 8
     }
   },
   {
     "stage": "train_loop_start",
-    "cpu_rss_mb": 0.519,
+    "cpu_rss_mb": 0.547,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501246.3400376,
+    "timestamp": 1759642894.0142598,
     "extras": {
-      "setting": "synthetic_pgat_memory_opt_MS_48_12",
-      "train_steps": 965,
-      "epochs": 10
+      "setting": "synthetic_pgat_M_96_24",
+      "train_steps": 2,
+      "epochs": 1
     }
   },
   {
     "stage": "epoch_begin",
-    "cpu_rss_mb": 0.519,
+    "cpu_rss_mb": 0.547,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501246.3401842,
+    "timestamp": 1759642894.0145683,
     "extras": {
       "epoch": 1,
-      "train_steps": 965
+      "train_steps": 2
     }
   },
   {
     "stage": "validation_start",
-    "cpu_rss_mb": 0.56,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501257.9909348,
+    "timestamp": 1759642899.0872524,
     "extras": {
-      "len_vali_loader": 11,
-      "criterion": "MixtureDensityLoss"
+      "len_vali_loader": 4,
+      "criterion": "MixtureNLLLoss"
     }
   },
   {
     "stage": "validation_complete",
-    "cpu_rss_mb": 0.56,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501258.0647988,
+    "timestamp": 1759642901.2383766,
     "extras": {
-      "len_vali_loader": 11,
-      "loss": 0.05276788271624933
+      "len_vali_loader": 4,
+      "loss": 0.9973347261548042
     }
   },
   {
     "stage": "validation_start",
-    "cpu_rss_mb": 0.56,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501258.0650432,
+    "timestamp": 1759642901.2387857,
     "extras": {
-      "len_vali_loader": 6,
-      "criterion": "MixtureDensityLoss"
+      "len_vali_loader": 1,
+      "criterion": "MixtureNLLLoss"
     }
   },
   {
     "stage": "validation_complete",
-    "cpu_rss_mb": 0.56,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501258.1152978,
+    "timestamp": 1759642901.4262607,
     "extras": {
-      "len_vali_loader": 6,
-      "loss": 0.08238524322708447
+      "len_vali_loader": 1,
+      "loss": 2.863499402999878
     }
   },
   {
     "stage": "epoch_end",
-    "cpu_rss_mb": 0.56,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501258.1154814,
+    "timestamp": 1759642901.4264686,
     "extras": {
       "epoch": 1,
-      "train_loss": 0.09664489731694441,
-      "vali_loss": 0.05276788271624933,
-      "test_loss": 0.08238524322708447
-    }
-  },
-  {
-    "stage": "epoch_begin",
-    "cpu_rss_mb": 0.56,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501258.1202574,
-    "extras": {
-      "epoch": 2,
-      "train_steps": 965
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501269.82166,
-    "extras": {
-      "len_vali_loader": 11,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501269.894183,
-    "extras": {
-      "len_vali_loader": 11,
-      "loss": 0.05139084566723217
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501269.8944893,
-    "extras": {
-      "len_vali_loader": 6,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501269.9458497,
-    "extras": {
-      "len_vali_loader": 6,
-      "loss": 0.06160970777273178
-    }
-  },
-  {
-    "stage": "epoch_end",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501269.9460304,
-    "extras": {
-      "epoch": 2,
-      "train_loss": 0.03645243595590709,
-      "vali_loss": 0.05139084566723217,
-      "test_loss": 0.06160970777273178
-    }
-  },
-  {
-    "stage": "epoch_begin",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501269.9495757,
-    "extras": {
-      "epoch": 3,
-      "train_steps": 965
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501281.803796,
-    "extras": {
-      "len_vali_loader": 11,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501281.8795686,
-    "extras": {
-      "len_vali_loader": 11,
-      "loss": 0.037598219446160576
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501281.879831,
-    "extras": {
-      "len_vali_loader": 6,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501281.9328766,
-    "extras": {
-      "len_vali_loader": 6,
-      "loss": 0.0608983151614666
-    }
-  },
-  {
-    "stage": "epoch_end",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501281.9330924,
-    "extras": {
-      "epoch": 3,
-      "train_loss": 0.030440711697148536,
-      "vali_loss": 0.037598219446160576,
-      "test_loss": 0.0608983151614666
-    }
-  },
-  {
-    "stage": "epoch_begin",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501281.9372785,
-    "extras": {
-      "epoch": 4,
-      "train_steps": 965
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501293.8938413,
-    "extras": {
-      "len_vali_loader": 11,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501293.9610426,
-    "extras": {
-      "len_vali_loader": 11,
-      "loss": 0.03662846288220449
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501293.9613013,
-    "extras": {
-      "len_vali_loader": 6,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501294.0139184,
-    "extras": {
-      "len_vali_loader": 6,
-      "loss": 0.06115505782266458
-    }
-  },
-  {
-    "stage": "epoch_end",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501294.0141304,
-    "extras": {
-      "epoch": 4,
-      "train_loss": 0.029292935312489155,
-      "vali_loss": 0.03662846288220449,
-      "test_loss": 0.06115505782266458
-    }
-  },
-  {
-    "stage": "epoch_begin",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501294.0178936,
-    "extras": {
-      "epoch": 5,
-      "train_steps": 965
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501305.6925747,
-    "extras": {
-      "len_vali_loader": 11,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501305.760582,
-    "extras": {
-      "len_vali_loader": 11,
-      "loss": 0.03955768539824269
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501305.760872,
-    "extras": {
-      "len_vali_loader": 6,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501305.8148623,
-    "extras": {
-      "len_vali_loader": 6,
-      "loss": 0.05505131371319294
-    }
-  },
-  {
-    "stage": "epoch_end",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501305.8151965,
-    "extras": {
-      "epoch": 5,
-      "train_loss": 0.028788402572351417,
-      "vali_loss": 0.03955768539824269,
-      "test_loss": 0.05505131371319294
-    }
-  },
-  {
-    "stage": "epoch_begin",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501305.8153918,
-    "extras": {
-      "epoch": 6,
-      "train_steps": 965
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501317.4399478,
-    "extras": {
-      "len_vali_loader": 11,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501317.5083728,
-    "extras": {
-      "len_vali_loader": 11,
-      "loss": 0.037180757827379486
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501317.50865,
-    "extras": {
-      "len_vali_loader": 6,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501317.5622895,
-    "extras": {
-      "len_vali_loader": 6,
-      "loss": 0.05283303807179133
-    }
-  },
-  {
-    "stage": "epoch_end",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501317.562496,
-    "extras": {
-      "epoch": 6,
-      "train_loss": 0.02855155156355911,
-      "vali_loss": 0.037180757827379486,
-      "test_loss": 0.05283303807179133
-    }
-  },
-  {
-    "stage": "epoch_begin",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501317.5626686,
-    "extras": {
-      "epoch": 7,
-      "train_steps": 965
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.2521155,
-    "extras": {
-      "len_vali_loader": 11,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.3164575,
-    "extras": {
-      "len_vali_loader": 11,
-      "loss": 0.036648684604601425
-    }
-  },
-  {
-    "stage": "validation_start",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.3167157,
-    "extras": {
-      "len_vali_loader": 6,
-      "criterion": "MixtureDensityLoss"
-    }
-  },
-  {
-    "stage": "validation_complete",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.3673646,
-    "extras": {
-      "len_vali_loader": 6,
-      "loss": 0.055004010597864784
-    }
-  },
-  {
-    "stage": "epoch_end",
-    "cpu_rss_mb": 0.562,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.3676732,
-    "extras": {
-      "epoch": 7,
-      "train_loss": 0.028431846845142272,
-      "vali_loss": 0.036648684604601425,
-      "test_loss": 0.055004010597864784
+      "train_loss": 0.8352702260017395,
+      "vali_loss": 0.9973347261548042,
+      "test_loss": 2.863499402999878
     }
   },
   {
     "stage": "train_complete",
-    "cpu_rss_mb": 0.562,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.3736749,
+    "timestamp": 1759642901.4632127,
     "extras": {
-      "setting": "synthetic_pgat_memory_opt_MS_48_12",
-      "epochs_trained": 7,
-      "train_steps": 965
+      "setting": "synthetic_pgat_M_96_24",
+      "epochs_trained": 1,
+      "train_steps": 2
     }
   },
   {
     "stage": "training_finished",
-    "cpu_rss_mb": 0.562,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.3742902,
+    "timestamp": 1759642901.4638581,
     "extras": {
-      "setting": "synthetic_pgat_memory_opt_MS_48_12"
+      "setting": "synthetic_pgat_M_96_24"
     }
   },
   {
     "stage": "test_start",
-    "cpu_rss_mb": 0.562,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.377816,
+    "timestamp": 1759642901.4762814,
     "extras": {
-      "setting": "synthetic_pgat_memory_opt_MS_48_12",
-      "len_test_loader": 6
+      "setting": "synthetic_pgat_M_96_24",
+      "len_test_loader": 1
     }
   },
   {
     "stage": "test_complete",
-    "cpu_rss_mb": 0.565,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.6238828,
+    "timestamp": 1759642902.038056,
     "extras": {
-      "setting": "synthetic_pgat_memory_opt_MS_48_12",
-      "mse": 0.038025165418357515,
-      "mae": 0.14891333701395107,
-      "rmse": 0.19500042414917337
+      "setting": "synthetic_pgat_M_96_24",
+      "mse": 0.8448863486094904,
+      "mae": 0.8573214097785493,
+      "rmse": 0.9191769952568931
     }
   },
   {
     "stage": "evaluation_finished",
-    "cpu_rss_mb": 0.565,
+    "cpu_rss_mb": 4.275,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759501329.624184,
+    "timestamp": 1759642902.0382519,
     "extras": {
-      "setting": "synthetic_pgat_memory_opt_MS_48_12"
+      "setting": "synthetic_pgat_M_96_24"
     }
   }
 ]

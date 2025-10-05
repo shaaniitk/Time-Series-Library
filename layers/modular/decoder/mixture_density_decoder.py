@@ -150,6 +150,16 @@ class MixtureNLLLoss(nn.Module):
         stds = torch.exp(log_stds).clamp_min(self.eps)
         log_weights = F.log_softmax(log_weights, dim=-1)
         
+        # Handle targets with different shapes
+        if targets.dim() > 2:
+            # If targets has extra dimensions, flatten to [batch, pred_len]
+            targets = targets.view(targets.size(0), targets.size(1), -1)
+            if targets.size(-1) == 1:
+                targets = targets.squeeze(-1)  # [batch, pred_len]
+            else:
+                # Multiple target features - take the mean or first feature
+                targets = targets.mean(dim=-1)  # [batch, pred_len]
+        
         # Expand targets to match mixture dimensions
         targets_expanded = targets.unsqueeze(-1).expand_as(means)
         

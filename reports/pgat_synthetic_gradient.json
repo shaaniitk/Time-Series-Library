@@ -1,10 +1,14 @@
 {
-  "steps": 6755,
+  "count": 0,
+  "mean": 0.0,
+  "min": 0.0,
+  "max": 0.0,
+  "last": 0.0,
+  "total_steps": 2,
+  "tracked_steps": 0,
+  "tracking_frequency": 5,
+  "vanishing_episodes": 0,
+  "steps": 0,
   "vanishing_steps": [],
-  "global_norms_count": 500,
-  "tracked_parameters": 42,
-  "tracker_memory_mb": 0.045814697265625,
-  "min_gradient_norm": 0.1055535112606542,
-  "max_gradient_norm": 0.6023437387215089,
-  "mean_gradient_norm": 0.28959888436685277
+  "note": "Per-parameter tracking removed for memory efficiency"
 }

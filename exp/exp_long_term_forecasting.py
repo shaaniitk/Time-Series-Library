@@ -264,27 +264,6 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     else:
                         outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 
-                # Handle auxiliary loss or MDN triple if model returns tuple/list
-                aux_loss_val = 0.0
-                mdn_outputs_val: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None
-                if isinstance(outputs_raw, (tuple, list)):
-                    if len(outputs_raw) == 3:
-                        mdn_outputs_val = (
-                            cast(torch.Tensor, outputs_raw[0]),
-                            cast(torch.Tensor, outputs_raw[1]),
-                            cast(torch.Tensor, outputs_raw[2]),
-                        )
-                        outputs_raw = outputs_raw[0]
-                    elif len(outputs_raw) == 2:
-                        primary_val, secondary_val = outputs_raw
-                        scalar_loss_val, _ = self._extract_auxiliary_loss(secondary_val)
-                        outputs_raw = primary_val
-                        if scalar_loss_val is not None:
-                            aux_loss_val = scalar_loss_val
-
-                if not isinstance(outputs_raw, torch.Tensor):
-                    raise TypeError("Expected tensor output from model forward pass during validation.")
-
                 outputs_tensor_val, aux_loss_val, mdn_outputs_val = self._normalize_model_output(outputs_raw)
 
                 if logger.isEnabledFor(10):
@@ -313,7 +292,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         stds_v = stds_v[:, -self.args.pred_len:, :]
                         weights_v = weights_v[:, -self.args.pred_len:, :]
                     targets_v = y_true_for_loss_val.squeeze(-1) if y_true_for_loss_val.dim() == 3 and y_true_for_loss_val.size(-1) == 1 else y_true_for_loss_val
-                    loss = criterion(means_v, stds_v, weights_v, targets_v)
+                    loss = criterion((means_v, stds_v, weights_v), targets_v)
                 else:
                     if is_criterion_pinball:
                         y_pred_for_loss_val = outputs_tensor_val[:, -self.args.pred_len:, :]
@@ -496,7 +475,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         stds_t = stds_t[:, -self.args.pred_len:, :]
                         weights_t = weights_t[:, -self.args.pred_len:, :]
                     targets_t = y_true_for_loss_train.squeeze(-1) if y_true_for_loss_train.dim() == 3 and y_true_for_loss_train.size(-1) == 1 else y_true_for_loss_train
-                    loss_train = criterion(means_t, stds_t, weights_t, targets_t)
+                    loss_train = criterion((means_t, stds_t, weights_t), targets_t)
                 else:
                     if is_criterion_pinball_train:
                         y_pred_for_loss_train = outputs_tensor_train[:, -self.args.pred_len:, :]

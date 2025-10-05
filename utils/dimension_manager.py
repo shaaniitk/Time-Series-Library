@@ -24,17 +24,19 @@ class DimensionManager:
 
         # --- Model Input/Output Dimensions ---
         if self.mode == 'S':
-            self.enc_in = self.dec_in = self.c_out_evaluation = self.num_targets
+            self.enc_in = self.dec_in = self.num_targets
         elif self.mode == 'MS':
-            self.enc_in = self.num_targets + self.num_covariates; self.dec_in = self.num_targets + self.num_covariates
-            self.c_out_evaluation = self.num_targets
+            self.enc_in = self.num_targets + self.num_covariates
+            self.dec_in = self.num_targets + self.num_covariates
         elif self.mode == 'M':
             self.enc_in = self.dec_in = self.num_targets + self.num_covariates
-            self.c_out_evaluation = self.num_targets + self.num_covariates
         else:
             raise ValueError(f"Unknown feature mode: {self.mode}")
 
-        # --- Adjust model's final layer dimension for the loss function ---
+        # --- Evaluation dimensions (always target features only) ---
+        self.c_out_evaluation = self.num_targets
+
+        # --- Model output dimensions (depends on loss function) ---
         self.c_out_model = self.c_out_evaluation
         if self.loss_function in ['quantile', 'pinball'] and self.quantiles:
             self.c_out_model *= len(self.quantiles)

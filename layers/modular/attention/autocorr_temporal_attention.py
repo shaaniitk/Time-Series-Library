@@ -139,17 +139,31 @@ class AutoCorrelationAttention(nn.Module):
         init_index = torch.arange(length).unsqueeze(0).unsqueeze(0).unsqueeze(0).repeat(batch, head, channel, 1).to(values.device)
         # Find the top k autocorrelations delays
         top_k = max(1, int(self.factor * np.log(max(length, 2))))
-        mean_value = torch.mean(corr, dim=1)
-        weights, delay = torch.topk(mean_value, top_k, dim=-1)
+        
+        # Handle correlation tensor shape - ensure it matches expected dimensions
+        if corr.dim() == 4:  # [B, H, D, L]
+            mean_value = torch.mean(torch.mean(corr, dim=1), dim=0)  # [D, L] - same as training
+        elif corr.dim() == 3:  # [B, D, L]
+            mean_value = torch.mean(corr, dim=0)  # [D, L]
+        else:  # [B, L] or other
+            mean_value = torch.mean(corr, dim=0) if corr.dim() > 1 else corr  # [L]
+            if mean_value.dim() == 1:
+                mean_value = mean_value.unsqueeze(0).repeat(channel, 1)  # [D, L]
+        
+        # Get top-k delays - same as training method
+        index = torch.topk(torch.mean(mean_value, dim=0), top_k, dim=-1)[1]  # [top_k]
+        weights = torch.stack([mean_value[:, index[i]] for i in range(top_k)], dim=-1)  # [D, top_k]
+        
         # Update corr
-        tmp_corr = torch.softmax(weights, dim=-1)
-        # Aggregation
-        tmp_values = values.repeat(1, 1, 1, 2)
+        tmp_corr = torch.softmax(weights, dim=-1)  # [D, top_k]
+        
+        # Aggregation - use roll like training method for consistency
         delays_agg = torch.zeros_like(values).float()
         for i in range(top_k):
-            tmp_delay = init_index + delay[:, :, i].unsqueeze(-1)
-            pattern = torch.gather(tmp_values, dim=-1, index=tmp_delay)
-            delays_agg = delays_agg + pattern * (tmp_corr[:, :, i].unsqueeze(-1))
+            pattern = torch.roll(values, -int(index[i]), dims=-1)  # [B, H, D, L]
+            weight_i = tmp_corr[:, i].view(1, 1, channel, 1).to(values.device)  # [1, 1, D, 1]
+            delays_agg = delays_agg + pattern * weight_i  # broadcast to [B, H, D, L]
+        
         return delays_agg
     
     def autocorrelation(self, queries: torch.Tensor, keys: torch.Tensor, 
