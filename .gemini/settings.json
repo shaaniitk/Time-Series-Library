@@ -1,68 +1,78 @@
 {
-  "theme": "GitHub",
-  "selectedAuthType": "gemini-api-key",
   "mcpServers": {
-		"sequentialthinking": {
-			"command": "npx",
-			"args": [
-				"-y",
-				"@modelcontextprotocol/server-sequential-thinking"
-			],
-			"type": "stdio"
-		},
-		"huggingface":{
-				"url": "https://huggingface.co/mcp",
-				"headers": {
-					"Authorization": "${env:HUGGINGFACE_API_KEY}"
+    "sequentialthinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "type": "stdio"
+    },
+    "huggingface": {
+      "url": "https://huggingface.co/mcp",
+      "headers": {
+        "Authorization": "${env:HUGGINGFACE_API_KEY}"
       }
     },
-		"filesystem": {
-			"command": "npx",
-			"args": [
-				"-y",
-				"@modelcontextprotocol/server-filesystem",
-				"/home/kalki/Documents/workspace/"
-			],
-			"type": "stdio"
-		},
-		"serena": {
-			"command": "uv",
-			"args": [
-				"--directory",
-				"/home/kalki/Documents/workspace/MCP/serena",
-				"run",
-				"serena-mcp-server"
-			]
-		},
-		"memory": {
-			"type": "stdio",
-			"command": "npx",
-			"args": [
-				"-y",
-				"@modelcontextprotocol/server-memory@latest"
-			],
-			"env": {
-				"MEMORY_FILE_PATH": "/home/kalki/Documents/workspace/MCP/memory_banks.json"
-			}
-		},
-
-		 "smart-tree": {
-					"command": "st",
-					"args": ["--mcp"],
-					"env": {"mode": "quantum-semantic"}
-					
-					},
-		 "zen-mcp-server": {
-			"command": "/home/kalki/Documents/workspace/MCP/zen-mcp-server/venv/bin/python",
-			"args": ["-m", "server"],
-			"cwd": "/home/kalki/Documents/workspace/MCP/zen-mcp-server",
-			"env": {
-				"GEMINI_API_KEY": "GEMINI_API_KEY",
-				"OPENAI_API_KEY": "your-openai-key-if-you-have-one",
-				"OPENROUTER_API_KEY": "your-openrouter-key-if-you-have-one",
-				"XAI_API_KEY": "your-xai-key-if-you-have-one"
-			}
-			}
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/kalki/Documents/workspace/"
+      ],
+      "type": "stdio"
+    },
+    "serena": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/kalki/Documents/workspace/MCP/serena",
+        "run",
+        "serena-mcp-server"
+      ]
+    },
+    "memory": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory@latest"
+      ],
+      "env": {
+        "MEMORY_FILE_PATH": "/home/kalki/Documents/workspace/MCP/memory_banks.json"
+      }
+    },
+    "smart-tree": {
+      "command": "st",
+      "args": [
+        "--mcp"
+      ],
+      "env": {
+        "mode": "quantum-semantic"
+      }
+    },
+    "zen-mcp-server": {
+      "command": "/home/kalki/Documents/workspace/MCP/zen-mcp-server/venv/bin/python",
+      "args": [
+        "-m",
+        "server"
+      ],
+      "cwd": "/home/kalki/Documents/workspace/MCP/zen-mcp-server",
+      "env": {
+        "GEMINI_API_KEY": "GEMINI_API_KEY",
+        "OPENAI_API_KEY": "your-openai-key-if-you-have-one",
+        "OPENROUTER_API_KEY": "your-openrouter-key-if-you-have-one",
+        "XAI_API_KEY": "your-xai-key-if-you-have-one"
+      }
+    }
+  },
+  "security": {
+    "auth": {
+      "selectedType": "gemini-api-key"
+    }
+  },
+  "ui": {
+    "theme": "GitHub"
   }
 }
-  

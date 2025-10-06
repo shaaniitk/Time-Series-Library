@@ -2,20 +2,17 @@
 """
 Test script to verify that adjacency_to_edge_indices correctly preserves learned structure.
 """
-import pytest
 
 import torch
 import sys
 import os
 from typing import Dict, List, Tuple, cast
-# Add project root to path
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils.graph_utils import adjacency_to_edge_indices, validate_learned_adjacency_structure
 
 EdgeDict = Dict[Tuple[str, str, str], torch.Tensor]
 
-@pytest.mark.smoke
 def test_adjacency_mapping_correctness():
     """Test that we correctly map learned adjacency without creating false edges."""
     
@@ -53,18 +50,13 @@ def test_adjacency_mapping_correctness():
     
     # Convert to edge indices
     try:
-        adjacency_result = adjacency_to_edge_indices(
-            adj,
-            wave_nodes,
-            target_nodes,
-            transition_nodes,
-            threshold=0.1,
-        )
+        adjacency_result = adjacency_to_edge_indices(adj, wave_nodes, target_nodes, transition_nodes, threshold=0.1)
         if isinstance(adjacency_result, tuple):
             edge_index_batches_raw, _edge_weight_batches = adjacency_result
         else:
             edge_index_batches_raw = adjacency_result
             _edge_weight_batches = None
+
         edge_index_batches = cast(List[EdgeDict], edge_index_batches_raw)
         edge_indices = edge_index_batches[0]
         print(f"\n✅ Successfully converted adjacency to edge indices")
@@ -100,7 +92,6 @@ def test_adjacency_mapping_correctness():
     
     return True
 
-@pytest.mark.extended
 def test_edge_case_handling():
     """Test edge cases like empty adjacency, out-of-bounds, etc."""
     
@@ -155,6 +146,7 @@ def test_edge_case_handling():
             _edge_weight_batches = None
         edge_index_batches = cast(List[EdgeDict], edge_index_batches_raw)
         assert len(edge_index_batches) == batch_size
+        print("  ✅ Batched adjacency handled correctly")
         print("  ✅ Batched adjacency handled correctly")
     except Exception as e:
         print(f"  ❌ Batched adjacency failed: {e}")

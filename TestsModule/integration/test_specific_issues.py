@@ -67,7 +67,12 @@ def test_adjacency_to_edge_indices_import():
         adj = torch.rand(7, 7)
         result = adjacency_to_edge_indices(adj, 3, 2, 2)
         print("✅ adjacency_to_edge_indices function call successful")
-        print(f"  Result keys: {list(result.keys())}")
+        if isinstance(result, list):
+            print(f"  Result batches: {len(result)}")
+            if result:
+                print(f"  Result keys (sample 0): {list(result[0].keys())}")
+        elif isinstance(result, tuple):
+            print("  Result returned edge indices with weights")
         
         return True
         

@@ -36,10 +36,10 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         super().__init__(config, mode)
 
         # --- OVERRIDE AND ENHANCE COMPONENTS ---
-        
+
         # Initialize internal logging
-        self.internal_logs = {}
-        
+        self.internal_logs: Dict[str, Any] = {}
+
         self._validate_enhanced_config(config)
 
         total_nodes = getattr(config, 'enc_in', 7) + getattr(config, 'c_out', 3) + min(getattr(config, 'enc_in', 7), getattr(config, 'c_out', 3))
@@ -125,7 +125,9 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             )
             # Initialize mixture loss with multivariate support
             multivariate_mode = getattr(config, 'mixture_multivariate_mode', 'independent')
-            self.mixture_loss = MixtureNLLLoss(multivariate_mode=multivariate_mode)
+            self.mixture_loss: Optional[MixtureNLLLoss] = MixtureNLLLoss(
+                multivariate_mode=multivariate_mode
+            )
         else:
             self.decoder = nn.Linear(self.d_model, getattr(config, 'c_out', 3))
             self.mixture_loss = None
@@ -253,9 +255,18 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         # --- Use LEARNED adjacency for message passing (CRITICAL FIX) ---
         
         # Convert learned adjacency matrix to edge indices for graph attention
-        enhanced_edge_index_dict = adjacency_to_edge_indices(
+        adjacency_result = adjacency_to_edge_indices(
             adjacency_matrix, wave_nodes, target_nodes, transition_nodes, edge_weights
         )
+        
+        # Handle both return formats (with or without edge weights)
+        if isinstance(adjacency_result, tuple):
+            enhanced_edge_index_dict, enhanced_edge_weights_dict = adjacency_result
+            self.internal_logs['edge_weights_preserved'] = True
+        else:
+            enhanced_edge_index_dict = adjacency_result
+            enhanced_edge_weights_dict = None
+            self.internal_logs['edge_weights_preserved'] = False
         
         # CRITICAL: Use per-sample node features instead of batch-averaged
         # This preserves the multi-scale and stochastic learning signals
@@ -278,7 +289,7 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
                     'target': enhanced_x_dict['target'][b]   # [target_nodes, d_model]
                 }
                 
-                # Apply graph attention to single batch
+                # Apply graph attention to single batch (use same edge structure for all batches)
                 attended_single = self.graph_attention(single_batch_x_dict, enhanced_edge_index_dict)
                 
                 # Collect results
@@ -296,7 +307,26 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             spatial_encoded = enhanced_x_dict
 
         target_spatial_encoded = spatial_encoded['target']
-        temporal_encoded, _ = self.temporal_encoder(target_spatial_encoded, target_spatial_encoded, target_spatial_encoded)
+        
+        # Use the same temporal encoder calling pattern as base model
+        out = None
+        try:
+            # Try keyword arguments first (most explicit)
+            out = self.temporal_encoder(query=target_spatial_encoded, key=target_spatial_encoded, value=target_spatial_encoded)
+        except TypeError:
+            try:
+                # Fallback to positional Q, K, V
+                out = self.temporal_encoder(target_spatial_encoded, target_spatial_encoded, target_spatial_encoded)
+            except TypeError:
+                try:
+                    # Some temporal encoders may accept only a single tensor
+                    out = self.temporal_encoder(target_spatial_encoded)
+                except TypeError:
+                    # Last resort: two-tensor signature
+                    out = self.temporal_encoder(target_spatial_encoded, target_spatial_encoded)
+        
+        # Unpack output if needed
+        temporal_encoded = out[0] if isinstance(out, tuple) else out
         
         final_embedding = temporal_encoded + target_spatial_encoded
         
@@ -312,6 +342,8 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         if isinstance(self.decoder, MixtureDensityDecoder):
             # Fixed: Use correct MDN loss computation
             means, log_stds, log_weights = forward_output
+            if self.mixture_loss is None:
+                raise RuntimeError("Mixture loss requested but not initialized")
             return self.mixture_loss(forward_output, targets)
         else:
             # Standard MSE loss for the base decoder
@@ -327,6 +359,8 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
     def configure_optimizer_loss(self, base_criterion, verbose=False):
         """Configure the appropriate loss function for the model."""
         if isinstance(self.decoder, MixtureDensityDecoder):
+            if self.mixture_loss is None:
+                raise RuntimeError("Mixture loss requested but not initialized")
             if verbose:
                 print("Enhanced PGAT using MixtureNLLLoss for MDN outputs")
             return self.mixture_loss
