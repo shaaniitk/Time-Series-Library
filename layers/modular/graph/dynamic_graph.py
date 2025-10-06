@@ -3,7 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, Tuple, Optional
 from torch_geometric.data import HeteroData
+from layers.modular.graph.registry import GraphComponentRegistry
 
+@GraphComponentRegistry.register("dynamic_graph_constructor")
 class DynamicGraphConstructor(nn.Module):
     """
     Dynamic Graph Constructor that learns optimal graph structure from data
@@ -124,26 +126,17 @@ class DynamicGraphConstructor(nn.Module):
         source_indices = torch.arange(num_source_nodes, device=adj_matrix.device).unsqueeze(1).expand(-1, k)
         edge_index = torch.stack([source_indices.flatten(), top_k_indices.flatten()])
         
-        # Compute edge weights using features - handle batch dimension
-        # source_features: [batch_size, num_nodes, seq_len] -> [batch_size, num_nodes, seq_len]
-        # We need to average over sequence length for edge weight computation
-        source_pooled = source_features.mean(dim=-1)  # [batch_size, num_nodes]
-        target_pooled = target_features.mean(dim=-1)  # [batch_size, num_nodes]
-        
-        # Take first batch for edge computation (assuming homogeneous batches)
-        source_expanded = source_pooled[0][source_indices.flatten()]  # [num_edges]
-        target_expanded = target_pooled[0][top_k_indices.flatten()]   # [num_edges]
-        
-        # Concatenate source and target features
-        # The weight predictor expects d_model * 2 dimensions
-        # source_expanded and target_expanded are 1D, need to expand to d_model
-        d_model = self.d_model
-        
-        # Expand features to match d_model dimensions
-        source_expanded_full = source_expanded.unsqueeze(-1).expand(-1, d_model)
-        target_expanded_full = target_expanded.unsqueeze(-1).expand(-1, d_model)
-        
-        edge_features = torch.cat([source_expanded_full, target_expanded_full], dim=-1)
+        # Get the features for the source and target nodes of each edge.
+        # We use the features from the first batch, assuming homogeneity across the batch for graph construction.
+        source_node_features = source_features[0]  # [num_source_nodes, d_model]
+        target_node_features = target_features[0]  # [num_target_nodes, d_model]
+
+        # Select the features for the endpoints of each edge
+        edge_source_features = source_node_features[source_indices.flatten()] # [num_edges, d_model]
+        edge_target_features = target_node_features[top_k_indices.flatten()] # [num_edges, d_model]
+
+        # Concatenate the features to predict edge weights
+        edge_features = torch.cat([edge_source_features, edge_target_features], dim=-1) # [num_edges, 2 * d_model]
         edge_weights = weight_predictor(edge_features).squeeze(-1)
         
         # Apply adjacency probabilities as additional weights
@@ -172,6 +165,7 @@ class DynamicGraphConstructor(nn.Module):
         return 0.01 * l1_loss + 0.001 * entropy_loss
 
 
+@GraphComponentRegistry.register("adaptive_graph_structure")
 class AdaptiveGraphStructure(nn.Module):
     """
     Adaptive Graph Structure that evolves during training

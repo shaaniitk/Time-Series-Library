@@ -3,7 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, Tuple, Optional
 import math
+from layers.modular.graph.registry import GraphComponentRegistry
 
+@GraphComponentRegistry.register("multihead_graph_attention")
 class MultiHeadGraphAttention(nn.Module):
     """
     Multi-Head Graph Attention mechanism for heterogeneous graphs

@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from typing import Tuple, Optional
+from layers.modular.encoder.registry import EncoderRegistry
 
 class AutoCorrelationAttention(nn.Module):
     """
@@ -253,6 +254,7 @@ class AutoCorrelationAttention(nn.Module):
         
         return self.dropout(out), attn
 
+@EncoderRegistry.register("autocorr_temporal")
 class AutoCorrTemporalAttention(nn.Module):
     """
     Auto-Correlation based Temporal Attention for SOTA PGAT.

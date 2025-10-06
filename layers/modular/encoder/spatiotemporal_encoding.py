@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from layers.modular.graph.registry import GraphComponentRegistry
+
 class JointSpatioTemporalEncoding(nn.Module):
     """Jointly encode spatial and temporal patterns with optional token budgeting.
 
@@ -335,6 +337,7 @@ class JointSpatioTemporalEncoding(nn.Module):
         return self.dropout_layer(output)
 
 
+@GraphComponentRegistry.register("adaptive_spatiotemporal_encoder")
 class AdaptiveSpatioTemporalEncoder(nn.Module):
     """Stacked joint spatial-temporal encoder with optional token budgeting.
 

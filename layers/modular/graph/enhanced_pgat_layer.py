@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple, Dict
 from layers.modular.graph.conv import CrossAttentionGNNConv, MessagePassing
+from layers.modular.encoder.registry import EncoderRegistry
 
 class DynamicEdgeWeightComputation(nn.Module):
     """
@@ -165,6 +166,7 @@ class EnhancedCrossAttentionGNNConv(MessagePassing):
         # Split aggregated output into x and t parts
         return torch.chunk(aggr_out, 2, dim=-1)
 
+@EncoderRegistry.register("enhanced_pgat_cross_attn")
 class EnhancedPGAT_CrossAttn_Layer(nn.Module):
     """
     Enhanced PGAT Cross Attention Layer with dynamic edge weights.

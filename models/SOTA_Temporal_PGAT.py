@@ -18,6 +18,10 @@ from layers.modular.embedding.structural_positional_encoding import StructuralPo
 from layers.modular.embedding.enhanced_temporal_encoding import EnhancedTemporalEncoding
 from layers.modular.graph.enhanced_pgat_layer import EnhancedPGAT_CrossAttn_Layer
 from utils.graph_aware_dimension_manager import GraphAwareDimensionManager, create_graph_aware_dimension_manager
+from layers.modular.graph.gated_graph_combiner import GatedGraphCombiner
+from layers.modular.encoder.registry import get_encoder_component
+from layers.modular.graph.registry import get_graph_component
+
 
 class _LazyLinearEmbedding(nn.Module):
     """Minimal lazy linear projection used by the fallback embedding path."""
@@ -91,22 +95,34 @@ class SOTA_Temporal_PGAT(nn.Module):
         default_total_nodes = default_wave_nodes + default_target_nodes + default_transition_nodes
         default_seq_len = getattr(config, 'seq_len', 96) + getattr(config, 'pred_len', 24)
         
-        # Initialize dynamic graph components with default sizes
-        self.dynamic_graph = DynamicGraphConstructor(
+        # Initialize graph components from registry
+        self.dynamic_graph = get_graph_component(
+            'dynamic_graph_constructor',
             d_model=self.d_model,
             num_waves=default_wave_nodes,
             num_targets=default_target_nodes,
             num_transitions=default_transition_nodes
         )
         
-        self.adaptive_graph = AdaptiveGraphStructure(
+        self.adaptive_graph = get_graph_component(
+            'adaptive_graph_structure',
             d_model=self.d_model,
             num_waves=default_wave_nodes,
             num_targets=default_target_nodes,
             num_transitions=default_transition_nodes
         )
         
-        self.spatiotemporal_encoder = AdaptiveSpatioTemporalEncoder(
+        if getattr(config, 'use_gated_graph_combiner', False):
+            self.graph_combiner = get_graph_component(
+                'gated_graph_combiner',
+                num_nodes=default_total_nodes,
+                d_model=self.d_model
+            )
+        else:
+            self.graph_combiner = None
+            
+        self.spatiotemporal_encoder = get_graph_component(
+            'adaptive_spatiotemporal_encoder',
             d_model=self.d_model,
             max_seq_len=default_seq_len,
             max_nodes=default_total_nodes,
@@ -114,14 +130,16 @@ class SOTA_Temporal_PGAT(nn.Module):
             num_heads=self.n_heads
         )
         
-        self.graph_pos_encoding = GraphAwarePositionalEncoding(
+        self.graph_pos_encoding = get_graph_component(
+            'graph_aware_positional_encoding',
             d_model=self.d_model,
             max_nodes=default_total_nodes,
             max_seq_len=default_seq_len,
             encoding_types=['distance', 'centrality', 'spectral']
         )
         
-        self.graph_attention = MultiHeadGraphAttention(
+        self.graph_attention = get_graph_component(
+            'multihead_graph_attention',
             d_model=self.d_model,
             num_heads=self.n_heads
         )
@@ -142,19 +160,17 @@ class SOTA_Temporal_PGAT(nn.Module):
         
         # Enhanced spatial encoder with dynamic edge weights
         # Note: Previously forced disabled due to index errors; now gated via config with safe fallback
-        use_dynamic_weights = getattr(config, 'use_dynamic_edge_weights', True)
         try:
-            if use_dynamic_weights:
-                self.spatial_encoder = EnhancedPGAT_CrossAttn_Layer(
-                    d_model=config.d_model,
-                    num_heads=getattr(config, 'n_heads', 8),
-                    use_dynamic_weights=True
-                )
-                self.enhanced_pgat_enabled = True
-            else:
-                raise RuntimeError('Enhanced PGAT disabled via config')
+            spatial_encoder_name = getattr(config, 'spatial_encoder', 'enhanced_pgat_cross_attn')
+            self.spatial_encoder = get_encoder_component(
+                spatial_encoder_name,
+                d_model=config.d_model,
+                num_heads=getattr(config, 'n_heads', 8),
+                use_dynamic_weights=getattr(config, 'use_dynamic_edge_weights', True)
+            )
+            self.enhanced_pgat_enabled = isinstance(self.spatial_encoder, EnhancedPGAT_CrossAttn_Layer)
         except Exception as e:
-            print(f"Info: Enhanced PGAT unavailable ({e}); falling back to Linear spatial encoder")
+            print(f"Info: Spatial encoder '{getattr(config, 'spatial_encoder', 'enhanced_pgat_cross_attn')}' unavailable ({e}); falling back to Linear spatial encoder")
             self.enhanced_pgat_enabled = False
             # Use simple linear layer for spatial encoding
             self.spatial_encoder = nn.Linear(config.d_model, config.d_model)
@@ -163,15 +179,17 @@ class SOTA_Temporal_PGAT(nn.Module):
             self.feature_projection = nn.Linear(total_features, config.d_model)
         
         # Enhanced temporal encoder with autocorrelation attention
-        use_autocorr = getattr(config, 'use_autocorr_attention', True)
-        if use_autocorr:
-            self.temporal_encoder = AutoCorrTemporalAttention(
+        try:
+            temporal_encoder_name = getattr(config, 'temporal_encoder', 'autocorr_temporal')
+            self.temporal_encoder = get_encoder_component(
+                temporal_encoder_name,
                 d_model=config.d_model,
-                n_heads=getattr(config, 'n_heads', 8),
+                num_heads=getattr(config, 'n_heads', 8),
                 dropout=getattr(config, 'dropout', 0.1),
                 factor=getattr(config, 'autocorr_factor', 1)
             )
-        else:
+        except Exception as e:
+            print(f"Info: Temporal encoder '{getattr(config, 'temporal_encoder', 'autocorr_temporal')}' unavailable ({e}); falling back to default temporal attention.")
             # Use the attention factory for robust instantiation
             self.temporal_encoder = get_attention_component(
                 'temporal_attention',
@@ -268,24 +286,39 @@ class SOTA_Temporal_PGAT(nn.Module):
         # wave_embedded: [batch, seq_len=96, d_model] -> [batch, wave_nodes=7, d_model]
         # target_embedded: [batch, pred_len=24, d_model] -> [batch, target_nodes=3, d_model]
         
-        # CRITICAL FIX: Properly initialize temporal-to-spatial conversion modules
-        # These modules MUST be registered with PyTorch for training to work
-        if self.wave_temporal_to_spatial is None:
-            self.wave_temporal_to_spatial = nn.Linear(wave_len, wave_nodes)
-            # Properly register the module
-            self.add_module('wave_temporal_to_spatial', self.wave_temporal_to_spatial)
-        if self.target_temporal_to_spatial is None:
-            self.target_temporal_to_spatial = nn.Linear(target_len, target_nodes)
-            # Properly register the module
-            self.add_module('target_temporal_to_spatial', self.target_temporal_to_spatial)
-        
-        # Ensure modules are on correct device
-        self.wave_temporal_to_spatial = self.wave_temporal_to_spatial.to(wave_embedded.device)
-        self.target_temporal_to_spatial = self.target_temporal_to_spatial.to(target_embedded.device)
-        
-        # Convert temporal to spatial: [batch, seq_len, d_model] -> [batch, d_model, seq_len] -> [batch, d_model, nodes] -> [batch, nodes, d_model]
-        wave_spatial = self.wave_temporal_to_spatial(wave_embedded.transpose(1, 2)).transpose(1, 2)  # [batch, wave_nodes, d_model]
-        target_spatial = self.target_temporal_to_spatial(target_embedded.transpose(1, 2)).transpose(1, 2)  # [batch, target_nodes, d_model]
+        # Enhancement 2: Conditionally use Attention-based temporal-to-spatial conversion
+        if getattr(self.config, 'use_attention_temp_to_spatial', False):
+            from layers.modular.embedding.attention_temporal_to_spatial import AttentionTemporalToSpatial
+            if self.wave_temporal_to_spatial is None:
+                self.wave_temporal_to_spatial = AttentionTemporalToSpatial(self.d_model, wave_nodes, n_heads=self.n_heads)
+                self.add_module('wave_temporal_to_spatial', self.wave_temporal_to_spatial)
+            if self.target_temporal_to_spatial is None:
+                self.target_temporal_to_spatial = AttentionTemporalToSpatial(self.d_model, target_nodes, n_heads=self.n_heads)
+                self.add_module('target_temporal_to_spatial', self.target_temporal_to_spatial)
+            
+            # Ensure modules are on correct device
+            self.wave_temporal_to_spatial = self.wave_temporal_to_spatial.to(wave_embedded.device)
+            self.target_temporal_to_spatial = self.target_temporal_to_spatial.to(target_embedded.device)
+
+            wave_spatial = self.wave_temporal_to_spatial(wave_embedded)
+            target_spatial = self.target_temporal_to_spatial(target_embedded)
+
+        else:
+            # Original Linear conversion logic
+            if self.wave_temporal_to_spatial is None:
+                self.wave_temporal_to_spatial = nn.Linear(wave_len, wave_nodes)
+                self.add_module('wave_temporal_to_spatial', self.wave_temporal_to_spatial)
+            if self.target_temporal_to_spatial is None:
+                self.target_temporal_to_spatial = nn.Linear(target_len, target_nodes)
+                self.add_module('target_temporal_to_spatial', self.target_temporal_to_spatial)
+            
+            # Ensure modules are on correct device
+            self.wave_temporal_to_spatial = self.wave_temporal_to_spatial.to(wave_embedded.device)
+            self.target_temporal_to_spatial = self.target_temporal_to_spatial.to(target_embedded.device)
+            
+            # Convert temporal to spatial: [batch, seq_len, d_model] -> [batch, d_model, seq_len] -> [batch, d_model, nodes] -> [batch, nodes, d_model]
+            wave_spatial = self.wave_temporal_to_spatial(wave_embedded.transpose(1, 2)).transpose(1, 2)  # [batch, wave_nodes, d_model]
+            target_spatial = self.target_temporal_to_spatial(target_embedded.transpose(1, 2)).transpose(1, 2)  # [batch, target_nodes, d_model]
         
         # Validate the converted tensors
         self._validate_node_tensor(wave_spatial, "wave_spatial", batch_size, wave_nodes)
@@ -403,25 +436,28 @@ class SOTA_Temporal_PGAT(nn.Module):
             adapt_result = self.adaptive_graph(node_features_dict)
             if isinstance(adapt_result, (tuple, list)):
                 adaptive_adjacency, adaptive_edge_weights = adapt_result[0], adapt_result[1]
-                # Combine both results intelligently
+            else:
+                # Handle case where adaptive_graph returns a single tensor
+                adaptive_adjacency, adaptive_edge_weights = adapt_result, None
+
+            # Combine graphs using the new gated combiner if available
+            if self.graph_combiner is not None:
+                adjacency_matrix, edge_weights = self.graph_combiner(
+                    base_adjacency, adaptive_adjacency, base_edge_weights, adaptive_edge_weights
+                )
+            else:
+                # Fallback to original logic
                 if base_adjacency is not None and adaptive_adjacency is not None:
-                    # Check if adjacency matrices are tensors (can be combined) or graph objects (use adaptive)
                     if isinstance(base_adjacency, torch.Tensor) and isinstance(adaptive_adjacency, torch.Tensor):
-                        # Weighted combination of adjacency matrices
                         base_weight = getattr(self.config, 'base_adjacency_weight', 0.7)
                         adaptive_weight = getattr(self.config, 'adaptive_adjacency_weight', 0.3)
                         adjacency_matrix = base_weight * base_adjacency + adaptive_weight * adaptive_adjacency
                     else:
-                        # If not tensors (e.g., HeteroData), prefer adaptive over base
                         adjacency_matrix = adaptive_adjacency
                     edge_weights = adaptive_edge_weights if adaptive_edge_weights is not None else base_edge_weights
                 else:
                     adjacency_matrix = adaptive_adjacency if adaptive_adjacency is not None else base_adjacency
                     edge_weights = adaptive_edge_weights if adaptive_edge_weights is not None else base_edge_weights
-            else:
-                # Only adaptive result available
-                adjacency_matrix = adapt_result
-                edge_weights = base_edge_weights
         else:
             # Use simple adjacency matrix for now
             adjacency_matrix = self._create_adjacency_matrix(seq_len, num_nodes, combined_input.device)
@@ -556,9 +592,24 @@ class SOTA_Temporal_PGAT(nn.Module):
             'target': target_spatial.mean(dim=0)     # [target_nodes, d_model]
         }
 
+        # Use the more robust get_pyg_graph() method with topology features
+        from utils.graph_utils import get_pyg_graph
+        
+        # Update config with correct node counts for graph construction
+        self.config.num_waves = wave_nodes
+        self.config.num_targets = target_nodes
+        self.config.num_transitions = transition_nodes
+        
+        graph_data = get_pyg_graph(self.config, combined_input.device)
+        
+        # IMPORTANT: Edge index convention fix
+        # - get_pyg_graph() follows PyTorch Geometric standard: edge_index[0] = source, edge_index[1] = target
+        # - Our graph attention layer expects: edge_index[0] = target, edge_index[1] = source
+        # - Solution: Use .flip(0) to swap the convention
+        # - This allows us to use the more robust get_pyg_graph() method with topology features
         enhanced_edge_index_dict = {
-            ('wave', 'interacts_with', 'transition'): self._create_edge_index(wave_nodes, transition_nodes, combined_input.device),
-            ('transition', 'influences', 'target'): self._create_edge_index(transition_nodes, target_nodes, combined_input.device)
+            ('wave', 'interacts_with', 'transition'): graph_data['wave', 'interacts_with', 'transition'].edge_index.flip(0),
+            ('transition', 'influences', 'target'): graph_data['transition', 'influences', 'target'].edge_index.flip(0)
         }
 
         # Runtime validations for enhanced_x_dict and enhanced_edge_index_dict

@@ -6,7 +6,9 @@ import math
 import numpy as np
 from scipy.sparse.csgraph import shortest_path
 from scipy.sparse import csr_matrix
+from layers.modular.graph.registry import GraphComponentRegistry
 
+@GraphComponentRegistry.register("graph_aware_positional_encoding")
 class GraphAwarePositionalEncoding(nn.Module):
     """
     Graph-aware positional encoding that incorporates topology information

@@ -1,114 +1,60 @@
+"""
+Registry for encoder components.
+"""
 
-from .standard_encoder import StandardEncoder
-from .enhanced_encoder import EnhancedEncoder
-from .stable_encoder import StableEncoder
-from .hierarchical_encoder import HierarchicalEncoder
-from .graph_encoder import GraphTimeSeriesEncoder, HybridGraphEncoder, AdaptiveGraphEncoder
-from .crossformer_encoder import CrossformerEncoder
-from .spatiotemporal_encoding import JointSpatioTemporalEncoding, AdaptiveSpatioTemporalEncoder
-from utils.logger import logger
+from typing import Type, Dict, Any
+import torch.nn as nn
 
 class EncoderRegistry:
-    """
-    A registry for all available encoder components.
-    """
-    _registry = {
-        "standard": StandardEncoder,
-        "enhanced": EnhancedEncoder,
-        "stable": StableEncoder,
-        "hierarchical": HierarchicalEncoder,
-        "graph": GraphTimeSeriesEncoder,
-        "hybrid_graph": HybridGraphEncoder,
-        "adaptive_graph": AdaptiveGraphEncoder,
-        "crossformer": CrossformerEncoder,
-        "joint_spatiotemporal": JointSpatioTemporalEncoding,
-        "adaptive_spatiotemporal": AdaptiveSpatioTemporalEncoder,
-    }
+    """A registry for encoder components."""
+
+    _registry: Dict[str, Type[nn.Module]] = {}
 
     @classmethod
-    def register(cls, name, component_class):
-        if name in cls._registry:
-            logger.warning(f"Component '{name}' is already registered and will be overwritten.")
-        cls._registry[name] = component_class
-        logger.info(f"Registered encoder component: {name}")
+    def register(cls, name: str):
+        """
+        Decorator to register a new encoder component.
+
+        Args:
+            name (str): The name of the encoder component.
+        """
+        def wrapper(wrapped_class: Type[nn.Module]):
+            if name in cls._registry:
+                raise ValueError(f"Encoder component '{name}' is already registered.")
+            cls._registry[name] = wrapped_class
+            return wrapped_class
+        return wrapper
 
     @classmethod
-    def get(cls, name):
-        component = cls._registry.get(name)
-        if component is None:
-            logger.error(f"Encoder component '{name}' not found.")
-            raise ValueError(f"Encoder component '{name}' not found.")
-        return component
+    def get(cls, name: str) -> Type[nn.Module]:
+        """
+        Get an encoder component from the registry.
+
+        Args:
+            name (str): The name of the encoder component.
+
+        Returns:
+            Type[nn.Module]: The encoder component class.
+        """
+        if name not in cls._registry:
+            raise ValueError(f"Encoder component '{name}' not found in registry. Available: {list(cls._registry.keys())}")
+        return cls._registry[name]
 
     @classmethod
-    def list_components(cls):
+    def list_available(cls) -> list[str]:
+        """List all available encoder components."""
         return list(cls._registry.keys())
 
-def get_encoder_component(name, **kwargs):
+def get_encoder_component(name: str, **kwargs: Any) -> nn.Module:
+    """
+    Instantiate an encoder component from the registry.
+
+    Args:
+        name (str): The name of the encoder component.
+        **kwargs: The arguments to pass to the component's constructor.
+
+    Returns:
+        nn.Module: An instance of the encoder component.
+    """
     component_class = EncoderRegistry.get(name)
-    # Support two hierarchical pathways:
-    # 1) Modular hierarchical encoder defined in layers/modular/encoder/hierarchical_encoder.py expecting
-    #    (e_layers, d_model, n_heads, d_ff, dropout, activation, attention_type, decomp_type, decomp_params,...)
-    # 2) Enhancedcomponents HierarchicalEncoder variant expecting (configs, n_levels, share_weights)
-    if name == 'hierarchical':
-        try:
-            return component_class(**kwargs)
-        except TypeError:
-            # Attempt configs-based signature fallback if provided
-            configs = kwargs.get('configs')
-            n_levels = kwargs.get('n_levels', 2)
-            share_weights = kwargs.get('share_weights', False)
-            if configs is None:
-                raise
-            return component_class(configs, n_levels, share_weights)
     return component_class(**kwargs)
-
-# ---------------- Deprecation Shim: Forward to unified registry -----------------
-try:
-    from layers.modular.core import unified_registry, ComponentFamily  # type: ignore
-    import warnings
-    _enc_dep_warned = False
-
-    def _warn_enc():
-        global _enc_dep_warned
-        if not _enc_dep_warned:
-            warnings.warn(
-                "EncoderRegistry is deprecated – use unified_registry.create(ComponentFamily.ENCODER, name, **kwargs)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            _enc_dep_warned = True
-
-    _LEGACY_TO_UNIFIED = {}
-
-    @classmethod  # type: ignore
-    def _shim_register(cls, name, component_class):
-        _warn_enc()
-        unified_registry.register(ComponentFamily.ENCODER, name, component_class)
-
-    @classmethod  # type: ignore
-    def _shim_get(cls, name):
-        _warn_enc()
-        lookup = _LEGACY_TO_UNIFIED.get(name, name)
-        try:
-            return unified_registry.resolve(ComponentFamily.ENCODER, lookup).cls
-        except Exception:
-            # Fallback to legacy registry but preserve ValueError behavior
-            component = cls._registry.get(name)
-            if component is None:
-                raise ValueError(f"Encoder component '{name}' not found.")
-            return component
-
-    @classmethod  # type: ignore
-    def _shim_list(cls):
-        _warn_enc()
-        try:
-            return unified_registry.list(ComponentFamily.ENCODER)
-        except Exception:
-            return list(cls._registry.keys())
-
-    EncoderRegistry.register = _shim_register  # type: ignore
-    EncoderRegistry.get = _shim_get  # type: ignore
-    EncoderRegistry.list_components = _shim_list  # type: ignore
-except Exception:  # pragma: no cover
-    pass
