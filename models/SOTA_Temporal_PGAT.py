@@ -116,7 +116,8 @@ class SOTA_Temporal_PGAT(nn.Module):
             self.graph_combiner = get_graph_component(
                 'gated_graph_combiner',
                 num_nodes=default_total_nodes,
-                d_model=self.d_model
+                d_model=self.d_model,
+                num_graphs=2  # Base + adaptive graphs
             )
         else:
             self.graph_combiner = None
