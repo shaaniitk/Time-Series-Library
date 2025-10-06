@@ -250,14 +250,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
-                        if self.args.model == 'SOTA_Temporal_PGAT':
+                        if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
                             wave_window = batch_x
                             target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
                             outputs_raw = self.model(wave_window, target_window, None)
                         else:
                             outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 else:
-                    if self.args.model == 'SOTA_Temporal_PGAT':
+                    if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
                         wave_window = batch_x
                         target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
                         outputs_raw = self.model(wave_window, target_window, None)
@@ -288,9 +288,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple.")
                     means_v, stds_v, weights_v = mdn_outputs_val
                     if means_v.size(1) > self.args.pred_len:
-                        means_v = means_v[:, -self.args.pred_len:, :]
-                        stds_v = stds_v[:, -self.args.pred_len:, :]
-                        weights_v = weights_v[:, -self.args.pred_len:, :]
+                        means_v = means_v[:, -self.args.pred_len:, ...]
+                        stds_v = stds_v[:, -self.args.pred_len:, ...]
+                        weights_v = weights_v[:, -self.args.pred_len:, ...]
                     targets_v = y_true_for_loss_val.squeeze(-1) if y_true_for_loss_val.dim() == 3 and y_true_for_loss_val.size(-1) == 1 else y_true_for_loss_val
                     loss = criterion((means_v, stds_v, weights_v), targets_v)
                 else:
@@ -426,14 +426,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs_raw_train = None # Initialize
                 if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
-                        if self.args.model == 'SOTA_Temporal_PGAT':
+                        if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
                             wave_window = batch_x
                             target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
                             outputs_raw_train = self.model(wave_window, target_window, None)
                         else:
                             outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
-                    if self.args.model == 'SOTA_Temporal_PGAT':
+                    if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
                         wave_window = batch_x
                         target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
                         outputs_raw_train = self.model(wave_window, target_window, None)
@@ -471,9 +471,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple during training.")
                     means_t, stds_t, weights_t = mdn_outputs_train
                     if means_t.size(1) > self.args.pred_len:
-                        means_t = means_t[:, -self.args.pred_len:, :]
-                        stds_t = stds_t[:, -self.args.pred_len:, :]
-                        weights_t = weights_t[:, -self.args.pred_len:, :]
+                        means_t = means_t[:, -self.args.pred_len:, ...]
+                        stds_t = stds_t[:, -self.args.pred_len:, ...]
+                        weights_t = weights_t[:, -self.args.pred_len:, ...]
                     targets_t = y_true_for_loss_train.squeeze(-1) if y_true_for_loss_train.dim() == 3 and y_true_for_loss_train.size(-1) == 1 else y_true_for_loss_train
                     loss_train = criterion((means_t, stds_t, weights_t), targets_t)
                 else:
@@ -646,7 +646,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs_raw_test = None  # Initialize
                 if self.args.use_amp:  # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
-                        if self.args.model == 'SOTA_Temporal_PGAT':
+                        if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
                             wave_window = batch_x
                             target_window = torch.zeros(
                                 batch_x.size(0),
@@ -659,7 +659,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         else:
                             outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
                 else:
-                    if self.args.model == 'SOTA_Temporal_PGAT':
+                    if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
                         wave_window = batch_x
                         target_window = torch.zeros(
                             batch_x.size(0),
@@ -682,11 +682,20 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 if mdn_outputs_test is not None:
                     means_te, stds_te, weights_te = mdn_outputs_test
                     if means_te.size(1) > self.args.pred_len:
-                        means_te = means_te[:, -self.args.pred_len:, :]
-                        stds_te = stds_te[:, -self.args.pred_len:, :]
-                        weights_te = weights_te[:, -self.args.pred_len:, :]
-                    # Use mixture mean as point prediction for evaluation
-                    model_outputs_pred_len_segment = (weights_te * means_te).sum(dim=-1).unsqueeze(-1)
+                        means_te = means_te[:, -self.args.pred_len:, ...]
+                        stds_te = stds_te[:, -self.args.pred_len:, ...]
+                        weights_te = weights_te[:, -self.args.pred_len:, ...]
+                    
+                    # Handle both univariate and multivariate mixture outputs
+                    if means_te.dim() == 4:  # Multivariate: [batch, pred_len, targets, components]
+                        # Compute mixture mean for each target separately
+                        # weights_te: [batch, pred_len, components] -> [batch, pred_len, 1, components]
+                        weights_expanded = weights_te.unsqueeze(2)  # Add target dimension
+                        # Compute weighted mean: [batch, pred_len, targets, components] -> [batch, pred_len, targets]
+                        model_outputs_pred_len_segment = (weights_expanded * means_te).sum(dim=-1)
+                    else:  # Univariate: [batch, pred_len, components]
+                        # Use mixture mean as point prediction for evaluation
+                        model_outputs_pred_len_segment = (weights_te * means_te).sum(dim=-1).unsqueeze(-1)
                 else:
                     model_outputs_pred_len_segment = outputs_tensor_test[:, -self.args.pred_len:, :]
 

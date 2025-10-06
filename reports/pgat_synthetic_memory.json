@@ -7,109 +7,109 @@
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759712476.4185953,
+    "timestamp": 1759780602.5584612,
     "extras": {
-      "config": "configs/sota_pgat_base_test.yaml",
+      "config": "configs/enhanced_sota_pgat_synthetic.yaml",
       "regenerate_data": false,
       "gradient_threshold": 1e-06
     }
   },
   {
     "stage": "dataloaders_built",
-    "cpu_rss_mb": 0.528,
+    "cpu_rss_mb": 0.521,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759712476.448421,
+    "timestamp": 1759780602.574264,
     "extras": {
-      "train_steps": 976,
+      "train_steps": 80,
       "validation_steps": 4,
       "test_steps": 1
     }
   },
   {
     "stage": "experiment_init_start",
-    "cpu_rss_mb": 0.528,
+    "cpu_rss_mb": 0.521,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759712476.4484706,
+    "timestamp": 1759780602.5743134,
     "extras": {
-      "model": "SOTA_Temporal_PGAT",
+      "model": "Enhanced_SOTA_PGAT",
       "features": "M"
     }
   },
   {
     "stage": "experiment_model_ready",
-    "cpu_rss_mb": 0.556,
+    "cpu_rss_mb": 0.605,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759712476.4861069,
+    "timestamp": 1759780602.6767955,
     "extras": {
-      "parameters": 7369009,
+      "parameters": 18150429,
       "device": "cpu"
     }
   },
   {
     "stage": "training_start",
-    "cpu_rss_mb": 0.556,
+    "cpu_rss_mb": 0.605,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759712476.4862597,
+    "timestamp": 1759780602.6771724,
     "extras": {
       "setting": "synthetic_pgat_M_96_24",
-      "train_epochs": 2,
+      "train_epochs": 5,
       "batch_size": 8
     }
   },
   {
     "stage": "train_loop_start",
-    "cpu_rss_mb": 0.556,
+    "cpu_rss_mb": 0.605,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759712476.486713,
+    "timestamp": 1759780602.67768,
     "extras": {
       "setting": "synthetic_pgat_M_96_24",
-      "train_steps": 976,
-      "epochs": 2
+      "train_steps": 80,
+      "epochs": 5
     }
   },
   {
     "stage": "epoch_begin",
-    "cpu_rss_mb": 0.556,
+    "cpu_rss_mb": 0.605,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759712476.4870124,
+    "timestamp": 1759780602.678059,
     "extras": {
       "epoch": 1,
-      "train_steps": 976
+      "train_steps": 80
     }
   },
   {
     "stage": "validation_start",
-    "cpu_rss_mb": 17.65,
+    "cpu_rss_mb": 0.794,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759719263.7079632,
+    "timestamp": 1759780605.838187,
     "extras": {
       "len_vali_loader": 4,
       "criterion": "MixtureNLLLoss"
@@ -117,27 +117,27 @@
   },
   {
     "stage": "validation_complete",
-    "cpu_rss_mb": 17.65,
+    "cpu_rss_mb": 0.794,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759719269.0064538,
+    "timestamp": 1759780605.9863715,
     "extras": {
       "len_vali_loader": 4,
-      "loss": 0.7345331162214279
+      "loss": 1.118733286857605
     }
   },
   {
     "stage": "validation_start",
-    "cpu_rss_mb": 17.65,
+    "cpu_rss_mb": 0.794,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759719269.006846,
+    "timestamp": 1759780605.987,
     "extras": {
       "len_vali_loader": 1,
       "criterion": "MixtureNLLLoss"
@@ -145,57 +145,57 @@
   },
   {
     "stage": "validation_complete",
-    "cpu_rss_mb": 17.65,
+    "cpu_rss_mb": 0.794,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759719269.3294244,
+    "timestamp": 1759780606.046147,
     "extras": {
       "len_vali_loader": 1,
-      "loss": 0.7256085276603699
+      "loss": 1.237027645111084
     }
   },
   {
     "stage": "epoch_end",
-    "cpu_rss_mb": 17.65,
+    "cpu_rss_mb": 0.794,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759719269.329752,
+    "timestamp": 1759780606.046388,
     "extras": {
       "epoch": 1,
-      "train_loss": 0.7904860186772268,
-      "vali_loss": 0.7345331162214279,
-      "test_loss": 0.7256085276603699
+      "train_loss": 1.1924591302871703,
+      "vali_loss": 1.118733286857605,
+      "test_loss": 1.237027645111084
     }
   },
   {
     "stage": "epoch_begin",
-    "cpu_rss_mb": 17.65,
+    "cpu_rss_mb": 0.794,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759719269.3487148,
+    "timestamp": 1759780606.080664,
     "extras": {
       "epoch": 2,
-      "train_steps": 976
+      "train_steps": 80
     }
   },
   {
     "stage": "validation_start",
-    "cpu_rss_mb": 17.694,
+    "cpu_rss_mb": 0.798,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759726040.802258,
+    "timestamp": 1759780609.3341467,
     "extras": {
       "len_vali_loader": 4,
       "criterion": "MixtureNLLLoss"
@@ -203,27 +203,27 @@
   },
   {
     "stage": "validation_complete",
-    "cpu_rss_mb": 17.694,
+    "cpu_rss_mb": 0.798,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759726046.3162885,
+    "timestamp": 1759780609.4866266,
     "extras": {
       "len_vali_loader": 4,
-      "loss": 0.7713803648948669
+      "loss": 1.033212587237358
     }
   },
   {
     "stage": "validation_start",
-    "cpu_rss_mb": 17.694,
+    "cpu_rss_mb": 0.798,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759726046.3166718,
+    "timestamp": 1759780609.4871209,
     "extras": {
       "len_vali_loader": 1,
       "criterion": "MixtureNLLLoss"
@@ -231,103 +231,332 @@
   },
   {
     "stage": "validation_complete",
-    "cpu_rss_mb": 17.694,
+    "cpu_rss_mb": 0.798,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759726046.6152663,
+    "timestamp": 1759780609.5391593,
     "extras": {
       "len_vali_loader": 1,
-      "loss": 0.6747313141822815
+      "loss": 1.1524746417999268
     }
   },
   {
     "stage": "epoch_end",
-    "cpu_rss_mb": 17.694,
+    "cpu_rss_mb": 0.798,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759726046.6154773,
+    "timestamp": 1759780609.5393946,
     "extras": {
       "epoch": 2,
-      "train_loss": 0.7420316108914672,
-      "vali_loss": 0.7713803648948669,
-      "test_loss": 0.6747313141822815
+      "train_loss": 1.1292808100581169,
+      "vali_loss": 1.033212587237358,
+      "test_loss": 1.1524746417999268
+    }
+  },
+  {
+    "stage": "epoch_begin",
+    "cpu_rss_mb": 0.798,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780609.580234,
+    "extras": {
+      "epoch": 3,
+      "train_steps": 80
+    }
+  },
+  {
+    "stage": "validation_start",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780613.029249,
+    "extras": {
+      "len_vali_loader": 4,
+      "criterion": "MixtureNLLLoss"
+    }
+  },
+  {
+    "stage": "validation_complete",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780613.1693113,
+    "extras": {
+      "len_vali_loader": 4,
+      "loss": 0.9834187477827072
+    }
+  },
+  {
+    "stage": "validation_start",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780613.1699262,
+    "extras": {
+      "len_vali_loader": 1,
+      "criterion": "MixtureNLLLoss"
+    }
+  },
+  {
+    "stage": "validation_complete",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780613.220125,
+    "extras": {
+      "len_vali_loader": 1,
+      "loss": 1.0571316480636597
+    }
+  },
+  {
+    "stage": "epoch_end",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780613.220333,
+    "extras": {
+      "epoch": 3,
+      "train_loss": 1.0365777641534806,
+      "vali_loss": 0.9834187477827072,
+      "test_loss": 1.0571316480636597
+    }
+  },
+  {
+    "stage": "epoch_begin",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780613.2572343,
+    "extras": {
+      "epoch": 4,
+      "train_steps": 80
+    }
+  },
+  {
+    "stage": "validation_start",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780616.5900156,
+    "extras": {
+      "len_vali_loader": 4,
+      "criterion": "MixtureNLLLoss"
+    }
+  },
+  {
+    "stage": "validation_complete",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780616.7389545,
+    "extras": {
+      "len_vali_loader": 4,
+      "loss": 0.9636962860822678
+    }
+  },
+  {
+    "stage": "validation_start",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780616.7396173,
+    "extras": {
+      "len_vali_loader": 1,
+      "criterion": "MixtureNLLLoss"
+    }
+  },
+  {
+    "stage": "validation_complete",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780616.790599,
+    "extras": {
+      "len_vali_loader": 1,
+      "loss": 1.013290524482727
+    }
+  },
+  {
+    "stage": "epoch_end",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780616.7908127,
+    "extras": {
+      "epoch": 4,
+      "train_loss": 0.9896172188222409,
+      "vali_loss": 0.9636962860822678,
+      "test_loss": 1.013290524482727
+    }
+  },
+  {
+    "stage": "epoch_begin",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780616.8287013,
+    "extras": {
+      "epoch": 5,
+      "train_steps": 80
+    }
+  },
+  {
+    "stage": "validation_start",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780620.2857645,
+    "extras": {
+      "len_vali_loader": 4,
+      "criterion": "MixtureNLLLoss"
+    }
+  },
+  {
+    "stage": "validation_complete",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780620.434319,
+    "extras": {
+      "len_vali_loader": 4,
+      "loss": 0.944603830575943
+    }
+  },
+  {
+    "stage": "validation_start",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780620.4348314,
+    "extras": {
+      "len_vali_loader": 1,
+      "criterion": "MixtureNLLLoss"
+    }
+  },
+  {
+    "stage": "validation_complete",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780620.4900954,
+    "extras": {
+      "len_vali_loader": 1,
+      "loss": 1.0748158693313599
+    }
+  },
+  {
+    "stage": "epoch_end",
+    "cpu_rss_mb": 0.799,
+    "cpu_vms_mb": null,
+    "cuda_allocated_mb": null,
+    "cuda_reserved_mb": null,
+    "cuda_max_allocated_mb": null,
+    "cuda_max_reserved_mb": null,
+    "timestamp": 1759780620.4903514,
+    "extras": {
+      "epoch": 5,
+      "train_loss": 0.9605638436973095,
+      "vali_loss": 0.944603830575943,
+      "test_loss": 1.0748158693313599
     }
   },
   {
     "stage": "train_complete",
-    "cpu_rss_mb": 17.694,
+    "cpu_rss_mb": 0.799,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759726046.6311047,
+    "timestamp": 1759780620.5612717,
     "extras": {
       "setting": "synthetic_pgat_M_96_24",
-      "epochs_trained": 2,
-      "train_steps": 976
+      "epochs_trained": 5,
+      "train_steps": 80
     }
   },
   {
     "stage": "training_finished",
-    "cpu_rss_mb": 17.694,
+    "cpu_rss_mb": 0.799,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759726046.6317813,
+    "timestamp": 1759780620.561907,
     "extras": {
       "setting": "synthetic_pgat_M_96_24"
     }
   },
   {
     "stage": "test_start",
-    "cpu_rss_mb": 17.694,
+    "cpu_rss_mb": 0.799,
     "cpu_vms_mb": null,
     "cuda_allocated_mb": null,
     "cuda_reserved_mb": null,
     "cuda_max_allocated_mb": null,
     "cuda_max_reserved_mb": null,
-    "timestamp": 1759726046.6439981,
+    "timestamp": 1759780620.5837696,
     "extras": {
       "setting": "synthetic_pgat_M_96_24",
       "len_test_loader": 1
-    }
-  },
-  {
-    "stage": "test_complete",
-    "cpu_rss_mb": 17.694,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759726047.120194,
-    "extras": {
-      "setting": "synthetic_pgat_M_96_24",
-      "mse": 0.579058142693543,
-      "mae": 0.7220564354836553,
-      "rmse": 0.7609586997291923
-    }
-  },
-  {
-    "stage": "evaluation_finished",
-    "cpu_rss_mb": 17.694,
-    "cpu_vms_mb": null,
-    "cuda_allocated_mb": null,
-    "cuda_reserved_mb": null,
-    "cuda_max_allocated_mb": null,
-    "cuda_max_reserved_mb": null,
-    "timestamp": 1759726047.120379,
-    "extras": {
-      "setting": "synthetic_pgat_M_96_24"
     }
   }
 ]

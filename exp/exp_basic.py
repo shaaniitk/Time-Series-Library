@@ -50,7 +50,7 @@ class Exp_Basic(object):
             'TimesNet', 'Autoformer', 'EnhancedAutoformer', 'BayesianEnhancedAutoformer',
             'HierarchicalEnhancedAutoformer', 'Transformer', 'Nonstationary_Transformer', 'DLinear',
             'FEDformer', 'Informer', 'LightTS', 'Reformer', 'ETSformer', 'Pyraformer', 'PatchTST', 'MICN',
-            'SOTA_Temporal_PGAT',
+            'SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT',
             'Crossformer', 'FiLM', 'iTransformer', 'Koopa', 'TiDE', 'FreTS', 'MambaSimple', 'TimeMixer',
             'TSMixer', 'SegRNN', 'TemporalFusionTransformer', 'SCINet', 'PAttn', 'TimeXer', 'WPMixer',
             'MultiPatchFormer'

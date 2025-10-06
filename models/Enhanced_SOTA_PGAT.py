@@ -39,6 +39,8 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
 
         # Initialize internal logging
         self.internal_logs: Dict[str, Any] = {}
+        self.context_projection_layers = nn.ModuleDict()
+        self.context_fusion_layer: Optional[nn.Linear] = None
 
         self._validate_enhanced_config(config)
 
@@ -456,48 +458,79 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         # Use learnable attention weights for different node types
         if not hasattr(self, 'context_attention'):
             self.context_attention = nn.Linear(d_model, 1).to(all_node_features.device)
-        
-        # Compute attention weights for each node
-        attention_logits = self.context_attention(all_node_features)  # [batch_size, total_nodes, 1]
-        attention_weights = torch.softmax(attention_logits, dim=1)  # [batch_size, total_nodes, 1]
-        
-        # Attention-weighted pooling
-        base_context = torch.sum(all_node_features * attention_weights, dim=1)  # [batch_size, d_model]
-        
-        # Enhance with multi-scale information if available
-        if wave_patched_outputs and len(wave_patched_outputs) > 0:
-            # Aggregate multi-scale wave information
-            wave_scales = []
-            for wave_output in wave_patched_outputs:
-                if wave_output is not None and isinstance(wave_output, torch.Tensor) and wave_output.numel() > 0:
-                    # Pool each scale to [batch_size, d_model]
-                    if wave_output.dim() == 3:  # [batch_size, seq_len, d_model]
-                        scale_pooled = wave_output.mean(dim=1)
-                    else:
-                        scale_pooled = wave_output.view(batch_size, -1)[:, :d_model]
-                    wave_scales.append(scale_pooled)
-            
-            if wave_scales:
-                # Combine multi-scale information
-                multi_scale_wave = torch.stack(wave_scales, dim=1).mean(dim=1)  # [batch_size, d_model]
-                base_context = base_context + 0.1 * multi_scale_wave  # Small contribution
-        
-        # Add target information if available
-        if target_patched_outputs and len(target_patched_outputs) > 0:
-            target_scales = []
-            for target_output in target_patched_outputs:
-                if target_output is not None and isinstance(target_output, torch.Tensor) and target_output.numel() > 0:
-                    if target_output.dim() == 3:
-                        scale_pooled = target_output.mean(dim=1)
-                    else:
-                        scale_pooled = target_output.view(batch_size, -1)[:, :d_model]
-                    target_scales.append(scale_pooled)
-            
-            if target_scales:
-                multi_scale_target = torch.stack(target_scales, dim=1).mean(dim=1)
-                base_context = base_context + 0.1 * multi_scale_target
-        
-        return base_context
+
+        attention_logits = self.context_attention(all_node_features)
+        attention_weights = torch.softmax(attention_logits, dim=1)
+        base_context = torch.sum(all_node_features * attention_weights, dim=1)
+
+        node_mean = all_node_features.mean(dim=1)
+        node_std = all_node_features.std(dim=1, unbiased=False)
+
+        wave_summary = self._aggregate_patch_collection(
+            wave_patched_outputs,
+            "wave_patch",
+            batch_size,
+            all_node_features.device,
+            all_node_features.dtype,
+        )
+        target_summary = self._aggregate_patch_collection(
+            target_patched_outputs,
+            "target_patch",
+            batch_size,
+            all_node_features.device,
+            all_node_features.dtype,
+        )
+
+        fusion_input = torch.cat([base_context, node_mean, node_std, wave_summary, target_summary], dim=-1)
+
+        if self.context_fusion_layer is None or self.context_fusion_layer.in_features != fusion_input.size(-1):
+            self.context_fusion_layer = nn.Linear(fusion_input.size(-1), self.d_model).to(all_node_features.device)
+
+        context_vector = self.context_fusion_layer(fusion_input)
+        return context_vector
+
+    def _aggregate_patch_collection(
+        self,
+        patch_outputs: Optional[List[torch.Tensor]],
+        key_prefix: str,
+        batch_size: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        """Aggregate multi-scale patch outputs into a fixed-size context vector."""
+
+        if not patch_outputs:
+            return torch.zeros(batch_size, self.d_model, device=device, dtype=dtype)
+
+        projections: List[torch.Tensor] = []
+        for idx, patch_output in enumerate(patch_outputs):
+            if patch_output is None:
+                continue
+            summary = patch_output
+            while summary.dim() > 2:
+                summary = summary.mean(dim=1)
+            summary = summary.reshape(batch_size, -1)
+            projector_key = f"{key_prefix}_{idx}_{summary.size(-1)}"
+            projections.append(self._project_context_summary(summary, projector_key, device))
+
+        if not projections:
+            return torch.zeros(batch_size, self.d_model, device=device, dtype=dtype)
+
+        stacked = torch.stack(projections, dim=0).mean(dim=0)
+        return stacked
+
+    def _project_context_summary(
+        self,
+        summary: torch.Tensor,
+        key: str,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Project an arbitrary summary tensor to ``d_model`` dimensions."""
+
+        if key not in self.context_projection_layers:
+            self.context_projection_layers[key] = nn.Linear(summary.size(-1), self.d_model).to(device)
+        projector = self.context_projection_layers[key]
+        return projector(summary)
 
     def get_enhanced_config_info(self):
         """Get a comprehensive summary of the enhanced model's configuration."""

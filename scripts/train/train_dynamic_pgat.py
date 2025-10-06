@@ -52,7 +52,9 @@ def _configure_pgat_args(args: SimpleNamespace) -> None:
         The mutable configuration namespace constructed from the YAML file.
     """
 
-    args.model = "SOTA_Temporal_PGAT"
+    # Use model from config if specified, otherwise default to SOTA_Temporal_PGAT
+    if not hasattr(args, 'model') or args.model is None:
+        args.model = "SOTA_Temporal_PGAT"
     _ensure_attr(args, "model_type", "pgat")
     _ensure_attr(args, "model_id", "pgat_dynamic")
 
