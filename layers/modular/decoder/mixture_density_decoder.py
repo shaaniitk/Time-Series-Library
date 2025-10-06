@@ -10,17 +10,19 @@ class MixtureDensityDecoder(nn.Module):
     components with their respective means, standard deviations, and mixture weights.
     """
     
-    def __init__(self, d_model, pred_len, num_components=3):
+    def __init__(self, d_model, pred_len, num_components=3, num_targets=1):
         """
         Args:
             d_model: Input feature dimension
             pred_len: Prediction horizon (number of time steps to predict)
             num_components: Number of Gaussian components in the mixture (K)
+            num_targets: Number of target features to predict
         """
         super().__init__()
         self.d_model = d_model
         self.pred_len = pred_len
         self.num_components = num_components
+        self.num_targets = num_targets
         
         # Shared feature processing from aggregated temporal context
         self.mlp = nn.Sequential(
@@ -29,8 +31,9 @@ class MixtureDensityDecoder(nn.Module):
             nn.Dropout(0.1)
         )
         
-        # Separate heads for each mixture component parameter (flattened over pred_len * num_components)
-        out_dim = pred_len * num_components
+        # Separate heads for each mixture component parameter
+        # Output dimensions: [pred_len, num_targets, num_components] flattened
+        out_dim = pred_len * num_targets * num_components
         self.mean_head = nn.Linear(d_model, out_dim)
         self.std_head = nn.Linear(d_model, out_dim)      # outputs log-stds (unconstrained)
         self.weight_head = nn.Linear(d_model, out_dim)   # outputs log-weights (unnormalized)
@@ -41,9 +44,11 @@ class MixtureDensityDecoder(nn.Module):
             x: Input tensor of shape (batch_size, seq_len, d_model)
             
         Returns:
-            means: Tensor of shape (batch_size, pred_len, num_components)
-            log_stds: Tensor of shape (batch_size, pred_len, num_components)
-            log_weights: Tensor of shape (batch_size, pred_len, num_components)
+            tuple: (means, log_stds, log_weights)
+                - means: [batch_size, pred_len, num_targets, num_components] if num_targets > 1
+                         [batch_size, pred_len, num_components] if num_targets == 1
+                - log_stds: Same shape as means
+                - log_weights: [batch_size, pred_len, num_components] (shared across targets)
         """
         # Aggregate temporal dimension (simple mean pooling)
         # Tests focus on shape and API, not specific temporal modeling
@@ -51,9 +56,25 @@ class MixtureDensityDecoder(nn.Module):
         hidden = self.mlp(context)  # [B, d_model]
         
         B = x.size(0)
-        means = self.mean_head(hidden).view(B, self.pred_len, self.num_components)
-        log_stds = self.std_head(hidden).view(B, self.pred_len, self.num_components)
-        log_weights = self.weight_head(hidden).view(B, self.pred_len, self.num_components)
+        
+        # Generate mixture parameters
+        means_flat = self.mean_head(hidden)    # [B, pred_len * num_targets * num_components]
+        log_stds_flat = self.std_head(hidden)  # [B, pred_len * num_targets * num_components]
+        log_weights_flat = self.weight_head(hidden)  # [B, pred_len * num_targets * num_components]
+        
+        if self.num_targets == 1:
+            # Univariate case - maintain backward compatibility
+            means = means_flat.view(B, self.pred_len, self.num_components)
+            log_stds = log_stds_flat.view(B, self.pred_len, self.num_components)
+            log_weights = log_weights_flat.view(B, self.pred_len, self.num_components)
+        else:
+            # Multivariate case
+            means = means_flat.view(B, self.pred_len, self.num_targets, self.num_components)
+            log_stds = log_stds_flat.view(B, self.pred_len, self.num_targets, self.num_components)
+            # Weights are shared across targets for simplicity
+            log_weights = log_weights_flat.view(B, self.pred_len, self.num_targets, self.num_components)
+            # Take mean across targets for shared weights
+            log_weights = log_weights.mean(dim=2)  # [B, pred_len, num_components]
         
         return means, log_stds, log_weights
     
@@ -118,11 +139,20 @@ class MixtureDensityDecoder(nn.Module):
         return mixture_mean, mixture_std
 
 class MixtureNLLLoss(nn.Module):
-    """Negative Log-Likelihood Loss for Mixture Density Networks."""
+    """Negative Log-Likelihood Loss for Mixture Density Networks with Multivariate Support."""
     
-    def __init__(self, eps=1e-8):
+    def __init__(self, eps=1e-8, multivariate_mode='independent'):
+        """
+        Args:
+            eps: Small constant for numerical stability
+            multivariate_mode: How to handle multiple target features
+                - 'independent': Treat each target feature independently (current behavior)
+                - 'joint': Model joint distribution across all target features
+                - 'first_only': Use only first target feature (fallback)
+        """
         super().__init__()
         self.eps = eps
+        self.multivariate_mode = multivariate_mode
         
     def forward(self, mixture_params, targets=None, *args):
         """
@@ -150,15 +180,24 @@ class MixtureNLLLoss(nn.Module):
         stds = torch.exp(log_stds).clamp_min(self.eps)
         log_weights = F.log_softmax(log_weights, dim=-1)
         
-        # Handle targets with different shapes
+        # Handle targets with different shapes - MULTIVARIATE SUPPORT
         if targets.dim() > 2:
-            # If targets has extra dimensions, flatten to [batch, pred_len]
             targets = targets.view(targets.size(0), targets.size(1), -1)
             if targets.size(-1) == 1:
                 targets = targets.squeeze(-1)  # [batch, pred_len]
+                return self._compute_univariate_nll(means, log_stds, log_weights, targets)
             else:
-                # Multiple target features - take the mean or first feature
-                targets = targets.mean(dim=-1)  # [batch, pred_len]
+                # Multiple target features - handle based on mode
+                return self._compute_multivariate_nll(means, log_stds, log_weights, targets)
+        else:
+            # Single target feature
+            return self._compute_univariate_nll(means, log_stds, log_weights, targets)
+        
+    def _compute_univariate_nll(self, means, log_stds, log_weights, targets):
+        """Compute NLL for single target feature (original implementation)."""
+        # Convert parameters
+        stds = torch.exp(log_stds).clamp_min(self.eps)
+        log_weights = F.log_softmax(log_weights, dim=-1)
         
         # Expand targets to match mixture dimensions
         targets_expanded = targets.unsqueeze(-1).expand_as(means)
@@ -169,6 +208,102 @@ class MixtureNLLLoss(nn.Module):
             - torch.log(stds + self.eps)
             - 0.5 * np.log(2 * np.pi)
         )
+        
+        # log-sum over mixture components
+        log_weighted = log_weights + log_probs
+        max_log = torch.max(log_weighted, dim=-1, keepdim=True)[0]
+        log_sum = max_log + torch.log(torch.sum(torch.exp(log_weighted - max_log), dim=-1, keepdim=True) + self.eps)
+        log_sum = log_sum.squeeze(-1)  # [B, T]
+        
+        # Negative log-likelihood
+        return -(log_sum.mean())
+    
+    def _compute_multivariate_nll(self, means, log_stds, log_weights, targets):
+        """Compute NLL for multiple target features."""
+        batch_size, pred_len, num_targets = targets.shape
+        
+        if self.multivariate_mode == 'independent':
+            return self._compute_independent_nll(means, log_stds, log_weights, targets)
+        elif self.multivariate_mode == 'joint':
+            return self._compute_joint_nll(means, log_stds, log_weights, targets)
+        else:  # 'first_only'
+            return self._compute_univariate_nll(means, log_stds, log_weights, targets[:, :, 0])
+    
+    def _compute_independent_nll(self, means, log_stds, log_weights, targets):
+        """Compute NLL treating each target feature independently."""
+        batch_size, pred_len, num_targets = targets.shape
+        
+        # Convert parameters
+        stds = torch.exp(log_stds).clamp_min(self.eps)
+        log_weights = F.log_softmax(log_weights, dim=-1)
+        
+        total_nll = 0.0
+        
+        # Process each target feature independently
+        for target_idx in range(num_targets):
+            target_feature = targets[:, :, target_idx]  # [batch, pred_len]
+            
+            # Get means and stds for this target feature
+            if means.dim() == 4:  # [B, T, num_targets, K]
+                target_means = means[:, :, target_idx, :]  # [B, T, K]
+                target_stds = stds[:, :, target_idx, :]    # [B, T, K]
+            else:  # [B, T, K] - shared across targets
+                target_means = means
+                target_stds = stds
+            
+            # Expand target to match mixture dimensions
+            target_expanded = target_feature.unsqueeze(-1).expand_as(target_means)  # [B, T, K]
+            
+            # Compute log probabilities for this target feature
+            log_probs = (
+                -0.5 * ((target_expanded - target_means) ** 2) / (target_stds ** 2 + self.eps)
+                - torch.log(target_stds + self.eps)
+                - 0.5 * np.log(2 * np.pi)
+            )
+            
+            # log-sum over mixture components
+            log_weighted = log_weights + log_probs
+            max_log = torch.max(log_weighted, dim=-1, keepdim=True)[0]
+            log_sum = max_log + torch.log(torch.sum(torch.exp(log_weighted - max_log), dim=-1, keepdim=True) + self.eps)
+            log_sum = log_sum.squeeze(-1)  # [B, T]
+            
+            # Accumulate negative log-likelihood
+            total_nll += -(log_sum.mean())
+        
+        # Average across target features
+        return total_nll / num_targets
+    
+    def _compute_joint_nll(self, means, log_stds, log_weights, targets):
+        """Compute NLL for joint multivariate distribution (simplified diagonal covariance)."""
+        batch_size, pred_len, num_targets = targets.shape
+        
+        # Convert parameters
+        stds = torch.exp(log_stds).clamp_min(self.eps)
+        log_weights = F.log_softmax(log_weights, dim=-1)
+        
+        # Handle different mean/std shapes
+        if means.dim() == 4:  # [B, T, num_targets, K] - multivariate
+            # Transpose to [B, T, K, num_targets] for easier computation
+            means_joint = means.transpose(2, 3)  # [B, T, K, num_targets]
+            stds_joint = stds.transpose(2, 3)    # [B, T, K, num_targets]
+        else:  # [B, T, K] - shared across targets
+            # Expand to multivariate dimensions
+            means_joint = means.unsqueeze(-1).expand(-1, -1, -1, num_targets)  # [B, T, K, num_targets]
+            stds_joint = stds.unsqueeze(-1).expand(-1, -1, -1, num_targets)    # [B, T, K, num_targets]
+        
+        # Expand targets to match mixture dimensions
+        targets_expanded = targets.unsqueeze(2).expand(-1, -1, means_joint.size(2), -1)  # [B, T, K, num_targets]
+        
+        # Compute log probabilities for joint distribution (assuming independence for simplicity)
+        # Full multivariate would use: log|2πΣ| + (x-μ)ᵀΣ⁻¹(x-μ)
+        log_probs_per_target = (
+            -0.5 * ((targets_expanded - means_joint) ** 2) / (stds_joint ** 2 + self.eps)
+            - torch.log(stds_joint + self.eps)
+            - 0.5 * np.log(2 * np.pi)
+        )
+        
+        # Sum log probabilities across target features (assuming independence)
+        log_probs = log_probs_per_target.sum(dim=-1)  # [B, T, K]
         
         # log-sum over mixture components
         log_weighted = log_weights + log_probs

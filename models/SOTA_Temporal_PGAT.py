@@ -178,19 +178,28 @@ class SOTA_Temporal_PGAT(nn.Module):
             total_features = config.d_model * 3  # wave + transition + target
             self.feature_projection = nn.Linear(total_features, config.d_model)
         
-        # Enhanced temporal encoder with autocorrelation attention
-        try:
-            temporal_encoder_name = getattr(config, 'temporal_encoder', 'autocorr_temporal')
-            self.temporal_encoder = get_encoder_component(
-                temporal_encoder_name,
-                d_model=config.d_model,
-                num_heads=getattr(config, 'n_heads', 8),
-                dropout=getattr(config, 'dropout', 0.1),
-                factor=getattr(config, 'autocorr_factor', 1)
-            )
-        except Exception as e:
-            print(f"Info: Temporal encoder '{getattr(config, 'temporal_encoder', 'autocorr_temporal')}' unavailable ({e}); falling back to default temporal attention.")
-            # Use the attention factory for robust instantiation
+        # Enhanced temporal encoder - respect use_autocorr_attention setting
+        if getattr(config, 'use_autocorr_attention', False):
+            try:
+                temporal_encoder_name = getattr(config, 'temporal_encoder', 'autocorr_temporal')
+                self.temporal_encoder = get_encoder_component(
+                    temporal_encoder_name,
+                    d_model=config.d_model,
+                    num_heads=getattr(config, 'n_heads', 8),
+                    dropout=getattr(config, 'dropout', 0.1),
+                    factor=getattr(config, 'autocorr_factor', 1)
+                )
+            except Exception as e:
+                print(f"Info: Temporal encoder '{getattr(config, 'temporal_encoder', 'autocorr_temporal')}' unavailable ({e}); falling back to default temporal attention.")
+                # Use the attention factory for robust instantiation
+                self.temporal_encoder = get_attention_component(
+                    'temporal_attention',
+                    d_model=config.d_model,
+                    n_heads=getattr(config, 'n_heads', 8),
+                    dropout=getattr(config, 'dropout', 0.1)
+                )
+        else:
+            # Use simple temporal attention when autocorr is disabled
             self.temporal_encoder = get_attention_component(
                 'temporal_attention',
                 d_model=config.d_model,

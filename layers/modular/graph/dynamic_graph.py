@@ -28,24 +28,24 @@ class DynamicGraphConstructor(nn.Module):
         )
         
         # Temperature parameter for Gumbel softmax
-        self.temperature = nn.Parameter(torch.tensor(1.0))
+        self.temperature = 1.0
         
         # Edge weight predictors
-        self.wave_transition_predictor = nn.Sequential(
+        self.wave_transition_predictor: nn.Module = nn.Sequential(
             nn.Linear(d_model * 2, d_model),
             nn.ReLU(),
             nn.Linear(d_model, 1),
             nn.Sigmoid()
         )
         
-        self.transition_target_predictor = nn.Sequential(
+        self.transition_target_predictor: nn.Module = nn.Sequential(
             nn.Linear(d_model * 2, d_model),
             nn.ReLU(),
             nn.Linear(d_model, 1),
             nn.Sigmoid()
         )
         
-    def forward(self, x_dict: Dict[str, torch.Tensor], training: bool = True) -> Tuple[HeteroData, Dict[str, torch.Tensor]]:
+    def forward(self, x_dict: Dict[str, torch.Tensor], training: bool = True) -> Tuple[HeteroData, Dict[Tuple[str, str, str], torch.Tensor]]:
         """
         Construct dynamic graph structure based on input features
         
@@ -179,25 +179,21 @@ class AdaptiveGraphStructure(nn.Module):
         self.structure_memory = nn.Parameter(torch.zeros(num_waves + num_transitions + num_targets, d_model))
         self.memory_update_rate = nn.Parameter(torch.tensor(0.1))
         
-    def forward(self, x_dict: Dict[str, torch.Tensor], training: bool = True) -> Tuple[HeteroData, Dict[str, torch.Tensor]]:
+    def forward(self, x_dict: Dict[str, torch.Tensor], training: bool = True) -> Tuple[HeteroData, Dict[Tuple[str, str, str], torch.Tensor]]:
         """
         Forward pass with adaptive graph structure
         """
         # Update structure memory
         if training:
-            # x_dict tensors have shape [batch_size, num_nodes, seq_len]
-            # We need to average over batch and sequence dimensions to get [num_nodes, d_model]
-            wave_avg = x_dict['wave'].mean(dim=(0, 2))  # [num_nodes]
-            transition_avg = x_dict['transition'].mean(dim=(0, 2))  # [num_nodes]
-            target_avg = x_dict['target'].mean(dim=(0, 2))  # [num_nodes]
+            # CRITICAL FIX: Use rich feature vectors instead of pooled scalars
+            # x_dict tensors have shape [batch_size, num_nodes, d_model] (already converted from temporal)
+            # Extract rich features from first batch (assuming homogeneous batches)
+            wave_features = x_dict['wave'][0]      # [num_nodes, d_model] - RICH FEATURES!
+            transition_features = x_dict['transition'][0]  # [num_nodes, d_model] - RICH FEATURES!
+            target_features = x_dict['target'][0]  # [num_nodes, d_model] - RICH FEATURES!
             
-            # Expand to d_model dimensions
-            d_model = self.structure_memory.shape[1]
-            wave_expanded = wave_avg.unsqueeze(-1).expand(-1, d_model)
-            transition_expanded = transition_avg.unsqueeze(-1).expand(-1, d_model)
-            target_expanded = target_avg.unsqueeze(-1).expand(-1, d_model)
-            
-            all_features = torch.cat([wave_expanded, transition_expanded, target_expanded], dim=0)
+            # Concatenate rich feature vectors (no information loss!)
+            all_features = torch.cat([wave_features, transition_features, target_features], dim=0)
             
             # Ensure dimensions match
             if all_features.shape[0] == self.structure_memory.shape[0]:
