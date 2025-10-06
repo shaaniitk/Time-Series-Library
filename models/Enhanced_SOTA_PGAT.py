@@ -435,7 +435,7 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             # Aggregate multi-scale wave information
             wave_scales = []
             for wave_output in wave_patched_outputs:
-                if wave_output is not None and wave_output.numel() > 0:
+                if wave_output is not None and isinstance(wave_output, torch.Tensor) and wave_output.numel() > 0:
                     # Pool each scale to [batch_size, d_model]
                     if wave_output.dim() == 3:  # [batch_size, seq_len, d_model]
                         scale_pooled = wave_output.mean(dim=1)
@@ -452,7 +452,7 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         if target_patched_outputs and len(target_patched_outputs) > 0:
             target_scales = []
             for target_output in target_patched_outputs:
-                if target_output is not None and target_output.numel() > 0:
+                if target_output is not None and isinstance(target_output, torch.Tensor) and target_output.numel() > 0:
                     if target_output.dim() == 3:
                         scale_pooled = target_output.mean(dim=1)
                     else:

@@ -2,15 +2,21 @@
 """
 Test to verify Enhanced_SOTA_PGAT imports work correctly.
 """
+import pytest
+
+@pytest.mark.smoke
+def test_enhanced_pgat_imports():
+    """Test that all Enhanced_SOTA_PGAT imports work correctly."""
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add project root to path
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
-try:
-    # Test the specific import that's causing issues
-    from utils.graph_utils import adjacency_to_edge_indices
-    print("✅ adjacency_to_edge_indices import successful")
+    try:
+        # Test the specific import that's causing issues
+        from utils.graph_utils import adjacency_to_edge_indices
+        print("✅ adjacency_to_edge_indices import successful")
     
     # Test the Enhanced_SOTA_PGAT import
     from models.Enhanced_SOTA_PGAT import Enhanced_SOTA_PGAT

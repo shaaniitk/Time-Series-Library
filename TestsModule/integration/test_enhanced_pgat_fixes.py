@@ -2,14 +2,17 @@
 """
 Test script to verify Enhanced_SOTA_PGAT fixes for runtime blockers.
 """
+import pytest
 
 import torch
 import sys
 import os
 from types import SimpleNamespace
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add project root to path
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
+@pytest.mark.integration
 def test_enhanced_pgat_runtime_fixes():
     """Test that Enhanced_SOTA_PGAT can run without runtime errors."""
     
@@ -111,6 +114,7 @@ def test_enhanced_pgat_runtime_fixes():
         traceback.print_exc()
         return False
 
+@pytest.mark.extended
 def test_weight_preservation():
     """Test that edge weights are preserved through the pipeline."""
     

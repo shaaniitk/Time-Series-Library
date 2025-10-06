@@ -2,14 +2,17 @@
 """
 Test script to verify that adjacency_to_edge_indices correctly preserves learned structure.
 """
+import pytest
 
 import torch
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add project root to path
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 from utils.graph_utils import adjacency_to_edge_indices, validate_learned_adjacency_structure
 
+@pytest.mark.smoke
 def test_adjacency_mapping_correctness():
     """Test that we correctly map learned adjacency without creating false edges."""
     
@@ -81,6 +84,7 @@ def test_adjacency_mapping_correctness():
     
     return True
 
+@pytest.mark.extended
 def test_edge_case_handling():
     """Test edge cases like empty adjacency, out-of-bounds, etc."""
     
