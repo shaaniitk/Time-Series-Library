@@ -298,6 +298,15 @@ def train_financial_enhanced_pgat():
                 setattr(self, k, v)
     
     args = Args(**config_dict)
+
+    # Optional fast dev run: limit epochs and batches for quick validation
+    fast_dev_run = (
+        os.getenv('FAST_DEV_RUN', '0').strip().lower() in ('1', 'true')
+        or getattr(args, 'fast_dev_run', False)
+    )
+    if fast_dev_run:
+        print("\n⚡ FAST_DEV_RUN enabled: limiting to 1 epoch and 1 batch per loop")
+        args.train_epochs = 1
     
     # Setup device with memory optimization for long sequences
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -390,8 +399,16 @@ def train_financial_enhanced_pgat():
     criterion = model.configure_optimizer_loss(nn.MSELoss(), verbose=True)
     # KL regularization weight (tunable)
     kl_weight = 1e-3
-    # Adaptive KL tuner
-    kl_tuner = KLTuner(model=model, target_kl_percentage=0.1, min_weight=1e-6, max_weight=1e-1)
+    # Adaptive KL tuner with environment overrides for quick tuning
+    kl_target_pct = float(os.getenv('KL_TARGET_PERCENT', '0.02'))
+    kl_min_w = float(os.getenv('KL_MIN_WEIGHT', '1e-6'))
+    kl_max_w = float(os.getenv('KL_MAX_WEIGHT', '1.0'))
+    kl_tuner = KLTuner(
+        model=model,
+        target_kl_percentage=kl_target_pct,
+        min_weight=kl_min_w,
+        max_weight=kl_max_w
+    )
     early_stopping = EarlyStopping(patience=args.patience, verbose=True)
     
     # Enable gradient checkpointing if available (saves memory)
@@ -579,10 +596,21 @@ def train_financial_enhanced_pgat():
                         )
                     train_metrics_epoch.append(batch_metrics)
                 
+                # Report KL contribution percentage relative to data loss
+                try:
+                    kl_term = (kl_weight * kl_loss).detach().cpu().item()
+                    data_loss_val = data_loss.detach().cpu().item()
+                    kl_pct = (kl_term / data_loss_val * 100.0) if data_loss_val > 0 else 0.0
+                except Exception:
+                    kl_pct = 0.0
                 print(f"  Batch {batch_idx+1:3d}/{len(train_loader)} | "
-                      f"Loss: {loss.item():.6f} | KLLoss: {kl_loss.item():.6f} | KLw: {kl_weight:.2e} | "
+                      f"Loss: {loss.item():.6f} | KLLoss: {kl_loss.item():.6f} | KLw: {kl_weight:.2e} | KL%: {kl_pct:.2f}% | "
                       f"MAE: {batch_metrics['mae']:.6f} | "
                       f"RMSE: {batch_metrics['rmse']:.6f}")
+
+            # Break after first batch in fast dev run mode
+            if fast_dev_run:
+                break
         
         avg_train_loss = np.mean(train_losses)
         avg_train_metrics = {
@@ -656,6 +684,10 @@ def train_financial_enhanced_pgat():
                         outputs, batch_y_targets, None
                     )
                 val_metrics_epoch.append(batch_metrics)
+
+                # Break after first batch in fast dev run mode
+                if fast_dev_run:
+                    break
         
         avg_val_loss = np.mean(val_losses)
         avg_val_metrics = {
@@ -675,6 +707,7 @@ def train_financial_enhanced_pgat():
                 wave_window = batch_x
                 target_window = batch_x[:, -batch_y.shape[1]:, :]
                 outputs = model(wave_window, target_window)
+                original_outputs_test = outputs
                 
                 # Handle model output format - ONLY extract target features for loss
                 outputs, batch_y_targets = handle_model_output(outputs, batch_y, num_targets=args.c_out)
@@ -687,12 +720,28 @@ def train_financial_enhanced_pgat():
                             batch_y_targets_np.reshape(-1, args.c_out)
                         ).reshape(batch_y_targets_np.shape)
                         batch_y_targets_scaled = torch.from_numpy(batch_y_targets_scaled_np).float().to(device)
-                        loss = criterion(outputs, batch_y_targets_scaled)
+                        mdn_params_test = extract_mdn_params(original_outputs_test)
+                        loss = criterion(
+                            mdn_params_test if mdn_params_test is not None else outputs,
+                            batch_y_targets_scaled
+                        )
                     except:
-                        loss = criterion(outputs, batch_y_targets)
+                        mdn_params_test = extract_mdn_params(original_outputs_test)
+                        loss = criterion(
+                            mdn_params_test if mdn_params_test is not None else outputs,
+                            batch_y_targets
+                        )
                 else:
-                    loss = criterion(outputs, batch_y_targets)
+                    mdn_params_test = extract_mdn_params(original_outputs_test)
+                    loss = criterion(
+                        mdn_params_test if mdn_params_test is not None else outputs,
+                        batch_y_targets
+                    )
                 test_losses.append(loss.item())
+
+                # Break after first batch in fast dev run mode
+                if fast_dev_run:
+                    break
         
         avg_test_loss = np.mean(test_losses)
         
@@ -744,7 +793,10 @@ def train_financial_enhanced_pgat():
         print(f"🔥 Early stopping DISABLED - will run all {args.train_epochs} epochs")
         
         # Learning rate adjustment
-        adjust_learning_rate(optimizer, epoch + 1, args)
+        if hasattr(args, 'lradj'):
+            adjust_learning_rate(optimizer, epoch + 1, args)
+        else:
+            print("Skipping LR adjustment: 'lradj' not found in config")
     
     total_training_time = time.time() - total_start_time
     
