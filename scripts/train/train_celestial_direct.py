@@ -105,7 +105,17 @@ def train_celestial_pgat():
     
     # Setup training components
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=getattr(args, 'weight_decay', 0.0001))
-    criterion = nn.MSELoss()
+    
+    # Use proper loss function based on model configuration
+    if getattr(model, 'use_mixture_decoder', False):
+        # Import the proper mixture loss function that handles multivariate targets
+        from layers.modular.decoder.mixture_density_decoder import MixtureNLLLoss
+        criterion = MixtureNLLLoss(multivariate_mode='independent')
+        print("🎯 Using Gaussian Mixture NLL Loss for probabilistic predictions")
+    else:
+        criterion = nn.MSELoss()
+        print("📊 Using MSE Loss for deterministic predictions")
+    
     early_stopping = EarlyStopping(patience=args.patience, verbose=True)
     
     # Create checkpoint directory
@@ -142,12 +152,44 @@ def train_celestial_pgat():
                 # Forward pass
                 outputs, metadata = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Compute loss (only on target features if specified)
-                if hasattr(args, 'target_features') and args.target_features:
-                    target_indices = args.target_features
-                    loss = criterion(outputs[:, :, target_indices], batch_y[:, -args.pred_len:, target_indices])
+                # Determine the correct ground truth for the loss function
+                if (model.aggregate_waves_to_celestial and 
+                    'original_targets' in metadata and 
+                    metadata['original_targets'] is not None):
+                    # Use the specific targets isolated during wave aggregation
+                    true_targets = metadata['original_targets'][:, -args.pred_len:, :]
+                    print(f"🎯 Using wave aggregation targets: {true_targets.shape}")
                 else:
-                    loss = criterion(outputs, batch_y[:, -args.pred_len:, :])
+                    # Use the standard batch_y targets
+                    true_targets = batch_y[:, -args.pred_len:, :]
+                
+                # Compute loss based on model type
+                if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
+                    # Mixture density network output
+                    means = outputs['means']
+                    log_stds = outputs['log_stds'] 
+                    log_weights = outputs['log_weights']
+                    loss = criterion((means, log_stds, log_weights), true_targets)
+                elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
+                    # Tuple output (means, log_stds, log_weights)
+                    means, log_stds, log_weights = outputs
+                    loss = criterion((means, log_stds, log_weights), true_targets)
+                else:
+                    # Standard deterministic output
+                    if hasattr(args, 'target_features') and args.target_features:
+                        target_indices = args.target_features
+                        loss = criterion(outputs[:, :, target_indices], true_targets[:, :, target_indices])
+                    else:
+                        loss = criterion(outputs, true_targets)
+                
+                # Add regularization loss from stochastic graph learner
+                if getattr(model, 'use_stochastic_learner', False):
+                    reg_loss = model.get_regularization_loss()
+                    reg_weight = getattr(args, 'reg_loss_weight', 0.1)
+                    loss += reg_loss * reg_weight
+                    
+                    if i % 100 == 0:  # Log regularization loss occasionally
+                        print(f"         📊 Regularization loss: {reg_loss.item():.6f}")
                 
                 # Backward pass
                 loss.backward()
@@ -199,13 +241,31 @@ def train_celestial_pgat():
                 dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
                 
                 try:
-                    outputs, _ = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    outputs, metadata = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                     
-                    if hasattr(args, 'target_features') and args.target_features:
-                        target_indices = args.target_features
-                        loss = criterion(outputs[:, :, target_indices], batch_y[:, -args.pred_len:, target_indices])
+                    # Determine correct ground truth (same logic as training)
+                    if (model.aggregate_waves_to_celestial and 
+                        'original_targets' in metadata and 
+                        metadata['original_targets'] is not None):
+                        true_targets = metadata['original_targets'][:, -args.pred_len:, :]
                     else:
-                        loss = criterion(outputs, batch_y[:, -args.pred_len:, :])
+                        true_targets = batch_y[:, -args.pred_len:, :]
+                    
+                    # Compute loss based on model type
+                    if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
+                        means = outputs['means']
+                        log_stds = outputs['log_stds']
+                        log_weights = outputs['log_weights']
+                        loss = criterion((means, log_stds, log_weights), true_targets)
+                    elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
+                        means, log_stds, log_weights = outputs
+                        loss = criterion((means, log_stds, log_weights), true_targets)
+                    else:
+                        if hasattr(args, 'target_features') and args.target_features:
+                            target_indices = args.target_features
+                            loss = criterion(outputs[:, :, target_indices], true_targets[:, :, target_indices])
+                        else:
+                            loss = criterion(outputs, true_targets)
                     
                     val_loss += loss.item()
                     val_batches += 1
@@ -243,8 +303,11 @@ def train_celestial_pgat():
     print("\n📊 Final Evaluation...")
     model.eval()
     
-    preds = []
-    trues = []
+    # Pre-allocate arrays for better memory efficiency
+    num_test_samples = len(test_data)
+    preds = np.zeros((num_test_samples, args.pred_len, args.c_out))
+    trues = np.zeros((num_test_samples, args.pred_len, args.c_out))
+    current_index = 0
     
     with torch.no_grad():
         for batch_x, batch_y, batch_x_mark, batch_y_mark in test_loader:
@@ -259,19 +322,56 @@ def train_celestial_pgat():
             try:
                 outputs, metadata = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                pred = outputs.detach().cpu().numpy()
-                true = batch_y[:, -args.pred_len:, :].detach().cpu().numpy()
+                # Handle mixture decoder outputs - extract point predictions
+                if getattr(model, 'use_mixture_decoder', False):
+                    if isinstance(outputs, dict):
+                        # Extract point prediction from mixture
+                        from utils.mixture_loss import extract_point_prediction
+                        pred_tensor = extract_point_prediction(
+                            outputs['means'], outputs['log_stds'], outputs['log_weights']
+                        )
+                    elif isinstance(outputs, tuple):
+                        means, log_stds, log_weights = outputs
+                        from utils.mixture_loss import extract_point_prediction
+                        pred_tensor = extract_point_prediction(means, log_stds, log_weights)
+                    else:
+                        pred_tensor = outputs
+                else:
+                    pred_tensor = outputs
                 
-                preds.append(pred)
-                trues.append(true)
+                # Determine correct ground truth
+                if (model.aggregate_waves_to_celestial and 
+                    'original_targets' in metadata and 
+                    metadata['original_targets'] is not None):
+                    true_tensor = metadata['original_targets'][:, -args.pred_len:, :]
+                else:
+                    true_tensor = batch_y[:, -args.pred_len:, :]
+                
+                # Convert to numpy
+                pred = pred_tensor.detach().cpu().numpy()
+                true = true_tensor.detach().cpu().numpy()
+                
+                # Calculate the slice to fill
+                batch_size = pred.shape[0]
+                start_index = current_index
+                end_index = start_index + batch_size
+                
+                # Fill the pre-allocated arrays directly
+                if end_index <= num_test_samples:
+                    preds[start_index:end_index, :, :] = pred
+                    trues[start_index:end_index, :, :] = true
+                    current_index = end_index
                 
             except Exception as e:
                 print(f"⚠️  Test step warning: {e}")
                 continue
     
-    if preds and trues:
-        preds = np.concatenate(preds, axis=0)
-        trues = np.concatenate(trues, axis=0)
+    # Trim arrays to actual size
+    if current_index < num_test_samples:
+        preds = preds[:current_index]
+        trues = trues[:current_index]
+    
+    if current_index > 0:
         
         # Compute metrics
         mae, mse, rmse, mape, mspe = metric(preds, trues)

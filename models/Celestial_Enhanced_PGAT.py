@@ -182,10 +182,15 @@ class Model(nn.Module):
             self.stochastic_mean = nn.Linear(self.d_model, adj_output_dim)
             self.stochastic_logvar = nn.Linear(self.d_model, adj_output_dim)
         
-        # Graph attention layers
+        # Graph attention layers - use the fixed adjacency-aware version
+        from layers.modular.graph.adjacency_aware_attention import AdjacencyAwareGraphAttention
         self.graph_attention_layers = nn.ModuleList([
-            GraphAttentionLayer(
-                self.d_model, self.d_model, self.n_heads, self.dropout
+            AdjacencyAwareGraphAttention(
+                d_model=self.d_model, 
+                d_ff=self.d_model, 
+                n_heads=self.n_heads, 
+                dropout=self.dropout,
+                use_adjacency_mask=True
             ) for _ in range(self.e_layers)
         ])
         
@@ -270,8 +275,9 @@ class Model(nn.Module):
             raise e
         dec_out = self.dec_embedding(x_dec, x_mark_dec)  # [batch, label_len+pred_len, d_model]
         
-        # 2. Generate market context from encoder output
-        market_context = self.market_context_encoder(enc_out.mean(dim=1))  # [batch, d_model]
+        # 2. Generate market context from encoder output (fix information bottleneck)
+        # Use last hidden state instead of mean to preserve temporal information
+        market_context = self.market_context_encoder(enc_out[:, -1, :])  # [batch, d_model]
         
         # 3. Celestial Body Graph Processing
         if self.use_celestial_graph:
@@ -370,10 +376,20 @@ class Model(nn.Module):
             print(f"⚠️  Spatiotemporal encoding failed: {e}")
             encoded_features = enc_out
         
-        # 8. Graph attention processing
+        # 8. Graph attention processing with proper adjacency matrix usage
         graph_features = encoded_features
-        for layer in self.graph_attention_layers:
-            graph_features = layer(graph_features, combined_adj)
+        for i, layer in enumerate(self.graph_attention_layers):
+            try:
+                # Use the adjacency matrix properly in graph attention
+                graph_features = layer(graph_features, combined_adj)
+                
+                if i == 0:  # Log once to confirm adjacency matrix is being used
+                    print(f"🔗 Graph attention layer {i+1} using adjacency matrix: {combined_adj.shape}")
+                    
+            except Exception as e:
+                print(f"⚠️  Graph attention layer {i+1} failed: {e}")
+                # Fallback: use without adjacency matrix
+                graph_features = layer(graph_features, None)
         
         # 9. Decoder processing
         decoder_features = dec_out
@@ -414,11 +430,21 @@ class Model(nn.Module):
         else:
             output = self.projection(decoder_features)
         
-        # In case of MDN, the raw tuple is returned for the loss function
-        # A point prediction is calculated within the training script for metrics
-        output = predictions if isinstance(predictions, torch.Tensor) else mixture_params
+        # Prepare metadata for return
+        final_metadata = {
+            **wave_metadata,  # Include wave aggregation metadata
+            'celestial_metadata': celestial_metadata if self.use_celestial_graph else {},
+            'fusion_metadata': fusion_metadata if self.use_celestial_graph else {}
+        }
         
-        return output, metadata
+        # In case of MDN, the raw tuple/dict is returned for the loss function
+        # A point prediction is calculated within the training script for metrics
+        if self.use_mixture_decoder and 'mixture_params' in locals():
+            output = mixture_params
+        else:
+            output = predictions if 'predictions' in locals() else output
+        
+        return output, final_metadata
     
     def get_regularization_loss(self):
         """Get the regularization loss from the stochastic graph learner."""
@@ -457,20 +483,25 @@ class Model(nn.Module):
         # x_enc is already aggregated to celestial space [batch, seq_len, 13]
         celestial_mapped = self.feature_to_celestial(x_enc)  # [batch, seq_len, num_celestial_bodies]
         
-        # Enhance celestial features with temporal information
-        temporal_celestial = celestial_mapped.mean(dim=1)  # [batch, num_celestial_bodies]
+        # Enhance celestial features with temporal information (fix oversimplification)
+        # Use last time step instead of mean to preserve temporal information
+        temporal_celestial = celestial_mapped[:, -1, :]  # [batch, num_celestial_bodies]
         
-        # Fix dimension mismatch: project celestial_features to match temporal_celestial
+        # Create a more sophisticated celestial influence using proper dimension handling
         # celestial_features: [batch, num_celestial_bodies, d_model]
         # temporal_celestial: [batch, num_celestial_bodies]
-        # We need to project celestial_features to [batch, num_celestial_bodies] for multiplication
-        celestial_features_projected = celestial_features.mean(dim=-1)  # [batch, num_celestial_bodies]
         
-        # Now we can multiply: [batch, num_celestial_bodies] * [batch, num_celestial_bodies] -> [batch]
-        celestial_influence = (temporal_celestial * celestial_features_projected).sum(dim=-1, keepdim=True)  # [batch, 1]
+        # Project temporal celestial to d_model space
+        temporal_celestial_expanded = temporal_celestial.unsqueeze(-1).expand(-1, -1, self.d_model)  # [batch, num_celestial_bodies, d_model]
         
-        # Expand to match market_context dimensions and add
-        enhanced_context = market_context + celestial_influence.expand_as(market_context)
+        # Element-wise multiplication and sum to create influence
+        celestial_influence_raw = (celestial_features * temporal_celestial_expanded).sum(dim=1)  # [batch, d_model]
+        
+        # Normalize the influence
+        celestial_influence = F.tanh(celestial_influence_raw)  # [batch, d_model]
+        
+        # Add celestial influence to market context
+        enhanced_context = market_context + celestial_influence
         
         return {
             'astronomical_adj': astronomical_adj,
@@ -545,11 +576,33 @@ class GraphAttentionLayer(nn.Module):
     def forward(self, x, adj_matrix):
         """
         Args:
-            x: [batch, seq_len, d_model] Node features
+            x: [batch, seq_len, d_model] Node features. Here seq_len is treated as num_nodes.
             adj_matrix: [batch, num_nodes, num_nodes] Adjacency matrix
         """
-        # Self-attention with adjacency-based masking
-        attn_out, _ = self.attention(x, x, x)
+        # Create an attention mask from the adjacency matrix.
+        # We want to ignore attention between non-connected nodes (where adj_matrix is 0).
+        # MultiheadAttention expects a boolean mask where True indicates a position to be ignored.
+        attn_mask = None
+        if adj_matrix is not None:
+            if adj_matrix.dim() == 3:
+                # Use the first batch's adjacency matrix (assuming they're similar)
+                attn_mask = (adj_matrix[0] == 0)
+            else: # Fallback for non-batched adjacency
+                attn_mask = (adj_matrix == 0)
+            
+            # Ensure mask dimensions match sequence length
+            seq_len = x.size(1)
+            if attn_mask.size(0) != seq_len:
+                # If dimensions don't match, create identity mask or resize
+                if seq_len <= attn_mask.size(0):
+                    attn_mask = attn_mask[:seq_len, :seq_len]
+                else:
+                    # Pad with False (allow attention) for additional positions
+                    pad_size = seq_len - attn_mask.size(0)
+                    attn_mask = F.pad(attn_mask, (0, pad_size, 0, pad_size), value=False)
+
+        # The attention layer will automatically handle broadcasting the mask across heads.
+        attn_out, _ = self.attention(x, x, x, attn_mask=attn_mask)
         x = self.norm1(x + self.dropout(attn_out))
         
         # Feed forward
@@ -684,10 +737,27 @@ class TemporalEmbedding(nn.Module):
     
     def forward(self, x):
         x = x.long()
-        minute_x = self.minute_embed(x[:, :, 4]) if hasattr(self, 'minute_embed') else 0.
-        hour_x = self.hour_embed(x[:, :, 3])
-        weekday_x = self.weekday_embed(x[:, :, 2])
-        day_x = self.day_embed(x[:, :, 1])
-        month_x = self.month_embed(x[:, :, 0])
+        
+        # Handle variable number of time features gracefully
+        num_features = x.size(-1)
+        
+        # Initialize embeddings to zero
+        minute_x = 0.
+        hour_x = 0.
+        weekday_x = 0.
+        day_x = 0.
+        month_x = 0.
+        
+        # Apply embeddings based on available features
+        if num_features > 0:
+            month_x = self.month_embed(x[:, :, 0])
+        if num_features > 1:
+            day_x = self.day_embed(x[:, :, 1])
+        if num_features > 2:
+            weekday_x = self.weekday_embed(x[:, :, 2])
+        if num_features > 3:
+            hour_x = self.hour_embed(x[:, :, 3])
+        if num_features > 4 and hasattr(self, 'minute_embed'):
+            minute_x = self.minute_embed(x[:, :, 4])
         
         return hour_x + weekday_x + day_x + month_x + minute_x
