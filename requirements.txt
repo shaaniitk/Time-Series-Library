@@ -8,7 +8,7 @@
 einops==0.8.0
 local-attention==1.9.14
 matplotlib
-numpy>=1.21,<2
+numpy>=2,<2.6
 pandas==1.5.3
 patool
 reformer-pytorch==1.4.4

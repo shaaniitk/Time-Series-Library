@@ -44,7 +44,14 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         self.context_projection_layers = nn.ModuleDict()
         self.context_fusion_layer: Optional[nn.Linear] = None
 
-        wave_nodes_default = getattr(config, 'enc_in', 7)
+        # Determine wave feature count early and use consistently across components
+        self.num_wave_features = getattr(config, 'num_wave_features', None)
+        if self.num_wave_features is None:
+            total_features = getattr(config, 'enc_in', 7)
+            target_features = getattr(config, 'c_out', 3)
+            self.num_wave_features = max(1, total_features - target_features)
+
+        wave_nodes_default = self.num_wave_features
         target_nodes_default = getattr(config, 'c_out', 3)
         transition_nodes_default = max(1, min(wave_nodes_default, target_nodes_default))
 
@@ -91,7 +98,7 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         if self.use_hierarchical_mapper:
             self.wave_temporal_to_spatial = HierarchicalTemporalSpatialMapper(
                 d_model=self.d_model, 
-                num_nodes=getattr(config, 'enc_in', 7),
+                num_nodes=self.num_wave_features,
                 n_heads=getattr(config, 'n_heads', 8)
             )
             self.target_temporal_to_spatial = HierarchicalTemporalSpatialMapper(
@@ -112,15 +119,7 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             # Create adaptive patch configs for target (shorter sequence)  
             target_patch_configs = self._create_adaptive_patch_configs(pred_len)
             
-            # Configure feature dimensions for patching
-            # Allow configuration of wave features, with fallback to reasonable defaults
-            self.num_wave_features = getattr(config, 'num_wave_features', None)
-            if self.num_wave_features is None:
-                # Infer from dataset structure: total features minus target features minus covariates
-                total_features = getattr(config, 'enc_in', 7)
-                target_features = getattr(config, 'c_out', 3)
-                # Assume remaining features are wave features (simple heuristic)
-                self.num_wave_features = max(1, total_features - target_features)
+            # Feature dimensions for patching already determined above
             
             num_target_features = getattr(config, 'c_out', 3)
             
@@ -193,7 +192,7 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             wave_embedded = self.temporal_pos_encoding(wave_embedded)
             target_embedded = self.temporal_pos_encoding(target_embedded)
 
-        wave_nodes = getattr(self.config, 'enc_in', 7)
+        wave_nodes = self.num_wave_features
         target_nodes = getattr(self.config, 'c_out', 3)
         transition_nodes = max(1, min(wave_nodes, target_nodes))
 
@@ -618,6 +617,11 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             wave_spatial.dtype,
         )
         projected = self.phase_feature_projector(phase_features)
+        # Align node dimension if mismatch occurs (e.g., enc_in includes targets)
+        if projected.size(1) != wave_spatial.size(1):
+            projected = projected.transpose(1, 2)
+            projected = F.interpolate(projected, size=wave_spatial.size(1), mode='nearest')
+            projected = projected.transpose(1, 2)
         return wave_spatial + projected
 
     def _compute_phase_features(

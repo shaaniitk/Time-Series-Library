@@ -61,8 +61,19 @@ def convert_hetero_to_dense_adj(hetero_data: Union[HeteroData, torch.Tensor],
         node_counts[node_type] = count
         total_inferred += count
     
+    # Ensure the adjacency matrix can accommodate all inferred nodes.
+    # If a smaller "total_nodes" was provided, use the maximum to avoid
+    # out-of-bounds indexing when mapping hetero edges into the dense tensor.
     if total_nodes is None:
         total_nodes = total_inferred
+    else:
+        try:
+            total_nodes = int(total_nodes)
+        except Exception:
+            # Fallback to inferred if casting fails
+            total_nodes = total_inferred
+        # Use the larger value to safely fit all indices
+        total_nodes = max(total_nodes, int(total_inferred))
     
     assert isinstance(total_nodes, int), "total_nodes must be an integer at this point"
 
@@ -391,11 +402,18 @@ def prepare_graph_proposal(adjacency: Union[torch.Tensor, HeteroData, Dict],
         conversion_result = convert_hetero_to_dense_adj(adjacency, total_nodes, preserve_weights=True)
         if isinstance(conversion_result, tuple):
             adj_tensor, extracted_weights = conversion_result
-            # Use extracted weights if no explicit weights provided
+            # Normalize adjacency and weights to expected size
+            normalized_adj, normalized_w = ensure_tensor_graph_format_with_weights(adj_tensor, total_nodes, preserve_weights=True)
+            adj_tensor = normalized_adj
             if weights is None:
-                weights = extracted_weights
+                weights = normalized_w if normalized_w is not None else extracted_weights
+            else:
+                # If explicit weights provided, also normalize them to expected size
+                if isinstance(weights, torch.Tensor):
+                    _, weights = ensure_tensor_graph_format_with_weights(weights, total_nodes, preserve_weights=True)
         else:
-            adj_tensor = conversion_result
+            # Normalize adjacency to expected size
+            adj_tensor = ensure_tensor_graph_format(adjacency=conversion_result, expected_nodes=total_nodes)
     elif isinstance(adjacency, torch.Tensor) and adjacency.dim() >= 2:
         # Handle tensor adjacency - preserve as-is
         adj_tensor = ensure_tensor_graph_format(adjacency, total_nodes)

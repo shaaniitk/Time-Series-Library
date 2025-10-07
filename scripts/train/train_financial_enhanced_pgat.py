@@ -357,7 +357,10 @@ def train_financial_enhanced_pgat():
         eps=1e-8,  # Stable epsilon for long sequences
         amsgrad=True  # More stable for long sequences
     )
-    criterion = nn.MSELoss()
+    # Use model-configured loss (MixtureNLLLoss for MDN or MSE for standard)
+    criterion = model.configure_optimizer_loss(nn.MSELoss(), verbose=True)
+    # Regularization weight for stochastic learner
+    stochastic_reg_weight = 1e-3
     early_stopping = EarlyStopping(patience=args.patience, verbose=True)
     
     # Enable gradient checkpointing if available (saves memory)
@@ -410,9 +413,16 @@ def train_financial_enhanced_pgat():
             # Forward pass
             optimizer.zero_grad()
             outputs = model(wave_window, target_window)
-            
-            # Handle model output format - ONLY extract target features for loss
+
+            # Preserve original tuple for MDN loss; use processed tensor for metrics/asserts
+            original_outputs = outputs
             outputs, batch_y_targets = handle_model_output(outputs, batch_y, num_targets=args.c_out)
+
+            # Runtime check for prediction/target shape alignment
+            try:
+                assert outputs.shape == batch_y_targets.shape
+            except AssertionError:
+                print(f"⚠️  Prediction/target shape mismatch: {tuple(outputs.shape)} vs {tuple(batch_y_targets.shape)}")
             
             # CRITICAL FIX: Ensure both predictions and targets are on the same scale
             # Option 1: Scale targets to match scaled predictions (recommended)
@@ -424,17 +434,43 @@ def train_financial_enhanced_pgat():
                         batch_y_targets_np.reshape(-1, args.c_out)
                     ).reshape(batch_y_targets_np.shape)
                     batch_y_targets_scaled = torch.from_numpy(batch_y_targets_scaled_np).float().to(device)
-                    
+
                     # Calculate loss on SCALED data (both predictions and targets are scaled)
-                    loss = criterion(outputs, batch_y_targets_scaled)
-                    
+                    # If using MDN loss, pass the original tuple; otherwise pass processed tensor
+                    loss = criterion(
+                        original_outputs if isinstance(original_outputs, tuple) else outputs,
+                        batch_y_targets_scaled
+                    )
+                    # Add stochastic regularization term if available
+                    reg_loss = model.get_regularization_loss()
+                    if isinstance(reg_loss, torch.Tensor):
+                        loss = loss + stochastic_reg_weight * reg_loss
+                    else:
+                        loss = loss + stochastic_reg_weight * torch.tensor(reg_loss, dtype=loss.dtype, device=loss.device)
+
                 except Exception as e:
                     # Fallback: if scaling fails, use original approach but warn
                     print(f"⚠️  Scaling failed ({e}), using original targets")
-                    loss = criterion(outputs, batch_y_targets)
+                    loss = criterion(
+                        original_outputs if isinstance(original_outputs, tuple) else outputs,
+                        batch_y_targets
+                    )
+                    reg_loss = model.get_regularization_loss()
+                    if isinstance(reg_loss, torch.Tensor):
+                        loss = loss + stochastic_reg_weight * reg_loss
+                    else:
+                        loss = loss + stochastic_reg_weight * torch.tensor(reg_loss, dtype=loss.dtype, device=loss.device)
             else:
                 # No scaler available, use original approach
-                loss = criterion(outputs, batch_y_targets)
+                loss = criterion(
+                    original_outputs if isinstance(original_outputs, tuple) else outputs,
+                    batch_y_targets
+                )
+                reg_loss = model.get_regularization_loss()
+                if isinstance(reg_loss, torch.Tensor):
+                    loss = loss + stochastic_reg_weight * reg_loss
+                else:
+                    loss = loss + stochastic_reg_weight * torch.tensor(reg_loss, dtype=loss.dtype, device=loss.device)
             
             # Backward pass with gradient clipping
             loss.backward()
