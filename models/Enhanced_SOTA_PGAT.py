@@ -66,12 +66,41 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
 
         self._validate_enhanced_config(config)
 
-        # Store default values for later use
-        self.wave_nodes_default = wave_nodes_default
-        self.target_nodes_default = target_nodes_default
-        self.transition_nodes_default = transition_nodes_default
+        total_nodes = wave_nodes_default + target_nodes_default + transition_nodes_default
+
+        # 1. Stochastic Graph Learner
+        if getattr(self.config, 'use_stochastic_learner', True):
+            self.stochastic_learner = StochasticGraphLearner(
+                d_model=self.d_model,
+                num_nodes=total_nodes
+            )
+        else:
+            self.stochastic_learner = None
+
+        # 2. Gated Graph Combiner (as a meta-controller)
+        if getattr(self.config, 'use_gated_graph_combiner', True):
+            num_graphs = 2 + (1 if self.stochastic_learner is not None else 0) # Base, Adaptive, Stochastic
+            self.graph_combiner = GatedGraphCombiner(
+                num_nodes=total_nodes,
+                d_model=self.d_model,
+                num_graphs=num_graphs
+            )
         
-        # 3. Multi-Scale Patching Layer (Separate for wave and target)
+        # 3. Hierarchical Temporal-to-Spatial Conversion
+        self.use_hierarchical_mapper = getattr(self.config, 'use_hierarchical_mapper', True)
+        if self.use_hierarchical_mapper:
+            self.wave_temporal_to_spatial = HierarchicalTemporalSpatialMapper(
+                d_model=self.d_model, 
+                num_nodes=getattr(config, 'enc_in', 7),
+                n_heads=getattr(config, 'n_heads', 8)
+            )
+            self.target_temporal_to_spatial = HierarchicalTemporalSpatialMapper(
+                d_model=self.d_model, 
+                num_nodes=getattr(config, 'c_out', 3),
+                n_heads=getattr(config, 'n_heads', 8)
+            )
+
+        # 4. Multi-Scale Patching Layer (Separate for wave and target)
         if getattr(self.config, 'use_multi_scale_patching', True):
             # Adaptive patch configurations based on sequence lengths
             seq_len = getattr(config, 'seq_len', 24)
@@ -117,75 +146,6 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             # Use proper embedding for non-patched mode
             self.embedding = self._initialize_embedding(config)
 
-        # 4. Hierarchical Temporal-to-Spatial Conversion (after num_wave_features is set)
-        self.use_hierarchical_mapper = getattr(self.config, 'use_hierarchical_mapper', True)
-        if self.use_hierarchical_mapper:
-            # Use the configured wave features for wave mapper
-            wave_mapper_nodes = getattr(self, 'num_wave_features', getattr(config, 'enc_in', 7))
-            self.wave_temporal_to_spatial = HierarchicalTemporalSpatialMapper(
-                d_model=self.d_model, 
-                num_nodes=wave_mapper_nodes,
-                n_heads=getattr(config, 'n_heads', 8)
-            )
-            self.target_temporal_to_spatial = HierarchicalTemporalSpatialMapper(
-                d_model=self.d_model, 
-                num_nodes=getattr(config, 'c_out', 3),
-                n_heads=getattr(config, 'n_heads', 8)
-            )
-
-        # 5. Initialize graph components with correct node counts
-        # Calculate total nodes using the configured feature dimensions
-        actual_wave_nodes = getattr(self, 'num_wave_features', self.wave_nodes_default)
-        actual_target_nodes = getattr(config, 'c_out', 3)
-        actual_transition_nodes = max(1, min(actual_wave_nodes, actual_target_nodes))
-        actual_total_nodes = actual_wave_nodes + actual_target_nodes + actual_transition_nodes
-
-        # Stochastic Graph Learner
-        if getattr(self.config, 'use_stochastic_learner', True):
-            self.stochastic_learner = StochasticGraphLearner(
-                d_model=self.d_model,
-                num_nodes=actual_total_nodes
-            )
-        else:
-            self.stochastic_learner = None
-
-        # Gated Graph Combiner (as a meta-controller)
-        if getattr(self.config, 'use_gated_graph_combiner', True):
-            num_graphs = 2 + (1 if self.stochastic_learner is not None else 0) # Base, Adaptive, Stochastic
-            self.graph_combiner = GatedGraphCombiner(
-                num_nodes=actual_total_nodes,
-                d_model=self.d_model,
-                num_graphs=num_graphs
-            )
-
-        # 6. Override parent's graph components to use correct node counts
-        # The parent class may have initialized these with different node counts
-        # We need to reinitialize them with the correct counts
-        try:
-            from layers.modular.graph.registry import get_graph_component
-            
-            # Reinitialize dynamic graph with correct node count
-            self.dynamic_graph = get_graph_component(
-                'dynamic_graph_constructor',
-                d_model=self.d_model,
-                num_waves=actual_wave_nodes,
-                num_targets=actual_target_nodes,
-                num_transitions=actual_transition_nodes
-            )
-            
-            # Reinitialize adaptive graph with correct node count  
-            self.adaptive_graph = get_graph_component(
-                'adaptive_graph_structure',
-                d_model=self.d_model,
-                num_waves=actual_wave_nodes,
-                num_targets=actual_target_nodes,
-                num_transitions=actual_transition_nodes
-            )
-        except (ImportError, KeyError) as e:
-            # If the specific graph components aren't available, we'll work with what we have
-            print(f"Warning: Could not reinitialize graph components: {e}")
-            pass
-
         # 5. Decoder - Fixed MDN wiring
         if getattr(config, 'use_mixture_decoder', True):
             self.decoder = MixtureDensityDecoder(
@@ -200,12 +160,7 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
                 multivariate_mode=multivariate_mode
             )
         else:
-            # Simple decoder for time series forecasting
-            pred_len = getattr(config, 'pred_len', 24)
-            c_out = getattr(config, 'c_out', 3)
-            self.decoder = nn.Linear(self.d_model, pred_len * c_out)
-            self.pred_len = pred_len
-            self.c_out = c_out
+            self.decoder = nn.Linear(self.d_model, getattr(config, 'c_out', 3))
             self.mixture_loss = None
 
 
@@ -238,11 +193,7 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             wave_embedded = self.temporal_pos_encoding(wave_embedded)
             target_embedded = self.temporal_pos_encoding(target_embedded)
 
-        # Use the configured number of wave features for node calculations
-        if hasattr(self, 'num_wave_features'):
-            wave_nodes = self.num_wave_features
-        else:
-            wave_nodes = getattr(self.config, 'enc_in', 7)
+        wave_nodes = getattr(self.config, 'enc_in', 7)
         target_nodes = getattr(self.config, 'c_out', 3)
         transition_nodes = max(1, min(wave_nodes, target_nodes))
 
@@ -424,13 +375,7 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             means, log_stds, log_weights = self.decoder(final_embedding)
             return means, log_stds, log_weights
         else:
-            # Simple decoder output needs reshaping for time series
-            output = self.decoder(final_embedding)  # [batch, target_nodes, pred_len * c_out]
-            batch_size = output.shape[0]
-            target_nodes = output.shape[1]
-            # Reshape to [batch, pred_len, c_out] by taking mean across target nodes
-            output = output.view(batch_size, target_nodes, self.pred_len, self.c_out)
-            output = output.mean(dim=1)  # Average across target nodes: [batch, pred_len, c_out]
+            output = self.decoder(final_embedding)
             return output
 
     def loss(self, forward_output, targets):
@@ -493,8 +438,6 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         for attr, default_value in enhanced_attrs.items():
             if not hasattr(config, attr):
                 setattr(config, attr, default_value)
-        
-
 
     def _validate_enhanced_config(self, config):
         """Validate enhanced model configuration parameters."""
