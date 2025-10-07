@@ -6,6 +6,8 @@ This document provides a detailed analysis of the `Celestial_Enhanced_PGAT.py` m
 
 ---
 
+## Model Architecture and Core Logic Issues
+
 ### 1. Critical Bug: `GraphAttentionLayer` Ignores Adjacency Matrix
 
 #### Deficiency
@@ -190,3 +192,112 @@ class DecoderLayer(nn.Module):
 
 **Step 2: Update the main `forward` pass to plumb the celestial features through to the decoder.**
 This involves passing the `celestial_features` tensor from the celestial graph processing step all the way to the decoder loop.
+
+---
+
+## Training Loop and Data Handling Issues
+
+Further analysis of the training script `scripts/train/train_celestial_direct.py` revealed additional issues related to the training and evaluation logic.
+
+### 5. Incorrect Handling of Wave Aggregation Targets
+
+#### Deficiency
+When wave aggregation is enabled (`aggregate_waves_to_celestial=True`), the `CelestialDataProcessor` correctly separates the input data into processed celestial nodes for the encoder and the specific `target_waves` (e.g., OHLC) that should be used as the ground truth. However, the training loop ignores these separated targets and instead calculates the loss against the original, full `batch_y` tensor, which contains all 118 waves.
+
+#### Impact
+The loss is calculated using an incorrect ground truth. The model's output (predicting a few target variables) is compared against a slice of the full input data (118 variables). This means the model is not being trained on the task it was designed for, leading to incorrect gradient calculations and poor performance.
+
+#### Recommendation
+Modify the training and validation loops to use the correct ground truth tensor (`metadata['original_targets']`) when wave aggregation is active.
+
+**Suggested Implementation:**
+```python
+# In scripts/train/train_celestial_direct.py, inside the training and validation loops
+
+# Forward pass
+outputs, metadata = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+# Determine the correct ground truth for the loss function
+if model.aggregate_waves_to_celestial and 'original_targets' in metadata and metadata['original_targets'] is not None:
+    # Use the specific targets isolated during wave aggregation
+    true_targets = metadata['original_targets'][:, -args.pred_len:, :]
+else:
+    # Use the standard batch_y targets
+    true_targets = batch_y[:, -args.pred_len:, :]
+
+# Compute loss against the correct targets
+loss = criterion(outputs, true_targets) # Assuming criterion is correctly set for MDN or MSE
+```
+
+---
+
+### 6. Missing Regularization Loss in Training
+
+#### Deficiency
+The model class includes a `get_regularization_loss()` method designed to retrieve the KL divergence loss from the `StochasticGraphLearner`. This loss is essential for regularizing the learned graph distribution. However, this method is never called within the training loop.
+
+#### Impact
+The stochastic graph learner is not being properly trained. Without the KL regularization term, the learned distribution can collapse to a deterministic graph (posterior collapse) or become unstable. This prevents the model from effectively learning a probabilistic representation of the graph structure.
+
+#### Recommendation
+Call the `get_regularization_loss()` method in the training loop and add its output to the primary loss. A weighting hyperparameter should be introduced to control its influence.
+
+**Suggested Implementation:**
+```python
+# In scripts/train/train_celestial_direct.py, inside the training loop
+
+# ... after calculating the main loss ...
+loss = criterion(...) # Main loss calculation
+
+# Add the regularization loss from the stochastic graph learner
+if model.use_stochastic_learner:
+    reg_loss = model.get_regularization_loss()
+    # Add a tunable weight, e.g., from the config file
+    loss += reg_loss * getattr(args, 'reg_loss_weight', 0.1)
+
+# Backward pass
+loss.backward()
+```
+
+---
+
+### 7. Inefficient Memory Usage in Evaluation Loop
+
+#### Deficiency
+In the final evaluation loop, the `preds` and `trues` arrays are built by appending numpy arrays from each batch to a list. The full arrays are then created at the end by calling `np.concatenate`.
+
+#### Impact
+This approach is memory-inefficient. It creates many small, intermediate numpy objects in memory, which can lead to high memory consumption and slower performance, especially on large test sets.
+
+#### Recommendation
+For better efficiency, pre-allocate the full `preds` and `trues` numpy arrays before the evaluation loop and fill them in place on each iteration.
+
+**Suggested Implementation:**
+```python
+# In scripts/train/train_celestial_direct.py, before the final evaluation loop
+
+# Pre-allocate arrays based on the test dataset size
+num_test_samples = len(test_data)
+preds = np.zeros((num_test_samples, args.pred_len, args.c_out))
+trues = np.zeros((num_test_samples, args.pred_len, args.c_out))
+current_index = 0
+
+with torch.no_grad():
+    for batch_x, batch_y, ... in test_loader:
+        # ... (data loading and model forward pass) ...
+        
+        pred = outputs.detach().cpu().numpy()
+        true = batch_y[:, -args.pred_len:, :].detach().cpu().numpy()
+        
+        # Calculate the slice to fill
+        start_index = current_index
+        end_index = start_index + pred.shape[0]
+        
+        # Fill the pre-allocated arrays directly
+        preds[start_index:end_index, :, :] = pred
+        trues[start_index:end_index, :, :] = true
+        current_index = end_index
+
+# No np.concatenate is needed; the arrays are already complete.
+mae, mse, rmse, mape, mspe = metric(preds, trues)
+```
