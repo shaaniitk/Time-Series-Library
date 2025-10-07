@@ -301,3 +301,62 @@ with torch.no_grad():
 # No np.concatenate is needed; the arrays are already complete.
 mae, mse, rmse, mape, mspe = metric(preds, trues)
 ```
+
+---
+
+## Component-Level Implementation Issues
+
+A deep scan of the individual components called by the main model revealed further algorithmic and design flaws.
+
+### 8. `MixtureDensityDecoder`: Flawed Aggregation and Weight Calculation
+
+#### Deficiency
+- **Information Loss:** The component's first action is `context = x.mean(dim=1)`, which collapses the entire temporal sequence of the decoder's input into a single, averaged vector. All future predictions are based solely on this static vector, losing critical information about recent time steps.
+- **Incorrect Weight Sharing:** In the multivariate case, the mixture weights are calculated for each target and then averaged. This is a mathematically questionable way to share weights and is less efficient than predicting a single shared set of weights directly.
+
+#### Impact
+The aggressive averaging creates a severe information bottleneck, preventing the decoder from making nuanced, time-sensitive predictions. The flawed weight sharing adds inefficiency and may hinder learning.
+
+#### Recommendation
+- **Fix Information Loss:** Refactor the decoder to operate on the full sequence. Instead of averaging, use the features of the last `pred_len` time steps from the input `x` to make predictions for the corresponding future steps.
+- **Fix Weight Sharing:** Modify the `weight_head` to directly predict a single set of weights with the shape `[batch_size, pred_len, num_components]` and use these for all target variables.
+
+---
+
+### 9. `JointSpatioTemporalEncoding`: Ineffective Aggregated Forward Pass
+
+#### Deficiency
+The `_forward_aggregated` method, which is supposed to handle the 3D input from the wave aggregation, does not perform any spatial or graph-based operations. It completely ignores the `adjacency_matrix` and only applies temporal processing, treating the 13 celestial bodies as a single "super-node".
+
+#### Impact
+When wave aggregation is used, this critical encoder fails to perform any spatial reasoning. The graph structure of the celestial bodies is ignored, nullifying the benefits of the graph-based approach in this part of the model.
+
+#### Recommendation
+The `_forward_aggregated` method must be rewritten to properly handle the spatial dimension. It should iterate through the time steps and apply a graph convolution (e.g., a GCN layer using the `adjacency_matrix`) to the `num_nodes` (13 celestial bodies) at each step, thereby properly encoding spatial information.
+
+---
+
+### 10. `HierarchicalTemporalSpatialMapper`: Potential Data Distortion
+
+#### Deficiency
+This component uses `adaptive_avg_pool1d` for downsampling and `interpolate` for upsampling to match the number of input patches to the number of output nodes.
+
+#### Impact
+- **Average Pooling:** This is another form of "simple aggregation" that can smooth out and lose important information from distinct temporal patches.
+- **Interpolation:** Linear interpolation can introduce artificial data points that do not exist in the original sequence, potentially adding noise.
+
+#### Recommendation
+Replace these methods with learnable layers. Use a **1D convolution with a `stride > 1`** for a learnable downsampling operation, and a **1D transposed convolution** for a learnable upsampling operation. This allows the model to learn the optimal way to resize the temporal dimension instead of relying on a fixed, potentially suboptimal function.
+
+---
+
+### 11. `CelestialWaveAggregator`: Static, Unlearned Mapping
+
+#### Deficiency
+The mapping from the 114 input waves to the 13 celestial bodies is hard-coded based on domain knowledge. The model cannot adjust this mapping or learn new relationships from the data.
+
+#### Impact
+The model is rigidly constrained by this predefined mapping. It cannot discover novel or counter-intuitive relationships between different wave frequencies and celestial concepts, limiting its learning capacity to only the final, small set of aggregation weights.
+
+#### Recommendation
+Implement a learnable, attention-based aggregation mechanism. For each of the 13 celestial bodies, create a learnable query vector. Use an attention mechanism where each query attends to all 114 input waves. The output would be a weighted sum of the waves, where the weights are learned dynamically. This would make the entire aggregation process data-driven and far more flexible.
