@@ -251,15 +251,31 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                            wave_window = batch_x
-                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                            # Extract appropriate features for PGAT models
+                            if self.args.model == 'Enhanced_SOTA_PGAT':
+                                # Enhanced model handles feature separation internally
+                                wave_window = batch_x
+                                target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                            else:
+                                # Base model needs only the first enc_in features
+                                enc_in = getattr(self.args, 'enc_in', 7)
+                                wave_window = batch_x[:, :, :enc_in]
+                                target_window = torch.zeros(batch_x.size(0), self.args.pred_len, enc_in, device=batch_x.device, dtype=batch_x.dtype)
                             outputs_raw = self.model(wave_window, target_window, None)
                         else:
                             outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 else:
                     if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                        wave_window = batch_x
-                        target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                        # Extract appropriate features for PGAT models
+                        if self.args.model == 'Enhanced_SOTA_PGAT':
+                            # Enhanced model handles feature separation internally
+                            wave_window = batch_x
+                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                        else:
+                            # Base model needs only the first enc_in features
+                            enc_in = getattr(self.args, 'enc_in', 7)
+                            wave_window = batch_x[:, :, :enc_in]
+                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, enc_in, device=batch_x.device, dtype=batch_x.dtype)
                         outputs_raw = self.model(wave_window, target_window, None)
                     else:
                         outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
@@ -427,15 +443,31 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
                         if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                            wave_window = batch_x
-                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                            # Extract appropriate features for PGAT models
+                            if self.args.model == 'Enhanced_SOTA_PGAT':
+                                # Enhanced model handles feature separation internally
+                                wave_window = batch_x
+                                target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                            else:
+                                # Base model needs only the first enc_in features
+                                enc_in = getattr(self.args, 'enc_in', 7)
+                                wave_window = batch_x[:, :, :enc_in]
+                                target_window = torch.zeros(batch_x.size(0), self.args.pred_len, enc_in, device=batch_x.device, dtype=batch_x.dtype)
                             outputs_raw_train = self.model(wave_window, target_window, None)
                         else:
                             outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
                     if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                        wave_window = batch_x
-                        target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                        # Extract appropriate features for PGAT models
+                        if self.args.model == 'Enhanced_SOTA_PGAT':
+                            # Enhanced model handles feature separation internally
+                            wave_window = batch_x
+                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
+                        else:
+                            # Base model needs only the first enc_in features
+                            enc_in = getattr(self.args, 'enc_in', 7)
+                            wave_window = batch_x[:, :, :enc_in]
+                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, enc_in, device=batch_x.device, dtype=batch_x.dtype)
                         outputs_raw_train = self.model(wave_window, target_window, None)
                     else:
                         outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
@@ -647,6 +679,36 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 if self.args.use_amp:  # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
                         if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
+                            # Extract appropriate features for PGAT models
+                            if self.args.model == 'Enhanced_SOTA_PGAT':
+                                # Enhanced model handles feature separation internally
+                                wave_window = batch_x
+                                target_window = torch.zeros(
+                                    batch_x.size(0),
+                                    self.args.pred_len,
+                                    batch_x.size(-1),
+                                    device=batch_x.device,
+                                    dtype=batch_x.dtype,
+                                )
+                            else:
+                                # Base model needs only the first enc_in features
+                                enc_in = getattr(self.args, 'enc_in', 7)
+                                wave_window = batch_x[:, :, :enc_in]
+                                target_window = torch.zeros(
+                                    batch_x.size(0),
+                                    self.args.pred_len,
+                                    enc_in,
+                                    device=batch_x.device,
+                                    dtype=batch_x.dtype,
+                                )
+                            outputs_raw_test = self.model(wave_window, target_window, None)
+                        else:
+                            outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
+                else:
+                    if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
+                        # Extract appropriate features for PGAT models
+                        if self.args.model == 'Enhanced_SOTA_PGAT':
+                            # Enhanced model handles feature separation internally
                             wave_window = batch_x
                             target_window = torch.zeros(
                                 batch_x.size(0),
@@ -655,19 +717,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                                 device=batch_x.device,
                                 dtype=batch_x.dtype,
                             )
-                            outputs_raw_test = self.model(wave_window, target_window, None)
                         else:
-                            outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
-                else:
-                    if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                        wave_window = batch_x
-                        target_window = torch.zeros(
-                            batch_x.size(0),
-                            self.args.pred_len,
-                            batch_x.size(-1),
-                            device=batch_x.device,
-                            dtype=batch_x.dtype,
-                        )
+                            # Base model needs only the first enc_in features
+                            enc_in = getattr(self.args, 'enc_in', 7)
+                            wave_window = batch_x[:, :, :enc_in]
+                            target_window = torch.zeros(
+                                batch_x.size(0),
+                                self.args.pred_len,
+                                enc_in,
+                                device=batch_x.device,
+                                dtype=batch_x.dtype,
+                            )
                         outputs_raw_test = self.model(wave_window, target_window, None)
                     else:
                         outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
