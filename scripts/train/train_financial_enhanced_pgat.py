@@ -30,6 +30,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 from data_provider.data_factory import data_provider
 from models.Enhanced_SOTA_PGAT import Enhanced_SOTA_PGAT
 from utils.tools import EarlyStopping, adjust_learning_rate
+from utils.kl_tuning import KLTuner
 from utils.metrics import metric
 import warnings
 warnings.filterwarnings('ignore')
@@ -126,6 +127,27 @@ def load_and_scale_financial_data(data_path, config):
         'raw_targets': targets
     }
 
+def extract_mdn_params(outputs):
+    """Extract (means, log_stds, log_weights) from MDN outputs robustly."""
+    if isinstance(outputs, tuple):
+        # Accept extra trailing items by trimming
+        if len(outputs) >= 3:
+            return outputs[0], outputs[1], outputs[2]
+    return None
+
+def mdn_expected_value(means, log_weights):
+    """Compute E[X] = Σ softmax(log_weights) * means along mixture axis with proper broadcasting.
+
+    Handles both shapes:
+    - Multivariate means: [B, T, num_targets, K] with log_weights [B, T, K]
+    - Univariate means:   [B, T, K]            with log_weights [B, T, K]
+    """
+    probs = torch.softmax(log_weights, dim=-1)  # [B, T, K]
+    if means.dim() == 4:  # [B, T, num_targets, K]
+        probs = probs.unsqueeze(-2)             # [B, T, 1, K] -> broadcast over num_targets
+    expected = (probs * means).sum(dim=-1)
+    return expected
+
 def handle_model_output(outputs, batch_y, num_targets=4):
     """
     Handle different model output formats and extract ONLY target features for loss computation
@@ -141,16 +163,23 @@ def handle_model_output(outputs, batch_y, num_targets=4):
     """
     if isinstance(outputs, tuple):
         # Mixture density decoder output
-        means, log_stds, log_weights = outputs
-        prediction = means
+        mdn_params = extract_mdn_params(outputs)
+        if mdn_params is not None:
+            means, log_stds, log_weights = mdn_params
+            # Use mixture expected value instead of naive mean across components
+            prediction = mdn_expected_value(means, log_weights)
+        else:
+            # Fallback: if not MDN-like, try to use first element as prediction
+            prediction = outputs[0]
         
         # Handle different mixture output shapes
         if prediction.dim() == 4:  # [B, T, num_targets, K]
-            # Take mean across mixture components
-            prediction = prediction.mean(dim=-1)  # [B, T, num_targets]
+            # Already handled by mdn_expected_value; ensure last dim is removed
+            prediction = prediction
         elif prediction.dim() == 3 and prediction.shape[-1] > num_targets:
-            # If more components than targets, take mean and reshape
-            prediction = prediction.mean(dim=-1, keepdim=True).expand(-1, -1, num_targets)
+            # If prediction still has mixture axis by shape assumptions, reduce it safely
+            # This is an edge case; prefer mdn_expected_value, otherwise trim to targets
+            prediction = prediction[..., :num_targets]
         
         outputs = prediction
     
@@ -359,8 +388,10 @@ def train_financial_enhanced_pgat():
     )
     # Use model-configured loss (MixtureNLLLoss for MDN or MSE for standard)
     criterion = model.configure_optimizer_loss(nn.MSELoss(), verbose=True)
-    # Regularization weight for stochastic learner
-    stochastic_reg_weight = 1e-3
+    # KL regularization weight (tunable)
+    kl_weight = 1e-3
+    # Adaptive KL tuner
+    kl_tuner = KLTuner(model=model, target_kl_percentage=0.1, min_weight=1e-6, max_weight=1e-1)
     early_stopping = EarlyStopping(patience=args.patience, verbose=True)
     
     # Enable gradient checkpointing if available (saves memory)
@@ -436,41 +467,83 @@ def train_financial_enhanced_pgat():
                     batch_y_targets_scaled = torch.from_numpy(batch_y_targets_scaled_np).float().to(device)
 
                     # Calculate loss on SCALED data (both predictions and targets are scaled)
-                    # If using MDN loss, pass the original tuple; otherwise pass processed tensor
-                    loss = criterion(
-                        original_outputs if isinstance(original_outputs, tuple) else outputs,
+                    # If using MDN loss, pass only the first three params (means, log_stds, log_weights)
+                    mdn_params = extract_mdn_params(original_outputs)
+                    data_loss = criterion(
+                        mdn_params if mdn_params is not None else outputs,
                         batch_y_targets_scaled
                     )
-                    # Add stochastic regularization term if available
-                    reg_loss = model.get_regularization_loss()
-                    if isinstance(reg_loss, torch.Tensor):
-                        loss = loss + stochastic_reg_weight * reg_loss
+                    # Add KL regularization term if available
+                    if hasattr(model, 'get_kl_loss'):
+                        kl_loss = model.get_kl_loss()
+                    elif hasattr(model, 'get_regularization_loss'):
+                        kl_loss = model.get_regularization_loss()
                     else:
-                        loss = loss + stochastic_reg_weight * torch.tensor(reg_loss, dtype=loss.dtype, device=loss.device)
+                        kl_loss = torch.tensor(0.0, dtype=data_loss.dtype, device=data_loss.device)
+                    if not isinstance(kl_loss, torch.Tensor):
+                        kl_loss = torch.tensor(float(kl_loss), dtype=data_loss.dtype, device=data_loss.device)
+                    # Adapt KL weight
+                    try:
+                        kl_weight = kl_tuner.adaptive_kl_weight(
+                            data_loss=float(data_loss.detach().cpu().item()),
+                            kl_loss=float(kl_loss.detach().cpu().item()),
+                            current_weight=kl_weight
+                        )
+                    except Exception:
+                        pass
+                    loss = data_loss + kl_weight * kl_loss
 
                 except Exception as e:
                     # Fallback: if scaling fails, use original approach but warn
                     print(f"⚠️  Scaling failed ({e}), using original targets")
-                    loss = criterion(
-                        original_outputs if isinstance(original_outputs, tuple) else outputs,
+                    mdn_params = extract_mdn_params(original_outputs)
+                    data_loss = criterion(
+                        mdn_params if mdn_params is not None else outputs,
                         batch_y_targets
                     )
-                    reg_loss = model.get_regularization_loss()
-                    if isinstance(reg_loss, torch.Tensor):
-                        loss = loss + stochastic_reg_weight * reg_loss
+                    if hasattr(model, 'get_kl_loss'):
+                        kl_loss = model.get_kl_loss()
+                    elif hasattr(model, 'get_regularization_loss'):
+                        kl_loss = model.get_regularization_loss()
                     else:
-                        loss = loss + stochastic_reg_weight * torch.tensor(reg_loss, dtype=loss.dtype, device=loss.device)
+                        kl_loss = torch.tensor(0.0, dtype=data_loss.dtype, device=data_loss.device)
+                    if not isinstance(kl_loss, torch.Tensor):
+                        kl_loss = torch.tensor(float(kl_loss), dtype=data_loss.dtype, device=data_loss.device)
+                    # Adapt KL weight
+                    try:
+                        kl_weight = kl_tuner.adaptive_kl_weight(
+                            data_loss=float(data_loss.detach().cpu().item()),
+                            kl_loss=float(kl_loss.detach().cpu().item()),
+                            current_weight=kl_weight
+                        )
+                    except Exception:
+                        pass
+                    loss = data_loss + kl_weight * kl_loss
             else:
                 # No scaler available, use original approach
-                loss = criterion(
-                    original_outputs if isinstance(original_outputs, tuple) else outputs,
+                mdn_params = extract_mdn_params(original_outputs)
+                data_loss = criterion(
+                    mdn_params if mdn_params is not None else outputs,
                     batch_y_targets
                 )
-                reg_loss = model.get_regularization_loss()
-                if isinstance(reg_loss, torch.Tensor):
-                    loss = loss + stochastic_reg_weight * reg_loss
+                if hasattr(model, 'get_kl_loss'):
+                    kl_loss = model.get_kl_loss()
+                elif hasattr(model, 'get_regularization_loss'):
+                    kl_loss = model.get_regularization_loss()
                 else:
-                    loss = loss + stochastic_reg_weight * torch.tensor(reg_loss, dtype=loss.dtype, device=loss.device)
+                    kl_loss = torch.tensor(0.0, dtype=data_loss.dtype, device=data_loss.device)
+                if not isinstance(kl_loss, torch.Tensor):
+                    kl_loss = torch.tensor(float(kl_loss), dtype=data_loss.dtype, device=data_loss.device)
+                # Adapt KL weight
+                try:
+                    kl_weight = kl_tuner.adaptive_kl_weight(
+                        data_loss=float(data_loss.detach().cpu().item()),
+                        kl_loss=float(kl_loss.detach().cpu().item()),
+                        current_weight=kl_weight
+                    )
+                except Exception:
+                    pass
+                loss = data_loss + kl_weight * kl_loss
             
             # Backward pass with gradient clipping
             loss.backward()
@@ -507,7 +580,7 @@ def train_financial_enhanced_pgat():
                     train_metrics_epoch.append(batch_metrics)
                 
                 print(f"  Batch {batch_idx+1:3d}/{len(train_loader)} | "
-                      f"Loss: {loss.item():.6f} | "
+                      f"Loss: {loss.item():.6f} | KLLoss: {kl_loss.item():.6f} | KLw: {kl_weight:.2e} | "
                       f"MAE: {batch_metrics['mae']:.6f} | "
                       f"RMSE: {batch_metrics['rmse']:.6f}")
         
@@ -530,6 +603,7 @@ def train_financial_enhanced_pgat():
                 wave_window = batch_x
                 target_window = batch_x[:, -batch_y.shape[1]:, :]
                 outputs = model(wave_window, target_window)
+                original_outputs_val = outputs
                 
                 # Handle model output format - ONLY extract target features for loss
                 outputs, batch_y_targets = handle_model_output(outputs, batch_y, num_targets=args.c_out)
@@ -542,11 +616,23 @@ def train_financial_enhanced_pgat():
                             batch_y_targets_np.reshape(-1, args.c_out)
                         ).reshape(batch_y_targets_np.shape)
                         batch_y_targets_scaled = torch.from_numpy(batch_y_targets_scaled_np).float().to(device)
-                        loss = criterion(outputs, batch_y_targets_scaled)
+                        mdn_params_val = extract_mdn_params(original_outputs_val)
+                        loss = criterion(
+                            mdn_params_val if mdn_params_val is not None else outputs,
+                            batch_y_targets_scaled
+                        )
                     except:
-                        loss = criterion(outputs, batch_y_targets)
+                        mdn_params_val = extract_mdn_params(original_outputs_val)
+                        loss = criterion(
+                            mdn_params_val if mdn_params_val is not None else outputs,
+                            batch_y_targets
+                        )
                 else:
-                    loss = criterion(outputs, batch_y_targets)
+                    mdn_params_val = extract_mdn_params(original_outputs_val)
+                    loss = criterion(
+                        mdn_params_val if mdn_params_val is not None else outputs,
+                        batch_y_targets
+                    )
                 val_losses.append(loss.item())
                 
                 # Calculate metrics on SCALED data (consistent with loss)

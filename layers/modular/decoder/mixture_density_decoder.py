@@ -30,13 +30,17 @@ class MixtureDensityDecoder(nn.Module):
             nn.ReLU(),
             nn.Dropout(0.1)
         )
+
+        # Learnable attention pooling over temporal dimension to avoid mean pooling
+        self.pool_attention = nn.Linear(d_model, 1)
         
         # Separate heads for each mixture component parameter
-        # Output dimensions: [pred_len, num_targets, num_components] flattened
-        out_dim = pred_len * num_targets * num_components
-        self.mean_head = nn.Linear(d_model, out_dim)
-        self.std_head = nn.Linear(d_model, out_dim)      # outputs log-stds (unconstrained)
-        self.weight_head = nn.Linear(d_model, out_dim)   # outputs log-weights (unnormalized)
+        # Means/stds have per-target parameters; weights are per time step, shared across targets
+        out_dim_params = pred_len * num_targets * num_components
+        out_dim_weights = pred_len * num_components
+        self.mean_head = nn.Linear(d_model, out_dim_params)
+        self.std_head = nn.Linear(d_model, out_dim_params)      # outputs log-stds (unconstrained)
+        self.weight_head = nn.Linear(d_model, out_dim_weights)  # outputs log-weights (unnormalized)
         
     def forward(self, x):
         """
@@ -50,9 +54,11 @@ class MixtureDensityDecoder(nn.Module):
                 - log_stds: Same shape as means
                 - log_weights: [batch_size, pred_len, num_components] (shared across targets)
         """
-        # Aggregate temporal dimension (simple mean pooling)
-        # Tests focus on shape and API, not specific temporal modeling
-        context = x.mean(dim=1)  # [B, d_model]
+        # Aggregate temporal dimension via learnable attention pooling (avoids information loss)
+        # x: [B, seq_len, d_model]
+        attn_logits = self.pool_attention(x)                 # [B, seq_len, 1]
+        attn_weights = torch.softmax(attn_logits, dim=1)     # [B, seq_len, 1]
+        context = torch.sum(attn_weights * x, dim=1)         # [B, d_model]
         hidden = self.mlp(context)  # [B, d_model]
         
         B = x.size(0)
@@ -60,7 +66,7 @@ class MixtureDensityDecoder(nn.Module):
         # Generate mixture parameters
         means_flat = self.mean_head(hidden)    # [B, pred_len * num_targets * num_components]
         log_stds_flat = self.std_head(hidden)  # [B, pred_len * num_targets * num_components]
-        log_weights_flat = self.weight_head(hidden)  # [B, pred_len * num_targets * num_components]
+        log_weights_flat = self.weight_head(hidden)  # [B, pred_len * num_components]
         
         if self.num_targets == 1:
             # Univariate case - maintain backward compatibility
@@ -71,10 +77,8 @@ class MixtureDensityDecoder(nn.Module):
             # Multivariate case
             means = means_flat.view(B, self.pred_len, self.num_targets, self.num_components)
             log_stds = log_stds_flat.view(B, self.pred_len, self.num_targets, self.num_components)
-            # Weights are shared across targets for simplicity
-            log_weights = log_weights_flat.view(B, self.pred_len, self.num_targets, self.num_components)
-            # Take mean across targets for shared weights
-            log_weights = log_weights.mean(dim=2)  # [B, pred_len, num_components]
+            # Weights are shared across targets per time step
+            log_weights = log_weights_flat.view(B, self.pred_len, self.num_components)
         
         return means, log_stds, log_weights
     
