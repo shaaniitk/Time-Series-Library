@@ -76,13 +76,26 @@ class JointSpatioTemporalEncoding(nn.Module):
         Forward pass of joint spatial-temporal encoding
         
         Args:
-            x: Input tensor [batch_size, seq_len, num_nodes, d_model]
+            x: Input tensor [batch_size, seq_len, num_nodes, d_model] or [batch_size, seq_len, d_model]
             adjacency_matrix: Spatial adjacency matrix [num_nodes, num_nodes]
             temporal_mask: Optional temporal attention mask
             
         Returns:
             Encoded features with joint spatial-temporal information
         """
+        # Handle both 3D and 4D inputs
+        if x.dim() == 3:
+            # 3D input: [batch_size, seq_len, d_model] - aggregated features case
+            return self._forward_aggregated(x, adjacency_matrix, temporal_mask)
+        elif x.dim() == 4:
+            # 4D input: [batch_size, seq_len, num_nodes, d_model] - original case
+            return self._forward_original(x, adjacency_matrix, temporal_mask)
+        else:
+            raise ValueError(f"Expected 3D or 4D input tensor, got {x.dim()}D")
+    
+    def _forward_original(self, x: torch.Tensor, adjacency_matrix: torch.Tensor,
+                         temporal_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Original forward pass for 4D input [batch_size, seq_len, num_nodes, d_model]"""
         batch_size, seq_len, num_nodes, d_model = x.shape
         
         # Add positional encodings
@@ -105,6 +118,41 @@ class JointSpatioTemporalEncoding(nn.Module):
         fused_features = self._adaptive_fusion(interaction_features, cross_attention_features, x)
         
         return self.layer_norm3(fused_features)
+    
+    def _forward_aggregated(self, x: torch.Tensor, adjacency_matrix: torch.Tensor,
+                           temporal_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Forward pass for 3D aggregated input [batch_size, seq_len, d_model]"""
+        batch_size, seq_len, d_model = x.shape
+        num_nodes = adjacency_matrix.size(0)
+        
+        # Method 1: Treat the aggregated features as a single "super-node"
+        # and apply temporal processing only
+        
+        # Apply temporal convolutions to capture temporal patterns
+        x_temp = x.permute(0, 2, 1)  # [batch, d_model, seq_len]
+        
+        # Multi-scale temporal processing
+        temporal_outputs = []
+        for conv in self.temporal_convs:
+            temp_out = F.relu(conv(x_temp))  # [batch, d_model, seq_len]
+            temporal_outputs.append(temp_out)
+        
+        # Combine multi-scale features
+        combined_temporal = torch.stack(temporal_outputs, dim=0).mean(dim=0)
+        combined_temporal = combined_temporal.permute(0, 2, 1)  # [batch, seq_len, d_model]
+        
+        # Add residual connection and layer norm
+        temporal_features = self.layer_norm1(combined_temporal + x)
+        
+        # Apply self-attention for global temporal dependencies
+        attn_output, _ = self.spatial_temporal_cross_attention(
+            temporal_features, temporal_features, temporal_features
+        )
+        
+        # Final layer norm and residual
+        output = self.layer_norm3(attn_output + temporal_features)
+        
+        return output
     
     def _multi_scale_temporal_processing(self, x: torch.Tensor) -> torch.Tensor:
         """

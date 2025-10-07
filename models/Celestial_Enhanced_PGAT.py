@@ -83,9 +83,16 @@ class Model(nn.Module):
         print(f"   - Enhanced features: MixtureDec={self.use_mixture_decoder}, "
               f"Stochastic={self.use_stochastic_learner}, Hierarchical={self.use_hierarchical_mapping}")
         
-        # Input embeddings
+        # Input embeddings - adjust for celestial aggregation
+        if self.aggregate_waves_to_celestial:
+            # Embedding expects 13 celestial bodies after aggregation
+            enc_embedding_dim = self.num_celestial_bodies
+        else:
+            # Embedding expects original wave count
+            enc_embedding_dim = self.enc_in
+            
         self.enc_embedding = DataEmbedding(
-            self.enc_in, self.d_model, configs.embed, configs.freq, self.dropout
+            enc_embedding_dim, self.d_model, configs.embed, configs.freq, self.dropout
         )
         self.dec_embedding = DataEmbedding(
             self.dec_in, self.d_model, configs.embed, configs.freq, self.dropout
@@ -106,40 +113,74 @@ class Model(nn.Module):
                 dropout=self.dropout
             )
             
-            # Map input features to celestial space
-            self.feature_to_celestial = nn.Linear(self.enc_in, self.num_celestial_bodies)
-            self.celestial_to_feature = nn.Linear(self.num_celestial_bodies, self.enc_in)
+            # Map input features to celestial space - adjust for aggregation
+            if self.aggregate_waves_to_celestial:
+                # After aggregation: 13 celestial → 13 celestial (identity or refinement)
+                self.feature_to_celestial = nn.Linear(self.num_celestial_bodies, self.num_celestial_bodies)
+                self.celestial_to_feature = nn.Linear(self.num_celestial_bodies, self.num_celestial_bodies)
+            else:
+                # Before aggregation: 118 waves → 13 celestial
+                self.feature_to_celestial = nn.Linear(self.enc_in, self.num_celestial_bodies)
+                self.celestial_to_feature = nn.Linear(self.num_celestial_bodies, self.enc_in)
         
-        # Hierarchical Mapping
+        # Hierarchical Mapping - adjust for celestial aggregation
         if self.use_hierarchical_mapping:
+            if self.use_celestial_graph and self.aggregate_waves_to_celestial:
+                # Use celestial body dimensions
+                num_nodes_for_mapping = self.num_celestial_bodies
+            else:
+                # Use original input dimensions
+                num_nodes_for_mapping = self.enc_in
+                
             self.hierarchical_mapper = HierarchicalTemporalSpatialMapper(
                 d_model=self.d_model,
-                num_nodes=self.enc_in,
+                num_nodes=num_nodes_for_mapping,
                 n_heads=self.n_heads,
                 num_attention_layers=2
             )
         
-        # Spatiotemporal Encoding
+        # Spatiotemporal Encoding - adjust for celestial aggregation
+        if self.use_celestial_graph and self.aggregate_waves_to_celestial:
+            # Use celestial body dimensions
+            num_nodes_for_encoding = self.num_celestial_bodies
+        else:
+            # Use original input dimensions
+            num_nodes_for_encoding = self.enc_in
+            
         self.spatiotemporal_encoder = JointSpatioTemporalEncoding(
             d_model=self.d_model,
             seq_len=self.seq_len,
-            num_nodes=self.enc_in,
+            num_nodes=num_nodes_for_encoding,
             num_heads=self.n_heads,
             dropout=self.dropout
         )
         
-        # Traditional graph learning (for comparison/fallback)
+        # Traditional graph learning (for comparison/fallback) - adjust for celestial aggregation
+        if self.use_celestial_graph and self.aggregate_waves_to_celestial:
+            # Use celestial body dimensions for adjacency matrix
+            adj_output_dim = self.num_celestial_bodies * self.num_celestial_bodies
+        else:
+            # Use original input dimensions
+            adj_output_dim = self.enc_in * self.enc_in
+            
         self.traditional_graph_learner = nn.Sequential(
             nn.Linear(self.d_model, self.d_model),
             nn.GELU(),
-            nn.Linear(self.d_model, self.enc_in * self.enc_in),
+            nn.Linear(self.d_model, adj_output_dim),
             nn.Tanh()
         )
         
-        # Stochastic Graph Learner
+        # Stochastic Graph Learner - adjust for celestial aggregation
         if self.use_stochastic_learner:
-            self.stochastic_mean = nn.Linear(self.d_model, self.enc_in * self.enc_in)
-            self.stochastic_logvar = nn.Linear(self.d_model, self.enc_in * self.enc_in)
+            if self.use_celestial_graph and self.aggregate_waves_to_celestial:
+                # Use celestial body dimensions for adjacency matrix
+                adj_output_dim = self.num_celestial_bodies * self.num_celestial_bodies
+            else:
+                # Use original input dimensions
+                adj_output_dim = self.enc_in * self.enc_in
+                
+            self.stochastic_mean = nn.Linear(self.d_model, adj_output_dim)
+            self.stochastic_logvar = nn.Linear(self.d_model, adj_output_dim)
         
         # Graph attention layers
         self.graph_attention_layers = nn.ModuleList([
@@ -163,8 +204,9 @@ class Model(nn.Module):
                 num_components=3,
                 num_targets=self.c_out
             )
-        else:
-            self.projection = nn.Linear(self.d_model, self.c_out)
+        
+        # Always have a fallback projection layer
+        self.projection = nn.Linear(self.d_model, self.c_out)
         
         # Market context encoder
         self.market_context_encoder = nn.Sequential(
@@ -218,8 +260,14 @@ class Model(nn.Module):
             x_enc_processed = x_enc
             wave_metadata['original_targets'] = None
         
-        # 1. Input embeddings
-        enc_out = self.enc_embedding(x_enc_processed, x_mark_enc)  # [batch, seq_len, d_model]
+        # 1. Input embeddings - ensure correct dimensions
+        try:
+            enc_out = self.enc_embedding(x_enc_processed, x_mark_enc)  # [batch, seq_len, d_model]
+        except Exception as e:
+            print(f"❌ Embedding error: {e}")
+            print(f"   Input shape: {x_enc_processed.shape}")
+            print(f"   Expected embedding input dim: {self.enc_embedding.value_embedding.c_in}")
+            raise e
         dec_out = self.dec_embedding(x_dec, x_mark_dec)  # [batch, label_len+pred_len, d_model]
         
         # 2. Generate market context from encoder output
@@ -255,11 +303,72 @@ class Model(nn.Module):
         
         # 6. Apply hierarchical mapping if enabled
         if self.use_hierarchical_mapping:
-            hierarchical_features = self.hierarchical_mapper(enc_out)
-            enc_out = enc_out + hierarchical_features
+            try:
+                # Hierarchical mapper expects [batch, num_patches, d_model] and outputs [batch, num_nodes, d_model]
+                # We need to expand the node features back to sequence length
+                hierarchical_features = self.hierarchical_mapper(enc_out)  # [batch, num_nodes, d_model]
+                
+                # Expand hierarchical features to match sequence length
+                # Method: Repeat each node feature across the sequence
+                batch_size, seq_len, d_model = enc_out.shape
+                num_nodes = hierarchical_features.size(1)
+                
+                # Expand and reshape to match enc_out dimensions
+                hierarchical_expanded = hierarchical_features.unsqueeze(1).expand(batch_size, seq_len, num_nodes, d_model)
+                
+                # Average across nodes to get [batch, seq_len, d_model]
+                hierarchical_features_seq = hierarchical_expanded.mean(dim=2)
+                
+                # Add to encoder output
+                enc_out = enc_out + hierarchical_features_seq
+                
+            except Exception as e:
+                print(f"⚠️  Hierarchical mapping failed: {e}")
+                print("   Continuing without hierarchical features")
         
         # 7. Spatiotemporal encoding with graph attention
-        encoded_features = self.spatiotemporal_encoder(enc_out)
+        try:
+            # The spatiotemporal encoder now handles both 3D and 4D inputs
+            # Prepare adjacency matrix
+            if combined_adj.dim() == 3:  # [batch, num_nodes, num_nodes]
+                # Use the first batch's adjacency matrix (assuming they're similar)
+                adj_for_spatiotemporal = combined_adj[0]  # [num_nodes, num_nodes]
+            else:
+                adj_for_spatiotemporal = combined_adj
+            
+            if self.use_celestial_graph and self.aggregate_waves_to_celestial:
+                # For celestial aggregation, pass 3D input directly
+                # The spatiotemporal encoder will handle it with the aggregated method
+                num_nodes = self.num_celestial_bodies
+                
+                # Ensure adjacency matrix matches celestial bodies
+                if adj_for_spatiotemporal.size(0) != num_nodes:
+                    adj_for_spatiotemporal = torch.eye(num_nodes, device=enc_out.device)
+                
+                # Pass 3D input - spatiotemporal encoder will use _forward_aggregated
+                encoded_features = self.spatiotemporal_encoder(enc_out, adj_for_spatiotemporal)
+            else:
+                # For original case, reshape to 4D and use original method
+                batch_size, seq_len, d_model = enc_out.shape
+                num_nodes = self.enc_in
+                
+                # Ensure adjacency matrix matches number of nodes
+                if adj_for_spatiotemporal.size(0) != num_nodes:
+                    adj_for_spatiotemporal = torch.eye(num_nodes, device=enc_out.device)
+                
+                # Reshape to 4D for original spatiotemporal processing
+                node_dim = d_model // num_nodes if d_model % num_nodes == 0 else 1
+                if d_model % num_nodes == 0:
+                    enc_out_4d = enc_out.view(batch_size, seq_len, num_nodes, node_dim)
+                    encoded_features_4d = self.spatiotemporal_encoder(enc_out_4d, adj_for_spatiotemporal)
+                    encoded_features = encoded_features_4d.view(batch_size, seq_len, d_model)
+                else:
+                    # Use 3D aggregated method as fallback
+                    encoded_features = self.spatiotemporal_encoder(enc_out, adj_for_spatiotemporal)
+            
+        except Exception as e:
+            print(f"⚠️  Spatiotemporal encoding failed: {e}")
+            encoded_features = enc_out
         
         # 8. Graph attention processing
         graph_features = encoded_features
@@ -273,35 +382,69 @@ class Model(nn.Module):
         
         # 10. Final prediction
         if self.use_mixture_decoder:
-            # Mixture density decoder returns (predictions, pi, mu, sigma)
-            predictions, mixture_params = self.mixture_decoder(decoder_features)
-            
-            # For training, return the mean prediction
-            if self.training:
-                output = predictions  # [batch, label_len+pred_len, c_out]
-            else:
-                # For inference, can sample from mixture
+            # Mixture density decoder returns (means, log_stds, log_weights)
+            try:
+                means, log_stds, log_weights = self.mixture_decoder(decoder_features)
+                
+                # For training, use the mean of the first component as prediction
+                if means.dim() == 4:  # [batch, pred_len, num_targets, num_components]
+                    # Take the mean across components for each target
+                    weights = torch.softmax(log_weights, dim=-1)  # [batch, pred_len, num_components]
+                    # Expand weights to match means shape
+                    weights_expanded = weights.unsqueeze(2).expand_as(means)  # [batch, pred_len, num_targets, num_components]
+                    predictions = (means * weights_expanded).sum(dim=-1)  # [batch, pred_len, num_targets]
+                else:  # [batch, pred_len, num_components] - univariate case
+                    weights = torch.softmax(log_weights, dim=-1)
+                    predictions = (means * weights).sum(dim=-1, keepdim=True)  # [batch, pred_len, 1]
+                
+                # Ensure output has correct shape [batch, pred_len, c_out]
+                if predictions.size(-1) != self.c_out:
+                    print(f"⚠️  Mixture decoder output shape mismatch: {predictions.shape} vs expected [..., {self.c_out}]")
+                    # Fallback to projection
+                    predictions = self.projection(decoder_features[:, -self.pred_len:, :])
+                
                 output = predictions
+                mixture_params = {'means': means, 'log_stds': log_stds, 'log_weights': log_weights}
+                
+            except Exception as e:
+                print(f"⚠️  Mixture decoder failed: {e}")
+                # Fallback to simple projection
+                output = self.projection(decoder_features[:, -self.pred_len:, :])
+                mixture_params = {}
         else:
             output = self.projection(decoder_features)
         
-        # Extract prediction part (remove label_len)
-        predictions = output[:, -self.pred_len:, :]  # [batch, pred_len, c_out]
+        # In case of MDN, the raw tuple is returned for the loss function
+        # A point prediction is calculated within the training script for metrics
+        output = predictions if isinstance(predictions, torch.Tensor) else mixture_params
         
-        # Compile metadata
-        metadata = {
-            'celestial_metadata': celestial_metadata,
-            'fusion_metadata': fusion_metadata,
-            'wave_metadata': wave_metadata,
-            'model_type': 'Celestial_Enhanced_PGAT',
-            'num_celestial_bodies': self.num_celestial_bodies,
-            'astronomical_strength': astronomical_adj.abs().mean().item() if self.use_celestial_graph else 0.0,
-            'learned_strength': learned_adj.abs().mean().item(),
-            'combined_strength': combined_adj.abs().mean().item(),
-            'wave_aggregation_enabled': self.aggregate_waves_to_celestial
-        }
-        
-        return predictions, metadata
+        return output, metadata
+    
+    def get_regularization_loss(self):
+        """Get the regularization loss from the stochastic graph learner."""
+        loss = 0.0
+        if self.use_stochastic_learner and hasattr(self, 'latest_stochastic_loss'):
+            loss += self.latest_stochastic_loss
+        return loss
+
+    def get_point_prediction(self, forward_output):
+        """Extracts a single point prediction from the model's output, handling the probabilistic case."""
+        if self.use_mixture_decoder and isinstance(forward_output, tuple):
+            means, _, log_weights = forward_output
+            with torch.no_grad():
+                if means.dim() == 4:  # [batch, pred_len, num_targets, num_components]
+                    # Calculate weighted average of component means
+                    weights = torch.softmax(log_weights, dim=-1).unsqueeze(2).expand_as(means)
+                    predictions = (means * weights).sum(dim=-1)
+                else:  # Univariate case
+                    weights = torch.softmax(log_weights, dim=-1)
+                    predictions = (means * weights).sum(dim=-1, keepdim=True)
+                
+                # Fallback to ensure correct output shape if something goes wrong
+                if predictions.size(-1) != self.c_out:
+                    return means[..., 0] if means.dim() == 4 else means[..., 0].unsqueeze(-1)
+                return predictions
+        return forward_output # Output is already a point prediction
     
     def _process_celestial_graph(self, x_enc, market_context):
         """Process input through celestial body graph system"""
@@ -311,11 +454,23 @@ class Model(nn.Module):
         astronomical_adj, dynamic_adj, celestial_features, metadata = self.celestial_nodes(market_context)
         
         # Map input features to celestial space for enhanced processing
+        # x_enc is already aggregated to celestial space [batch, seq_len, 13]
         celestial_mapped = self.feature_to_celestial(x_enc)  # [batch, seq_len, num_celestial_bodies]
         
         # Enhance celestial features with temporal information
         temporal_celestial = celestial_mapped.mean(dim=1)  # [batch, num_celestial_bodies]
-        enhanced_context = market_context + torch.matmul(temporal_celestial, celestial_features.mean(dim=1))
+        
+        # Fix dimension mismatch: project celestial_features to match temporal_celestial
+        # celestial_features: [batch, num_celestial_bodies, d_model]
+        # temporal_celestial: [batch, num_celestial_bodies]
+        # We need to project celestial_features to [batch, num_celestial_bodies] for multiplication
+        celestial_features_projected = celestial_features.mean(dim=-1)  # [batch, num_celestial_bodies]
+        
+        # Now we can multiply: [batch, num_celestial_bodies] * [batch, num_celestial_bodies] -> [batch]
+        celestial_influence = (temporal_celestial * celestial_features_projected).sum(dim=-1, keepdim=True)  # [batch, 1]
+        
+        # Expand to match market_context dimensions and add
+        enhanced_context = market_context + celestial_influence.expand_as(market_context)
         
         return {
             'astronomical_adj': astronomical_adj,
@@ -349,12 +504,18 @@ class Model(nn.Module):
                 std = torch.exp(0.5 * logvar)
                 eps = torch.randn_like(std)
                 adj_flat = mean + eps * std
+                
+                # Store KL divergence as regularization loss (per batch item)
+                kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp(), dim=1)
+                self.latest_stochastic_loss = kl_div.mean()
             else:
                 # Use mean during inference
                 adj_flat = mean
+                self.latest_stochastic_loss = 0.0
         else:
             # Deterministic graph learning
             adj_flat = self.traditional_graph_learner(combined_context)
+            self.latest_stochastic_loss = 0.0
         
         # Reshape to adjacency matrix
         if self.use_celestial_graph:
@@ -455,13 +616,32 @@ class DataEmbedding(nn.Module):
 class TokenEmbedding(nn.Module):
     def __init__(self, c_in, d_model):
         super().__init__()
+        self.c_in = c_in
+        self.d_model = d_model
         self.tokenConv = nn.Conv1d(in_channels=c_in, out_channels=d_model, kernel_size=3, padding=1, bias=False)
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
     
     def forward(self, x):
-        x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
+        # Handle input dimensions dynamically
+        batch_size, seq_len, input_dim = x.shape
+        
+        if input_dim != self.c_in:
+            # Create a new conv layer with correct dimensions if needed
+            if not hasattr(self, '_dynamic_conv') or self._dynamic_conv.in_channels != input_dim:
+                self._dynamic_conv = nn.Conv1d(
+                    in_channels=input_dim, 
+                    out_channels=self.d_model, 
+                    kernel_size=3, 
+                    padding=1, 
+                    bias=False
+                ).to(x.device)
+                nn.init.kaiming_normal_(self._dynamic_conv.weight, mode='fan_in', nonlinearity='leaky_relu')
+            
+            x = self._dynamic_conv(x.permute(0, 2, 1)).transpose(1, 2)
+        else:
+            x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
         return x
 
 
