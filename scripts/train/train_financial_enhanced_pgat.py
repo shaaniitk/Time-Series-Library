@@ -299,6 +299,36 @@ def train_financial_enhanced_pgat():
     
     args = Args(**config_dict)
 
+    # User-requested overrides: enable LR adjustment, reduce model/sequence size, and set epochs
+    # Learning rate adjustment strategy (type1/type2/type3/cosine)
+    if not hasattr(args, 'lradj') or not getattr(args, 'lradj'):
+        setattr(args, 'lradj', os.getenv('LRADJ', 'type2'))
+    # Train for 20 epochs
+    args.train_epochs = int(os.getenv('TRAIN_EPOCHS', '20'))
+    # Downsize model for stability and faster training
+    args.d_model = int(os.getenv('D_MODEL', '128'))
+    args.n_heads = int(os.getenv('N_HEADS', '4'))
+    args.d_ff = int(os.getenv('D_FF', '256'))
+    # Keep layer counts modest
+    if hasattr(args, 'e_layers'):
+        args.e_layers = int(os.getenv('E_LAYERS', str(getattr(args, 'e_layers', 2))))
+    else:
+        setattr(args, 'e_layers', int(os.getenv('E_LAYERS', '2')))
+    if hasattr(args, 'd_layers'):
+        args.d_layers = int(os.getenv('D_LAYERS', str(getattr(args, 'd_layers', 1))))
+    else:
+        setattr(args, 'd_layers', int(os.getenv('D_LAYERS', '1')))
+    # Reduce sequence lengths to make training lighter
+    args.seq_len = int(os.getenv('SEQ_LEN', '256'))
+    # Label/pred windows proportionally smaller
+    args.label_len = int(os.getenv('LABEL_LEN', str(getattr(args, 'label_len', 64))))
+    args.pred_len = int(os.getenv('PRED_LEN', str(getattr(args, 'pred_len', 24))))
+    # Modest batch size for CPU/GPU memory
+    if hasattr(args, 'batch_size'):
+        args.batch_size = int(os.getenv('BATCH_SIZE', str(getattr(args, 'batch_size', 32))))
+    else:
+        setattr(args, 'batch_size', int(os.getenv('BATCH_SIZE', '32')))
+
     # Optional fast dev run: limit epochs and batches for quick validation
     fast_dev_run = (
         os.getenv('FAST_DEV_RUN', '0').strip().lower() in ('1', 'true')
@@ -400,7 +430,15 @@ def train_financial_enhanced_pgat():
     # KL regularization weight (tunable)
     kl_weight = 1e-3
     # Adaptive KL tuner with environment overrides for quick tuning
-    kl_target_pct = float(os.getenv('KL_TARGET_PERCENT', '0.02'))
+    # Accept either fraction (e.g., 0.1) or percent (e.g., 10 for 10%)
+    def _parse_kl_target_percent(val_str: str) -> float:
+        try:
+            v = float(val_str)
+        except Exception:
+            v = 0.02
+        return v / 100.0 if v > 1.0 else v
+
+    kl_target_pct = _parse_kl_target_percent(os.getenv('KL_TARGET_PERCENT', '0.02'))
     kl_min_w = float(os.getenv('KL_MIN_WEIGHT', '1e-6'))
     kl_max_w = float(os.getenv('KL_MAX_WEIGHT', '1.0'))
     kl_tuner = KLTuner(
@@ -409,6 +447,11 @@ def train_financial_enhanced_pgat():
         min_weight=kl_min_w,
         max_weight=kl_max_w
     )
+    try:
+        pct_display = kl_target_pct * 100.0
+        print(f"🔧 KL tuning target set to {pct_display:.1f}% contribution (parsed from KL_TARGET_PERCENT)")
+    except Exception:
+        pass
     early_stopping = EarlyStopping(patience=args.patience, verbose=True)
     
     # Enable gradient checkpointing if available (saves memory)
