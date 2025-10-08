@@ -14,10 +14,13 @@ import math
 from layers.modular.graph.celestial_body_nodes import CelestialBodyNodes, CelestialBody
 from layers.modular.graph.celestial_graph_combiner import CelestialGraphCombiner
 from layers.modular.decoder.mixture_density_decoder import MixtureDensityDecoder
+from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureDensityDecoder
 from layers.modular.embedding.hierarchical_mapper import HierarchicalTemporalSpatialMapper
 from layers.modular.encoder.spatiotemporal_encoding import JointSpatioTemporalEncoding
 from layers.modular.graph.gated_graph_combiner import GatedGraphCombiner
+from layers.Embed import DataEmbedding
 from utils.celestial_wave_aggregator import CelestialWaveAggregator, CelestialDataProcessor
+from layers.modular.aggregation.phase_aware_celestial_processor import PhaseAwareCelestialProcessor
 
 
 class Model(nn.Module):
@@ -60,8 +63,17 @@ class Model(nn.Module):
         self.num_input_waves = getattr(configs, 'num_input_waves', 118)
         self.target_wave_indices = getattr(configs, 'target_wave_indices', [0, 1, 2, 3])
         
-        # Wave Aggregation System
+        # Enhanced Phase-Aware Wave Aggregation System
         if self.aggregate_waves_to_celestial:
+            # Use the new phase-aware processor that understands the actual feature structure
+            self.phase_aware_processor = PhaseAwareCelestialProcessor(
+                num_input_waves=self.num_input_waves,
+                celestial_dim=32,  # Rich 32D representation per celestial body
+                waves_per_body=9,  # Average waves per celestial body
+                num_heads=self.n_heads
+            )
+            
+            # Keep the old processor for target extraction
             self.wave_aggregator = CelestialWaveAggregator(
                 num_input_waves=self.num_input_waves,
                 num_celestial_bodies=self.num_celestial_bodies
@@ -83,10 +95,10 @@ class Model(nn.Module):
         print(f"   - Enhanced features: MixtureDec={self.use_mixture_decoder}, "
               f"Stochastic={self.use_stochastic_learner}, Hierarchical={self.use_hierarchical_mapping}")
         
-        # Input embeddings - adjust for celestial aggregation
+        # Input embeddings - adjust for phase-aware celestial aggregation
         if self.aggregate_waves_to_celestial:
-            # Embedding expects 13 celestial bodies after aggregation
-            enc_embedding_dim = self.num_celestial_bodies
+            # Phase-aware processor outputs 13 celestial bodies × 32D = 416D
+            enc_embedding_dim = self.num_celestial_bodies * 32
         else:
             # Embedding expects original wave count
             enc_embedding_dim = self.enc_in
@@ -203,11 +215,15 @@ class Model(nn.Module):
         
         # Output projection
         if self.use_mixture_decoder:
-            self.mixture_decoder = MixtureDensityDecoder(
+            # Use sequential mixture decoder to preserve temporal structure
+            self.mixture_decoder = SequentialMixtureDensityDecoder(
                 d_model=self.d_model,
                 pred_len=self.pred_len,
                 num_components=3,
-                num_targets=self.c_out
+                num_targets=self.c_out,
+                num_decoder_layers=2,
+                num_heads=self.n_heads,
+                dropout=self.dropout
             )
         
         # Always have a fallback projection layer
@@ -248,19 +264,31 @@ class Model(nn.Module):
         """
         batch_size, seq_len, enc_in = x_enc.shape
         
-        # 0. Wave Aggregation (if enabled)
+        # 0. Enhanced Phase-Aware Wave Processing (if enabled)
         wave_metadata = {}
         if self.aggregate_waves_to_celestial and enc_in == self.num_input_waves:
-            # Process waves into celestial nodes and targets
-            celestial_nodes, target_waves, wave_metadata = self.data_processor.process_batch(x_enc)
+            # Use phase-aware processor for rich celestial representations
+            celestial_features, adjacency_matrix, phase_metadata = self.phase_aware_processor(x_enc)
+            # celestial_features: [batch, seq_len, 13 * 32] Rich multi-dimensional representations
+            # adjacency_matrix: [batch, 13, 13] Phase-difference based edges
             
-            # Use celestial nodes as encoder input
-            x_enc_processed = celestial_nodes  # [batch, seq_len, 13]
+            # Extract targets using the old processor (for compatibility)
+            _, target_waves, target_metadata = self.data_processor.process_batch(x_enc)
             
-            # Store original targets for loss computation
-            wave_metadata['original_targets'] = target_waves  # [batch, seq_len, 4]
+            # Use rich celestial features as encoder input
+            x_enc_processed = celestial_features  # [batch, seq_len, 13 * 32]
             
-            print(f"🌌 Wave aggregation: {x_enc.shape} → celestial {celestial_nodes.shape}, targets {target_waves.shape}")
+            # Store comprehensive metadata
+            wave_metadata = {
+                'original_targets': target_waves,  # [batch, seq_len, 4]
+                'phase_metadata': phase_metadata,
+                'target_metadata': target_metadata,
+                'adjacency_matrix': adjacency_matrix,
+                'celestial_features_shape': celestial_features.shape
+            }
+            
+            print(f"🌌 Phase-aware processing: {x_enc.shape} → celestial {celestial_features.shape}, targets {target_waves.shape}")
+            print(f"🔗 Phase-based adjacency matrix: {adjacency_matrix.shape}")
         else:
             x_enc_processed = x_enc
             wave_metadata['original_targets'] = None
@@ -279,13 +307,31 @@ class Model(nn.Module):
         # Use last hidden state instead of mean to preserve temporal information
         market_context = self.market_context_encoder(enc_out[:, -1, :])  # [batch, d_model]
         
-        # 3. Celestial Body Graph Processing
+        # 3. Enhanced Celestial Body Graph Processing
         if self.use_celestial_graph:
-            celestial_results = self._process_celestial_graph(x_enc_processed, market_context)
-            astronomical_adj = celestial_results['astronomical_adj']
-            dynamic_adj = celestial_results['dynamic_adj'] 
-            celestial_features = celestial_results['celestial_features']
-            celestial_metadata = celestial_results['metadata']
+            if self.aggregate_waves_to_celestial and 'adjacency_matrix' in wave_metadata:
+                # Use phase-based adjacency matrix from phase-aware processor
+                phase_based_adj = wave_metadata['adjacency_matrix']  # [batch, 13, 13]
+                
+                # Still process celestial graph for additional features
+                celestial_results = self._process_celestial_graph(x_enc_processed, market_context)
+                astronomical_adj = celestial_results['astronomical_adj']
+                dynamic_adj = celestial_results['dynamic_adj'] 
+                celestial_features = celestial_results['celestial_features']
+                celestial_metadata = celestial_results['metadata']
+                
+                # Combine phase-based and traditional adjacency matrices
+                combined_phase_adj = (phase_based_adj + astronomical_adj + dynamic_adj) / 3
+                astronomical_adj = combined_phase_adj  # Use combined matrix
+                
+                print(f"🌟 Using phase-based adjacency matrix combined with traditional methods")
+            else:
+                # Fallback to traditional celestial graph processing
+                celestial_results = self._process_celestial_graph(x_enc_processed, market_context)
+                astronomical_adj = celestial_results['astronomical_adj']
+                dynamic_adj = celestial_results['dynamic_adj'] 
+                celestial_features = celestial_results['celestial_features']
+                celestial_metadata = celestial_results['metadata']
         else:
             # Fallback to traditional graph learning
             traditional_adj = self._learn_traditional_graph(market_context, batch_size)
@@ -396,34 +442,37 @@ class Model(nn.Module):
         for layer in self.decoder_layers:
             decoder_features = layer(decoder_features, graph_features)
         
-        # 10. Final prediction
+        # 10. Final prediction with Sequential Mixture Decoder
         if self.use_mixture_decoder:
-            # Mixture density decoder returns (means, log_stds, log_weights)
+            # Sequential mixture density decoder preserves temporal structure
             try:
-                means, log_stds, log_weights = self.mixture_decoder(decoder_features)
+                # Extract the prediction portion of decoder features
+                prediction_features = decoder_features[:, -self.pred_len:, :]  # [batch, pred_len, d_model]
                 
-                # For training, use the mean of the first component as prediction
-                if means.dim() == 4:  # [batch, pred_len, num_targets, num_components]
-                    # Take the mean across components for each target
-                    weights = torch.softmax(log_weights, dim=-1)  # [batch, pred_len, num_components]
-                    # Expand weights to match means shape
-                    weights_expanded = weights.unsqueeze(2).expand_as(means)  # [batch, pred_len, num_targets, num_components]
-                    predictions = (means * weights_expanded).sum(dim=-1)  # [batch, pred_len, num_targets]
-                else:  # [batch, pred_len, num_components] - univariate case
-                    weights = torch.softmax(log_weights, dim=-1)
-                    predictions = (means * weights).sum(dim=-1, keepdim=True)  # [batch, pred_len, 1]
+                # Use sequential mixture decoder with cross-attention to encoder features
+                means, log_stds, log_weights = self.mixture_decoder(
+                    encoder_output=graph_features,  # Full encoder output for cross-attention
+                    decoder_input=prediction_features  # Only prediction portion
+                )
+                
+                # Get point prediction using the decoder's method
+                predictions = self.mixture_decoder.get_point_prediction((means, log_stds, log_weights))
                 
                 # Ensure output has correct shape [batch, pred_len, c_out]
                 if predictions.size(-1) != self.c_out:
-                    print(f"⚠️  Mixture decoder output shape mismatch: {predictions.shape} vs expected [..., {self.c_out}]")
+                    print(f"⚠️  Sequential mixture decoder output shape mismatch: {predictions.shape} vs expected [..., {self.c_out}]")
                     # Fallback to projection
-                    predictions = self.projection(decoder_features[:, -self.pred_len:, :])
+                    predictions = self.projection(prediction_features)
                 
                 output = predictions
                 mixture_params = {'means': means, 'log_stds': log_stds, 'log_weights': log_weights}
                 
+                print(f"🎯 Sequential mixture decoder output: means {means.shape}, predictions {predictions.shape}")
+                
             except Exception as e:
-                print(f"⚠️  Mixture decoder failed: {e}")
+                print(f"⚠️  Sequential mixture decoder failed: {e}")
+                import traceback
+                traceback.print_exc()
                 # Fallback to simple projection
                 output = self.projection(decoder_features[:, -self.pred_len:, :])
                 mixture_params = {}
@@ -480,8 +529,13 @@ class Model(nn.Module):
         astronomical_adj, dynamic_adj, celestial_features, metadata = self.celestial_nodes(market_context)
         
         # Map input features to celestial space for enhanced processing
-        # x_enc is already aggregated to celestial space [batch, seq_len, 13]
-        celestial_mapped = self.feature_to_celestial(x_enc)  # [batch, seq_len, num_celestial_bodies]
+        if hasattr(self, 'phase_aware_processor') and x_enc.size(-1) > 13:
+            # Phase-aware processor already provides rich celestial features [batch, seq_len, 13*32]
+            # Reshape to [batch, seq_len, 13, 32] then take mean over celestial dimension
+            celestial_mapped = x_enc.view(x_enc.size(0), x_enc.size(1), 13, -1).mean(dim=-1)  # [batch, seq_len, 13]
+        else:
+            # Traditional mapping for 13D input
+            celestial_mapped = self.feature_to_celestial(x_enc)  # [batch, seq_len, num_celestial_bodies]
         
         # Enhance celestial features with temporal information (fix oversimplification)
         # Use last time step instead of mean to preserve temporal information
@@ -749,15 +803,21 @@ class TemporalEmbedding(nn.Module):
         month_x = 0.
         
         # Apply embeddings based on available features
+        # Convert continuous temporal features to discrete indices
         if num_features > 0:
-            month_x = self.month_embed(x[:, :, 0])
+            month_indices = torch.clamp((x[:, :, 0] * 12).long(), 0, 11)
+            month_x = self.month_embed(month_indices)
         if num_features > 1:
-            day_x = self.day_embed(x[:, :, 1])
+            day_indices = torch.clamp((x[:, :, 1] * 31).long(), 0, 30)
+            day_x = self.day_embed(day_indices)
         if num_features > 2:
-            weekday_x = self.weekday_embed(x[:, :, 2])
+            weekday_indices = torch.clamp((x[:, :, 2] * 7).long(), 0, 6)
+            weekday_x = self.weekday_embed(weekday_indices)
         if num_features > 3:
-            hour_x = self.hour_embed(x[:, :, 3])
+            hour_indices = torch.clamp((x[:, :, 3] * 24).long(), 0, 23)
+            hour_x = self.hour_embed(hour_indices)
         if num_features > 4 and hasattr(self, 'minute_embed'):
-            minute_x = self.minute_embed(x[:, :, 4])
+            minute_indices = torch.clamp((x[:, :, 4] * 60).long(), 0, 59)
+            minute_x = self.minute_embed(minute_indices)
         
         return hour_x + weekday_x + day_x + month_x + minute_x

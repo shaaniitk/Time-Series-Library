@@ -108,9 +108,9 @@ def train_celestial_pgat():
     
     # Use proper loss function based on model configuration
     if getattr(model, 'use_mixture_decoder', False):
-        # Import the proper mixture loss function that handles multivariate targets
-        from layers.modular.decoder.mixture_density_decoder import MixtureNLLLoss
-        criterion = MixtureNLLLoss(multivariate_mode='independent')
+        # Import the sequential mixture loss function for better temporal modeling
+        from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureNLLLoss
+        criterion = SequentialMixtureNLLLoss(reduction='mean')
         print("🎯 Using Gaussian Mixture NLL Loss for probabilistic predictions")
     else:
         criterion = nn.MSELoss()
@@ -194,6 +194,27 @@ def train_celestial_pgat():
                 # Backward pass
                 loss.backward()
                 
+                # Check gradient flow (debug)
+                if i == 0:  # Only check first batch to avoid spam
+                    total_grad_norm = 0.0
+                    param_count = 0
+                    for name, param in model.named_parameters():
+                        if param.grad is not None:
+                            grad_norm = param.grad.data.norm(2)
+                            total_grad_norm += grad_norm.item() ** 2
+                            param_count += 1
+                    total_grad_norm = total_grad_norm ** (1. / 2)
+                    print(f"         🔍 Total gradient norm: {total_grad_norm:.6f} ({param_count} params)")
+                    
+                    # Check if parameters are changing
+                    if not hasattr(model, '_first_param_value'):
+                        model._first_param_value = next(model.parameters()).clone().detach()
+                    else:
+                        first_param = next(model.parameters())
+                        param_change = (first_param - model._first_param_value).abs().mean().item()
+                        print(f"         📈 Parameter change: {param_change:.8f}")
+                        model._first_param_value = first_param.clone().detach()
+                
                 # Gradient clipping
                 if hasattr(args, 'clip_grad_norm'):
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
@@ -206,6 +227,16 @@ def train_celestial_pgat():
                 # Log progress
                 if i % 50 == 0:
                     print(f"      Epoch {epoch+1:3d} | Batch {i:4d}/{len(train_loader)} | Loss: {loss.item():.6f}")
+                    
+                    # Debug: Check if outputs are changing
+                    if isinstance(outputs, dict) and 'point_prediction' in outputs:
+                        output_mean = outputs['point_prediction'].mean().item()
+                        output_std = outputs['point_prediction'].std().item()
+                        print(f"         📊 Output stats: mean={output_mean:.6f}, std={output_std:.6f}")
+                    elif isinstance(outputs, torch.Tensor):
+                        output_mean = outputs.mean().item()
+                        output_std = outputs.std().item()
+                        print(f"         📊 Output stats: mean={output_mean:.6f}, std={output_std:.6f}")
                     
                     # Print celestial metadata
                     if metadata and 'celestial_metadata' in metadata:
