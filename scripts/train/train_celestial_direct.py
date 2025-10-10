@@ -6,6 +6,23 @@ Simplified approach without complex experiment framework
 
 import os
 import sys
+import io
+
+# Ensure stdout/stderr can emit UTF-8 on Windows to avoid UnicodeEncodeError
+try:
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    else:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    else:
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+except Exception:
+    # Non-fatal; fallback to default platform encoding
+    pass
+import sys
 import torch
 import torch.nn as nn
 import numpy as np
@@ -58,11 +75,11 @@ def train_celestial_pgat():
     args.train_only = False
     args.do_predict = False
     
-    # Wave aggregation settings
-    args.aggregate_waves_to_celestial = True
-    args.wave_to_celestial_mapping = True
-    args.celestial_node_features = 13
-    args.target_wave_indices = [0, 1, 2, 3]  # OHLC indices
+    # Wave aggregation settings (respect config toggles; provide sane defaults)
+    args.aggregate_waves_to_celestial = getattr(args, 'aggregate_waves_to_celestial', False)
+    args.wave_to_celestial_mapping = getattr(args, 'wave_to_celestial_mapping', False)
+    args.celestial_node_features = getattr(args, 'celestial_node_features', 13)
+    args.target_wave_indices = getattr(args, 'target_wave_indices', [0, 1, 2, 3])
     
     print(f"📊 Configuration loaded:")
     print(f"   - Model: {args.model}")
@@ -122,6 +139,44 @@ def train_celestial_pgat():
     checkpoint_dir = Path(args.checkpoints) / args.model_id
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     
+    # --- Auto-detect target indices from CSV header for slicing ---
+    # Allows specifying target names in config (e.g., "log_Open,log_Close")
+    # and ensures loss uses the correct target slices of batch_y
+    target_indices = None
+    try:
+        if hasattr(args, 'target') and args.target:
+            # Load header from CSV to map target names to indices (excluding 'date')
+            import pandas as pd
+            csv_path = os.path.join(args.root_path, args.data_path)
+            print(f"\n📁 Data file: {csv_path}")
+            df_head = pd.read_csv(csv_path, nrows=1)
+            feature_cols = [c for c in df_head.columns if c != 'date']
+            print(f"🧾 Columns ({len(df_head.columns)}): {list(df_head.columns)}")
+            # Try to estimate row count without loading full CSV
+            try:
+                with open(csv_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    row_count = sum(1 for _ in f) - 1  # exclude header
+                print(f"📏 CSV approx rows: {row_count}")
+            except Exception as e_row:
+                print(f"⚠️  Could not estimate row count: {e_row}")
+            # Auto-set enc/dec input dims from CSV
+            args.enc_in = len(feature_cols)
+            args.dec_in = len(feature_cols)
+            print(f"📐 Auto-set enc_in/dec_in from CSV: {args.enc_in}")
+            if isinstance(args.target, str):
+                target_names = [t.strip() for t in args.target.split(',')]
+            else:
+                target_names = list(args.target)
+            name_to_index = {name: idx for idx, name in enumerate(feature_cols)}
+            target_indices = [name_to_index[n] for n in target_names if n in name_to_index]
+            # Fallback: if not found, use first c_out features
+            if not target_indices:
+                target_indices = list(range(getattr(args, 'c_out', 1)))
+            print(f"🎯 Target indices resolved: {target_indices}")
+    except Exception as e:
+        print(f"⚠️  Failed to auto-detect target indices: {e}. Using first c_out features.")
+        target_indices = list(range(getattr(args, 'c_out', 1)))
+
     # Training loop
     print("\n🔥 Starting training loop...")
     train_losses = []
@@ -176,11 +231,16 @@ def train_celestial_pgat():
                     loss = criterion((means, log_stds, log_weights), true_targets)
                 else:
                     # Standard deterministic output
-                    if hasattr(args, 'target_features') and args.target_features:
-                        target_indices = args.target_features
-                        loss = criterion(outputs[:, :, target_indices], true_targets[:, :, target_indices])
+                    # Ensure BOTH time and channel dimensions align with ground truth
+                    # Slice model outputs to last pred_len timesteps
+                    out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
+                    if target_indices is not None:
+                        # If model outputs more channels than targets, slice channels
+                        out_slice = out_time[:, :, :len(target_indices)] if out_time.shape[-1] > len(target_indices) else out_time
+                        gt_slice = true_targets[:, :, target_indices]
+                        loss = criterion(out_slice, gt_slice)
                     else:
-                        loss = criterion(outputs, true_targets)
+                        loss = criterion(out_time, true_targets)
                 
                 # Add regularization loss from stochastic graph learner
                 if getattr(model, 'use_stochastic_learner', False):
@@ -292,11 +352,15 @@ def train_celestial_pgat():
                         means, log_stds, log_weights = outputs
                         loss = criterion((means, log_stds, log_weights), true_targets)
                     else:
-                        if hasattr(args, 'target_features') and args.target_features:
-                            target_indices = args.target_features
-                            loss = criterion(outputs[:, :, target_indices], true_targets[:, :, target_indices])
+                        # Deterministic loss
+                        # Slice model outputs to last pred_len timesteps to match ground truth
+                        out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
+                        if target_indices is not None:
+                            out_slice = out_time[:, :, :len(target_indices)] if out_time.shape[-1] > len(target_indices) else out_time
+                            gt_slice = true_targets[:, :, target_indices]
+                            loss = criterion(out_slice, gt_slice)
                         else:
-                            loss = criterion(outputs, true_targets)
+                            loss = criterion(out_time, true_targets)
                     
                     val_loss += loss.item()
                     val_batches += 1
@@ -336,8 +400,10 @@ def train_celestial_pgat():
     
     # Pre-allocate arrays for better memory efficiency
     num_test_samples = len(test_data)
-    preds = np.zeros((num_test_samples, args.pred_len, args.c_out))
-    trues = np.zeros((num_test_samples, args.pred_len, args.c_out))
+    # Evaluation arrays sized to number of targets
+    eval_c = len(target_indices) if target_indices is not None else args.c_out
+    preds = np.zeros((num_test_samples, args.pred_len, eval_c))
+    trues = np.zeros((num_test_samples, args.pred_len, eval_c))
     current_index = 0
     
     with torch.no_grad():
@@ -378,9 +444,17 @@ def train_celestial_pgat():
                 else:
                     true_tensor = batch_y[:, -args.pred_len:, :]
                 
+                # Align time and target channels to evaluation dimensions
+                # Ensure predictions and ground truth match (args.pred_len, eval_c)
+                pred_aligned = pred_tensor[:, -args.pred_len:, :]
+                true_aligned = true_tensor[:, -args.pred_len:, :]
+                if target_indices is not None:
+                    pred_aligned = pred_aligned[:, :, target_indices]
+                    true_aligned = true_aligned[:, :, target_indices]
+
                 # Convert to numpy
-                pred = pred_tensor.detach().cpu().numpy()
-                true = true_tensor.detach().cpu().numpy()
+                pred = pred_aligned.detach().cpu().numpy()
+                true = true_aligned.detach().cpu().numpy()
                 
                 # Calculate the slice to fill
                 batch_size = pred.shape[0]

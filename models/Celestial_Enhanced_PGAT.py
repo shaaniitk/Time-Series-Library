@@ -616,6 +616,7 @@ class GraphAttentionLayer(nn.Module):
     
     def __init__(self, d_model, d_ff, n_heads, dropout):
         super().__init__()
+        self.n_heads = n_heads
         self.attention = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
         self.feed_forward = nn.Sequential(
             nn.Linear(d_model, d_ff),
@@ -633,37 +634,46 @@ class GraphAttentionLayer(nn.Module):
             x: [batch, seq_len, d_model] Node features. Here seq_len is treated as num_nodes.
             adj_matrix: [batch, num_nodes, num_nodes] Adjacency matrix
         """
-        # Create an attention mask from the adjacency matrix.
-        # We want to ignore attention between non-connected nodes (where adj_matrix is 0).
-        # MultiheadAttention expects a boolean mask where True indicates a position to be ignored.
-        attn_mask = None
-        if adj_matrix is not None:
-            if adj_matrix.dim() == 3:
-                # Use the first batch's adjacency matrix (assuming they're similar)
-                attn_mask = (adj_matrix[0] == 0)
-            else: # Fallback for non-batched adjacency
-                attn_mask = (adj_matrix == 0)
-            
-            # Ensure mask dimensions match sequence length
-            seq_len = x.size(1)
-            if attn_mask.size(0) != seq_len:
-                # If dimensions don't match, create identity mask or resize
-                if seq_len <= attn_mask.size(0):
-                    attn_mask = attn_mask[:seq_len, :seq_len]
-                else:
-                    # Pad with False (allow attention) for additional positions
-                    pad_size = seq_len - attn_mask.size(0)
-                    attn_mask = F.pad(attn_mask, (0, pad_size, 0, pad_size), value=False)
+        batch_size, seq_len, _ = x.shape
 
-        # The attention layer will automatically handle broadcasting the mask across heads.
-        attn_out, _ = self.attention(x, x, x, attn_mask=attn_mask)
-        x = self.norm1(x + self.dropout(attn_out))
-        
-        # Feed forward
-        ff_out = self.feed_forward(x)
-        x = self.norm2(x + self.dropout(ff_out))
-        
-        return x
+        # Process per-batch to ensure correct adjacency masking semantics
+        outputs = []
+        for b in range(batch_size):
+            x_b = x[b:b+1]  # [1, seq_len, d_model]
+
+            # Build attention mask for this batch item
+            attn_mask_b = None
+            if adj_matrix is not None:
+                if adj_matrix.dim() == 3:
+                    adj_b = adj_matrix[b]
+                elif adj_matrix.dim() == 2:
+                    adj_b = adj_matrix
+                else:
+                    adj_b = torch.eye(seq_len, device=x.device)
+
+                # Resize or fallback to identity if needed
+                if adj_b.size(0) != seq_len:
+                    if adj_b.size(0) >= seq_len:
+                        adj_b = adj_b[:seq_len, :seq_len]
+                    else:
+                        adj_b = torch.eye(seq_len, device=x.device)
+
+                # Mask non-connected edges; shape [seq_len, seq_len]
+                attn_mask_b = (adj_b == 0)
+
+            # Multi-head attention with per-sample mask
+            attn_out, _ = self.attention(x_b, x_b, x_b, attn_mask=attn_mask_b)
+            x_b = self.norm1(x_b + self.dropout(attn_out))
+
+            # Feed-forward
+            ff_out_b = self.feed_forward(x_b)
+            x_b = self.norm2(x_b + self.dropout(ff_out_b))
+
+            outputs.append(x_b)
+
+        # Concatenate back to [batch, seq_len, d_model]
+        x_out = torch.cat(outputs, dim=0)
+        return x_out
 
 
 class DecoderLayer(nn.Module):
@@ -731,24 +741,14 @@ class TokenEmbedding(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
     
     def forward(self, x):
-        # Handle input dimensions dynamically
+        # Enforce fixed input dimension for stability
         batch_size, seq_len, input_dim = x.shape
-        
         if input_dim != self.c_in:
-            # Create a new conv layer with correct dimensions if needed
-            if not hasattr(self, '_dynamic_conv') or self._dynamic_conv.in_channels != input_dim:
-                self._dynamic_conv = nn.Conv1d(
-                    in_channels=input_dim, 
-                    out_channels=self.d_model, 
-                    kernel_size=3, 
-                    padding=1, 
-                    bias=False
-                ).to(x.device)
-                nn.init.kaiming_normal_(self._dynamic_conv.weight, mode='fan_in', nonlinearity='leaky_relu')
-            
-            x = self._dynamic_conv(x.permute(0, 2, 1)).transpose(1, 2)
-        else:
-            x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
+            raise ValueError(
+                f"TokenEmbedding input_dim ({input_dim}) does not match expected c_in ({self.c_in})."
+                f" Ensure encoder/embedding configuration is consistent."
+            )
+        x = self.tokenConv(x.permute(0, 2, 1)).transpose(1, 2)
         return x
 
 
