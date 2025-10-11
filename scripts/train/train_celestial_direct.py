@@ -89,8 +89,9 @@ def train_celestial_pgat():
     print(f"   - Model dimension: {args.d_model}")
     
     # Setup device
-    device = torch.device('cuda:0' if torch.cuda.is_available() and args.use_gpu else 'cpu')
-    print(f"🚀 Using device: {device}")
+    args.use_gpu = False  # Force CPU usage
+    device = torch.device('cpu')
+    print(f"🚀 Using device: {device} (GPU disabled due to environment issues)")
     
     # Get data loaders
     print("📂 Loading data...")

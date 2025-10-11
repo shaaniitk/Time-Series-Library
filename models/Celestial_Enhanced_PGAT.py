@@ -82,6 +82,9 @@ class Model(nn.Module):
                 self.wave_aggregator,
                 target_indices=self.target_wave_indices
             )
+            
+            # New projection layer to fix information bottleneck
+            self.rich_feature_to_celestial = nn.Linear(self.num_celestial_bodies * 32, self.num_celestial_bodies)
         
         print(f"🌌 Initializing Celestial Enhanced PGAT:")
         print(f"   - Sequence length: {self.seq_len}")
@@ -150,6 +153,7 @@ class Model(nn.Module):
                 n_heads=self.n_heads,
                 num_attention_layers=2
             )
+            self.hierarchical_projection = nn.Linear(num_nodes_for_mapping * self.d_model, self.d_model)
         
         # Spatiotemporal Encoding - adjust for celestial aggregation
         if self.use_celestial_graph and self.aggregate_waves_to_celestial:
@@ -356,23 +360,15 @@ class Model(nn.Module):
         # 6. Apply hierarchical mapping if enabled
         if self.use_hierarchical_mapping:
             try:
-                # Hierarchical mapper expects [batch, num_patches, d_model] and outputs [batch, num_nodes, d_model]
-                # We need to expand the node features back to sequence length
                 hierarchical_features = self.hierarchical_mapper(enc_out)  # [batch, num_nodes, d_model]
                 
-                # Expand hierarchical features to match sequence length
-                # Method: Repeat each node feature across the sequence
-                batch_size, seq_len, d_model = enc_out.shape
-                num_nodes = hierarchical_features.size(1)
+                # Reshape and project to preserve spatial information
+                batch_size, seq_len, _ = enc_out.shape
+                reshaped_features = hierarchical_features.view(batch_size, -1)
+                projected_features = self.hierarchical_projection(reshaped_features).unsqueeze(1)
                 
-                # Expand and reshape to match enc_out dimensions
-                hierarchical_expanded = hierarchical_features.unsqueeze(1).expand(batch_size, seq_len, num_nodes, d_model)
-                
-                # Average across nodes to get [batch, seq_len, d_model]
-                hierarchical_features_seq = hierarchical_expanded.mean(dim=2)
-                
-                # Add to encoder output
-                enc_out = enc_out + hierarchical_features_seq
+                # Add to encoder output, broadcasting across sequence length
+                enc_out = enc_out + projected_features
                 
             except Exception as e:
                 print(f"⚠️  Hierarchical mapping failed: {e}")
@@ -530,9 +526,8 @@ class Model(nn.Module):
         
         # Map input features to celestial space for enhanced processing
         if hasattr(self, 'phase_aware_processor') and x_enc.size(-1) > 13:
-            # Phase-aware processor already provides rich celestial features [batch, seq_len, 13*32]
-            # Reshape to [batch, seq_len, 13, 32] then take mean over celestial dimension
-            celestial_mapped = x_enc.view(x_enc.size(0), x_enc.size(1), 13, -1).mean(dim=-1)  # [batch, seq_len, 13]
+            # Use the new projection layer to correctly map rich features
+            celestial_mapped = self.rich_feature_to_celestial(x_enc)
         else:
             # Traditional mapping for 13D input
             celestial_mapped = self.feature_to_celestial(x_enc)  # [batch, seq_len, num_celestial_bodies]
@@ -609,71 +604,6 @@ class Model(nn.Module):
             adj_matrix = adj_flat.view(batch_size, self.enc_in, self.enc_in)
         
         return adj_matrix
-
-
-class GraphAttentionLayer(nn.Module):
-    """Graph attention layer for processing node features with adjacency"""
-    
-    def __init__(self, d_model, d_ff, n_heads, dropout):
-        super().__init__()
-        self.n_heads = n_heads
-        self.attention = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
-        self.feed_forward = nn.Sequential(
-            nn.Linear(d_model, d_ff),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(d_ff, d_model)
-        )
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
-    
-    def forward(self, x, adj_matrix):
-        """
-        Args:
-            x: [batch, seq_len, d_model] Node features. Here seq_len is treated as num_nodes.
-            adj_matrix: [batch, num_nodes, num_nodes] Adjacency matrix
-        """
-        batch_size, seq_len, _ = x.shape
-
-        # Process per-batch to ensure correct adjacency masking semantics
-        outputs = []
-        for b in range(batch_size):
-            x_b = x[b:b+1]  # [1, seq_len, d_model]
-
-            # Build attention mask for this batch item
-            attn_mask_b = None
-            if adj_matrix is not None:
-                if adj_matrix.dim() == 3:
-                    adj_b = adj_matrix[b]
-                elif adj_matrix.dim() == 2:
-                    adj_b = adj_matrix
-                else:
-                    adj_b = torch.eye(seq_len, device=x.device)
-
-                # Resize or fallback to identity if needed
-                if adj_b.size(0) != seq_len:
-                    if adj_b.size(0) >= seq_len:
-                        adj_b = adj_b[:seq_len, :seq_len]
-                    else:
-                        adj_b = torch.eye(seq_len, device=x.device)
-
-                # Mask non-connected edges; shape [seq_len, seq_len]
-                attn_mask_b = (adj_b == 0)
-
-            # Multi-head attention with per-sample mask
-            attn_out, _ = self.attention(x_b, x_b, x_b, attn_mask=attn_mask_b)
-            x_b = self.norm1(x_b + self.dropout(attn_out))
-
-            # Feed-forward
-            ff_out_b = self.feed_forward(x_b)
-            x_b = self.norm2(x_b + self.dropout(ff_out_b))
-
-            outputs.append(x_b)
-
-        # Concatenate back to [batch, seq_len, d_model]
-        x_out = torch.cat(outputs, dim=0)
-        return x_out
 
 
 class DecoderLayer(nn.Module):

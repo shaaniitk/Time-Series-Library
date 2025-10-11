@@ -66,7 +66,7 @@ def install_compatible_pytorch():
     
     # Step 3: Verify installation
     print("\n3. Verifying installation...")
-    verify_cmd = 'python -c "import torch; print(f\'PyTorch: {torch.__version__}\'); print(f\'CUDA available: {torch.cuda.is_available()}\'); print(f\'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \'None\'}\');"'
+    verify_cmd = 'python -c "import torch; print(f\'PyTorch: {torch.__version__}\'); print(f\'CUDA available: {torch.cuda.is_available()}\'); print(f\'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None"}\');"'
     
     if run_command(verify_cmd, "Verifying PyTorch installation"):
         print("\n🎉 Installation completed successfully!")
@@ -139,10 +139,10 @@ if __name__ == "__main__":
     print("This script will install compatible PyTorch for your AMD Rembrandt GPU")
     print("Based on: https://github.com/scottt/rocm-TheRock/releases/tag/v6.5.0rc-pytorch")
     
-    response = input("\nDo you want to proceed? (y/n): ")
-    if response.lower() != 'y':
-        print("Installation cancelled")
-        sys.exit(0)
+    # response = input("\nDo you want to proceed? (y/n): ")
+    # if response.lower() != 'y':
+    #     print("Installation cancelled")
+    #     sys.exit(0)
     
     # Run installation steps
     if install_compatible_pytorch():

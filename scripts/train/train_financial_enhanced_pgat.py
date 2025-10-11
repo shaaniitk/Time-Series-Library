@@ -135,8 +135,10 @@ def extract_mdn_params(outputs):
             return outputs[0], outputs[1], outputs[2]
     return None
 
-def mdn_expected_value(means, log_weights):
+def mdn_expected_value(means, log_weights, log_stds=None, return_uncertainty=False):
     """Compute E[X] = Σ softmax(log_weights) * means along mixture axis with proper broadcasting.
+    
+    Optionally compute uncertainty if log_stds provided.
 
     Handles both shapes:
     - Multivariate means: [B, T, num_targets, K] with log_weights [B, T, K]
@@ -146,6 +148,20 @@ def mdn_expected_value(means, log_weights):
     if means.dim() == 4:  # [B, T, num_targets, K]
         probs = probs.unsqueeze(-2)             # [B, T, 1, K] -> broadcast over num_targets
     expected = (probs * means).sum(dim=-1)
+    
+    if return_uncertainty and log_stds is not None:
+        # Compute mixture variance: E[σ²] + Var[μ]
+        stds = torch.exp(log_stds)
+        if stds.dim() == 4:
+            probs_std = probs.unsqueeze(-2) if probs.dim() == 3 else probs
+        else:
+            probs_std = probs
+            
+        # E[σ²] + E[μ²] - E[μ]²
+        variance = (probs_std * (stds**2 + means**2)).sum(dim=-1) - expected**2
+        uncertainty = torch.sqrt(variance.clamp(min=1e-8))
+        return expected, uncertainty
+    
     return expected
 
 def handle_model_output(outputs, batch_y, num_targets=4):
@@ -515,95 +531,34 @@ def train_financial_enhanced_pgat():
             except AssertionError:
                 print(f"⚠️  Prediction/target shape mismatch: {tuple(outputs.shape)} vs {tuple(batch_y_targets.shape)}")
             
-            # CRITICAL FIX: Ensure both predictions and targets are on the same scale
-            # Option 1: Scale targets to match scaled predictions (recommended)
-            if data_info['scaler'] and hasattr(data_info['scaler'], 'target_scaler'):
-                try:
-                    # Scale the targets to match the scaled predictions
-                    batch_y_targets_np = batch_y_targets.cpu().numpy()
-                    batch_y_targets_scaled_np = data_info['scaler'].target_scaler.transform(
-                        batch_y_targets_np.reshape(-1, args.c_out)
-                    ).reshape(batch_y_targets_np.shape)
-                    batch_y_targets_scaled = torch.from_numpy(batch_y_targets_scaled_np).float().to(device)
-
-                    # Calculate loss on SCALED data (both predictions and targets are scaled)
-                    # If using MDN loss, pass only the first three params (means, log_stds, log_weights)
-                    mdn_params = extract_mdn_params(original_outputs)
-                    data_loss = criterion(
-                        mdn_params if mdn_params is not None else outputs,
-                        batch_y_targets_scaled
-                    )
-                    # Add KL regularization term if available
-                    if hasattr(model, 'get_kl_loss'):
-                        kl_loss = model.get_kl_loss()
-                    elif hasattr(model, 'get_regularization_loss'):
-                        kl_loss = model.get_regularization_loss()
-                    else:
-                        kl_loss = torch.tensor(0.0, dtype=data_loss.dtype, device=data_loss.device)
-                    if not isinstance(kl_loss, torch.Tensor):
-                        kl_loss = torch.tensor(float(kl_loss), dtype=data_loss.dtype, device=data_loss.device)
-                    # Adapt KL weight
-                    try:
-                        kl_weight = kl_tuner.adaptive_kl_weight(
-                            data_loss=float(data_loss.detach().cpu().item()),
-                            kl_loss=float(kl_loss.detach().cpu().item()),
-                            current_weight=kl_weight
-                        )
-                    except Exception:
-                        pass
-                    loss = data_loss + kl_weight * kl_loss
-
-                except Exception as e:
-                    # Fallback: if scaling fails, use original approach but warn
-                    print(f"⚠️  Scaling failed ({e}), using original targets")
-                    mdn_params = extract_mdn_params(original_outputs)
-                    data_loss = criterion(
-                        mdn_params if mdn_params is not None else outputs,
-                        batch_y_targets
-                    )
-                    if hasattr(model, 'get_kl_loss'):
-                        kl_loss = model.get_kl_loss()
-                    elif hasattr(model, 'get_regularization_loss'):
-                        kl_loss = model.get_regularization_loss()
-                    else:
-                        kl_loss = torch.tensor(0.0, dtype=data_loss.dtype, device=data_loss.device)
-                    if not isinstance(kl_loss, torch.Tensor):
-                        kl_loss = torch.tensor(float(kl_loss), dtype=data_loss.dtype, device=data_loss.device)
-                    # Adapt KL weight
-                    try:
-                        kl_weight = kl_tuner.adaptive_kl_weight(
-                            data_loss=float(data_loss.detach().cpu().item()),
-                            kl_loss=float(kl_loss.detach().cpu().item()),
-                            current_weight=kl_weight
-                        )
-                    except Exception:
-                        pass
-                    loss = data_loss + kl_weight * kl_loss
+            # CRITICAL FIX: Remove double scaling - use data as provided by data_provider
+            # The data_provider already handles scaling consistently
+            mdn_params = extract_mdn_params(original_outputs)
+            data_loss = criterion(
+                mdn_params if mdn_params is not None else outputs,
+                batch_y_targets  # Use targets as-is from data_provider (already properly scaled)
+            )
+            
+            # Add KL regularization term if available
+            if hasattr(model, 'get_kl_loss'):
+                kl_loss = model.get_kl_loss()
+            elif hasattr(model, 'get_regularization_loss'):
+                kl_loss = model.get_regularization_loss()
             else:
-                # No scaler available, use original approach
-                mdn_params = extract_mdn_params(original_outputs)
-                data_loss = criterion(
-                    mdn_params if mdn_params is not None else outputs,
-                    batch_y_targets
+                kl_loss = torch.tensor(0.0, dtype=data_loss.dtype, device=data_loss.device)
+            if not isinstance(kl_loss, torch.Tensor):
+                kl_loss = torch.tensor(float(kl_loss), dtype=data_loss.dtype, device=data_loss.device)
+            
+            # Adapt KL weight
+            try:
+                kl_weight = kl_tuner.adaptive_kl_weight(
+                    data_loss=float(data_loss.detach().cpu().item()),
+                    kl_loss=float(kl_loss.detach().cpu().item()),
+                    current_weight=kl_weight
                 )
-                if hasattr(model, 'get_kl_loss'):
-                    kl_loss = model.get_kl_loss()
-                elif hasattr(model, 'get_regularization_loss'):
-                    kl_loss = model.get_regularization_loss()
-                else:
-                    kl_loss = torch.tensor(0.0, dtype=data_loss.dtype, device=data_loss.device)
-                if not isinstance(kl_loss, torch.Tensor):
-                    kl_loss = torch.tensor(float(kl_loss), dtype=data_loss.dtype, device=data_loss.device)
-                # Adapt KL weight
-                try:
-                    kl_weight = kl_tuner.adaptive_kl_weight(
-                        data_loss=float(data_loss.detach().cpu().item()),
-                        kl_loss=float(kl_loss.detach().cpu().item()),
-                        current_weight=kl_weight
-                    )
-                except Exception:
-                    pass
-                loss = data_loss + kl_weight * kl_loss
+            except Exception:
+                pass
+            loss = data_loss + kl_weight * kl_loss
             
             # Backward pass with gradient clipping
             loss.backward()
@@ -615,28 +570,10 @@ def train_financial_enhanced_pgat():
             # Calculate metrics every 50 batches
             if batch_idx % 50 == 0:
                 with torch.no_grad():
-                    # CRITICAL: Use the SAME scaled targets as used for loss computation
-                    if data_info['scaler'] and hasattr(data_info['scaler'], 'target_scaler'):
-                        try:
-                            batch_y_targets_np = batch_y_targets.cpu().numpy()
-                            batch_y_targets_scaled_np = data_info['scaler'].target_scaler.transform(
-                                batch_y_targets_np.reshape(-1, args.c_out)
-                            ).reshape(batch_y_targets_np.shape)
-                            batch_y_targets_scaled = torch.from_numpy(batch_y_targets_scaled_np).float()
-                            
-                            # Compute metrics on SCALED data (same as loss)
-                            batch_metrics = calculate_financial_metrics(
-                                outputs, batch_y_targets_scaled, None  # No scaler to avoid double inverse transform
-                            )
-                        except Exception as e:
-                            print(f"⚠️  Scaling failed for metrics: {e}")
-                            batch_metrics = calculate_financial_metrics(
-                                outputs, batch_y_targets, None
-                            )
-                    else:
-                        batch_metrics = calculate_financial_metrics(
-                            outputs, batch_y_targets, None
-                        )
+                    # CRITICAL FIX: Use consistent targets (no additional scaling)
+                    batch_metrics = calculate_financial_metrics(
+                        outputs, batch_y_targets, None  # Use targets as-is from data_provider
+                    )
                     train_metrics_epoch.append(batch_metrics)
                 
                 # Report KL contribution percentage relative to data loss
@@ -679,53 +616,18 @@ def train_financial_enhanced_pgat():
                 # Handle model output format - ONLY extract target features for loss
                 outputs, batch_y_targets = handle_model_output(outputs, batch_y, num_targets=args.c_out)
                 
-                # CRITICAL FIX: Scale targets for validation loss too
-                if data_info['scaler'] and hasattr(data_info['scaler'], 'target_scaler'):
-                    try:
-                        batch_y_targets_np = batch_y_targets.cpu().numpy()
-                        batch_y_targets_scaled_np = data_info['scaler'].target_scaler.transform(
-                            batch_y_targets_np.reshape(-1, args.c_out)
-                        ).reshape(batch_y_targets_np.shape)
-                        batch_y_targets_scaled = torch.from_numpy(batch_y_targets_scaled_np).float().to(device)
-                        mdn_params_val = extract_mdn_params(original_outputs_val)
-                        loss = criterion(
-                            mdn_params_val if mdn_params_val is not None else outputs,
-                            batch_y_targets_scaled
-                        )
-                    except:
-                        mdn_params_val = extract_mdn_params(original_outputs_val)
-                        loss = criterion(
-                            mdn_params_val if mdn_params_val is not None else outputs,
-                            batch_y_targets
-                        )
-                else:
-                    mdn_params_val = extract_mdn_params(original_outputs_val)
-                    loss = criterion(
-                        mdn_params_val if mdn_params_val is not None else outputs,
-                        batch_y_targets
-                    )
+                # CRITICAL FIX: Remove double scaling for validation too
+                mdn_params_val = extract_mdn_params(original_outputs_val)
+                loss = criterion(
+                    mdn_params_val if mdn_params_val is not None else outputs,
+                    batch_y_targets  # Use targets as-is from data_provider
+                )
                 val_losses.append(loss.item())
                 
-                # Calculate metrics on SCALED data (consistent with loss)
-                if data_info['scaler'] and hasattr(data_info['scaler'], 'target_scaler'):
-                    try:
-                        batch_y_targets_np = batch_y_targets.cpu().numpy()
-                        batch_y_targets_scaled_np = data_info['scaler'].target_scaler.transform(
-                            batch_y_targets_np.reshape(-1, args.c_out)
-                        ).reshape(batch_y_targets_np.shape)
-                        batch_y_targets_scaled = torch.from_numpy(batch_y_targets_scaled_np).float()
-                        
-                        batch_metrics = calculate_financial_metrics(
-                            outputs, batch_y_targets_scaled, None
-                        )
-                    except:
-                        batch_metrics = calculate_financial_metrics(
-                            outputs, batch_y_targets, None
-                        )
-                else:
-                    batch_metrics = calculate_financial_metrics(
-                        outputs, batch_y_targets, None
-                    )
+                # CRITICAL FIX: Use consistent targets for metrics (no additional scaling)
+                batch_metrics = calculate_financial_metrics(
+                    outputs, batch_y_targets, None  # Use targets as-is from data_provider
+                )
                 val_metrics_epoch.append(batch_metrics)
 
                 # Break after first batch in fast dev run mode
@@ -755,31 +657,12 @@ def train_financial_enhanced_pgat():
                 # Handle model output format - ONLY extract target features for loss
                 outputs, batch_y_targets = handle_model_output(outputs, batch_y, num_targets=args.c_out)
                 
-                # CRITICAL FIX: Scale targets for test loss too
-                if data_info['scaler'] and hasattr(data_info['scaler'], 'target_scaler'):
-                    try:
-                        batch_y_targets_np = batch_y_targets.cpu().numpy()
-                        batch_y_targets_scaled_np = data_info['scaler'].target_scaler.transform(
-                            batch_y_targets_np.reshape(-1, args.c_out)
-                        ).reshape(batch_y_targets_np.shape)
-                        batch_y_targets_scaled = torch.from_numpy(batch_y_targets_scaled_np).float().to(device)
-                        mdn_params_test = extract_mdn_params(original_outputs_test)
-                        loss = criterion(
-                            mdn_params_test if mdn_params_test is not None else outputs,
-                            batch_y_targets_scaled
-                        )
-                    except:
-                        mdn_params_test = extract_mdn_params(original_outputs_test)
-                        loss = criterion(
-                            mdn_params_test if mdn_params_test is not None else outputs,
-                            batch_y_targets
-                        )
-                else:
-                    mdn_params_test = extract_mdn_params(original_outputs_test)
-                    loss = criterion(
-                        mdn_params_test if mdn_params_test is not None else outputs,
-                        batch_y_targets
-                    )
+                # CRITICAL FIX: Remove double scaling for test loss too
+                mdn_params_test = extract_mdn_params(original_outputs_test)
+                loss = criterion(
+                    mdn_params_test if mdn_params_test is not None else outputs,
+                    batch_y_targets  # Use targets as-is from data_provider
+                )
                 test_losses.append(loss.item())
 
                 # Break after first batch in fast dev run mode

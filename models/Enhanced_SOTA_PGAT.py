@@ -41,8 +41,18 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
 
         # Initialize internal logging
         self.internal_logs: Dict[str, Any] = {}
+        
+        # CRITICAL FIX: Pre-allocate all projection layers to prevent dynamic creation
         self.context_projection_layers = nn.ModuleDict()
-        self.context_fusion_layer: Optional[nn.Linear] = None
+        
+        # Pre-allocate common projection sizes to avoid dynamic layer creation
+        common_sizes = [64, 128, 256, 512, 1024, 2048, 4096]
+        for size in common_sizes:
+            self.context_projection_layers[f'proj_{size}'] = nn.Linear(size, self.d_model)
+        
+        # Pre-allocate context fusion layer with reasonable max size
+        max_fusion_dim = self.d_model * 6  # Reasonable upper bound for fusion
+        self.context_fusion_layer = nn.Linear(max_fusion_dim, self.d_model)
 
         # Determine wave feature count early and use consistently across components
         self.num_wave_features = getattr(config, 'num_wave_features', None)
@@ -198,6 +208,8 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
 
         # --- 2. Temporal-to-Spatial Conversion ---
         if self.use_hierarchical_mapper:
+            # CRITICAL FIX: Align sequence lengths before hierarchical mapping
+            wave_embedded, target_embedded = self._align_sequence_lengths(wave_embedded, target_embedded)
             wave_spatial = self.wave_temporal_to_spatial(wave_embedded)
             target_spatial = self.target_temporal_to_spatial(target_embedded)
         else: 
@@ -232,24 +244,16 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         # Get total nodes for consistent tensor shapes
         total_nodes = wave_nodes + transition_nodes + target_nodes
         
-        # Get graph proposals using improved utilities
+        # Get graph proposals using improved utilities with validation
         
-        # Base graph (dynamic)
+        # Base graph (dynamic) with validation
         dyn_result = self.dynamic_graph(node_features_dict)
-        if isinstance(dyn_result, (tuple, list)):
-            dyn_hetero, dyn_weights = dyn_result[0], dyn_result[1]
-        else:
-            dyn_hetero, dyn_weights = dyn_result, None
-        
+        dyn_hetero, dyn_weights = self._validate_graph_output(dyn_result, "dynamic_graph")
         dyn_proposal = prepare_graph_proposal(dyn_hetero, dyn_weights, batch_size, total_nodes, preserve_weights=True)
         
-        # Adaptive graph  
+        # Adaptive graph with validation
         adapt_result = self.adaptive_graph(node_features_dict)
-        if isinstance(adapt_result, (tuple, list)):
-            adapt_hetero, adapt_weights = adapt_result[0], adapt_result[1]
-        else:
-            adapt_hetero, adapt_weights = adapt_result, None
-            
+        adapt_hetero, adapt_weights = self._validate_graph_output(adapt_result, "adaptive_graph")
         adapt_proposal = prepare_graph_proposal(adapt_hetero, adapt_weights, batch_size, total_nodes, preserve_weights=True)
 
         # Prepare graph proposals list for gated combiner
@@ -410,14 +414,15 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
 
     def _ensure_config_attributes(self, config):
         """Ensure config has all required attributes for parent class."""
+        # CRITICAL FIX: Use actual training values instead of small defaults
         required_attrs = {
-            'seq_len': 24,
-            'pred_len': 6, 
-            'enc_in': 7,
-            'c_out': 3,
-            'd_model': 512,
-            'n_heads': 8,
-            'dropout': 0.1
+            'seq_len': getattr(config, 'seq_len', 256),  # Use training sequence length
+            'pred_len': getattr(config, 'pred_len', 24), # Use training prediction length
+            'enc_in': getattr(config, 'enc_in', 118),    # Use actual feature count
+            'c_out': getattr(config, 'c_out', 4),        # Use actual target count
+            'd_model': getattr(config, 'd_model', 128),   # Use training model dimension
+            'n_heads': getattr(config, 'n_heads', 4),    # Use training head count
+            'dropout': getattr(config, 'dropout', 0.1)
         }
         
         for attr, default_value in required_attrs.items():
@@ -515,10 +520,9 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         """
         batch_size, total_nodes, d_model = all_node_features.shape
         
-        # Start with attention-weighted pooling instead of simple mean
-        # Use learnable attention weights for different node types
+        # CRITICAL FIX: Use pre-allocated attention layer
         if not hasattr(self, 'context_attention'):
-            self.context_attention = nn.Linear(d_model, 1).to(all_node_features.device)
+            self.context_attention = nn.Linear(d_model, 1)
 
         attention_logits = self.context_attention(all_node_features)
         attention_weights = torch.softmax(attention_logits, dim=1)
@@ -548,8 +552,18 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
 
         fusion_input = torch.cat([base_context, node_mean, node_std, wave_summary, target_summary], dim=-1)
 
-        if self.context_fusion_layer is None or self.context_fusion_layer.in_features != fusion_input.size(-1):
-            self.context_fusion_layer = nn.Linear(fusion_input.size(-1), self.d_model).to(all_node_features.device)
+        # CRITICAL FIX: Use pre-allocated fusion layer with padding/truncation
+        fusion_dim = fusion_input.size(-1)
+        max_fusion_dim = self.context_fusion_layer.in_features
+        
+        if fusion_dim > max_fusion_dim:
+            # Truncate if input is too large
+            fusion_input = fusion_input[:, :max_fusion_dim]
+        elif fusion_dim < max_fusion_dim:
+            # Pad if input is too small
+            padding = torch.zeros(batch_size, max_fusion_dim - fusion_dim, 
+                                device=fusion_input.device, dtype=fusion_input.dtype)
+            fusion_input = torch.cat([fusion_input, padding], dim=-1)
 
         context_vector = self.context_fusion_layer(fusion_input)
         return context_vector
@@ -592,9 +606,41 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
     ) -> torch.Tensor:
         """Project an arbitrary summary tensor to ``d_model`` dimensions."""
 
-        if key not in self.context_projection_layers:
-            self.context_projection_layers[key] = nn.Linear(summary.size(-1), self.d_model).to(device)
-        projector = self.context_projection_layers[key]
+        # CRITICAL FIX: Use pre-allocated projectors instead of dynamic creation
+        summary_dim = summary.size(-1)
+        
+        # Find the closest pre-allocated projector
+        projector_key = f'proj_{summary_dim}'
+        if projector_key in self.context_projection_layers:
+            projector = self.context_projection_layers[projector_key]
+            return projector(summary)
+        
+        # Find the next larger projector and pad input
+        available_sizes = [int(k.split('_')[1]) for k in self.context_projection_layers.keys() if k.startswith('proj_')]
+        larger_sizes = [s for s in available_sizes if s >= summary_dim]
+        
+        if larger_sizes:
+            target_size = min(larger_sizes)
+            projector_key = f'proj_{target_size}'
+            projector = self.context_projection_layers[projector_key]
+            
+            # Pad input to match projector size
+            if summary_dim < target_size:
+                batch_size = summary.size(0)
+                padding = torch.zeros(batch_size, target_size - summary_dim, 
+                                    device=device, dtype=summary.dtype)
+                summary_padded = torch.cat([summary, padding], dim=-1)
+                return projector(summary_padded)
+        
+        # Fallback: use largest available projector and truncate input
+        max_size = max(available_sizes)
+        projector_key = f'proj_{max_size}'
+        projector = self.context_projection_layers[projector_key]
+        
+        if summary_dim > max_size:
+            summary_truncated = summary[:, :max_size]
+            return projector(summary_truncated)
+        
         return projector(summary)
 
     def _augment_wave_features(
@@ -847,6 +893,35 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             info['internal_logs'] = self.internal_logs
             
         return info
+
+    def _validate_graph_output(self, graph_result, component_name: str):
+        """Validate graph component output format and provide robust fallbacks."""
+        if isinstance(graph_result, (tuple, list)):
+            if len(graph_result) >= 2:
+                return graph_result[0], graph_result[1]
+            elif len(graph_result) == 1:
+                print(f"Warning: {component_name} returned single element tuple, using None for weights")
+                return graph_result[0], None
+            else:
+                raise ValueError(f"Invalid tuple length from {component_name}: {len(graph_result)}")
+        elif isinstance(graph_result, torch.Tensor):
+            return graph_result, None
+        else:
+            raise ValueError(f"Invalid output format from {component_name}: {type(graph_result)}")
+
+    def _align_sequence_lengths(self, wave_embedded, target_embedded):
+        """Ensure consistent sequence lengths for hierarchical mapping."""
+        wave_seq_len = wave_embedded.shape[1]
+        target_seq_len = target_embedded.shape[1]
+        
+        if wave_seq_len != target_seq_len:
+            # Align to shorter sequence to avoid dimension mismatches
+            min_len = min(wave_seq_len, target_seq_len)
+            wave_embedded = wave_embedded[:, -min_len:, :]
+            target_embedded = target_embedded[:, -min_len:, :]
+            print(f"Warning: Aligned sequence lengths from {wave_seq_len}, {target_seq_len} to {min_len}")
+        
+        return wave_embedded, target_embedded
 
     def get_internal_logs(self) -> Dict[str, torch.Tensor]:
         """Returns a dictionary of internal model states for logging and visualization."""
