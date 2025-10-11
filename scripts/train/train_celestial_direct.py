@@ -239,9 +239,37 @@ def train_celestial_pgat():
                         # If model outputs more channels than targets, slice channels
                         out_slice = out_time[:, :, :len(target_indices)] if out_time.shape[-1] > len(target_indices) else out_time
                         gt_slice = true_targets[:, :, target_indices]
-                        loss = criterion(out_slice, gt_slice)
+                        
+                        # CRITICAL FIX: Scale targets to match scaled predictions (like standard framework)
+                        if hasattr(train_data, 'scaler') and train_data.scaler is not None:
+                            try:
+                                # Scale the targets to match scaled predictions
+                                gt_slice_np = gt_slice.cpu().numpy()
+                                gt_slice_scaled_np = train_data.scaler.transform(
+                                    gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
+                                ).reshape(gt_slice_np.shape)
+                                gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
+                                loss = criterion(out_slice, gt_slice_scaled)
+                            except Exception as e:
+                                print(f"⚠️  Target scaling failed: {e}, using unscaled targets")
+                                loss = criterion(out_slice, gt_slice)
+                        else:
+                            loss = criterion(out_slice, gt_slice)
                     else:
-                        loss = criterion(out_time, true_targets)
+                        # Scale all targets if no specific indices
+                        if hasattr(train_data, 'scaler') and train_data.scaler is not None:
+                            try:
+                                true_targets_np = true_targets.cpu().numpy()
+                                true_targets_scaled_np = train_data.scaler.transform(
+                                    true_targets_np.reshape(-1, true_targets_np.shape[-1])
+                                ).reshape(true_targets_np.shape)
+                                true_targets_scaled = torch.from_numpy(true_targets_scaled_np).float().to(device)
+                                loss = criterion(out_time, true_targets_scaled)
+                            except Exception as e:
+                                print(f"⚠️  Target scaling failed: {e}, using unscaled targets")
+                                loss = criterion(out_time, true_targets)
+                        else:
+                            loss = criterion(out_time, true_targets)
                 
                 # Add regularization loss from stochastic graph learner
                 if getattr(model, 'use_stochastic_learner', False):
@@ -359,9 +387,34 @@ def train_celestial_pgat():
                         if target_indices is not None:
                             out_slice = out_time[:, :, :len(target_indices)] if out_time.shape[-1] > len(target_indices) else out_time
                             gt_slice = true_targets[:, :, target_indices]
-                            loss = criterion(out_slice, gt_slice)
+                            
+                            # CRITICAL FIX: Scale targets for validation loss too
+                            if hasattr(vali_data, 'scaler') and vali_data.scaler is not None:
+                                try:
+                                    gt_slice_np = gt_slice.cpu().numpy()
+                                    gt_slice_scaled_np = vali_data.scaler.transform(
+                                        gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
+                                    ).reshape(gt_slice_np.shape)
+                                    gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
+                                    loss = criterion(out_slice, gt_slice_scaled)
+                                except Exception:
+                                    loss = criterion(out_slice, gt_slice)
+                            else:
+                                loss = criterion(out_slice, gt_slice)
                         else:
-                            loss = criterion(out_time, true_targets)
+                            # Scale all targets if no specific indices
+                            if hasattr(vali_data, 'scaler') and vali_data.scaler is not None:
+                                try:
+                                    true_targets_np = true_targets.cpu().numpy()
+                                    true_targets_scaled_np = vali_data.scaler.transform(
+                                        true_targets_np.reshape(-1, true_targets_np.shape[-1])
+                                    ).reshape(true_targets_np.shape)
+                                    true_targets_scaled = torch.from_numpy(true_targets_scaled_np).float().to(device)
+                                    loss = criterion(out_time, true_targets_scaled)
+                                except Exception:
+                                    loss = criterion(out_time, true_targets)
+                            else:
+                                loss = criterion(out_time, true_targets)
                     
                     val_loss += loss.item()
                     val_batches += 1
@@ -453,9 +506,24 @@ def train_celestial_pgat():
                     pred_aligned = pred_aligned[:, :, target_indices]
                     true_aligned = true_aligned[:, :, target_indices]
 
+                # SCALING NOTE: For metrics computation, we can use either scaled or unscaled data
+                # Both predictions and ground truth should be on the same scale
+                # Here we use scaled data (consistent with loss computation)
+                
                 # Convert to numpy
-                pred = pred_aligned.detach().cpu().numpy()
-                true = true_aligned.detach().cpu().numpy()
+                pred = pred_aligned.detach().cpu().numpy()  # Scaled predictions
+                true = true_aligned.detach().cpu().numpy()  # Unscaled ground truth
+                
+                # OPTIONAL: Scale ground truth for consistent metrics computation
+                if hasattr(test_data, 'scaler') and test_data.scaler is not None:
+                    try:
+                        # Scale ground truth to match scaled predictions for consistent metrics
+                        true_scaled = test_data.scaler.transform(
+                            true.reshape(-1, true.shape[-1])
+                        ).reshape(true.shape)
+                        true = true_scaled  # Use scaled ground truth for metrics
+                    except Exception as e:
+                        print(f"⚠️  Ground truth scaling for metrics failed: {e}, using unscaled")
                 
                 # Calculate the slice to fill
                 batch_size = pred.shape[0]
