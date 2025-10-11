@@ -241,6 +241,13 @@ class Model(nn.Module):
             nn.LayerNorm(self.d_model)
         )
         
+        # Context-aware adjacency fusion weights (learned convex weights for 3 adj sources)
+        self.adj_weight_mlp = nn.Sequential(
+            nn.Linear(self.d_model, self.d_model // 2),
+            nn.ReLU(),
+            nn.Linear(self.d_model // 2, 3)
+        )
+        
         # Initialize parameters
         self._initialize_parameters()
     
@@ -324,11 +331,20 @@ class Model(nn.Module):
                 celestial_features = celestial_results['celestial_features']
                 celestial_metadata = celestial_results['metadata']
                 
-                # Combine phase-based and traditional adjacency matrices
-                combined_phase_adj = (phase_based_adj + astronomical_adj + dynamic_adj) / 3
-                astronomical_adj = combined_phase_adj  # Use combined matrix
+                # Learned context-aware fusion of phase, astronomical, and dynamic adjacencies
+                weights = F.softmax(self.adj_weight_mlp(market_context), dim=-1)  # [batch, 3]
+                w_phase, w_astro, w_dyn = weights[:, 0], weights[:, 1], weights[:, 2]
+                phase_norm = self._normalize_adj(phase_based_adj)
+                astro_norm = self._normalize_adj(astronomical_adj)
+                dyn_norm = self._normalize_adj(dynamic_adj)
+                combined_phase_adj = (
+                    w_phase.unsqueeze(-1).unsqueeze(-1) * phase_norm +
+                    w_astro.unsqueeze(-1).unsqueeze(-1) * astro_norm +
+                    w_dyn.unsqueeze(-1).unsqueeze(-1) * dyn_norm
+                )
+                astronomical_adj = combined_phase_adj  # Use learned-fusion matrix
                 
-                print(f"🌟 Using phase-based adjacency matrix combined with traditional methods")
+                print(f"🌟 Using phase-based adjacency matrix with learned fusion weights")
             else:
                 # Fallback to traditional celestial graph processing
                 celestial_results = self._process_celestial_graph(x_enc_processed, market_context)
@@ -340,7 +356,7 @@ class Model(nn.Module):
             # Fallback to traditional graph learning
             traditional_adj = self._learn_traditional_graph(market_context, batch_size)
             astronomical_adj = traditional_adj
-            dynamic_adj = traditional_adj
+            dynamic_adj = self._learn_simple_dynamic_graph(market_context, batch_size)
             celestial_features = None
             celestial_metadata = {}
         
@@ -354,8 +370,20 @@ class Model(nn.Module):
             )
         else:
             # Simple combination for fallback
-            combined_adj = (astronomical_adj + learned_adj + dynamic_adj) / 3
-            fusion_metadata = {}
+            # Replace naive average with learned, normalized weighted fusion
+            weights = F.softmax(self.adj_weight_mlp(market_context), dim=-1)  # [batch, 3]
+            w_astro, w_learned, w_dyn = weights[:, 0], weights[:, 1], weights[:, 2]
+            astro_norm = self._normalize_adj(astronomical_adj)
+            learned_norm = self._normalize_adj(learned_adj)
+            dyn_norm = self._normalize_adj(dynamic_adj)
+            combined_adj = (
+                w_astro.unsqueeze(-1).unsqueeze(-1) * astro_norm +
+                w_learned.unsqueeze(-1).unsqueeze(-1) * learned_norm +
+                w_dyn.unsqueeze(-1).unsqueeze(-1) * dyn_norm
+            )
+            fusion_metadata = {
+                'weights': weights.detach().cpu()
+            }
         
         # 6. Apply hierarchical mapping if enabled
         if self.use_hierarchical_mapping:
@@ -460,8 +488,8 @@ class Model(nn.Module):
                     # Fallback to projection
                     predictions = self.projection(prediction_features)
                 
-                output = predictions
-                mixture_params = {'means': means, 'log_stds': log_stds, 'log_weights': log_weights}
+                # Always return tuple for consistency with get_point_prediction
+                output = (means, log_stds, log_weights)
                 
                 print(f"🎯 Sequential mixture decoder output: means {means.shape}, predictions {predictions.shape}")
                 
@@ -471,9 +499,9 @@ class Model(nn.Module):
                 traceback.print_exc()
                 # Fallback to simple projection
                 output = self.projection(decoder_features[:, -self.pred_len:, :])
-                mixture_params = {}
         else:
-            output = self.projection(decoder_features)
+            # Ensure consistent slicing for deterministic case
+            output = self.projection(decoder_features[:, -self.pred_len:, :])
         
         # Prepare metadata for return
         final_metadata = {
@@ -484,8 +512,8 @@ class Model(nn.Module):
         
         # In case of MDN, the raw tuple/dict is returned for the loss function
         # A point prediction is calculated within the training script for metrics
-        if self.use_mixture_decoder and 'mixture_params' in locals():
-            output = mixture_params
+        if self.use_mixture_decoder and 'means' in locals():
+            output = (means, log_stds, log_weights)
         else:
             output = predictions if 'predictions' in locals() else output
         
@@ -562,9 +590,20 @@ class Model(nn.Module):
     
     def _learn_traditional_graph(self, market_context, batch_size):
         """Learn traditional graph adjacency"""
-        adj_flat = self.traditional_graph_learner(market_context)  # [batch, enc_in*enc_in]
-        adj_matrix = adj_flat.view(batch_size, self.enc_in, self.enc_in)
+        adj_flat = self.traditional_graph_learner(market_context)
+        if self.use_celestial_graph and getattr(self, 'aggregate_waves_to_celestial', False):
+            adj_matrix = adj_flat.view(batch_size, self.num_celestial_bodies, self.num_celestial_bodies)
+        else:
+            adj_matrix = adj_flat.view(batch_size, self.enc_in, self.enc_in)
         return adj_matrix
+    
+    def _learn_simple_dynamic_graph(self, market_context, batch_size):
+        """Compute a simple distinct dynamic adjacency for balanced fallback weighting.
+        Uses identity adjacency to avoid double-counting the traditional adjacency when celestial graph is disabled.
+        """
+        device = market_context.device
+        identity = torch.eye(self.enc_in, device=device).unsqueeze(0)
+        return identity.expand(batch_size, self.enc_in, self.enc_in)
     
     def _learn_data_driven_graph(self, enc_out, market_context):
         """Learn data-driven graph from encoded features"""
@@ -604,6 +643,18 @@ class Model(nn.Module):
             adj_matrix = adj_flat.view(batch_size, self.enc_in, self.enc_in)
         
         return adj_matrix
+    
+    def _normalize_adj(self, adj_matrix):
+        """Normalize adjacency matrix for stable fusion"""
+        # Add self-loops for stability
+        identity = torch.eye(adj_matrix.size(-1), device=adj_matrix.device)
+        adj_with_self_loops = adj_matrix + identity.unsqueeze(0).expand_as(adj_matrix)
+        
+        # Row normalization (convert to stochastic matrix)
+        row_sums = adj_with_self_loops.sum(dim=-1, keepdim=True)
+        normalized = adj_with_self_loops / (row_sums + 1e-8)
+        
+        return normalized
 
 
 class DecoderLayer(nn.Module):

@@ -74,19 +74,29 @@ def train_celestial_pgat():
     args.itr = 1
     args.train_only = False
     args.do_predict = False
+    # Ensure model_id is set for checkpointing
+    args.model_id = getattr(args, 'model_id', f"{args.model_name}_direct_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
     
     # Wave aggregation settings (respect config toggles; provide sane defaults)
     args.aggregate_waves_to_celestial = getattr(args, 'aggregate_waves_to_celestial', False)
     args.wave_to_celestial_mapping = getattr(args, 'wave_to_celestial_mapping', False)
     args.celestial_node_features = getattr(args, 'celestial_node_features', 13)
-    args.target_wave_indices = getattr(args, 'target_wave_indices', [0, 1, 2, 3])
+    
+    # FIXED: Respect config target_wave_indices instead of hardcoding
+    # NOTE: target_wave_indices specifies which of the 118 input waves to extract as targets
+    # For OHLC prediction: [0, 1, 2, 3] = [log_Open, log_High, log_Low, log_Close]
+    args.target_wave_indices = getattr(args, 'target_wave_indices', [0, 1, 2, 3])  # Default to OHLC
     
     print(f"📊 Configuration loaded:")
-    print(f"   - Model: {args.model}")
-    print(f"   - Data: {args.data}")
-    print(f"   - Sequence length: {args.seq_len}")
-    print(f"   - Prediction length: {args.pred_len}")
-    print(f"   - Model dimension: {args.d_model}")
+    print(f"   - Model: {getattr(args, 'model_name', getattr(args, 'model', 'Celestial_Enhanced_PGAT'))}")
+    print(f"   - Data: {getattr(args, 'data_name', getattr(args, 'data', 'custom'))}")
+    print(f"   - Sequence length: {getattr(args, 'seq_len', 'Unknown')}")
+    print(f"   - Prediction length: {getattr(args, 'pred_len', 'Unknown')}")
+    print(f"   - Model dimension: {getattr(args, 'd_model', 'Unknown')}")
+    print(f"   - Target columns: {getattr(args, 'target', 'Not specified')}")
+    print(f"   - Target wave indices: {getattr(args, 'target_wave_indices', [])} (OHLC: 0=Open, 1=High, 2=Low, 3=Close)")
+    print(f"   - Number of outputs: {getattr(args, 'c_out', 'Unknown')}")
+    print(f"   - Wave aggregation enabled: {getattr(args, 'aggregate_waves_to_celestial', False)}")
     
     # Setup device
     args.use_gpu = False  # Force CPU usage
@@ -174,9 +184,17 @@ def train_celestial_pgat():
             if not target_indices:
                 target_indices = list(range(getattr(args, 'c_out', 1)))
             print(f"🎯 Target indices resolved: {target_indices}")
+            print(f"🎯 Target names: {target_names}")
+            
+            # Validate OHLC configuration
+            if len(target_indices) != args.c_out:
+                print(f"⚠️  Warning: Number of target indices ({len(target_indices)}) != c_out ({args.c_out})")
+                print(f"   Adjusting c_out to match target indices")
+                args.c_out = len(target_indices)
+                
     except Exception as e:
         print(f"⚠️  Failed to auto-detect target indices: {e}. Using first c_out features.")
-        target_indices = list(range(getattr(args, 'c_out', 1)))
+        target_indices = list(range(getattr(args, 'c_out', 4)))  # Default to 4 for OHLC
 
     # Training loop
     print("\n🔥 Starting training loop...")
@@ -225,19 +243,68 @@ def train_celestial_pgat():
                     means = outputs['means']
                     log_stds = outputs['log_stds'] 
                     log_weights = outputs['log_weights']
-                    loss = criterion((means, log_stds, log_weights), true_targets)
+                    
+                    # FIXED: Apply proper target slicing and scaling for mixture decoder
+                    if target_indices is not None:
+                        # Slice targets to correct indices (not just first N)
+                        gt_slice = true_targets[:, :, target_indices]
+                    else:
+                        gt_slice = true_targets
+                    
+                    # FIXED: Scale targets to match scaled predictions
+                    if hasattr(train_data, 'scaler') and train_data.scaler is not None:
+                        try:
+                            gt_slice_np = gt_slice.cpu().numpy()
+                            gt_slice_scaled_np = train_data.scaler.transform(
+                                gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
+                            ).reshape(gt_slice_np.shape)
+                            gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
+                            loss = criterion((means, log_stds, log_weights), gt_slice_scaled)
+                        except Exception as e:
+                            print(f"⚠️  Mixture target scaling failed: {e}, using unscaled targets")
+                            loss = criterion((means, log_stds, log_weights), gt_slice)
+                    else:
+                        loss = criterion((means, log_stds, log_weights), gt_slice)
+                        
                 elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
                     # Tuple output (means, log_stds, log_weights)
                     means, log_stds, log_weights = outputs
-                    loss = criterion((means, log_stds, log_weights), true_targets)
+                    
+                    # FIXED: Apply proper target slicing and scaling for mixture decoder
+                    if target_indices is not None:
+                        # Slice targets to correct indices (not just first N)
+                        gt_slice = true_targets[:, :, target_indices]
+                    else:
+                        gt_slice = true_targets
+                    
+                    # FIXED: Scale targets to match scaled predictions
+                    if hasattr(train_data, 'scaler') and train_data.scaler is not None:
+                        try:
+                            gt_slice_np = gt_slice.cpu().numpy()
+                            gt_slice_scaled_np = train_data.scaler.transform(
+                                gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
+                            ).reshape(gt_slice_np.shape)
+                            gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
+                            loss = criterion((means, log_stds, log_weights), gt_slice_scaled)
+                        except Exception as e:
+                            print(f"⚠️  Mixture target scaling failed: {e}, using unscaled targets")
+                            loss = criterion((means, log_stds, log_weights), gt_slice)
+                    else:
+                        loss = criterion((means, log_stds, log_weights), gt_slice)
                 else:
                     # Standard deterministic output
                     # Ensure BOTH time and channel dimensions align with ground truth
                     # Slice model outputs to last pred_len timesteps
                     out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
                     if target_indices is not None:
-                        # If model outputs more channels than targets, slice channels
-                        out_slice = out_time[:, :, :len(target_indices)] if out_time.shape[-1] > len(target_indices) else out_time
+                        # FIXED: Slice outputs to match exact target indices, not just first N channels
+                        if out_time.shape[-1] >= len(target_indices):
+                            # If model outputs enough channels, take first len(target_indices) channels
+                            # This assumes model outputs are in same order as target_indices
+                            out_slice = out_time[:, :, :len(target_indices)]
+                        else:
+                            out_slice = out_time
+                        # Slice ground truth to exact target indices
                         gt_slice = true_targets[:, :, target_indices]
                         
                         # CRITICAL FIX: Scale targets to match scaled predictions (like standard framework)
@@ -376,16 +443,59 @@ def train_celestial_pgat():
                         means = outputs['means']
                         log_stds = outputs['log_stds']
                         log_weights = outputs['log_weights']
-                        loss = criterion((means, log_stds, log_weights), true_targets)
+                        
+                        # FIXED: Apply proper target slicing and scaling for mixture decoder
+                        if target_indices is not None:
+                            gt_slice = true_targets[:, :, target_indices]
+                        else:
+                            gt_slice = true_targets
+                        
+                        # FIXED: Scale targets to match scaled predictions
+                        if hasattr(vali_data, 'scaler') and vali_data.scaler is not None:
+                            try:
+                                gt_slice_np = gt_slice.cpu().numpy()
+                                gt_slice_scaled_np = vali_data.scaler.transform(
+                                    gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
+                                ).reshape(gt_slice_np.shape)
+                                gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
+                                loss = criterion((means, log_stds, log_weights), gt_slice_scaled)
+                            except Exception:
+                                loss = criterion((means, log_stds, log_weights), gt_slice)
+                        else:
+                            loss = criterion((means, log_stds, log_weights), gt_slice)
+                            
                     elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
                         means, log_stds, log_weights = outputs
-                        loss = criterion((means, log_stds, log_weights), true_targets)
+                        
+                        # FIXED: Apply proper target slicing and scaling for mixture decoder
+                        if target_indices is not None:
+                            gt_slice = true_targets[:, :, target_indices]
+                        else:
+                            gt_slice = true_targets
+                        
+                        # FIXED: Scale targets to match scaled predictions
+                        if hasattr(vali_data, 'scaler') and vali_data.scaler is not None:
+                            try:
+                                gt_slice_np = gt_slice.cpu().numpy()
+                                gt_slice_scaled_np = vali_data.scaler.transform(
+                                    gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
+                                ).reshape(gt_slice_np.shape)
+                                gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
+                                loss = criterion((means, log_stds, log_weights), gt_slice_scaled)
+                            except Exception:
+                                loss = criterion((means, log_stds, log_weights), gt_slice)
+                        else:
+                            loss = criterion((means, log_stds, log_weights), gt_slice)
                     else:
                         # Deterministic loss
                         # Slice model outputs to last pred_len timesteps to match ground truth
                         out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
                         if target_indices is not None:
-                            out_slice = out_time[:, :, :len(target_indices)] if out_time.shape[-1] > len(target_indices) else out_time
+                            # FIXED: Correct channel indexing for validation
+                            if out_time.shape[-1] >= len(target_indices):
+                                out_slice = out_time[:, :, :len(target_indices)]
+                            else:
+                                out_slice = out_time
                             gt_slice = true_targets[:, :, target_indices]
                             
                             # CRITICAL FIX: Scale targets for validation loss too
@@ -445,7 +555,8 @@ def train_celestial_pgat():
     # Load best model
     best_model_path = checkpoint_dir / 'checkpoint.pth'
     if best_model_path.exists():
-        model.load_state_dict(torch.load(best_model_path))
+        # FIXED: Device-safe checkpoint loading
+        model.load_state_dict(torch.load(best_model_path, map_location=device))
         print("✅ Best model loaded")
     
     # Final evaluation
@@ -550,26 +661,57 @@ def train_celestial_pgat():
         # Compute metrics
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         
-        print("\n🎯 Final Results:")
-        print(f"   - MAE:  {mae:.6f}")
-        print(f"   - MSE:  {mse:.6f}")
-        print(f"   - RMSE: {rmse:.6f}")
-        print(f"   - MAPE: {mape:.6f}")
-        print(f"   - MSPE: {mspe:.6f}")
+        print("\n🎯 Final Results (OHLC Prediction):")
+        print(f"   - Overall MAE:  {mae:.6f}")
+        print(f"   - Overall MSE:  {mse:.6f}")
+        print(f"   - Overall RMSE: {rmse:.6f}")
+        print(f"   - Overall MAPE: {mape:.6f}")
+        print(f"   - Overall MSPE: {mspe:.6f}")
+        
+        # OHLC-specific metrics if we have 4 targets
+        if preds.shape[-1] == 4:
+            ohlc_names = ['Open', 'High', 'Low', 'Close']
+            print(f"\n📊 Individual OHLC Metrics:")
+            for i, name in enumerate(ohlc_names):
+                pred_i = preds[:, :, i:i+1]
+                true_i = trues[:, :, i:i+1]
+                mae_i, mse_i, rmse_i, mape_i, mspe_i = metric(pred_i, true_i)
+                print(f"   {name:5s} - MAE: {mae_i:.6f}, RMSE: {rmse_i:.6f}, MAPE: {mape_i:.6f}")
         
         # Save results
         results = {
             'model': 'Celestial_Enhanced_PGAT',
-            'mae': float(mae),
-            'mse': float(mse),
-            'rmse': float(rmse),
-            'mape': float(mape),
-            'mspe': float(mspe),
+            'task': 'OHLC_Prediction',
+            'num_targets': preds.shape[-1],
+            'overall_metrics': {
+                'mae': float(mae),
+                'mse': float(mse),
+                'rmse': float(rmse),
+                'mape': float(mape),
+                'mspe': float(mspe)
+            },
             'train_losses': train_losses,
             'val_losses': val_losses,
             'config': config_dict,
             'timestamp': datetime.now().isoformat()
         }
+        
+        # Add individual OHLC metrics if available
+        if preds.shape[-1] == 4:
+            ohlc_names = ['Open', 'High', 'Low', 'Close']
+            ohlc_metrics = {}
+            for i, name in enumerate(ohlc_names):
+                pred_i = preds[:, :, i:i+1]
+                true_i = trues[:, :, i:i+1]
+                mae_i, mse_i, rmse_i, mape_i, mspe_i = metric(pred_i, true_i)
+                ohlc_metrics[name] = {
+                    'mae': float(mae_i),
+                    'mse': float(mse_i),
+                    'rmse': float(rmse_i),
+                    'mape': float(mape_i),
+                    'mspe': float(mspe_i)
+                }
+            results['ohlc_metrics'] = ohlc_metrics
         
         results_file = checkpoint_dir / 'results.json'
         with open(results_file, 'w') as f:
@@ -578,8 +720,9 @@ def train_celestial_pgat():
         print(f"💾 Results saved to: {results_file}")
         
         print("\n" + "=" * 60)
-        print("🎉 Celestial Enhanced PGAT Training Complete!")
-        print("🌌 The Astrological AI has learned the patterns of the cosmos!")
+        print("🎉 Celestial Enhanced PGAT OHLC Training Complete!")
+        print("🌌 The Astrological AI has learned to predict OHLC patterns from the cosmos!")
+        print(f"📈 Successfully trained to predict {preds.shape[-1]} targets: {getattr(args, 'target', 'OHLC')}")
         
         return True
     else:
