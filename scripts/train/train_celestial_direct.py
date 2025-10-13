@@ -7,6 +7,8 @@ Simplified approach without complex experiment framework
 import os
 import sys
 import io
+from contextlib import nullcontext
+from typing import Any, Dict, Sequence
 
 # Ensure stdout/stderr can emit UTF-8 on Windows to avoid UnicodeEncodeError
 try:
@@ -22,17 +24,17 @@ try:
 except Exception:
     # Non-fatal; fallback to default platform encoding
     pass
-import sys
 import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
 import yaml
 from pathlib import Path
-import argparse
 import time
 from datetime import datetime
 import json
+from torch import Tensor
+from torch.cuda.amp import GradScaler, autocast
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -42,7 +44,6 @@ from data_provider.data_factory import data_provider
 from models.Celestial_Enhanced_PGAT import Model
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric
-from utils.scaler_manager import ScalerManager
 import warnings
 import logging
 warnings.filterwarnings('ignore')
@@ -50,12 +51,63 @@ warnings.filterwarnings('ignore')
 logging.getLogger('utils.logger').setLevel(logging.ERROR)
 
 class SimpleConfig:
-    """Simple configuration class"""
-    def __init__(self, config_dict):
+    """Simple configuration class."""
+
+    def __init__(self, config_dict: Dict[str, Any]) -> None:
         for key, value in config_dict.items():
             setattr(self, key, value)
 
-def scale_targets_for_loss(targets_unscaled, target_scaler, target_indices, device):
+
+def _parse_gpu_ids(devices: str) -> Sequence[int]:
+    """Parse a comma-delimited device string into numeric GPU identifiers."""
+
+    return [int(token.strip()) for token in devices.split(',') if token.strip().isdigit()]
+
+
+def select_device(args: SimpleConfig) -> torch.device:
+    """Resolve the training device based on configuration flags and availability."""
+
+    requested_gpu = int(getattr(args, "gpu", 0))
+    use_gpu = bool(getattr(args, "use_gpu", True))
+    multi_gpu = bool(getattr(args, "use_multi_gpu", False))
+
+    if use_gpu and torch.cuda.is_available():
+        available = torch.cuda.device_count()
+        if multi_gpu:
+            device_ids = _parse_gpu_ids(str(getattr(args, "devices", "0")))
+            if not device_ids:
+                device_ids = list(range(available)) if available > 0 else [0]
+            primary = device_ids[0]
+            torch.cuda.set_device(primary)
+            args.gpu_ids = device_ids  # type: ignore[attr-defined]
+            device = torch.device(f"cuda:{primary}")
+        else:
+            if available == 0:
+                device = torch.device("cuda:0")
+            else:
+                primary = requested_gpu if requested_gpu < available else 0
+                torch.cuda.set_device(primary)
+                device = torch.device(f"cuda:{primary}")
+        args.use_gpu = True
+        return device
+
+    if use_gpu and not torch.cuda.is_available():
+        print("⚠️  GPU requested but CUDA is not available; falling back to CPU.")
+    args.use_gpu = False
+    return torch.device("cpu")
+
+
+def should_enable_amp(args: SimpleConfig, device: torch.device) -> bool:
+    """Determine whether mixed precision should be used for training."""
+
+    return bool(getattr(args, "mixed_precision", False) and device.type == "cuda")
+
+def scale_targets_for_loss(
+    targets_unscaled: Tensor,
+    target_scaler: Any,
+    target_indices: Sequence[int],
+    device: torch.device,
+) -> Tensor:
     """
     Scale target values for loss computation to match scaled predictions
     
@@ -90,7 +142,7 @@ def scale_targets_for_loss(targets_unscaled, target_scaler, target_indices, devi
         # Fallback: return unscaled targets (will cause scale mismatch but won't crash)
         return targets_unscaled[:, :, target_indices].to(device)
 
-def train_celestial_pgat():
+def train_celestial_pgat() -> bool:
     """Direct training function"""
     print("🌌 Starting Direct Celestial Enhanced PGAT Training")
     print("=" * 60)
@@ -139,9 +191,16 @@ def train_celestial_pgat():
     print(f"   - Wave aggregation enabled: {getattr(args, 'aggregate_waves_to_celestial', False)}")
     
     # Setup device
-    args.use_gpu = False  # Force CPU usage
-    device = torch.device('cpu')
-    print(f"🚀 Using device: {device} (GPU disabled due to environment issues)")
+    device = select_device(args)
+    args.device = str(device)
+    amp_enabled = should_enable_amp(args, device)
+    if device.type == "cuda":
+        cuda_name = torch.cuda.get_device_name(device)
+        print(f"🚀 Using device: {device} ({cuda_name})")
+        if amp_enabled:
+            print("   - Mixed precision: enabled")
+    else:
+        print(f"🚀 Using device: {device} (CUDA unavailable)")
     
     # Get data loaders
     print("📂 Loading data...")
@@ -212,6 +271,7 @@ def train_celestial_pgat():
         print("📊 Using MSE Loss for deterministic predictions")
     
     early_stopping = EarlyStopping(patience=args.patience, verbose=True)
+    scaler = GradScaler(enabled=amp_enabled)
     
     # Create checkpoint directory
     checkpoint_dir = Path(args.checkpoints) / args.model_id
@@ -262,6 +322,9 @@ def train_celestial_pgat():
         print(f"⚠️  Failed to auto-detect target indices: {e}. Using first c_out features.")
         target_indices = list(range(getattr(args, 'c_out', 4)))  # Default to 4 for OHLC
 
+    if target_indices is None:
+        target_indices = list(range(getattr(args, 'c_out', 4)))
+
     # Training loop
     print("\n🔥 Starting training loop...")
     train_losses = []
@@ -277,98 +340,102 @@ def train_celestial_pgat():
         
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
             optimizer.zero_grad()
-            
+
             # Move to device
             batch_x = batch_x.float().to(device)
             batch_y = batch_y.float().to(device)
             batch_x_mark = batch_x_mark.float().to(device)
             batch_y_mark = batch_y_mark.float().to(device)
-            
+
             # ✅ FIXED: Use data as-is from Dataset_Custom (no additional scaling needed)
             # batch_x is already scaled by Dataset_Custom
             # batch_y is unscaled (correct for ground truth)
-            
+
             batch_x_input = batch_x  # Already scaled by Dataset_Custom
-            batch_y_targets = batch_y[:, :, target_indices]  # Extract OHLC targets (unscaled)
-            
             # Prepare decoder input using original data (match encoder dimensions)
             dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float()  # [32, 24, 118]
             dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)  # [32, 48, 118]
-            
+
             try:
-                # Forward pass (batch_x_input is already properly scaled by Dataset_Custom)
-                outputs, metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
-                
-                # Determine the correct ground truth for the loss function
-                if (model.aggregate_waves_to_celestial and 
-                    'original_targets' in metadata and 
-                    metadata['original_targets'] is not None):
-                    # Use the specific targets isolated during wave aggregation (assume already scaled)
-                    true_targets_for_loss = metadata['original_targets'][:, -args.pred_len:, :]
-                    print(f"🎯 Using wave aggregation targets: {true_targets_for_loss.shape}")
-                else:
-                    # Scale the unscaled OHLC targets from batch_y for loss computation
-                    # This ensures targets match the scale of model predictions
-                    true_targets_unscaled = batch_y[:, -args.pred_len:, :]  # Full unscaled batch_y
-                    true_targets_for_loss = scale_targets_for_loss(
-                        true_targets_unscaled, target_scaler, target_indices, device
-                    )
-                
-                # Compute loss based on model type
-                if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
-                    # Mixture density network output
-                    means = outputs['means']
-                    log_stds = outputs['log_stds'] 
-                    log_weights = outputs['log_weights']
-                    
-                    # Use scaled targets for loss computation
-                    loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
-                        
-                elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
-                    # Tuple output (means, log_stds, log_weights)
-                    means, log_stds, log_weights = outputs
-                    
-                    # Use scaled targets for loss computation
-                    loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
-                else:
-                    # Standard deterministic output
-                    # Slice model outputs to last pred_len timesteps to match ground truth
-                    out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
-                    
-                    # Ensure output channels match target channels
-                    if out_time.shape[-1] >= len(target_indices):
-                        # Take first N channels to match OHLC targets
-                        out_slice = out_time[:, :, :len(target_indices)]
+                with (autocast(device_type="cuda", dtype=torch.float16) if amp_enabled else nullcontext()):
+                    # Forward pass (batch_x_input is already properly scaled by Dataset_Custom)
+                    outputs, metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
+
+                    # Determine the correct ground truth for the loss function
+                    if (model.aggregate_waves_to_celestial and 
+                        'original_targets' in metadata and 
+                        metadata['original_targets'] is not None):
+                        # Use the specific targets isolated during wave aggregation (assume already scaled)
+                        true_targets_for_loss = metadata['original_targets'][:, -args.pred_len:, :]
+                        if i == 0:
+                            print(f"🎯 Using wave aggregation targets: {true_targets_for_loss.shape}")
                     else:
-                        out_slice = out_time
-                    
-                    # ✅ FIXED: Use scaled targets for loss computation (both pred and target on same scale)
-                    loss = criterion(out_slice, true_targets_for_loss)
-                    
-                    # Debug: Print stats for first batch only
-                    if i == 0:
-                        print(f"🔍 Model I/O shapes: input={batch_x_input.shape}, output={outputs.shape}")
-                        print(f"🔍 Loss computation: pred_shape={out_slice.shape}, target_shape={true_targets_for_loss.shape}")
-                        print(f"📊 Output stats (scaled): mean={out_slice.mean():.6f}, std={out_slice.std():.6f}")
-                        print(f"📊 Target stats (scaled): mean={true_targets_for_loss.mean():.6f}, std={true_targets_for_loss.std():.6f}")
-                        print(f"📊 Input batch_x stats (scaled): mean={batch_x_input.mean():.6f}, std={batch_x_input.std():.6f}")
-                        print(f"📊 Raw batch_y stats (all 118 features, unscaled): mean={batch_y.mean():.6f}, std={batch_y.std():.6f}")
-                        print(f"📊 OHLC targets only (unscaled): mean={batch_y[:, -args.pred_len:, :4].mean():.6f}, std={batch_y[:, -args.pred_len:, :4].std():.6f}")
-                
-                # Add regularization loss from stochastic graph learner
-                if getattr(model, 'use_stochastic_learner', False):
-                    reg_loss = model.get_regularization_loss()
-                    # CRITICAL FIX: Much smaller regularization weight to prevent loss explosion
-                    reg_weight = getattr(args, 'reg_loss_weight', 0.001)  # Reduced from 0.1 to 0.001
-                    reg_contribution = reg_loss * reg_weight
-                    loss += reg_contribution
-                    
-                    if i % 100 == 0:  # Log regularization loss occasionally
-                        print(f"📊 Regularization loss: {reg_loss.item():.6f} (weighted: {reg_contribution.item():.6f})")
-                
-                # Backward pass
-                loss.backward()
-                
+                        # Scale the unscaled OHLC targets from batch_y for loss computation
+                        # This ensures targets match the scale of model predictions
+                        true_targets_unscaled = batch_y[:, -args.pred_len:, :]  # Full unscaled batch_y
+                        true_targets_for_loss = scale_targets_for_loss(
+                            true_targets_unscaled, target_scaler, target_indices, device
+                        )
+
+                    # Compute loss based on model type
+                    if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
+                        # Mixture density network output
+                        means = outputs['means']
+                        log_stds = outputs['log_stds'] 
+                        log_weights = outputs['log_weights']
+
+                        # Use scaled targets for loss computation
+                        loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+
+                    elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
+                        # Tuple output (means, log_stds, log_weights)
+                        means, log_stds, log_weights = outputs
+
+                        # Use scaled targets for loss computation
+                        loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                    else:
+                        # Standard deterministic output
+                        # Slice model outputs to last pred_len timesteps to match ground truth
+                        out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
+
+                        # Ensure output channels match target channels
+                        if out_time.shape[-1] >= len(target_indices):
+                            # Take first N channels to match OHLC targets
+                            out_slice = out_time[:, :, :len(target_indices)]
+                        else:
+                            out_slice = out_time
+
+                        # ✅ FIXED: Use scaled targets for loss computation (both pred and target on same scale)
+                        loss = criterion(out_slice, true_targets_for_loss)
+
+                        # Debug: Print stats for first batch only
+                        if i == 0:
+                            print(f"🔍 Model I/O shapes: input={batch_x_input.shape}, output={outputs.shape}")
+                            print(f"🔍 Loss computation: pred_shape={out_slice.shape}, target_shape={true_targets_for_loss.shape}")
+                            print(f"📊 Output stats (scaled): mean={out_slice.mean():.6f}, std={out_slice.std():.6f}")
+                            print(f"📊 Target stats (scaled): mean={true_targets_for_loss.mean():.6f}, std={true_targets_for_loss.std():.6f}")
+                            print(f"📊 Input batch_x stats (scaled): mean={batch_x_input.mean():.6f}, std={batch_x_input.std():.6f}")
+                            print(f"📊 Raw batch_y stats (all 118 features, unscaled): mean={batch_y.mean():.6f}, std={batch_y.std():.6f}")
+                            print(f"📊 OHLC targets only (unscaled): mean={batch_y[:, -args.pred_len:, :4].mean():.6f}, std={batch_y[:, -args.pred_len:, :4].std():.6f}")
+
+                    # Add regularization loss from stochastic graph learner
+                    if getattr(model, 'use_stochastic_learner', False):
+                        reg_loss = model.get_regularization_loss()
+                        # CRITICAL FIX: Much smaller regularization weight to prevent loss explosion
+                        reg_weight = getattr(args, 'reg_loss_weight', 0.001)  # Reduced from 0.1 to 0.001
+                        reg_contribution = reg_loss * reg_weight
+                        loss += reg_contribution
+
+                        if i % 100 == 0:  # Log regularization loss occasionally
+                            print(f"📊 Regularization loss: {reg_loss.item():.6f} (weighted: {reg_contribution.item():.6f})")
+
+                # Backward pass with optional AMP scaling
+                if amp_enabled:
+                    scaler.scale(loss).backward()
+                    scaler.unscale_(optimizer)
+                else:
+                    loss.backward()
+
                 # Check gradient flow (debug)
                 if i == 0:  # Only check first batch to avoid spam
                     total_grad_norm = 0.0
@@ -380,7 +447,7 @@ def train_celestial_pgat():
                             param_count += 1
                     total_grad_norm = total_grad_norm ** (1. / 2)
                     print(f"         🔍 Total gradient norm: {total_grad_norm:.6f} ({param_count} params)")
-                    
+
                     # Check if parameters are changing
                     if not hasattr(model, '_first_param_value'):
                         model._first_param_value = next(model.parameters()).clone().detach()
@@ -389,12 +456,16 @@ def train_celestial_pgat():
                         param_change = (first_param - model._first_param_value).abs().mean().item()
                         print(f"         📈 Parameter change: {param_change:.8f}")
                         model._first_param_value = first_param.clone().detach()
-                
+
                 # Gradient clipping
                 if hasattr(args, 'clip_grad_norm'):
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
-                
-                optimizer.step()
+
+                if amp_enabled:
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
                 
                 train_loss += loss.item()
                 train_batches += 1
@@ -445,53 +516,52 @@ def train_celestial_pgat():
                 
                 # Use data as-is from Dataset_Custom (already properly scaled/unscaled)
                 batch_x_input = batch_x  # Already scaled
-                batch_y_targets = batch_y[:, :, target_indices]  # Extract OHLC targets (unscaled)
-                
                 dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
                 
                 try:
-                    outputs, metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
+                    with (autocast(device_type="cuda", dtype=torch.float16) if amp_enabled else nullcontext()):
+                        outputs, metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
                     
-                    # Determine correct ground truth and scale for loss computation
-                    if (model.aggregate_waves_to_celestial and 
-                        'original_targets' in metadata and 
-                        metadata['original_targets'] is not None):
-                        true_targets_for_loss = metadata['original_targets'][:, -args.pred_len:, :]
-                    else:
-                        # Scale the unscaled targets for validation loss computation
-                        true_targets_unscaled = batch_y[:, -args.pred_len:, :]
-                        true_targets_for_loss = scale_targets_for_loss(
-                            true_targets_unscaled, target_scaler, target_indices, device
-                        )
-                    
-                    # Compute loss based on model type
-                    if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
-                        means = outputs['means']
-                        log_stds = outputs['log_stds']
-                        log_weights = outputs['log_weights']
-                        
-                        # Use scaled targets for validation loss computation
-                        loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
-                            
-                    elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
-                        means, log_stds, log_weights = outputs
-                        
-                        # Use scaled targets for validation loss computation
-                        loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
-                    else:
-                        # Deterministic loss
-                        # Slice model outputs to last pred_len timesteps to match ground truth
-                        out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
-                        
-                        # Ensure output channels match target channels
-                        if out_time.shape[-1] >= len(target_indices):
-                            out_slice = out_time[:, :, :len(target_indices)]
+                        # Determine correct ground truth and scale for loss computation
+                        if (model.aggregate_waves_to_celestial and 
+                            'original_targets' in metadata and 
+                            metadata['original_targets'] is not None):
+                            true_targets_for_loss = metadata['original_targets'][:, -args.pred_len:, :]
                         else:
-                            out_slice = out_time
+                            # Scale the unscaled targets for validation loss computation
+                            true_targets_unscaled = batch_y[:, -args.pred_len:, :]
+                            true_targets_for_loss = scale_targets_for_loss(
+                                true_targets_unscaled, target_scaler, target_indices, device
+                            )
                         
-                        # ✅ FIXED: Use scaled targets for validation loss computation
-                        loss = criterion(out_slice, true_targets_for_loss)
+                        # Compute loss based on model type
+                        if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
+                            means = outputs['means']
+                            log_stds = outputs['log_stds']
+                            log_weights = outputs['log_weights']
+                            
+                            # Use scaled targets for validation loss computation
+                            loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                                
+                        elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
+                            means, log_stds, log_weights = outputs
+                            
+                            # Use scaled targets for validation loss computation
+                            loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                        else:
+                            # Deterministic loss
+                            # Slice model outputs to last pred_len timesteps to match ground truth
+                            out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
+                            
+                            # Ensure output channels match target channels
+                            if out_time.shape[-1] >= len(target_indices):
+                                out_slice = out_time[:, :, :len(target_indices)]
+                            else:
+                                out_slice = out_time
+                            
+                            # ✅ FIXED: Use scaled targets for validation loss computation
+                            loss = criterion(out_slice, true_targets_for_loss)
                     
                     val_loss += loss.item()
                     val_batches += 1
@@ -549,7 +619,8 @@ def train_celestial_pgat():
             dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
             
             try:
-                outputs, metadata = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                with (autocast(device_type="cuda", dtype=torch.float16) if amp_enabled else nullcontext()):
+                    outputs, metadata = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
                 # Handle mixture decoder outputs - extract point predictions
                 if getattr(model, 'use_mixture_decoder', False):
@@ -682,7 +753,7 @@ def train_celestial_pgat():
         print("❌ No valid predictions generated")
         return False
 
-def main():
+def main() -> int:
     """Main function"""
     try:
         success = train_celestial_pgat()
