@@ -523,45 +523,55 @@ def train_celestial_pgat() -> bool:
                     with (autocast(device_type="cuda", dtype=torch.float16) if amp_enabled else nullcontext()):
                         outputs, metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
                     
-                        # Determine correct ground truth and scale for loss computation
-                        if (model.aggregate_waves_to_celestial and 
-                            'original_targets' in metadata and 
-                            metadata['original_targets'] is not None):
-                            true_targets_for_loss = metadata['original_targets'][:, -args.pred_len:, :]
-                        else:
-                            # Scale the unscaled targets for validation loss computation
-                            true_targets_unscaled = batch_y[:, -args.pred_len:, :]
-                            true_targets_for_loss = scale_targets_for_loss(
-                                true_targets_unscaled, target_scaler, target_indices, device
-                            )
+                    # Determine correct ground truth and scale for loss computation
+                    if (model.aggregate_waves_to_celestial and 
+                        'original_targets' in metadata and 
+                        metadata['original_targets'] is not None):
+                        true_targets_for_loss = metadata['original_targets'][:, -args.pred_len:, :]
+                    else:
+                        # Scale the unscaled targets for validation loss computation
+                        true_targets_unscaled = batch_y[:, -args.pred_len:, :]
+                        true_targets_for_loss = scale_targets_for_loss(
+                            true_targets_unscaled, target_scaler, target_indices, device
+                        )
+                    
+                    # Compute loss based on model type
+                    if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
+                        means = outputs['means']
+                        log_stds = outputs['log_stds']
+                        log_weights = outputs['log_weights']
                         
-                        # Compute loss based on model type
-                        if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
-                            means = outputs['means']
-                            log_stds = outputs['log_stds']
-                            log_weights = outputs['log_weights']
+                        # Use scaled targets for validation loss computation
+                        loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
                             
-                            # Use scaled targets for validation loss computation
-                            loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
-                                
-                        elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
-                            means, log_stds, log_weights = outputs
-                            
-                            # Use scaled targets for validation loss computation
-                            loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                    elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
+                        means, log_stds, log_weights = outputs
+                        
+                        # Use scaled targets for validation loss computation
+                        loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                    else:
+                        # Deterministic loss
+                        # Slice model outputs to last pred_len timesteps to match ground truth
+                        out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
+                        
+                        # Ensure output channels match target channels
+                        if out_time.shape[-1] >= len(target_indices):
+                            out_slice = out_time[:, :, :len(target_indices)]
                         else:
-                            # Deterministic loss
-                            # Slice model outputs to last pred_len timesteps to match ground truth
-                            out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
-                            
-                            # Ensure output channels match target channels
-                            if out_time.shape[-1] >= len(target_indices):
-                                out_slice = out_time[:, :, :len(target_indices)]
-                            else:
-                                out_slice = out_time
-                            
-                            # ✅ FIXED: Use scaled targets for validation loss computation
-                            loss = criterion(out_slice, true_targets_for_loss)
+                            out_slice = out_time
+                        
+                        # ✅ FIXED: Use scaled targets for validation loss computation
+                        loss = criterion(out_slice, true_targets_for_loss)
+                        
+                        # Debug validation loss computation (first batch only)
+                        if val_batches == 0:
+                            print(f"🔍 VAL - Model I/O shapes: input={batch_x_input.shape}, output={outputs.shape}")
+                            print(f"🔍 VAL - Loss computation: pred_shape={out_slice.shape}, target_shape={true_targets_for_loss.shape}")
+                            print(f"📊 VAL - Output stats (scaled): mean={out_slice.mean():.6f}, std={out_slice.std():.6f}")
+                            print(f"📊 VAL - Target stats (scaled): mean={true_targets_for_loss.mean():.6f}, std={true_targets_for_loss.std():.6f}")
+                            print(f"📊 VAL - Raw batch_y stats (all 118 features, unscaled): mean={batch_y.mean():.6f}, std={batch_y.std():.6f}")
+                            print(f"📊 VAL - OHLC targets only (unscaled): mean={batch_y[:, -args.pred_len:, :4].mean():.6f}, std={batch_y[:, -args.pred_len:, :4].std():.6f}")
+                            print(f"📊 VAL - Loss value: {loss.item():.6f}")
                     
                     val_loss += loss.item()
                     val_batches += 1
