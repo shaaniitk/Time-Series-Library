@@ -295,16 +295,17 @@ def train_celestial_pgat():
             batch_x_scaled_np = unified_scaler.transform(batch_x_np.reshape(-1, 118)).reshape(batch_x_np.shape)
             batch_x_scaled = torch.from_numpy(batch_x_scaled_np).float().to(device)
             
-            # Scale target features using the SAME unified scaler (for consistency)
-            batch_y_targets = batch_y[:, :, :4]  # [32, 72, 4] - only OHLC
+            # Scale ALL target features using the SAME unified scaler (for consistency)
             batch_y_np = batch_y.cpu().numpy()  # [32, 72, 118] - all features
             batch_y_all_scaled_np = unified_scaler.transform(batch_y_np.reshape(-1, 118)).reshape(batch_y_np.shape)
-            # Extract only the first 4 scaled features (OHLC)
-            batch_y_scaled = torch.from_numpy(batch_y_all_scaled_np[:, :, :4]).float().to(device)
+            batch_y_all_scaled = torch.from_numpy(batch_y_all_scaled_np).float().to(device)
             
-            # Prepare decoder input (using scaled targets)
-            dec_inp = torch.zeros_like(batch_y_scaled[:, -args.pred_len:, :]).float()
-            dec_inp = torch.cat([batch_y_scaled[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
+            # Extract only the first 4 scaled features (OHLC) for loss computation
+            batch_y_scaled = batch_y_all_scaled[:, :, :4]  # [32, 72, 4] - only OHLC for targets
+            
+            # Prepare decoder input using ALL 118 scaled features (to match encoder dimensions)
+            dec_inp = torch.zeros_like(batch_y_all_scaled[:, -args.pred_len:, :]).float()  # [32, 24, 118]
+            dec_inp = torch.cat([batch_y_all_scaled[:, :args.label_len, :], dec_inp], dim=1).float().to(device)  # [32, 48, 118]
             
             try:
                 # Forward pass (using scaled inputs)
@@ -467,14 +468,17 @@ def train_celestial_pgat():
                 batch_x_scaled_np = unified_scaler.transform(batch_x_np.reshape(-1, 118)).reshape(batch_x_np.shape)
                 batch_x_scaled = torch.from_numpy(batch_x_scaled_np).float().to(device)
                 
-                # Scale target features using the SAME unified scaler
+                # Scale ALL target features using the SAME unified scaler
                 batch_y_np = batch_y.cpu().numpy()  # [32, 72, 118] - all features
                 batch_y_all_scaled_np = unified_scaler.transform(batch_y_np.reshape(-1, 118)).reshape(batch_y_np.shape)
-                # Extract only the first 4 scaled features (OHLC)
-                batch_y_scaled = torch.from_numpy(batch_y_all_scaled_np[:, :, :4]).float().to(device)
+                batch_y_all_scaled = torch.from_numpy(batch_y_all_scaled_np).float().to(device)
                 
-                dec_inp = torch.zeros_like(batch_y_scaled[:, -args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y_scaled[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
+                # Extract only the first 4 scaled features (OHLC) for loss computation
+                batch_y_scaled = batch_y_all_scaled[:, :, :4]  # [32, 72, 4] - only OHLC for targets
+                
+                # Prepare decoder input using ALL 118 scaled features (to match encoder dimensions)
+                dec_inp = torch.zeros_like(batch_y_all_scaled[:, -args.pred_len:, :]).float()  # [32, 24, 118]
+                dec_inp = torch.cat([batch_y_all_scaled[:, :args.label_len, :], dec_inp], dim=1).float().to(device)  # [32, 48, 118]
                 
                 try:
                     outputs, metadata = model(batch_x_scaled, batch_x_mark, dec_inp, batch_y_mark)
