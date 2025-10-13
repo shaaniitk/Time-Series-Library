@@ -1,0 +1,39 @@
+# Bayesian-Quantile ModularAutoformer on synthetic sine/cosine
+
+model: 'ModularAutoformer'
+model_id: 'modular_synthetic_bq'
+
+# Windowing
+seq_len: 48
+label_len: 24
+pred_len: 24
+freq: 'D'
+
+# Data/targets
+root_path: 'data'
+data_path: 'tmp_sine.csv'
+target: 'y'
+features: 'S'
+
+# Training
+train_epochs: 3
+patience: 2
+batch_size: 8
+learning_rate: 1e-3
+itr: 1
+d_model: 128
+n_heads: 4
+d_ff: 256
+dropout: 0.1
+
+# Quantile + Bayesian
+model_type: 'bayesian'
+quantile_levels: [0.1, 0.5, 0.9]
+n_samples: 20           # Monte Carlo samples for Bayesian sampling
+bayesian_dropout: 0.1   # Dropout rate used for MC Dropout if applicable
+bayesian_temperature: 1.0
+
+# Components (wired by _configure_modular_autoformer_args)
+use_modular_components: true
+use_amp: false
+use_gpu: false

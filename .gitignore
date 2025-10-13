@@ -3,9 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Configuration files
+# Configuration files (allow configs/ folder but ignore others)
 *.yaml
 *.yml
+!configs/*.yaml
+!configs/*.yml
 
 # C extensions
 *.so

@@ -1,0 +1,64 @@
+# Celestial Enhanced PGAT direct training configuration
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: celestial_enhanced_pgat_synth_d
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS          # Multivariate input, univariate output
+target: log_Open,log_High,log_Low,log_Close     # Predict all OHLC values
+embed: timeF
+freq: d               # Daily frequency
+use_gpu: true
+
+# Sequence settings
+seq_len: 96
+label_len: 48
+pred_len: 24
+
+# Data split settings
+validation_length: 500  # Larger validation set for better evaluation
+test_length: 200        # Larger test set
+
+# Optimization
+learning_rate: 0.005
+train_epochs: 2
+batch_size: 32
+patience: 3
+lradj: type1
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# Model hyperparameters
+d_model: 64
+n_heads: 4
+e_layers: 2
+d_layers: 1
+dropout: 0.1
+
+# Input/Output dimensions (based on prepared_financial_data.csv)
+enc_in: 118    # Number of celestial wave features (excluding date and OHLC targets)
+dec_in: 118    # Same as encoder input  
+c_out: 4       # Four target outputs (OHLC)
+
+# Celestial graph settings - FULL ASTROLOGICAL AI ENABLED! 🌌
+use_celestial_graph: true               # Enable full celestial system
+aggregate_waves_to_celestial: true      # Enable wave aggregation to celestial bodies
+celestial_fusion_layers: 3              # Enhanced fusion layers
+
+# Wave aggregation settings - PERFECT FOR ASTROLOGICAL DATA
+num_input_waves: 118   # Full celestial wave features
+target_wave_indices: [0, 1, 2, 3]  # All OHLC targets (log_Open, log_High, log_Low, log_Close)
+
+# Probabilistic decoding - SIMPLIFIED FOR TESTING
+use_mixture_decoder: false              # Disable probabilistic predictions (simplified)
+use_stochastic_learner: false           # Disable stochastic graph learning (simplified)
+use_hierarchical_mapping: false         # Disable hierarchical temporal-spatial mapping (simplified)
+mdn_multivariate_mode: independent
+
+# Regularization - ENHANCED FOR ASTROLOGICAL AI
+reg_loss_weight: 0.001  # KL divergence weight for stochastic graph learning (reduced to prevent loss explosion)
+kl_weight: 0.0001       # Additional KL regularization
