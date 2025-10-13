@@ -110,7 +110,7 @@ def train_celestial_pgat():
     args.checkpoints = './checkpoints/'
     args.inverse = False
     args.cols = None
-    args.num_workers = 10
+    args.num_workers = 0  # Disable multiprocessing to avoid timeout issues
     args.itr = 1
     args.train_only = False
     args.do_predict = False
