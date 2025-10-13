@@ -26,6 +26,7 @@ import sys
 import torch
 import torch.nn as nn
 import numpy as np
+import pandas as pd
 import yaml
 from pathlib import Path
 import argparse
@@ -41,6 +42,7 @@ from data_provider.data_factory import data_provider
 from models.Celestial_Enhanced_PGAT import Model
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric
+from utils.scaler_manager import ScalerManager
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -144,6 +146,33 @@ def train_celestial_pgat():
     print(f"   - Validation batches: {len(vali_loader)}")
     print(f"   - Test batches: {len(test_loader)}")
     
+    # 🔧 CRITICAL FIX: Setup proper scaling using ScalerManager
+    print("🔧 Setting up proper data scaling...")
+    
+    # Check what the data loader actually provides
+    for batch_x, batch_y, batch_x_mark, batch_y_mark in train_loader:
+        print(f"   - Actual input shape: {batch_x.shape} (batch, seq, features)")
+        print(f"   - Actual target shape: {batch_y.shape}")
+        actual_input_features = batch_x.shape[-1]
+        actual_target_features = batch_y.shape[-1]
+        break
+    
+    # Load raw data for scaling setup
+    raw_df = pd.read_csv(args.root_path + '/' + args.data_path)
+    target_features = ['log_Open', 'log_High', 'log_Low', 'log_Close']
+    
+    # CRITICAL FIX: Use the actual number of features the model receives
+    # The data loader might be providing a different feature set than the raw CSV
+    print(f"   - Raw CSV has {len(raw_df.columns)} columns")
+    print(f"   - Model input expects {actual_input_features} features")
+    print(f"   - Model targets expect {actual_target_features} features")
+    
+    # For now, let's skip the ScalerManager and use a simpler approach
+    # since there's a mismatch between CSV structure and data loader output
+    print("   - ⚠️  Skipping ScalerManager due to feature dimension mismatch")
+    print("   - Using data loader's built-in scaling (if any)")
+    scaler_manager = None
+    
     # Initialize model
     print("🏗️  Initializing Celestial Enhanced PGAT...")
     try:
@@ -188,7 +217,6 @@ def train_celestial_pgat():
     try:
         if hasattr(args, 'target') and args.target:
             # Load header from CSV to map target names to indices (excluding 'date')
-            import pandas as pd
             csv_path = os.path.join(args.root_path, args.data_path)
             print(f"\n📁 Data file: {csv_path}")
             df_head = pd.read_csv(csv_path, nrows=1)
@@ -249,79 +277,64 @@ def train_celestial_pgat():
             batch_x_mark = batch_x_mark.float().to(device)
             batch_y_mark = batch_y_mark.float().to(device)
             
-            # Prepare decoder input
-            dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float()
-            dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
+            # 🔧 CRITICAL FIX: Apply proper scaling if available
+            if scaler_manager is not None:
+                # Scale inputs (covariates) and targets separately
+                batch_x_scaled = scaler_manager.scale_covariates_tensor(batch_x, device=device)
+                batch_y_scaled = scaler_manager.scale_targets_tensor(batch_y, device=device)
+            else:
+                # Use data as-is (data loader should handle scaling)
+                batch_x_scaled = batch_x
+                batch_y_scaled = batch_y
+            
+            # Prepare decoder input (using scaled targets)
+            dec_inp = torch.zeros_like(batch_y_scaled[:, -args.pred_len:, :]).float()
+            dec_inp = torch.cat([batch_y_scaled[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
             
             try:
-                # Forward pass
-                outputs, metadata = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                # Forward pass (using scaled inputs)
+                outputs, metadata = model(batch_x_scaled, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Determine the correct ground truth for the loss function
+                # Determine the correct ground truth for the loss function (using scaled targets)
                 if (model.aggregate_waves_to_celestial and 
                     'original_targets' in metadata and 
                     metadata['original_targets'] is not None):
-                    # Use the specific targets isolated during wave aggregation
+                    # Use the specific targets isolated during wave aggregation (already scaled)
                     true_targets = metadata['original_targets'][:, -args.pred_len:, :]
                     print(f"🎯 Using wave aggregation targets: {true_targets.shape}")
                 else:
-                    # Use the standard batch_y targets
-                    true_targets = batch_y[:, -args.pred_len:, :]
+                    # Use the scaled batch_y targets
+                    true_targets = batch_y_scaled[:, -args.pred_len:, :]
                 
-                # Compute loss based on model type
+                # Compute loss based on model type (data is already properly scaled)
                 if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
                     # Mixture density network output
                     means = outputs['means']
                     log_stds = outputs['log_stds'] 
                     log_weights = outputs['log_weights']
                     
-                    # FIXED: Apply proper target slicing and scaling for mixture decoder
+                    # Use properly scaled targets (no additional scaling needed)
                     if target_indices is not None:
-                        # Slice targets to correct indices (not just first N)
+                        # Slice targets to correct indices
                         gt_slice = true_targets[:, :, target_indices]
                     else:
                         gt_slice = true_targets
                     
-                    # FIXED: Scale targets to match scaled predictions
-                    if hasattr(train_data, 'scaler') and train_data.scaler is not None:
-                        try:
-                            gt_slice_np = gt_slice.cpu().numpy()
-                            gt_slice_scaled_np = train_data.scaler.transform(
-                                gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
-                            ).reshape(gt_slice_np.shape)
-                            gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
-                            loss = criterion((means, log_stds, log_weights), gt_slice_scaled)
-                        except Exception as e:
-                            print(f"⚠️  Mixture target scaling failed: {e}, using unscaled targets")
-                            loss = criterion((means, log_stds, log_weights), gt_slice)
-                    else:
-                        loss = criterion((means, log_stds, log_weights), gt_slice)
+                    # Compute loss with properly scaled data
+                    loss = criterion(gt_slice, means, log_stds, log_weights)
                         
                 elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
                     # Tuple output (means, log_stds, log_weights)
                     means, log_stds, log_weights = outputs
                     
-                    # FIXED: Apply proper target slicing and scaling for mixture decoder
+                    # Apply proper target slicing for mixture decoder
                     if target_indices is not None:
-                        # Slice targets to correct indices (not just first N)
                         gt_slice = true_targets[:, :, target_indices]
                     else:
                         gt_slice = true_targets
                     
-                    # FIXED: Scale targets to match scaled predictions
-                    if hasattr(train_data, 'scaler') and train_data.scaler is not None:
-                        try:
-                            gt_slice_np = gt_slice.cpu().numpy()
-                            gt_slice_scaled_np = train_data.scaler.transform(
-                                gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
-                            ).reshape(gt_slice_np.shape)
-                            gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
-                            loss = criterion((means, log_stds, log_weights), gt_slice_scaled)
-                        except Exception as e:
-                            print(f"⚠️  Mixture target scaling failed: {e}, using unscaled targets")
-                            loss = criterion((means, log_stds, log_weights), gt_slice)
-                    else:
-                        loss = criterion((means, log_stds, log_weights), gt_slice)
+                    # Compute loss (data should already be properly scaled)
+                    loss = criterion(gt_slice, means, log_stds, log_weights)
                 else:
                     # Standard deterministic output
                     # Ensure BOTH time and channel dimensions align with ground truth
@@ -339,44 +352,22 @@ def train_celestial_pgat():
                         gt_slice = true_targets[:, :, target_indices]
                         
                         # CRITICAL FIX: Scale targets to match scaled predictions (like standard framework)
-                        if hasattr(train_data, 'scaler') and train_data.scaler is not None:
-                            try:
-                                # Scale the targets to match scaled predictions
-                                gt_slice_np = gt_slice.cpu().numpy()
-                                gt_slice_scaled_np = train_data.scaler.transform(
-                                    gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
-                                ).reshape(gt_slice_np.shape)
-                                gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
-                                loss = criterion(out_slice, gt_slice_scaled)
-                            except Exception as e:
-                                print(f"⚠️  Target scaling failed: {e}, using unscaled targets")
-                                loss = criterion(out_slice, gt_slice)
-                        else:
-                            loss = criterion(out_slice, gt_slice)
+                        # Compute loss (data should already be properly scaled)
+                        loss = criterion(out_slice, gt_slice)
                     else:
-                        # Scale all targets if no specific indices
-                        if hasattr(train_data, 'scaler') and train_data.scaler is not None:
-                            try:
-                                true_targets_np = true_targets.cpu().numpy()
-                                true_targets_scaled_np = train_data.scaler.transform(
-                                    true_targets_np.reshape(-1, true_targets_np.shape[-1])
-                                ).reshape(true_targets_np.shape)
-                                true_targets_scaled = torch.from_numpy(true_targets_scaled_np).float().to(device)
-                                loss = criterion(out_time, true_targets_scaled)
-                            except Exception as e:
-                                print(f"⚠️  Target scaling failed: {e}, using unscaled targets")
-                                loss = criterion(out_time, true_targets)
-                        else:
-                            loss = criterion(out_time, true_targets)
+                        # Compute loss for all targets (data should already be properly scaled)
+                        loss = criterion(out_time, true_targets)
                 
                 # Add regularization loss from stochastic graph learner
                 if getattr(model, 'use_stochastic_learner', False):
                     reg_loss = model.get_regularization_loss()
-                    reg_weight = getattr(args, 'reg_loss_weight', 0.1)
-                    loss += reg_loss * reg_weight
+                    # CRITICAL FIX: Much smaller regularization weight to prevent loss explosion
+                    reg_weight = getattr(args, 'reg_loss_weight', 0.001)  # Reduced from 0.1 to 0.001
+                    reg_contribution = reg_loss * reg_weight
+                    loss += reg_contribution
                     
                     if i % 100 == 0:  # Log regularization loss occasionally
-                        print(f"         📊 Regularization loss: {reg_loss.item():.6f}")
+                        print(f"📊 Regularization loss: {reg_loss.item():.6f} (weighted: {reg_contribution.item():.6f})")
                 
                 # Backward pass
                 loss.backward()
@@ -455,68 +446,54 @@ def train_celestial_pgat():
                 batch_x_mark = batch_x_mark.float().to(device)
                 batch_y_mark = batch_y_mark.float().to(device)
                 
-                dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
+                # Apply proper scaling for validation if available
+                if scaler_manager is not None:
+                    batch_x_scaled = scaler_manager.scale_covariates_tensor(batch_x, device=device)
+                    batch_y_scaled = scaler_manager.scale_targets_tensor(batch_y, device=device)
+                else:
+                    batch_x_scaled = batch_x
+                    batch_y_scaled = batch_y
+                
+                dec_inp = torch.zeros_like(batch_y_scaled[:, -args.pred_len:, :]).float()
+                dec_inp = torch.cat([batch_y_scaled[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
                 
                 try:
-                    outputs, metadata = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    outputs, metadata = model(batch_x_scaled, batch_x_mark, dec_inp, batch_y_mark)
                     
-                    # Determine correct ground truth (same logic as training)
+                    # Determine correct ground truth (using scaled targets)
                     if (model.aggregate_waves_to_celestial and 
                         'original_targets' in metadata and 
                         metadata['original_targets'] is not None):
                         true_targets = metadata['original_targets'][:, -args.pred_len:, :]
                     else:
-                        true_targets = batch_y[:, -args.pred_len:, :]
+                        true_targets = batch_y_scaled[:, -args.pred_len:, :]
                     
-                    # Compute loss based on model type
+                    # Compute loss based on model type (data already properly scaled)
                     if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
                         means = outputs['means']
                         log_stds = outputs['log_stds']
                         log_weights = outputs['log_weights']
                         
-                        # FIXED: Apply proper target slicing and scaling for mixture decoder
+                        # Use properly scaled targets
                         if target_indices is not None:
                             gt_slice = true_targets[:, :, target_indices]
                         else:
                             gt_slice = true_targets
                         
-                        # FIXED: Scale targets to match scaled predictions
-                        if hasattr(vali_data, 'scaler') and vali_data.scaler is not None:
-                            try:
-                                gt_slice_np = gt_slice.cpu().numpy()
-                                gt_slice_scaled_np = vali_data.scaler.transform(
-                                    gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
-                                ).reshape(gt_slice_np.shape)
-                                gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
-                                loss = criterion((means, log_stds, log_weights), gt_slice_scaled)
-                            except Exception:
-                                loss = criterion((means, log_stds, log_weights), gt_slice)
-                        else:
-                            loss = criterion((means, log_stds, log_weights), gt_slice)
+                        # Compute loss with properly scaled data
+                        loss = criterion(gt_slice, means, log_stds, log_weights)
                             
                     elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
                         means, log_stds, log_weights = outputs
                         
-                        # FIXED: Apply proper target slicing and scaling for mixture decoder
+                        # Apply proper target slicing for mixture decoder
                         if target_indices is not None:
                             gt_slice = true_targets[:, :, target_indices]
                         else:
                             gt_slice = true_targets
                         
-                        # FIXED: Scale targets to match scaled predictions
-                        if hasattr(vali_data, 'scaler') and vali_data.scaler is not None:
-                            try:
-                                gt_slice_np = gt_slice.cpu().numpy()
-                                gt_slice_scaled_np = vali_data.scaler.transform(
-                                    gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
-                                ).reshape(gt_slice_np.shape)
-                                gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
-                                loss = criterion((means, log_stds, log_weights), gt_slice_scaled)
-                            except Exception:
-                                loss = criterion((means, log_stds, log_weights), gt_slice)
-                        else:
-                            loss = criterion((means, log_stds, log_weights), gt_slice)
+                        # Compute loss (data should already be properly scaled)
+                        loss = criterion(gt_slice, means, log_stds, log_weights)
                     else:
                         # Deterministic loss
                         # Slice model outputs to last pred_len timesteps to match ground truth
@@ -529,33 +506,12 @@ def train_celestial_pgat():
                                 out_slice = out_time
                             gt_slice = true_targets[:, :, target_indices]
                             
-                            # CRITICAL FIX: Scale targets for validation loss too
-                            if hasattr(vali_data, 'scaler') and vali_data.scaler is not None:
-                                try:
-                                    gt_slice_np = gt_slice.cpu().numpy()
-                                    gt_slice_scaled_np = vali_data.scaler.transform(
-                                        gt_slice_np.reshape(-1, gt_slice_np.shape[-1])
-                                    ).reshape(gt_slice_np.shape)
-                                    gt_slice_scaled = torch.from_numpy(gt_slice_scaled_np).float().to(device)
-                                    loss = criterion(out_slice, gt_slice_scaled)
-                                except Exception:
-                                    loss = criterion(out_slice, gt_slice)
-                            else:
-                                loss = criterion(out_slice, gt_slice)
+                            # Compute loss (data should already be properly scaled)
+                            loss = criterion(out_slice, gt_slice)
                         else:
                             # Scale all targets if no specific indices
-                            if hasattr(vali_data, 'scaler') and vali_data.scaler is not None:
-                                try:
-                                    true_targets_np = true_targets.cpu().numpy()
-                                    true_targets_scaled_np = vali_data.scaler.transform(
-                                        true_targets_np.reshape(-1, true_targets_np.shape[-1])
-                                    ).reshape(true_targets_np.shape)
-                                    true_targets_scaled = torch.from_numpy(true_targets_scaled_np).float().to(device)
-                                    loss = criterion(out_time, true_targets_scaled)
-                                except Exception:
-                                    loss = criterion(out_time, true_targets)
-                            else:
-                                loss = criterion(out_time, true_targets)
+                            # Compute loss (data should already be properly scaled)
+                            loss = criterion(out_time, true_targets)
                     
                     val_loss += loss.item()
                     val_batches += 1

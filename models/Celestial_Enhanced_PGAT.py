@@ -625,8 +625,11 @@ class Model(nn.Module):
                 adj_flat = mean + eps * std
                 
                 # Store KL divergence as regularization loss (per batch item)
+                # CRITICAL FIX: Normalize KL divergence by the number of dimensions to prevent explosion
                 kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp(), dim=1)
-                self.latest_stochastic_loss = kl_div.mean()
+                # Normalize by the dimensionality to keep values reasonable
+                kl_div_normalized = kl_div / mean.shape[1]  # Divide by feature dimension
+                self.latest_stochastic_loss = kl_div_normalized.mean()
             else:
                 # Use mean during inference
                 adj_flat = mean
