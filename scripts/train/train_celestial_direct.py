@@ -367,9 +367,21 @@ def train_celestial_pgat():
                         # Slice ground truth to exact target indices
                         gt_slice = true_targets[:, :, target_indices]
                         
-                        # CRITICAL FIX: Scale targets to match scaled predictions (like standard framework)
-                        # Compute loss (data should already be properly scaled)
-                        loss = criterion(out_slice, gt_slice)
+                        # CRITICAL FIX: Scale model outputs to match scaled targets
+                        # Model outputs are raw, but targets are scaled - we need to scale outputs too
+                        out_slice_np = out_slice.cpu().detach().numpy()
+                        # Scale outputs using the same scaler (first 4 features = OHLC)
+                        out_slice_scaled_np = (out_slice_np - unified_scaler.mean_[:4]) / unified_scaler.scale_[:4]
+                        out_slice_scaled = torch.from_numpy(out_slice_scaled_np).float().to(device)
+                        
+                        # Now both outputs and targets are properly scaled
+                        loss = criterion(out_slice_scaled, gt_slice)
+                        
+                        # Debug: Print scaling stats
+                        if i == 0:  # Only first batch
+                            print(f"📊 Raw output stats: mean={out_slice.mean():.6f}, std={out_slice.std():.6f}")
+                            print(f"📊 Scaled output stats: mean={out_slice_scaled.mean():.6f}, std={out_slice_scaled.std():.6f}")
+                            print(f"📊 Target stats: mean={gt_slice.mean():.6f}, std={gt_slice.std():.6f}")
                     else:
                         # Compute loss for all targets (data should already be properly scaled)
                         loss = criterion(out_time, true_targets)
@@ -529,8 +541,13 @@ def train_celestial_pgat():
                                 out_slice = out_time
                             gt_slice = true_targets[:, :, target_indices]
                             
-                            # Compute loss (data should already be properly scaled)
-                            loss = criterion(out_slice, gt_slice)
+                            # Scale model outputs to match scaled targets (same as training)
+                            out_slice_np = out_slice.cpu().detach().numpy()
+                            out_slice_scaled_np = (out_slice_np - unified_scaler.mean_[:4]) / unified_scaler.scale_[:4]
+                            out_slice_scaled = torch.from_numpy(out_slice_scaled_np).float().to(device)
+                            
+                            # Compute loss with properly scaled outputs and targets
+                            loss = criterion(out_slice_scaled, gt_slice)
                         else:
                             # Scale all targets if no specific indices
                             # Compute loss (data should already be properly scaled)
