@@ -146,32 +146,42 @@ def train_celestial_pgat():
     print(f"   - Validation batches: {len(vali_loader)}")
     print(f"   - Test batches: {len(test_loader)}")
     
-    # 🔧 CRITICAL FIX: Setup proper scaling using ScalerManager
-    print("🔧 Setting up proper data scaling...")
-    
-    # Check what the data loader actually provides
-    for batch_x, batch_y, batch_x_mark, batch_y_mark in train_loader:
-        print(f"   - Actual input shape: {batch_x.shape} (batch, seq, features)")
-        print(f"   - Actual target shape: {batch_y.shape}")
-        actual_input_features = batch_x.shape[-1]
-        actual_target_features = batch_y.shape[-1]
-        break
+    # 🔧 SIMPLE FIX: Setup proper scaling using ScalerManager
+    print("🔧 Setting up SIMPLE data scaling...")
     
     # Load raw data for scaling setup
     raw_df = pd.read_csv(args.root_path + '/' + args.data_path)
     target_features = ['log_Open', 'log_High', 'log_Low', 'log_Close']
     
-    # CRITICAL FIX: Use the actual number of features the model receives
-    # The data loader might be providing a different feature set than the raw CSV
-    print(f"   - Raw CSV has {len(raw_df.columns)} columns")
-    print(f"   - Model input expects {actual_input_features} features")
-    print(f"   - Model targets expect {actual_target_features} features")
+    # SIMPLE FIX: Create separate scalers for inputs and targets
+    # Input scaler: Scale all 118 features that the model receives
+    # Target scaler: Scale only the 4 OHLC features
     
-    # For now, let's skip the ScalerManager and use a simpler approach
-    # since there's a mismatch between CSV structure and data loader output
-    print("   - ⚠️  Skipping ScalerManager due to feature dimension mismatch")
-    print("   - Using data loader's built-in scaling (if any)")
-    scaler_manager = None
+    print(f"   - Raw CSV: {len(raw_df.columns)} columns")
+    print(f"   - Using SAME scaler for inputs and targets (since targets are part of 118 features)")
+    
+    # CORRECT APPROACH: Use single scaler for all 118 features
+    # Since OHLC targets are part of the 118 features, they should use the same scaling
+    from sklearn.preprocessing import StandardScaler
+    unified_scaler = StandardScaler()
+    
+    # Fit scaler on all features except date
+    all_features = [col for col in raw_df.columns if col != 'date']
+    input_data = raw_df[all_features].values
+    unified_scaler.fit(input_data)
+    
+    print(f"   - ✅ Unified scaler fitted on {len(all_features)} features")
+    
+    # Get target indices for slicing (OHLC are first 4 features)
+    target_indices = [0, 1, 2, 3]  # First 4 features are OHLC
+    print(f"   - OHLC indices in 118 features: {target_indices}")
+    
+    # Show scaling stats for OHLC (first 4 features)
+    ohlc_means = unified_scaler.mean_[:4]
+    ohlc_scales = unified_scaler.scale_[:4]
+    print(f"   - OHLC scaling: mean={ohlc_means}, scale={ohlc_scales}")
+    
+    # target_indices already defined above
     
     # Initialize model
     print("🏗️  Initializing Celestial Enhanced PGAT...")
@@ -277,15 +287,20 @@ def train_celestial_pgat():
             batch_x_mark = batch_x_mark.float().to(device)
             batch_y_mark = batch_y_mark.float().to(device)
             
-            # 🔧 CRITICAL FIX: Apply proper scaling if available
-            if scaler_manager is not None:
-                # Scale inputs (covariates) and targets separately
-                batch_x_scaled = scaler_manager.scale_covariates_tensor(batch_x, device=device)
-                batch_y_scaled = scaler_manager.scale_targets_tensor(batch_y, device=device)
-            else:
-                # Use data as-is (data loader should handle scaling)
-                batch_x_scaled = batch_x
-                batch_y_scaled = batch_y
+            # 🔧 SIMPLE & CORRECT: Use unified scaler for both inputs and targets
+            # Since OHLC targets are part of the 118 features, use same scaling
+            
+            # Scale all input features (118) using unified scaler
+            batch_x_np = batch_x.cpu().numpy()
+            batch_x_scaled_np = unified_scaler.transform(batch_x_np.reshape(-1, 118)).reshape(batch_x_np.shape)
+            batch_x_scaled = torch.from_numpy(batch_x_scaled_np).float().to(device)
+            
+            # Scale target features using the SAME unified scaler (for consistency)
+            batch_y_targets = batch_y[:, :, :4]  # [32, 72, 4] - only OHLC
+            batch_y_np = batch_y.cpu().numpy()  # [32, 72, 118] - all features
+            batch_y_all_scaled_np = unified_scaler.transform(batch_y_np.reshape(-1, 118)).reshape(batch_y_np.shape)
+            # Extract only the first 4 scaled features (OHLC)
+            batch_y_scaled = torch.from_numpy(batch_y_all_scaled_np[:, :, :4]).float().to(device)
             
             # Prepare decoder input (using scaled targets)
             dec_inp = torch.zeros_like(batch_y_scaled[:, -args.pred_len:, :]).float()
@@ -321,7 +336,7 @@ def train_celestial_pgat():
                         gt_slice = true_targets
                     
                     # Compute loss with properly scaled data
-                    loss = criterion(gt_slice, means, log_stds, log_weights)
+                    loss = criterion((means, log_stds, log_weights), gt_slice)
                         
                 elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
                     # Tuple output (means, log_stds, log_weights)
@@ -334,7 +349,7 @@ def train_celestial_pgat():
                         gt_slice = true_targets
                     
                     # Compute loss (data should already be properly scaled)
-                    loss = criterion(gt_slice, means, log_stds, log_weights)
+                    loss = criterion((means, log_stds, log_weights), gt_slice)
                 else:
                     # Standard deterministic output
                     # Ensure BOTH time and channel dimensions align with ground truth
@@ -446,13 +461,17 @@ def train_celestial_pgat():
                 batch_x_mark = batch_x_mark.float().to(device)
                 batch_y_mark = batch_y_mark.float().to(device)
                 
-                # Apply proper scaling for validation if available
-                if scaler_manager is not None:
-                    batch_x_scaled = scaler_manager.scale_covariates_tensor(batch_x, device=device)
-                    batch_y_scaled = scaler_manager.scale_targets_tensor(batch_y, device=device)
-                else:
-                    batch_x_scaled = batch_x
-                    batch_y_scaled = batch_y
+                # Apply consistent scaling for validation
+                # Scale all input features (118) using unified scaler
+                batch_x_np = batch_x.cpu().numpy()
+                batch_x_scaled_np = unified_scaler.transform(batch_x_np.reshape(-1, 118)).reshape(batch_x_np.shape)
+                batch_x_scaled = torch.from_numpy(batch_x_scaled_np).float().to(device)
+                
+                # Scale target features using the SAME unified scaler
+                batch_y_np = batch_y.cpu().numpy()  # [32, 72, 118] - all features
+                batch_y_all_scaled_np = unified_scaler.transform(batch_y_np.reshape(-1, 118)).reshape(batch_y_np.shape)
+                # Extract only the first 4 scaled features (OHLC)
+                batch_y_scaled = torch.from_numpy(batch_y_all_scaled_np[:, :, :4]).float().to(device)
                 
                 dec_inp = torch.zeros_like(batch_y_scaled[:, -args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y_scaled[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
@@ -481,7 +500,7 @@ def train_celestial_pgat():
                             gt_slice = true_targets
                         
                         # Compute loss with properly scaled data
-                        loss = criterion(gt_slice, means, log_stds, log_weights)
+                        loss = criterion((means, log_stds, log_weights), gt_slice)
                             
                     elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
                         means, log_stds, log_weights = outputs
@@ -493,7 +512,7 @@ def train_celestial_pgat():
                             gt_slice = true_targets
                         
                         # Compute loss (data should already be properly scaled)
-                        loss = criterion(gt_slice, means, log_stds, log_weights)
+                        loss = criterion((means, log_stds, log_weights), gt_slice)
                     else:
                         # Deterministic loss
                         # Slice model outputs to last pred_len timesteps to match ground truth
