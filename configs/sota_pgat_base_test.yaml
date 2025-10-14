@@ -1,0 +1,63 @@
+# Base SOTA PGAT Configuration for Testing
+# Tests the core PGAT model with our fixes
+
+root_path: data
+data_path: synthetic_multi_wave.csv
+target: target_0,target_1,target_2
+
+features: M
+freq: H
+seq_len: 96
+label_len: 48
+pred_len: 24
+
+enc_in: 7
+dec_in: 7
+c_out: 3
+c_out_evaluation: 3
+d_model: 256
+n_heads: 8
+d_ff: 512
+dropout: 0.1
+factor: 3
+
+learning_rate: 0.0005
+lradj: 'type1'
+train_epochs: 2  # Short test run
+patience: 2
+batch_size: 8
+num_workers: 1
+use_amp: false
+
+# Memory optimization
+enable_memory_optimization: true
+use_gradient_checkpointing: false  # Disabled for base test
+memory_chunk_size: 32
+
+# Base PGAT features (our validated configuration)
+use_dynamic_edge_weights: true
+use_autocorr_attention: false  # DISABLED - our fix
+use_adaptive_temporal: true
+enable_dynamic_graph: true
+enable_graph_positional_encoding: true
+enable_structural_pos_encoding: true
+enable_graph_attention: true
+
+# Multivariate mixture density (our enhancement)
+use_mixture_density: true
+mixture_multivariate_mode: independent  # Our best performing mode
+mdn_components: 2
+
+# Enhanced features - DISABLED for base test
+use_patching: false
+use_attention_temp_to_spatial: false
+use_gated_graph_combiner: false
+
+# Bug fix parameters
+base_adjacency_weight: 0.6
+adaptive_adjacency_weight: 0.4
+adjacency_diagonal_value: 0.05
+
+loss: mse
+loss_function_type: mse
+quantile_levels: []

@@ -1,0 +1,87 @@
+# Simplified Enhanced SOTA PGAT configuration for better convergence
+# Reduced complexity to match dataset size
+
+# Required data configuration
+data: custom
+root_path: data
+data_path: synthetic_multi_wave.csv
+target: target_0,target_1,target_2
+task_name: long_term_forecast
+is_training: 1
+model_id: enhanced_pgat_debug
+checkpoints: ./checkpoints/
+
+features: M
+freq: H
+embed: timeF
+seq_len: 96
+label_len: 48
+pred_len: 24
+
+enc_in: 12  # Total features in dataset
+dec_in: 12
+c_out: 3
+c_out_evaluation: 3
+d_model: 128  # REDUCED from 256 to reduce parameters
+n_heads: 4    # REDUCED from 8 to reduce complexity
+d_ff: 256     # REDUCED from 512
+dropout: 0.2  # INCREASED from 0.1 for regularization
+factor: 3
+
+# IMPROVED training hyperparameters
+learning_rate: 0.0001  # REDUCED from 0.001 for stability
+lradj: 'type3'
+train_epochs: 3        # Test with fewer epochs first
+patience: 5            # INCREASED patience
+batch_size: 32         # INCREASED from 8 for stable gradients
+num_workers: 1
+use_amp: false
+
+# Enhanced regularization
+weight_decay: 1e-3     # ADD weight decay
+gradient_clip_val: 0.5 # REDUCED from 1.0
+
+# Memory optimization
+enable_memory_optimization: true
+memory_chunk_size: 32  # INCREASED to match batch size
+
+# Enhanced PGAT specific features
+model: Enhanced_SOTA_PGAT
+num_wave_features: 7
+
+# SIMPLIFIED enhanced features (enable gradually)
+use_multi_scale_patching: true
+patch_len: 16
+stride: 8
+num_wave_patch_latents: 16  # REDUCED from 64
+num_target_patch_latents: 8 # REDUCED from 24
+
+# Enable core features
+use_hierarchical_mapper: true
+use_attention_temp_to_spatial: true
+
+# DISABLE complex features initially for better convergence
+use_stochastic_learner: false    # DISABLED initially
+use_gated_graph_combiner: false  # DISABLED initially
+enable_dynamic_graph: true
+enable_graph_attention: true
+
+# SIMPLIFIED decoder
+use_mixture_density: false       # DISABLED - use MSE instead
+use_mixture_decoder: false       # DISABLED - use simple linear decoder
+
+# Base PGAT features
+use_dynamic_edge_weights: true
+use_adaptive_temporal: true
+enable_graph_positional_encoding: true
+enable_structural_pos_encoding: true
+
+# Bug fix parameters
+base_adjacency_weight: 0.6
+adaptive_adjacency_weight: 0.4
+adjacency_diagonal_value: 0.05
+
+# Loss configuration
+loss: mse              # SIMPLIFIED from mixture loss
+loss_function_type: mse
+quantile_levels: []

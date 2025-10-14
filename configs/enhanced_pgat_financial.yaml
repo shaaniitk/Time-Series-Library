@@ -1,0 +1,124 @@
+# Enhanced SOTA PGAT - Financial Data Configuration
+# Real financial data with planetary features and proper scaling
+
+# Required data configuration
+data: custom
+root_path: data
+data_path: prepared_financial_data.csv
+target: log_Open,log_High,log_Low,log_Close  # 4 target features
+task_name: long_term_forecast
+is_training: 1
+model_id: enhanced_pgat_financial
+checkpoints: ./checkpoints/
+
+features: M
+freq: D  # Daily frequency for financial data
+embed: timeF
+
+# Sequence configuration for financial data (EXTENDED)
+seq_len: 250      # 250 days of historical data (~10 months)
+label_len: 125    # Half of seq_len
+pred_len: 20      # Predict 20 days ahead (1 month)
+
+# Input/Output dimensions
+enc_in: 118       # Total features (excluding date column)
+dec_in: 118
+c_out: 4          # 4 target features (OHLC)
+c_out_evaluation: 4
+
+# Model architecture (scaled for longer sequences)
+d_model: 384      # INCREASED for longer sequences
+n_heads: 12       # INCREASED attention heads for complexity
+d_ff: 1536        # INCREASED feed forward dimension
+dropout: 0.1      # REDUCED dropout for longer sequences
+factor: 3
+
+# Training hyperparameters (adjusted for longer sequences)
+learning_rate: 0.00005   # REDUCED for longer sequences stability
+lradj: 'type3'
+train_epochs: 25         # MORE epochs for complex patterns
+patience: 10             # HIGHER patience for longer convergence
+batch_size: 16           # REDUCED batch size due to memory constraints
+num_workers: 2
+use_amp: false
+
+# Enhanced regularization for financial data
+weight_decay: 1e-4       # Weight decay for regularization
+gradient_clip_val: 1.0   # Gradient clipping
+
+# Memory optimization (CRITICAL for longer sequences)
+enable_memory_optimization: true
+memory_chunk_size: 16    # REDUCED for longer sequences
+
+# Enhanced PGAT specific features
+model: Enhanced_SOTA_PGAT
+
+# Wave features configuration (planetary data)
+num_wave_features: 114   # All features except targets (118 - 4 = 114)
+
+# Multi-scale patching for longer financial patterns
+use_multi_scale_patching: true
+patch_len: 25            # INCREASED 25-day patches for longer patterns
+stride: 12               # INCREASED stride for efficiency
+num_wave_patch_latents: 48   # INCREASED latents for complexity
+num_target_patch_latents: 24 # INCREASED target latents
+
+# ALL ENHANCED FEATURES ENABLED
+use_hierarchical_mapper: true
+use_attention_temp_to_spatial: true
+use_stochastic_learner: true      # ENABLED
+use_gated_graph_combiner: true    # ENABLED
+enable_dynamic_graph: true
+enable_graph_attention: true
+
+# Advanced decoder features
+use_mixture_density: true         # ENABLED for uncertainty quantification
+use_mixture_decoder: true         # ENABLED
+mixture_components: 3             # 3 components for financial uncertainty
+mixture_multivariate_mode: 'independent'  # Independent targets
+
+# Enhanced PGAT features
+use_dynamic_edge_weights: true
+use_adaptive_temporal: true
+enable_graph_positional_encoding: true
+enable_structural_pos_encoding: true
+
+# Graph learning parameters
+base_adjacency_weight: 0.7
+adaptive_adjacency_weight: 0.3
+adjacency_diagonal_value: 0.1
+
+# Loss configuration
+loss: mse                         # Use MSE for financial data
+loss_function_type: mse
+quantile_levels: []
+
+# CRITICAL: Data scaling configuration
+scale: true                       # ENABLE scaling
+scaler: 'StandardScaler'         # Use StandardScaler for financial data
+target_scale: true               # Scale targets separately
+feature_scale: true              # Scale features
+
+# Financial data specific settings
+inverse_transform: true          # Enable inverse transform for evaluation
+use_time_features: true          # Use time-based features
+seasonal_patterns: true          # Consider seasonal patterns
+
+# Advanced training features
+use_early_stopping: true
+monitor_metric: 'val_loss'
+save_best_only: true
+reduce_lr_on_plateau: true
+lr_patience: 4
+lr_factor: 0.7
+min_lr: 1e-6
+
+# Evaluation settings
+evaluate_every_n_epochs: 2
+save_predictions: true
+compute_metrics: ['mse', 'mae', 'mape', 'rmse']
+
+# Financial-specific evaluation
+compute_financial_metrics: true
+compute_directional_accuracy: true
+compute_volatility_metrics: true

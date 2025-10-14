@@ -1,0 +1,81 @@
+# Improved PGAT Training Configuration
+# Optimized for better convergence on synthetic multi-wave data
+
+root_path: data
+data_path: synthetic_multi_wave.csv
+target: target_0,target_1,target_2
+
+features: M
+freq: H
+seq_len: 96
+label_len: 48
+pred_len: 24
+
+enc_in: 12  # Match the actual number of wave features
+dec_in: 12
+c_out: 3
+c_out_evaluation: 3
+d_model: 256
+n_heads: 8
+d_ff: 512
+dropout: 0.1
+factor: 3
+
+# IMPROVED TRAINING SETTINGS
+learning_rate: 0.001  # Slightly higher for faster initial learning
+lradj: 'type3'  # Cosine annealing for better convergence
+train_epochs: 10  # More epochs for proper convergence
+patience: 5  # More patience for complex patterns
+batch_size: 16  # Larger batch for more stable gradients
+num_workers: 2
+use_amp: false
+
+# GRADIENT OPTIMIZATION
+gradient_clip_val: 1.0  # Prevent gradient explosion
+weight_decay: 1e-4  # L2 regularization for stability
+
+# Memory optimization
+enable_memory_optimization: true
+use_gradient_checkpointing: false  # Disabled for training stability
+memory_chunk_size: 32
+
+# PGAT features optimized for synthetic data
+use_dynamic_edge_weights: true
+use_autocorr_attention: false  # Keep disabled (our fix)
+use_adaptive_temporal: true
+enable_dynamic_graph: true
+enable_graph_positional_encoding: true
+enable_structural_pos_encoding: true
+enable_graph_attention: true
+
+# Multivariate mixture density (optimized)
+use_mixture_density: true
+mixture_multivariate_mode: independent  # Best for synthetic data
+mdn_components: 3  # Enough for complex patterns
+
+# Enhanced features for better pattern learning
+use_patching: true
+patch_len: 12  # Smaller patches for finer patterns
+stride: 6
+use_attention_temp_to_spatial: true
+use_gated_graph_combiner: true  # Now working!
+
+# LOSS FUNCTION OPTIMIZATION
+loss: mse
+loss_function_type: mse
+quantile_levels: []
+
+# Validation settings for better monitoring
+validation_freq: 1  # Validate every epoch
+early_stopping_patience: 5
+save_best_model: true
+
+# Bug fix parameters (optimized)
+base_adjacency_weight: 0.7  # Slightly favor base structure
+adaptive_adjacency_weight: 0.3
+adjacency_diagonal_value: 0.1  # Stronger self-connections
+
+# Learning rate schedule parameters
+lr_decay_rate: 0.5
+lr_decay_steps: 3
+min_lr: 1e-6

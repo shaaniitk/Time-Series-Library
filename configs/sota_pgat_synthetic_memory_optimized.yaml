@@ -1,0 +1,55 @@
+# Memory-optimized synthetic configuration for PGAT experiments
+# Designed to prevent memory crashes while maintaining model functionality
+
+root_path: data
+data_path: synthetic_multi_wave.csv
+target: target_0,target_1,target_2
+
+features: M
+freq: H
+seq_len: 96
+label_len: 48
+pred_len: 24
+
+enc_in: 7  # Reduced from 12 to match our successful tests
+dec_in: 7  # Reduced from 12
+c_out: 3
+c_out_evaluation: 3
+d_model: 256
+n_heads: 8
+d_ff: 512  # Reduced from 1024
+dropout: 0.1
+factor: 3
+
+learning_rate: 0.0005
+lradj: 'type1'  # Learning rate adjustment type
+train_epochs: 1  # Reduced for testing
+patience: 2
+batch_size: 8  # CRITICAL: Reduced from 64 to prevent memory crash
+num_workers: 1  # Reduced to save memory
+use_amp: false
+
+# Memory optimization settings
+enable_memory_optimization: true
+use_gradient_checkpointing: true  # CRITICAL: Enable gradient checkpointing
+memory_chunk_size: 16  # Smaller chunks
+
+# Model features (keep essential ones)
+use_dynamic_edge_weights: true
+use_autocorr_attention: true
+use_adaptive_temporal: true
+enable_dynamic_graph: true
+enable_graph_positional_encoding: true
+enable_structural_pos_encoding: true
+enable_graph_attention: true
+use_mixture_density: true
+mdn_components: 2  # Reduced from 4
+
+# Bug fix parameters (use our validated values)
+base_adjacency_weight: 0.6
+adaptive_adjacency_weight: 0.4
+adjacency_diagonal_value: 0.05
+
+loss: mse
+loss_function_type: mse
+quantile_levels: []
