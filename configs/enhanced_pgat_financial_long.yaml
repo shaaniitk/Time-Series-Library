@@ -1,0 +1,58 @@
+# Enhanced PGAT financial training on very long sequences (synthetic fallback)
+
+# Data settings
+data: custom
+root_path: data
+data_path: prepared_financial_data.csv
+target: log_Open,log_High,log_Low,log_Close
+features: M
+embed: timeF
+freq: d
+scale: true
+scaler: StandardScaler
+validation_length: 1200
+test_length: 1000
+
+# Sequence lengths (very long context)
+seq_len: 750   # days of history
+label_len: 120 # decoder warm-up
+pred_len: 60   # forecast horizon
+
+# Training settings
+task_name: long_term_forecast
+train_epochs: 5
+batch_size: 32
+learning_rate: 0.001
+dropout: 0.2
+early_stop_patience: 5
+patience: 5
+num_workers: 0
+checkpoints: ./checkpoints/
+
+# Model settings (reasonable defaults; dims detected from data manager)
+model_id: financial_enhanced_pgat_long
+model: Enhanced_SOTA_PGAT
+d_model: 512
+d_ff: 1024
+e_layers: 2
+d_layers: 1
+n_heads: 8
+activation: gelu
+
+# Data/model dimensions
+enc_in: 118         # 4 targets + 114 covariates (excluding date)
+dec_in: 118         # match encoder input dimension
+c_out: 4            # OHLC targets: log_Open, log_High, log_Low, log_Close
+c_out_evaluation: 4 # evaluation uses the same target count
+num_wave_features: 114
+
+# Regularization / optimization
+weight_decay: 0.0001
+clip_grad: 1.0
+gradient_clip_val: 1.0
+use_amp: false
+
+# Logging
+log_interval: 50
+save_predictions: true
+save_checkpoints: true

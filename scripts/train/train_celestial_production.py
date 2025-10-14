@@ -304,9 +304,13 @@ def train_celestial_pgat_production():
             dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
             
             try:
+                base_loss = None
+                reg_loss = None
+                reg_contribution = None
+
                 # Forward pass
                 outputs, metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
-                
+
                 # Determine ground truth and scale for loss computation
                 if (model.aggregate_waves_to_celestial and 
                     'original_targets' in metadata and 
@@ -318,16 +322,16 @@ def train_celestial_pgat_production():
                     true_targets_for_loss = scale_targets_for_loss(
                         true_targets_unscaled, target_scaler, target_indices, device
                     )
-                
+
                 # Compute loss
                 if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
                     means = outputs['means']
                     log_stds = outputs['log_stds'] 
                     log_weights = outputs['log_weights']
-                    loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                    base_loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
                 elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
                     means, log_stds, log_weights = outputs
-                    loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                    base_loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
                 else:
                     # Standard deterministic output
                     out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
@@ -337,14 +341,17 @@ def train_celestial_pgat_production():
                     else:
                         out_slice = out_time
                     
-                    loss = criterion(out_slice, true_targets_for_loss)
-                
+                    base_loss = criterion(out_slice, true_targets_for_loss)
+
+                loss = base_loss
+
                 # Add regularization if enabled
                 if getattr(model, 'use_stochastic_learner', False):
                     reg_loss = model.get_regularization_loss()
                     reg_weight = getattr(args, 'reg_loss_weight', 0.0005)
-                    loss += reg_loss * reg_weight
-                
+                    reg_contribution = reg_loss * reg_weight
+                    loss = loss + reg_contribution
+
                 # Backward pass
                 loss.backward()
                 
@@ -362,6 +369,52 @@ def train_celestial_pgat_production():
                 if i % log_interval == 0:
                     elapsed = time.time() - epoch_start
                     print(f"      Batch {i:4d}/{len(train_loader)} | Loss: {loss.item():.6f} | Time: {elapsed:.1f}s")
+
+                if i == 0:
+                    print(f"      🟦 Criterion loss (train mode): {base_loss.item():.6f}")
+                    if reg_contribution is not None:
+                        print(f"      🟥 Regularizer contribution: {reg_contribution.item():.6f}")
+                        print(f"      🟨 Total loss (train mode): {loss.item():.6f}")
+                    else:
+                        print(f"      🟨 Total loss (train mode): {loss.item():.6f}")
+
+                    # Evaluate the same batch in eval mode for diagnostics
+                    previous_training_mode = model.training
+                    try:
+                        model.eval()
+                        with torch.no_grad():
+                            eval_outputs, eval_metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
+
+                            if (model.aggregate_waves_to_celestial and 
+                                'original_targets' in eval_metadata and 
+                                eval_metadata['original_targets'] is not None):
+                                eval_targets_for_loss = eval_metadata['original_targets'][:, -args.pred_len:, :]
+                            else:
+                                eval_targets_unscaled = batch_y[:, -args.pred_len:, :]
+                                eval_targets_for_loss = scale_targets_for_loss(
+                                    eval_targets_unscaled, target_scaler, target_indices, device
+                                )
+
+                            if getattr(model, 'use_mixture_decoder', False) and isinstance(eval_outputs, dict):
+                                eval_means = eval_outputs['means']
+                                eval_log_stds = eval_outputs['log_stds']
+                                eval_log_weights = eval_outputs['log_weights']
+                                eval_loss = criterion((eval_means, eval_log_stds, eval_log_weights), eval_targets_for_loss)
+                            elif getattr(model, 'use_mixture_decoder', False) and isinstance(eval_outputs, tuple):
+                                eval_means, eval_log_stds, eval_log_weights = eval_outputs
+                                eval_loss = criterion((eval_means, eval_log_stds, eval_log_weights), eval_targets_for_loss)
+                            else:
+                                eval_out_time = eval_outputs[:, -args.pred_len:, :] if eval_outputs.shape[1] >= args.pred_len else eval_outputs
+                                if eval_out_time.shape[-1] >= len(target_indices):
+                                    eval_out_slice = eval_out_time[:, :, :len(target_indices)]
+                                else:
+                                    eval_out_slice = eval_out_time
+                                eval_loss = criterion(eval_out_slice, eval_targets_for_loss)
+
+                            print(f"      🧪 Eval-mode criterion on same batch: {eval_loss.item():.6f}")
+                    finally:
+                        if previous_training_mode:
+                            model.train()
                 
             except Exception as e:
                 print(f"❌ Training step failed: {e}")
@@ -407,17 +460,25 @@ def train_celestial_pgat_production():
                         means = outputs['means']
                         log_stds = outputs['log_stds']
                         log_weights = outputs['log_weights']
-                        loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                        base_val_loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
                     elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
                         means, log_stds, log_weights = outputs
-                        loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                        base_val_loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
                     else:
                         out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
                         if out_time.shape[-1] >= len(target_indices):
                             out_slice = out_time[:, :, :len(target_indices)]
                         else:
                             out_slice = out_time
-                        loss = criterion(out_slice, true_targets_for_loss)
+                        base_val_loss = criterion(out_slice, true_targets_for_loss)
+                        if val_batches == 0:
+                            print(f"      🔍 VAL - Output stats (scaled): mean={out_slice.mean():.6f}, std={out_slice.std():.6f}")
+                            print(f"      🔍 VAL - Target stats (scaled): mean={true_targets_for_loss.mean():.6f}, std={true_targets_for_loss.std():.6f}")
+                    
+                    loss = base_val_loss
+
+                    if val_batches == 0:
+                        print(f"      📊 VAL - Criterion loss: {loss.item():.6f}")
                     
                     val_loss += loss.item()
                     val_batches += 1
