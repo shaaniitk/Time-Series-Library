@@ -390,9 +390,6 @@ def train_celestial_pgat() -> bool:
             dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)  # [32, 48, 118]
 
             try:
-                base_loss = None
-                reg_loss = None
-                reg_contribution = None
                 with (autocast(device_type="cuda", dtype=torch.float16) if amp_enabled else nullcontext()):
                     # Forward pass (batch_x_input is already properly scaled by Dataset_Custom)
                     outputs_raw = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
@@ -427,17 +424,22 @@ def train_celestial_pgat() -> bool:
                         stds_t = stds_t[:, -args.pred_len:, ...]
                         weights_t = weights_t[:, -args.pred_len:, ...]
                     targets_t = y_true_for_loss.squeeze(-1) if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1 else y_true_for_loss
-                    loss = criterion((means_t, stds_t, weights_t), targets_t)
+                    base_loss = criterion((means_t, stds_t, weights_t), targets_t)
                 else:
                     # Standard deterministic output
                     y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
-                    loss = criterion(y_pred_for_loss, y_true_for_loss)
+                    base_loss = criterion(y_pred_for_loss, y_true_for_loss)
+
+                # Start with base loss
+                loss = base_loss
 
                 # Add auxiliary loss if present
                 if aux_loss:
                     loss = loss + aux_loss
 
                 # Add regularization loss from stochastic graph learner
+                reg_loss = None
+                reg_contribution = None
                 if getattr(model, 'use_stochastic_learner', False):
                     reg_loss = model.get_regularization_loss()
                     # CRITICAL FIX: Much smaller regularization weight to prevent loss explosion

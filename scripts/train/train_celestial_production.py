@@ -338,10 +338,6 @@ def train_celestial_pgat_production():
             dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
             
             try:
-                base_loss = None
-                reg_loss = None
-                reg_contribution = None
-
                 # Forward pass
                 outputs_raw = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
                 
