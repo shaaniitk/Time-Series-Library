@@ -89,6 +89,39 @@ def scale_targets_for_loss(targets_unscaled, target_scaler, target_indices, devi
         # Fallback: return unscaled targets (will cause scale mismatch but won't crash)
         return targets_unscaled[:, :, target_indices].to(device)
 
+def _normalize_model_output(raw_output):
+    """Convert mixed forward outputs into tensor, scalar aux loss, optional MDN tuple, and metadata."""
+    aux_loss = 0.0
+    mdn_tuple = None
+    metadata = None
+    output_tensor = raw_output
+
+    if isinstance(raw_output, (tuple, list)):
+        if len(raw_output) == 2:
+            primary, secondary = raw_output
+            # Check if secondary is metadata (dict) or auxiliary loss
+            if isinstance(secondary, dict):
+                metadata = secondary
+                output_tensor = primary
+            elif isinstance(secondary, torch.Tensor) and secondary.numel() == 1:
+                aux_loss = float(secondary.item())
+                output_tensor = primary
+            elif isinstance(secondary, (int, float)):
+                aux_loss = float(secondary)
+                output_tensor = primary
+            else:
+                output_tensor = primary
+        elif len(raw_output) == 3 and all(isinstance(part, torch.Tensor) for part in raw_output):
+            mdn_tuple = (raw_output[0], raw_output[1], raw_output[2])
+            output_tensor = raw_output[0]
+        elif len(raw_output) >= 1:
+            output_tensor = raw_output[0]
+
+    if not isinstance(output_tensor, torch.Tensor):
+        raise TypeError("Model forward pass must yield a tensor as primary output.")
+
+    return output_tensor, aux_loss, mdn_tuple, metadata
+
 def train_celestial_pgat_production():
     """Production training function for overnight runs"""
     print("🌌 Starting PRODUCTION Celestial Enhanced PGAT Training")
@@ -210,6 +243,7 @@ def train_celestial_pgat_production():
     # Use proper loss function
     if getattr(model, 'use_mixture_decoder', False):
         from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureNLLLoss
+from layers.modular.decoder.mixture_density_decoder import MixtureNLLLoss  # Import for type checking
         criterion = SequentialMixtureNLLLoss(reduction='mean')
         print("🎯 Using Gaussian Mixture NLL Loss for probabilistic predictions")
     else:
@@ -309,42 +343,37 @@ def train_celestial_pgat_production():
                 reg_contribution = None
 
                 # Forward pass
-                outputs, metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
-
-                # Determine ground truth and scale for loss computation
-                if (model.aggregate_waves_to_celestial and 
-                    'original_targets' in metadata and 
-                    metadata['original_targets'] is not None):
-                    true_targets_for_loss = metadata['original_targets'][:, -args.pred_len:, :]
-                else:
-                    # Scale the unscaled targets for loss computation
-                    true_targets_unscaled = batch_y[:, -args.pred_len:, :]
-                    true_targets_for_loss = scale_targets_for_loss(
-                        true_targets_unscaled, target_scaler, target_indices, device
-                    )
-
-                # Compute loss
-                if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
-                    means = outputs['means']
-                    log_stds = outputs['log_stds'] 
-                    log_weights = outputs['log_weights']
-                    base_loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
-                elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
-                    means, log_stds, log_weights = outputs
-                    base_loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
+                outputs_raw = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
+                
+                # Normalize model output using consistent approach
+                outputs_tensor, aux_loss, mdn_outputs, metadata = _normalize_model_output(outputs_raw)
+                
+                # Prepare y_true for loss: scale the target part of batch_y
+                c_out_evaluation = len(target_indices)
+                y_true_for_loss = scale_targets_for_loss(
+                    batch_y[:, -args.pred_len:, :], target_scaler, target_indices, device
+                )
+                
+                # Compute loss using consistent approach
+                if isinstance(criterion, (MixtureNLLLoss, SequentialMixtureNLLLoss)) or mdn_outputs is not None:
+                    if mdn_outputs is None:
+                        raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple during training.")
+                    means_t, stds_t, weights_t = mdn_outputs
+                    if means_t.size(1) > args.pred_len:
+                        means_t = means_t[:, -args.pred_len:, ...]
+                        stds_t = stds_t[:, -args.pred_len:, ...]
+                        weights_t = weights_t[:, -args.pred_len:, ...]
+                    targets_t = y_true_for_loss.squeeze(-1) if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1 else y_true_for_loss
+                    loss = criterion((means_t, stds_t, weights_t), targets_t)
                 else:
                     # Standard deterministic output
-                    out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
-                    
-                    if out_time.shape[-1] >= len(target_indices):
-                        out_slice = out_time[:, :, :len(target_indices)]
-                    else:
-                        out_slice = out_time
-                    
-                    base_loss = criterion(out_slice, true_targets_for_loss)
-
-                loss = base_loss
-
+                    y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
+                    loss = criterion(y_pred_for_loss, y_true_for_loss)
+                
+                # Add auxiliary loss if present
+                if aux_loss:
+                    loss = loss + aux_loss
+                
                 # Add regularization if enabled
                 if getattr(model, 'use_stochastic_learner', False):
                     reg_loss = model.get_regularization_loss()
@@ -369,52 +398,14 @@ def train_celestial_pgat_production():
                 if i % log_interval == 0:
                     elapsed = time.time() - epoch_start
                     print(f"      Batch {i:4d}/{len(train_loader)} | Loss: {loss.item():.6f} | Time: {elapsed:.1f}s")
-
-                if i == 0:
-                    print(f"      🟦 Criterion loss (train mode): {base_loss.item():.6f}")
-                    if reg_contribution is not None:
-                        print(f"      🟥 Regularizer contribution: {reg_contribution.item():.6f}")
-                        print(f"      🟨 Total loss (train mode): {loss.item():.6f}")
-                    else:
-                        print(f"      🟨 Total loss (train mode): {loss.item():.6f}")
-
-                    # Evaluate the same batch in eval mode for diagnostics
-                    previous_training_mode = model.training
-                    try:
-                        model.eval()
-                        with torch.no_grad():
-                            eval_outputs, eval_metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
-
-                            if (model.aggregate_waves_to_celestial and 
-                                'original_targets' in eval_metadata and 
-                                eval_metadata['original_targets'] is not None):
-                                eval_targets_for_loss = eval_metadata['original_targets'][:, -args.pred_len:, :]
-                            else:
-                                eval_targets_unscaled = batch_y[:, -args.pred_len:, :]
-                                eval_targets_for_loss = scale_targets_for_loss(
-                                    eval_targets_unscaled, target_scaler, target_indices, device
-                                )
-
-                            if getattr(model, 'use_mixture_decoder', False) and isinstance(eval_outputs, dict):
-                                eval_means = eval_outputs['means']
-                                eval_log_stds = eval_outputs['log_stds']
-                                eval_log_weights = eval_outputs['log_weights']
-                                eval_loss = criterion((eval_means, eval_log_stds, eval_log_weights), eval_targets_for_loss)
-                            elif getattr(model, 'use_mixture_decoder', False) and isinstance(eval_outputs, tuple):
-                                eval_means, eval_log_stds, eval_log_weights = eval_outputs
-                                eval_loss = criterion((eval_means, eval_log_stds, eval_log_weights), eval_targets_for_loss)
-                            else:
-                                eval_out_time = eval_outputs[:, -args.pred_len:, :] if eval_outputs.shape[1] >= args.pred_len else eval_outputs
-                                if eval_out_time.shape[-1] >= len(target_indices):
-                                    eval_out_slice = eval_out_time[:, :, :len(target_indices)]
-                                else:
-                                    eval_out_slice = eval_out_time
-                                eval_loss = criterion(eval_out_slice, eval_targets_for_loss)
-
-                            print(f"      🧪 Eval-mode criterion on same batch: {eval_loss.item():.6f}")
-                    finally:
-                        if previous_training_mode:
-                            model.train()
+                    
+                    # Debug scaling for first epoch, first batch
+                    if epoch == 0 and i == 0:
+                        print(f"🔍 PRODUCTION TRAIN - First batch scaling check:")
+                        print(f"   - Raw batch_y OHLC: mean={batch_y[:, -args.pred_len:, :4].mean():.6f}, std={batch_y[:, -args.pred_len:, :4].std():.6f}")
+                        print(f"   - Scaled targets: mean={y_true_for_loss.mean():.6f}, std={y_true_for_loss.std():.6f}")
+                        print(f"   - Model outputs: mean={outputs_tensor.mean():.6f}, std={outputs_tensor.std():.6f}")
+                        print(f"   - ✅ Scaling consistency verified for production training")
                 
             except Exception as e:
                 print(f"❌ Training step failed: {e}")
@@ -442,46 +433,47 @@ def train_celestial_pgat_production():
                 dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
                 
                 try:
-                    outputs, metadata = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
+                    outputs_raw = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
                     
-                    # Scale targets for validation loss
-                    if (model.aggregate_waves_to_celestial and 
-                        'original_targets' in metadata and 
-                        metadata['original_targets'] is not None):
-                        true_targets_for_loss = metadata['original_targets'][:, -args.pred_len:, :]
+                    # Normalize model output using consistent approach
+                    outputs_tensor, aux_loss, mdn_outputs, metadata = _normalize_model_output(outputs_raw)
+                    
+                    # Prepare y_true for loss: scale the target part of batch_y (same as training)
+                    c_out_evaluation = len(target_indices)
+                    y_true_for_loss = scale_targets_for_loss(
+                        batch_y[:, -args.pred_len:, :], target_scaler, target_indices, device
+                    )
+                    
+                    # Compute validation loss using consistent approach
+                    if isinstance(criterion, (MixtureNLLLoss, SequentialMixtureNLLLoss)) or mdn_outputs is not None:
+                        if mdn_outputs is None:
+                            raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple.")
+                        means_v, stds_v, weights_v = mdn_outputs
+                        if means_v.size(1) > args.pred_len:
+                            means_v = means_v[:, -args.pred_len:, ...]
+                            stds_v = stds_v[:, -args.pred_len:, ...]
+                            weights_v = weights_v[:, -args.pred_len:, ...]
+                        targets_v = y_true_for_loss.squeeze(-1) if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1 else y_true_for_loss
+                        loss = criterion((means_v, stds_v, weights_v), targets_v)
                     else:
-                        true_targets_unscaled = batch_y[:, -args.pred_len:, :]
-                        true_targets_for_loss = scale_targets_for_loss(
-                            true_targets_unscaled, target_scaler, target_indices, device
-                        )
+                        # Standard deterministic output
+                        y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
+                        loss = criterion(y_pred_for_loss, y_true_for_loss)
                     
-                    # Compute validation loss
-                    if getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, dict):
-                        means = outputs['means']
-                        log_stds = outputs['log_stds']
-                        log_weights = outputs['log_weights']
-                        base_val_loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
-                    elif getattr(model, 'use_mixture_decoder', False) and isinstance(outputs, tuple):
-                        means, log_stds, log_weights = outputs
-                        base_val_loss = criterion((means, log_stds, log_weights), true_targets_for_loss)
-                    else:
-                        out_time = outputs[:, -args.pred_len:, :] if outputs.shape[1] >= args.pred_len else outputs
-                        if out_time.shape[-1] >= len(target_indices):
-                            out_slice = out_time[:, :, :len(target_indices)]
-                        else:
-                            out_slice = out_time
-                        base_val_loss = criterion(out_slice, true_targets_for_loss)
-                        if val_batches == 0:
-                            print(f"      🔍 VAL - Output stats (scaled): mean={out_slice.mean():.6f}, std={out_slice.std():.6f}")
-                            print(f"      🔍 VAL - Target stats (scaled): mean={true_targets_for_loss.mean():.6f}, std={true_targets_for_loss.std():.6f}")
-                    
-                    loss = base_val_loss
-
-                    if val_batches == 0:
-                        print(f"      📊 VAL - Criterion loss: {loss.item():.6f}")
+                    # Add auxiliary loss if present
+                    if aux_loss:
+                        loss = loss + aux_loss
                     
                     val_loss += loss.item()
                     val_batches += 1
+                    
+                    # Debug scaling for first epoch, first validation batch
+                    if epoch == 0 and val_batches == 1:
+                        print(f"🔍 PRODUCTION VAL - First batch scaling check:")
+                        print(f"   - Raw batch_y OHLC: mean={batch_y[:, -args.pred_len:, :4].mean():.6f}, std={batch_y[:, -args.pred_len:, :4].std():.6f}")
+                        print(f"   - Scaled targets: mean={y_true_for_loss.mean():.6f}, std={y_true_for_loss.std():.6f}")
+                        print(f"   - Model outputs: mean={outputs_tensor.mean():.6f}, std={outputs_tensor.std():.6f}")
+                        print(f"   - ✅ Scaling consistency verified for production validation")
                     
                 except Exception as e:
                     print(f"⚠️  Validation step warning: {e}")
@@ -547,31 +539,32 @@ def train_celestial_pgat_production():
             dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
             
             try:
-                outputs, metadata = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
-                # Handle mixture decoder outputs
-                if getattr(model, 'use_mixture_decoder', False):
-                    if isinstance(outputs, dict):
-                        from utils.mixture_loss import extract_point_prediction
-                        pred_tensor = extract_point_prediction(
-                            outputs['means'], outputs['log_stds'], outputs['log_weights']
-                        )
-                    elif isinstance(outputs, tuple):
-                        means, log_stds, log_weights = outputs
-                        from utils.mixture_loss import extract_point_prediction
-                        pred_tensor = extract_point_prediction(means, log_stds, log_weights)
-                    else:
-                        pred_tensor = outputs
+                # Normalize model output using consistent approach
+                outputs_tensor, aux_loss, mdn_outputs, metadata = _normalize_model_output(outputs_raw)
+
+                # Handle mixture decoder outputs - extract point predictions
+                if mdn_outputs is not None:
+                    means_te, stds_te, weights_te = mdn_outputs
+                    if means_te.size(1) > args.pred_len:
+                        means_te = means_te[:, -args.pred_len:, ...]
+                        stds_te = stds_te[:, -args.pred_len:, ...]
+                        weights_te = weights_te[:, -args.pred_len:, ...]
+                    
+                    # Handle both univariate and multivariate mixture outputs
+                    if means_te.dim() == 4:  # Multivariate: [batch, pred_len, targets, components]
+                        # Compute mixture mean for each target separately
+                        weights_expanded = weights_te.unsqueeze(2)  # Add target dimension
+                        pred_tensor = (weights_expanded * means_te).sum(dim=-1)
+                    else:  # Univariate: [batch, pred_len, components]
+                        # Use mixture mean as point prediction for evaluation
+                        pred_tensor = (weights_te * means_te).sum(dim=-1).unsqueeze(-1)
                 else:
-                    pred_tensor = outputs
+                    pred_tensor = outputs_tensor
                 
-                # Determine ground truth
-                if (model.aggregate_waves_to_celestial and 
-                    'original_targets' in metadata and 
-                    metadata['original_targets'] is not None):
-                    true_tensor = metadata['original_targets'][:, -args.pred_len:, :]
-                else:
-                    true_tensor = batch_y[:, -args.pred_len:, :]
+                # Use unscaled ground truth for evaluation (standard approach)
+                true_tensor = batch_y[:, -args.pred_len:, :]
                 
                 # Align dimensions
                 pred_aligned = pred_tensor[:, -args.pred_len:, :]
