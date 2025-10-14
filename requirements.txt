@@ -64,7 +64,8 @@ mlflow>=2.0.0
 pydantic>=2.5,<3.0  # v2 needed for model_validator usage in configs/schemas.py
 
 ######## PyTorch ########
-# CPU-only:       pip install torch torchvision torchaudio
+# CPU-only:       pip install torch==2.4.1+cpu torchvision==0.19.1+cpu torchaudio==2.4.1+cpu --index-url https://download.pytorch.org/whl/cpu
+#                 (or run python scripts/install/install_pytorch_cpu.py)
 # CUDA 11.8:      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 # CUDA 12.1:      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 torch>=2.1.0
