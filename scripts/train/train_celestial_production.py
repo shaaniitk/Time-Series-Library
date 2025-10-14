@@ -33,6 +33,7 @@ import argparse
 import time
 from datetime import datetime
 import json
+import math
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -88,6 +89,52 @@ def scale_targets_for_loss(targets_unscaled, target_scaler, target_indices, devi
         print(f"⚠️  Target scaling for loss failed: {e}")
         # Fallback: return unscaled targets (will cause scale mismatch but won't crash)
         return targets_unscaled[:, :, target_indices].to(device)
+
+def get_warmup_cosine_lr(epoch, warmup_epochs, total_epochs, base_lr, min_lr=1e-6):
+    """
+    Warmup + Cosine Annealing Learning Rate Schedule
+    
+    Args:
+        epoch: Current epoch (0-indexed)
+        warmup_epochs: Number of warmup epochs
+        total_epochs: Total training epochs
+        base_lr: Base learning rate after warmup
+        min_lr: Minimum learning rate at the end
+    
+    Returns:
+        Learning rate for the current epoch
+    """
+    if epoch < warmup_epochs:
+        # Linear warmup
+        return base_lr * (epoch + 1) / warmup_epochs
+    else:
+        # Cosine annealing
+        progress = (epoch - warmup_epochs) / (total_epochs - warmup_epochs)
+        return min_lr + (base_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * progress))
+
+def adjust_learning_rate_warmup_cosine(optimizer, epoch, args):
+    """
+    Enhanced learning rate adjustment with warmup + cosine annealing
+    """
+    warmup_epochs = getattr(args, 'warmup_epochs', 5)
+    min_lr = float(getattr(args, 'min_lr', 1e-6))
+    base_lr = float(args.learning_rate)
+    
+    if hasattr(args, 'lradj') and args.lradj == 'warmup_cosine':
+        lr = get_warmup_cosine_lr(epoch, warmup_epochs, args.train_epochs, base_lr, min_lr)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+        
+        if epoch < warmup_epochs:
+            print(f'🔥 Warmup phase: Epoch {epoch+1}/{warmup_epochs}, LR: {lr:.8f}')
+        else:
+            print(f'📉 Cosine annealing: Epoch {epoch+1}/{args.train_epochs}, LR: {lr:.8f}')
+        return lr
+    else:
+        # Fallback to standard adjustment
+        from utils.tools import adjust_learning_rate
+        adjust_learning_rate(optimizer, epoch, args)
+        return optimizer.param_groups[0]['lr']
 
 def _normalize_model_output(raw_output):
     """Convert mixed forward outputs into tensor, scalar aux loss, optional MDN tuple, and metadata."""
@@ -237,13 +284,57 @@ def train_celestial_pgat_production():
         traceback.print_exc()
         return False
     
-    # Setup training components
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=getattr(args, 'weight_decay', 0.0001))
+    # Setup training components with enhanced features
+    # Ensure learning_rate is float (YAML might load it as string)
+    learning_rate = float(args.learning_rate)
+    weight_decay = float(getattr(args, 'weight_decay', 0.0001))
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    
+    # Mixed precision training
+    use_amp = getattr(args, 'mixed_precision', False) and device.type == 'cuda'
+    if use_amp:
+        from torch.cuda.amp import GradScaler, autocast
+        scaler = GradScaler()
+        print("🚀 Mixed precision training enabled")
+    else:
+        scaler = None
+        print("📊 Standard precision training")
+    
+    # Gradient accumulation
+    gradient_accumulation_steps = getattr(args, 'gradient_accumulation_steps', 1)
+    effective_batch_size = args.batch_size * gradient_accumulation_steps
+    print(f"🔄 Gradient accumulation: {gradient_accumulation_steps} steps (effective batch size: {effective_batch_size})")
+    
+    # Learning rate schedule preview
+    warmup_epochs = getattr(args, 'warmup_epochs', 5)
+    if hasattr(args, 'lradj') and args.lradj == 'warmup_cosine':
+        print(f"📈 Learning Rate Schedule Preview:")
+        # Ensure learning_rate is float
+        base_lr = float(args.learning_rate)
+        min_lr_val = float(getattr(args, 'min_lr', 1e-6))
+        print(f"   - Warmup: {warmup_epochs} epochs (0 → {base_lr:.6f})")
+        print(f"   - Cosine Annealing: {args.train_epochs - warmup_epochs} epochs ({base_lr:.6f} → {min_lr_val:.6f})")
+        
+        # Show sample LR values
+        sample_epochs = [0, warmup_epochs-1, warmup_epochs, args.train_epochs//2, args.train_epochs-1]
+        print(f"   - Sample LRs: ", end="")
+        for ep in sample_epochs:
+            if ep < args.train_epochs:
+                lr = get_warmup_cosine_lr(ep, warmup_epochs, args.train_epochs, base_lr, min_lr_val)
+                print(f"E{ep+1}:{lr:.6f} ", end="")
+        print()
+    
+    # Import loss functions at function scope to avoid UnboundLocalError
+    try:
+        from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureNLLLoss
+        from layers.modular.decoder.mixture_density_decoder import MixtureNLLLoss
+    except ImportError:
+        # Fallback if mixture losses are not available
+        SequentialMixtureNLLLoss = None
+        MixtureNLLLoss = None
     
     # Use proper loss function
-    if getattr(model, 'use_mixture_decoder', False):
-        from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureNLLLoss
-        from layers.modular.decoder.mixture_density_decoder import MixtureNLLLoss  # Import for type checking
+    if getattr(model, 'use_mixture_decoder', False) and SequentialMixtureNLLLoss is not None:
         criterion = SequentialMixtureNLLLoss(reduction='mean')
         print("🎯 Using Gaussian Mixture NLL Loss for probabilistic predictions")
     else:
@@ -322,7 +413,9 @@ def train_celestial_pgat_production():
         print(f"\\n🌌 Epoch {epoch+1}/{args.train_epochs} - PRODUCTION TRAINING")
         
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
-            optimizer.zero_grad()
+            # Zero gradients only at the start of accumulation cycle
+            if i % gradient_accumulation_steps == 0:
+                optimizer.zero_grad()
             
             # Move to device
             batch_x = batch_x.float().to(device)
@@ -338,8 +431,12 @@ def train_celestial_pgat_production():
             dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
             
             try:
-                # Forward pass
-                outputs_raw = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
+                # Forward pass with optional mixed precision
+                if use_amp:
+                    with autocast():
+                        outputs_raw = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
+                else:
+                    outputs_raw = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
                 
                 # Normalize model output using consistent approach
                 outputs_tensor, aux_loss, mdn_outputs, metadata = _normalize_model_output(outputs_raw)
@@ -377,16 +474,36 @@ def train_celestial_pgat_production():
                     reg_contribution = reg_loss * reg_weight
                     loss = loss + reg_contribution
 
-                # Backward pass
-                loss.backward()
+                # Scale loss for gradient accumulation
+                loss = loss / gradient_accumulation_steps
+
+                # Backward pass with optional mixed precision
+                if use_amp:
+                    scaler.scale(loss).backward()
+                else:
+                    loss.backward()
                 
-                # Gradient clipping
-                if hasattr(args, 'clip_grad_norm'):
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
+                # Update parameters only after accumulation steps
+                if (i + 1) % gradient_accumulation_steps == 0:
+                    # Gradient clipping
+                    if hasattr(args, 'clip_grad_norm'):
+                        if use_amp:
+                            scaler.unscale_(optimizer)
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
+                            scaler.step(optimizer)
+                            scaler.update()
+                        else:
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
+                            optimizer.step()
+                    else:
+                        if use_amp:
+                            scaler.step(optimizer)
+                            scaler.update()
+                        else:
+                            optimizer.step()
                 
-                optimizer.step()
-                
-                train_loss += loss.item()
+                # Accumulate loss (multiply back by accumulation steps for correct averaging)
+                train_loss += loss.item() * gradient_accumulation_steps
                 train_batches += 1
                 
                 # Log progress
@@ -478,8 +595,8 @@ def train_celestial_pgat_production():
         avg_val_loss = val_loss / max(val_batches, 1)
         val_losses.append(avg_val_loss)
         
-        # Learning rate adjustment
-        adjust_learning_rate(optimizer, epoch + 1, args)
+        # Enhanced learning rate adjustment with warmup + cosine annealing
+        current_lr = adjust_learning_rate_warmup_cosine(optimizer, epoch, args)
         
         # Progress report
         epoch_time = time.time() - epoch_start
@@ -490,15 +607,43 @@ def train_celestial_pgat_production():
         print(f"\\n📊 Epoch {epoch+1:3d}/{args.train_epochs} COMPLETE:")
         print(f"   - Train Loss: {avg_train_loss:.6f}")
         print(f"   - Val Loss: {avg_val_loss:.6f}")
+        print(f"   - Learning Rate: {current_lr:.8f}")
         print(f"   - Epoch Time: {epoch_time:.2f}s")
         print(f"   - Total Elapsed: {total_elapsed/3600:.2f}h")
         print(f"   - Estimated Remaining: {estimated_remaining/3600:.2f}h")
         
-        # Save checkpoint at intervals
+        # Enhanced checkpoint management
         checkpoint_interval = getattr(args, 'checkpoint_interval', 5)
-        if (epoch + 1) % checkpoint_interval == 0:
+        save_best_only = getattr(args, 'save_best_only', False)
+        
+        # Save best model
+        if not hasattr(train_celestial_pgat_production, 'best_val_loss'):
+            train_celestial_pgat_production.best_val_loss = float('inf')
+        
+        if avg_val_loss < train_celestial_pgat_production.best_val_loss:
+            train_celestial_pgat_production.best_val_loss = avg_val_loss
+            best_checkpoint_path = checkpoint_dir / 'best_model.pth'
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': avg_val_loss,
+                'train_loss': avg_train_loss,
+                'lr': current_lr
+            }, best_checkpoint_path)
+            print(f"🏆 New best model saved: {best_checkpoint_path} (Val Loss: {avg_val_loss:.6f})")
+        
+        # Save regular checkpoints
+        if not save_best_only and (epoch + 1) % checkpoint_interval == 0:
             checkpoint_path = checkpoint_dir / f'checkpoint_epoch_{epoch+1}.pth'
-            torch.save(model.state_dict(), checkpoint_path)
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': avg_val_loss,
+                'train_loss': avg_train_loss,
+                'lr': current_lr
+            }, checkpoint_path)
             print(f"💾 Checkpoint saved: {checkpoint_path}")
         
         # Early stopping check (but with very high patience)
@@ -508,10 +653,22 @@ def train_celestial_pgat_production():
             break
     
     # Load best model
-    best_model_path = checkpoint_dir / 'checkpoint.pth'
+    best_model_path = checkpoint_dir / 'best_model.pth'
+    fallback_path = checkpoint_dir / 'checkpoint.pth'
+    
     if best_model_path.exists():
-        model.load_state_dict(torch.load(best_model_path, map_location=device))
-        print("✅ Best model loaded")
+        checkpoint = torch.load(best_model_path, map_location=device)
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+            print(f"✅ Best model loaded from epoch {checkpoint.get('epoch', 'unknown')} (Val Loss: {checkpoint.get('val_loss', 'unknown'):.6f})")
+        else:
+            model.load_state_dict(checkpoint)
+            print("✅ Best model loaded (legacy format)")
+    elif fallback_path.exists():
+        model.load_state_dict(torch.load(fallback_path, map_location=device))
+        print("✅ Fallback model loaded")
+    else:
+        print("⚠️  No saved model found, using final training state")
     
     # Final evaluation
     print("\\n📊 Final PRODUCTION Evaluation...")
@@ -670,6 +827,15 @@ def train_celestial_pgat_production():
         print(f"📈 Successfully trained {total_params:,} parameters over {args.train_epochs} epochs")
         print(f"⏰ Total training time: {(time.time() - training_start_time)/3600:.2f} hours")
         print(f"🎯 Final RMSE: {rmse:.6f}")
+        print(f"🏆 Best validation loss: {getattr(train_celestial_pgat_production, 'best_val_loss', 'N/A'):.6f}")
+        
+        # Training efficiency metrics
+        avg_epoch_time = (time.time() - training_start_time) / args.train_epochs
+        print(f"⚡ Average epoch time: {avg_epoch_time:.2f}s")
+        print(f"🔄 Effective batch size: {effective_batch_size}")
+        if use_amp:
+            print("🚀 Mixed precision training was used")
+        print(f"📉 Learning rate schedule: Warmup ({warmup_epochs} epochs) + Cosine Annealing")
         
         return True
     else:

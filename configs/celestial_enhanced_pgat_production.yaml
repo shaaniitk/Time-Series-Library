@@ -24,12 +24,14 @@ pred_len: 20          # Shorter prediction horizon for better accuracy
 validation_length: 800   # Large validation set
 test_length: 400         # Large test set
 
-# PRODUCTION Optimization - 20 epochs overnight
-learning_rate: 0.001     # Lower learning rate for stable training
+# PRODUCTION Optimization - 20 epochs overnight with advanced scheduling
+learning_rate: 0.001     # Base learning rate after warmup
 train_epochs: 20         # Full overnight training
 batch_size: 16           # Smaller batch size due to longer sequences
 patience: 999            # Effectively disable early stopping
-lradj: type1
+lradj: warmup_cosine     # Warmup + Cosine Annealing for robust training
+warmup_epochs: 5         # 5 epochs of linear warmup
+min_lr: 1e-6             # Minimum learning rate at the end
 weight_decay: 0.0001
 clip_grad_norm: 1.0
 
@@ -65,7 +67,10 @@ mdn_multivariate_mode: independent
 reg_loss_weight: 0.0005  # Light regularization
 kl_weight: 0.00005       # Very light KL regularization
 
-# Production settings
+# Production settings - Enhanced robustness
 save_checkpoints: true
 checkpoint_interval: 5   # Save every 5 epochs
 log_interval: 10         # Log every 10 batches
+gradient_accumulation_steps: 2  # Accumulate gradients for effective batch size of 32
+mixed_precision: true    # Enable mixed precision for faster training
+save_best_only: false    # Save all checkpoints for analysis
