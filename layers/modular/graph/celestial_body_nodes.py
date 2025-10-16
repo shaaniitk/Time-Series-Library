@@ -119,12 +119,12 @@ class CelestialBodyNodes(nn.Module):
                     
                     self.body_embeddings[i] = torch.tensor(full_init, dtype=torch.float32) * 0.1
     
-    def get_astronomical_adjacency(self, batch_size: int, device: torch.device) -> torch.Tensor:
+    def get_astronomical_adjacency(self, batch_size: int, seq_len: int, device: torch.device) -> torch.Tensor:
         """
-        Generate astronomical adjacency matrix based on traditional aspects
+        Generate astronomical adjacency matrix and broadcast it to be dynamic.
         
         Returns:
-            torch.Tensor: [batch_size, num_bodies, num_bodies] adjacency matrix
+            torch.Tensor: [batch_size, seq_len, num_bodies, num_bodies] adjacency matrix
         """
         
         # Fixed astronomical relationships (can be made learnable later)
@@ -164,27 +164,28 @@ class CelestialBodyNodes(nn.Module):
         # Add self-connections (each body influences itself)
         adj_matrix.fill_diagonal_(1.0)
         
-        # Expand to batch dimension
-        return adj_matrix.unsqueeze(0).expand(batch_size, -1, -1)
+        # Expand to batch and sequence dimensions
+        return adj_matrix.unsqueeze(0).unsqueeze(0).expand(batch_size, seq_len, -1, -1)
     
-    def compute_dynamic_aspects(self, market_context: torch.Tensor) -> torch.Tensor:
+    def compute_dynamic_aspects(self, enc_out: torch.Tensor) -> torch.Tensor:
         """
-        Compute dynamic aspect strengths based on market conditions
+        Compute dynamic aspect strengths for each time step based on encoder output.
         
         Args:
-            market_context: [batch_size, d_model] market state representation
+            enc_out: [batch_size, seq_len, d_model] full encoder output
             
         Returns:
-            torch.Tensor: [batch_size, num_bodies, num_bodies] dynamic adjacency
+            torch.Tensor: [batch_size, seq_len, num_bodies, num_bodies] dynamic adjacency
         """
-        batch_size = market_context.size(0)
-        device = market_context.device
+        batch_size, seq_len, _ = enc_out.shape
+        device = enc_out.device
         
-        # Encode market conditions
-        market_encoded = self.market_encoder(market_context)  # [batch, d_model]
+        # Encode market conditions for each time step
+        enc_out_flat = enc_out.reshape(batch_size * seq_len, self.d_model)
+        market_encoded = self.market_encoder(enc_out_flat)  # [batch*seq_len, d_model]
         
         # Compute pairwise aspect strengths
-        dynamic_adj = torch.zeros(batch_size, self.num_bodies, self.num_bodies, device=device)
+        dynamic_adj_flat = torch.zeros(batch_size * seq_len, self.num_bodies, self.num_bodies, device=device)
         
         for i in range(self.num_bodies):
             for j in range(i + 1, self.num_bodies):
@@ -192,84 +193,88 @@ class CelestialBodyNodes(nn.Module):
                 body_i = self.body_embeddings[i]  # [d_model]
                 body_j = self.body_embeddings[j]  # [d_model]
                 
-                # Combine with market context
-                combined_i = body_i + market_encoded  # [batch, d_model]
-                combined_j = body_j + market_encoded  # [batch, d_model]
+                # Combine with market context for each time step
+                combined_i = body_i + market_encoded  # [batch*seq_len, d_model]
+                combined_j = body_j + market_encoded  # [batch*seq_len, d_model]
                 
                 # Compute aspect strength
-                aspect_input = torch.cat([combined_i, combined_j], dim=-1)  # [batch, 2*d_model]
-                strength = self.aspect_strength_net(aspect_input).squeeze(-1)  # [batch]
+                aspect_input = torch.cat([combined_i, combined_j], dim=-1)  # [batch*seq_len, 2*d_model]
+                strength = self.aspect_strength_net(aspect_input).squeeze(-1)  # [batch*seq_len]
                 
                 # Apply to adjacency matrix
-                dynamic_adj[:, i, j] = strength
-                dynamic_adj[:, j, i] = strength  # Symmetric
+                dynamic_adj_flat[:, i, j] = strength
+                dynamic_adj_flat[:, j, i] = strength  # Symmetric
         
         # Add self-connections
-        dynamic_adj.diagonal(dim1=-2, dim2=-1).fill_(1.0)
+        dynamic_adj_flat.diagonal(dim1=-2, dim2=-1).fill_(1.0)
         
-        return dynamic_adj
+        # Reshape to [batch, seq_len, num_bodies, num_bodies]
+        return dynamic_adj_flat.view(batch_size, seq_len, self.num_bodies, self.num_bodies)
     
-    def get_celestial_features(self, market_context: torch.Tensor) -> torch.Tensor:
+    def get_celestial_features(self, enc_out: torch.Tensor) -> torch.Tensor:
         """
-        Get transformed celestial body features based on market context
+        Get transformed celestial body features for each time step.
         
         Args:
-            market_context: [batch_size, d_model] market state
+            enc_out: [batch_size, seq_len, d_model] full encoder output
             
         Returns:
-            torch.Tensor: [batch_size, num_bodies, d_model] celestial features
+            torch.Tensor: [batch_size, seq_len, num_bodies, d_model] celestial features
         """
-        batch_size = market_context.size(0)
+        batch_size, seq_len, _ = enc_out.shape
+        enc_out_flat = enc_out.reshape(batch_size * seq_len, self.d_model)
         
-        # Transform each celestial body based on market context
-        celestial_features = []
+        # Transform each celestial body based on market context at each time step
+        celestial_features_flat = []
         
         for i, body in enumerate(CelestialBody):
             # Get base embedding
             base_embedding = self.body_embeddings[i]  # [d_model]
             
-            # Add market context
-            contextualized = base_embedding + market_context  # [batch, d_model]
+            # Add market context from each time step
+            contextualized = base_embedding + enc_out_flat  # [batch*seq_len, d_model]
             
             # Apply body-specific transformation
-            transformed = self.body_transforms[body.value](contextualized)  # [batch, d_model]
+            transformed = self.body_transforms[body.value](contextualized)  # [batch*seq_len, d_model]
             
-            celestial_features.append(transformed)
+            celestial_features_flat.append(transformed)
         
-        return torch.stack(celestial_features, dim=1)  # [batch, num_bodies, d_model]
+        # Stack and reshape
+        stacked_features = torch.stack(celestial_features_flat, dim=1)  # [batch*seq_len, num_bodies, d_model]
+        return stacked_features.view(batch_size, seq_len, self.num_bodies, self.d_model)
     
-    def forward(self, market_context: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
+    def forward(self, enc_out: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
         """
-        Forward pass to generate celestial body graph
+        Forward pass to generate dynamic celestial body graphs and features.
         
         Args:
-            market_context: [batch_size, d_model] market state representation
+            enc_out: [batch_size, seq_len, d_model] full encoder output
             
         Returns:
             Tuple containing:
-            - astronomical_adj: [batch_size, num_bodies, num_bodies] fixed astronomical adjacency
-            - dynamic_adj: [batch_size, num_bodies, num_bodies] learned dynamic adjacency  
-            - celestial_features: [batch_size, num_bodies, d_model] body features
+            - astronomical_adj: [batch_size, seq_len, num_bodies, num_bodies] broadcasted astronomical adjacency
+            - dynamic_adj: [batch_size, seq_len, num_bodies, num_bodies] learned dynamic adjacency  
+            - celestial_features: [batch_size, seq_len, num_bodies, d_model] dynamic body features
             - metadata: Dict with interpretability information
         """
-        batch_size = market_context.size(0)
-        device = market_context.device
+        batch_size, seq_len, _ = enc_out.shape
+        device = enc_out.device
         
-        # Get fixed astronomical adjacency
-        astronomical_adj = self.get_astronomical_adjacency(batch_size, device)
+        # Get fixed astronomical adjacency, broadcasted to be dynamic
+        astronomical_adj = self.get_astronomical_adjacency(batch_size, seq_len, device)
         
-        # Compute dynamic aspects based on market conditions
-        dynamic_adj = self.compute_dynamic_aspects(market_context)
+        # Compute dynamic aspects based on the full sequence
+        dynamic_adj = self.compute_dynamic_aspects(enc_out)
         
-        # Get celestial body features
-        celestial_features = self.get_celestial_features(market_context)
+        # Get dynamic celestial body features
+        celestial_features = self.get_celestial_features(enc_out)
         
-        # Metadata for interpretability
+        # Metadata for interpretability (averaged over sequence for stability)
         metadata = {
             'body_names': [body.value for body in CelestialBody],
             'astronomical_strength': astronomical_adj.abs().mean().item(),
             'dynamic_strength': dynamic_adj.abs().mean().item(),
-            'most_active_body': torch.argmax(celestial_features.norm(dim=-1).mean(dim=0)).item()
+            'most_active_body': torch.argmax(celestial_features.norm(dim=-1).mean(dim=[0, 1])).item()
         }
         
         return astronomical_adj, dynamic_adj, celestial_features, metadata

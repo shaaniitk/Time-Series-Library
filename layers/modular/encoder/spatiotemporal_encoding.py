@@ -385,6 +385,159 @@ class JointSpatioTemporalEncoding(nn.Module):
         return self.dropout_layer(output)
 
 
+class DynamicJointSpatioTemporalEncoding(JointSpatioTemporalEncoding):
+    """Joint spatial-temporal encoder that applies a rank-4 dynamic adjacency tensor.
+
+    This encoder projects sequence features into a per-node representation, applies
+    dynamic graph convolutions for every time step, and fuses the spatial insights
+    with the existing temporal processing stack inherited from the static encoder.
+
+    The implementation intentionally reuses the temporal convolutions, cross-attention,
+    and gating stack from :class:`JointSpatioTemporalEncoding` to preserve the behaviour
+    of the original encoder while introducing support for time-varying adjacency
+    matrices.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        seq_len: int,
+        num_nodes: int,
+        num_heads: int = 8,
+        dropout: float = 0.1,
+        max_tokens: Optional[int] = None,
+    ) -> None:
+        super().__init__(
+            d_model=d_model,
+            seq_len=seq_len,
+            num_nodes=num_nodes,
+            num_heads=num_heads,
+            dropout=dropout,
+            max_tokens=max_tokens,
+        )
+        # Projections that lift flattened features into node-aware representations
+        # before the dynamic spatial processing and collapse them afterwards.
+        self.node_feature_projection = nn.Linear(d_model, num_nodes * d_model)
+        self.node_feature_back_projection = nn.Linear(num_nodes * d_model, d_model)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        dynamic_adjacency: torch.Tensor,
+        temporal_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Encode features with time-varying adjacency matrices.
+
+        Args:
+            x: Input tensor of shape ``[batch, seq_len, d_model]`` or
+                ``[batch, seq_len, num_nodes, d_model]``.
+            dynamic_adjacency: Dynamic adjacency matrices of shape
+                ``[batch, seq_len, num_nodes, num_nodes]``.
+            temporal_mask: Optional temporal mask forwarded to attention modules.
+
+        Returns:
+            Encoded representation with shape ``[batch, seq_len, d_model]``.
+        """
+        if dynamic_adjacency.dim() != 4:
+            raise ValueError(
+                "dynamic_adjacency must have shape [batch, seq_len, num_nodes, num_nodes]."
+            )
+
+        node_features = self._project_to_node_features(x)
+        encoded_nodes = self._forward_dynamic(node_features, dynamic_adjacency, temporal_mask)
+        flattened = encoded_nodes.contiguous().view(
+            encoded_nodes.size(0), encoded_nodes.size(1), -1
+        )
+        return self.node_feature_back_projection(flattened)
+
+    def _project_to_node_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Lift flattened features to the node-aware space expected by the encoder."""
+        if x.dim() == 4:
+            return x
+        if x.dim() != 3:
+            raise ValueError("Input to dynamic encoder must be a 3D or 4D tensor.")
+        batch_size, seq_len, feature_dim = x.shape
+        projected = self.node_feature_projection(x)
+        return projected.view(batch_size, seq_len, self.num_nodes, self.d_model)
+
+    def _forward_dynamic(
+        self,
+        node_features: torch.Tensor,
+        dynamic_adjacency: torch.Tensor,
+        temporal_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Dynamic variant of ``_forward_original`` that accepts rank-4 adjacencies."""
+        batch_size, seq_len, num_nodes, d_model = node_features.shape
+        if num_nodes != self.num_nodes or d_model != self.d_model:
+            raise ValueError(
+                "Projected node features must match configured num_nodes and d_model."
+            )
+        if (
+            dynamic_adjacency.size(0) != batch_size
+            or dynamic_adjacency.size(1) != seq_len
+            or dynamic_adjacency.size(2) != num_nodes
+            or dynamic_adjacency.size(3) != num_nodes
+        ):
+            raise ValueError(
+                "dynamic_adjacency shape must match node feature shape"
+            )
+
+        original_features = node_features
+        node_features = node_features + self.spatial_pos_encoding.unsqueeze(1)
+        node_features = node_features + self.temporal_pos_encoding.unsqueeze(2)
+
+        temporal_features = self._multi_scale_temporal_processing(node_features)
+        spatial_features = self._multi_hop_dynamic_spatial_processing(node_features, dynamic_adjacency)
+        interaction_features = self._spatial_temporal_interaction(temporal_features, spatial_features)
+        cross_attention_features = self._cross_attention_processing(
+            temporal_features,
+            spatial_features,
+        )
+        fused_features = self._adaptive_fusion(
+            interaction_features,
+            cross_attention_features,
+            original_features,
+        )
+        return self.layer_norm3(fused_features)
+
+    def _multi_hop_dynamic_spatial_processing(
+        self,
+        x: torch.Tensor,
+        dynamic_adjacency: torch.Tensor,
+    ) -> torch.Tensor:
+        """Apply multi-hop spatial processing with per-timestep dynamic adjacencies."""
+        batch_size, seq_len, num_nodes, d_model = x.shape
+
+        normalized_adj = self._normalize_dynamic_adjacency(dynamic_adjacency)
+        x_flat = x.view(batch_size * seq_len, num_nodes, d_model)
+        adj_flat = normalized_adj.view(batch_size * seq_len, num_nodes, num_nodes)
+
+        spatial_features = x_flat
+        spatial_outputs = []
+        current_adj = adj_flat
+        for hop, conv in enumerate(self.spatial_convs):
+            messages = torch.bmm(current_adj, spatial_features)
+            messages = messages.view(batch_size * seq_len * num_nodes, d_model)
+            conv_out = conv(messages).view(batch_size * seq_len, num_nodes, d_model)
+            conv_out = F.relu(conv_out)
+            spatial_outputs.append(conv_out)
+            if hop < len(self.spatial_convs) - 1:
+                current_adj = torch.bmm(current_adj, adj_flat)
+
+        combined_spatial = torch.stack(spatial_outputs, dim=0).mean(dim=0)
+        combined_spatial = combined_spatial.view(batch_size, seq_len, num_nodes, d_model)
+        return self.layer_norm2(combined_spatial + x)
+
+    def _normalize_dynamic_adjacency(self, adjacency: torch.Tensor) -> torch.Tensor:
+        """Normalize dynamic adjacency matrices with self-loops per time step."""
+        identity = torch.eye(self.num_nodes, device=adjacency.device, dtype=adjacency.dtype)
+        identity = identity.view(1, 1, self.num_nodes, self.num_nodes)
+        adjacency_with_loops = adjacency + identity
+        degree = adjacency_with_loops.sum(dim=-1, keepdim=True)
+        degree = degree.masked_fill(degree == 0, 1.0)
+        return adjacency_with_loops / degree
+
+
 @GraphComponentRegistry.register("adaptive_spatiotemporal_encoder")
 class AdaptiveSpatioTemporalEncoder(nn.Module):
     """Stacked joint spatial-temporal encoder with optional token budgeting.

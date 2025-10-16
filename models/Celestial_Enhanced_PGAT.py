@@ -5,20 +5,25 @@ This model combines the Enhanced SOTA PGAT with celestial body graph nodes,
 creating the world's first astronomically-informed time series forecasting model.
 """
 
+import logging
+import math
+from typing import Optional, Tuple, Dict, Any
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple, Dict, Any
-import math
 
 from layers.modular.graph.celestial_body_nodes import CelestialBodyNodes, CelestialBody
 from layers.modular.graph.celestial_graph_combiner import CelestialGraphCombiner
 from layers.modular.decoder.mixture_density_decoder import MixtureDensityDecoder
 from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureDensityDecoder
 from layers.modular.embedding.hierarchical_mapper import HierarchicalTemporalSpatialMapper
-from layers.modular.encoder.spatiotemporal_encoding import JointSpatioTemporalEncoding
+from layers.modular.encoder.spatiotemporal_encoding import (
+    JointSpatioTemporalEncoding,
+    DynamicJointSpatioTemporalEncoding,
+)
 from layers.modular.graph.gated_graph_combiner import GatedGraphCombiner
-from layers.Embed import DataEmbedding
+from layers.Embed import DataEmbedding  # type: ignore[assignment]
 from utils.celestial_wave_aggregator import CelestialWaveAggregator, CelestialDataProcessor
 from layers.modular.aggregation.phase_aware_celestial_processor import PhaseAwareCelestialProcessor
 
@@ -57,11 +62,45 @@ class Model(nn.Module):
         self.use_mixture_decoder = getattr(configs, 'use_mixture_decoder', True)
         self.use_stochastic_learner = getattr(configs, 'use_stochastic_learner', True)
         self.use_hierarchical_mapping = getattr(configs, 'use_hierarchical_mapping', True)
+        self.collect_diagnostics = bool(getattr(configs, 'collect_diagnostics', True))
+        self.use_efficient_covariate_interaction = getattr(configs, 'use_efficient_covariate_interaction', False)
+        
+        # --- Automatic d_model adjustment for partitioned graph processing ---
+        # First, determine the number of nodes that d_model will be partitioned across.
+        if self.use_celestial_graph and getattr(configs, 'aggregate_waves_to_celestial', True):
+            num_nodes_for_adjustment = self.num_celestial_bodies
+        else:
+            num_nodes_for_adjustment = self.enc_in
+        
+        # Now, check for divisibility against both nodes and heads, and auto-adjust if necessary.
+        # d_model must be a multiple of the Least Common Multiple (LCM) of nodes and heads.
+        def gcd(a, b):
+            while b:
+                a, b = b, a % b
+            return a
+
+        def lcm(a, b):
+            return abs(a * b) // gcd(a, b) if a != 0 and b != 0 else 0
+
+        required_multiple = lcm(num_nodes_for_adjustment, self.n_heads)
+        
+        if self.d_model % required_multiple != 0:
+            original_d_model = self.d_model
+            # Calculate the next highest multiple of the required_multiple
+            self.d_model = (original_d_model + required_multiple - 1) // required_multiple * required_multiple
+            print(f"⚠️  WARNING: d_model ({original_d_model}) is not compatible with graph/attention dimensions.")
+            print(f"   It must be a multiple of {required_multiple} (LCM of {num_nodes_for_adjustment} nodes and {self.n_heads} heads).")
+            print(f"   Automatically adjusting d_model to {self.d_model} for compatibility.")
+        # --- End of adjustment ---
         
         # Wave aggregation settings
         self.aggregate_waves_to_celestial = getattr(configs, 'aggregate_waves_to_celestial', True)
         self.num_input_waves = getattr(configs, 'num_input_waves', 118)
         self.target_wave_indices = getattr(configs, 'target_wave_indices', [0, 1, 2, 3])
+
+        # Initialize celestial fusion components; will be replaced when celestial graph is active
+        self.celestial_fusion_attention: Optional[nn.MultiheadAttention] = None
+        self.celestial_fusion_gate: Optional[nn.Sequential] = None
         
         # Enhanced Phase-Aware Wave Aggregation System
         if self.aggregate_waves_to_celestial:
@@ -127,7 +166,23 @@ class Model(nn.Module):
                 fusion_layers=self.celestial_fusion_layers,
                 dropout=self.dropout
             )
-            
+
+            fusion_dim_cfg = getattr(configs, 'celestial_fusion_dim', min(self.d_model, 64))
+            fusion_dim = max(self.n_heads, fusion_dim_cfg)
+            if fusion_dim % self.n_heads != 0:
+                fusion_dim = ((fusion_dim // self.n_heads) + 1) * self.n_heads
+            self.celestial_fusion_dim = fusion_dim
+            self.celestial_query_projection = nn.Linear(self.d_model, self.celestial_fusion_dim)
+            self.celestial_key_projection = nn.Linear(self.d_model, self.celestial_fusion_dim)
+            self.celestial_value_projection = nn.Linear(self.d_model, self.celestial_fusion_dim)
+            self.celestial_output_projection = nn.Linear(self.celestial_fusion_dim, self.d_model)
+            self.celestial_fusion_attention = nn.MultiheadAttention(
+                embed_dim=self.celestial_fusion_dim,
+                num_heads=self.n_heads,
+                dropout=self.dropout,
+                batch_first=True
+            )
+
             # Map input features to celestial space - adjust for aggregation
             if self.aggregate_waves_to_celestial:
                 # After aggregation: 13 celestial → 13 celestial (identity or refinement)
@@ -137,6 +192,12 @@ class Model(nn.Module):
                 # Before aggregation: 118 waves → 13 celestial
                 self.feature_to_celestial = nn.Linear(self.enc_in, self.num_celestial_bodies)
                 self.celestial_to_feature = nn.Linear(self.num_celestial_bodies, self.enc_in)
+            self.celestial_fusion_gate = nn.Sequential(
+                nn.Linear(self.d_model * 2, self.d_model),
+                nn.GELU(),
+                nn.Linear(self.d_model, self.d_model),
+                nn.Sigmoid()
+            )
         
         # Hierarchical Mapping - adjust for celestial aggregation
         if self.use_hierarchical_mapping:
@@ -163,6 +224,29 @@ class Model(nn.Module):
             # Use original input dimensions
             num_nodes_for_encoding = self.enc_in
             
+        self.num_graph_nodes = num_nodes_for_encoding
+
+        if self.use_efficient_covariate_interaction:
+            if self.d_model % self.num_graph_nodes != 0:
+                raise ValueError(f"d_model ({self.d_model}) must be divisible by num_graph_nodes ({self.num_graph_nodes}) for efficient processing.")
+            node_dim = self.d_model // self.num_graph_nodes
+
+            # Processes the covariate graph with a shared weight matrix (graph convolution)
+            self.covariate_interaction_layer = nn.Linear(node_dim, node_dim)
+            
+            # Fuses each target's features with the aggregated summary from the covariate graph.
+            self.target_fusion_layer = nn.Sequential(
+                nn.Linear(node_dim * 2, node_dim), # Combines target node features and covariate context
+                nn.GELU(),
+                nn.Linear(node_dim, node_dim)
+            )
+        
+        self.use_dynamic_spatiotemporal_encoder = getattr(
+            configs,
+            'use_dynamic_spatiotemporal_encoder',
+            True
+        )
+            
         self.spatiotemporal_encoder = JointSpatioTemporalEncoding(
             d_model=self.d_model,
             seq_len=self.seq_len,
@@ -170,6 +254,23 @@ class Model(nn.Module):
             num_heads=self.n_heads,
             dropout=self.dropout
         )
+
+        self.use_dynamic_spatiotemporal_encoder = getattr(
+            configs,
+            'use_dynamic_spatiotemporal_encoder',
+            True
+        )
+        self.dynamic_spatiotemporal_encoder: Optional[DynamicJointSpatioTemporalEncoding]
+        if self.use_dynamic_spatiotemporal_encoder:
+            self.dynamic_spatiotemporal_encoder = DynamicJointSpatioTemporalEncoding(
+                d_model=self.d_model,
+                seq_len=self.seq_len,
+                num_nodes=num_nodes_for_encoding,
+                num_heads=self.n_heads,
+                dropout=self.dropout
+            )
+        else:
+            self.dynamic_spatiotemporal_encoder = None
         
         # Traditional graph learning (for comparison/fallback) - adjust for celestial aggregation
         if self.use_celestial_graph and self.aggregate_waves_to_celestial:
@@ -258,6 +359,18 @@ class Model(nn.Module):
                 nn.init.xavier_uniform_(param)
             elif 'bias' in name:
                 nn.init.zeros_(param)
+
+    @staticmethod
+    def _move_to_cpu(value: Any) -> Any:
+        """Recursively detach tensors and move them to CPU for lightweight diagnostics."""
+        if isinstance(value, torch.Tensor):
+            return value.detach().cpu()
+        if isinstance(value, dict):
+            return {key: Model._move_to_cpu(val) for key, val in value.items()}
+        if isinstance(value, (list, tuple)):
+            converted = [Model._move_to_cpu(item) for item in value]
+            return tuple(converted) if isinstance(value, tuple) else converted
+        return value
     
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         """
@@ -273,46 +386,87 @@ class Model(nn.Module):
         Returns:
             Predictions and metadata
         """
+        # DEBUG: Add memory monitoring
+        import psutil
+        import os
+        def debug_memory_model(stage):
+            try:
+                process = psutil.Process(os.getpid())
+                cpu_mb = process.memory_info().rss / 1024 / 1024
+                print(f"🔍 MODEL_DEBUG [{stage}]: CPU={cpu_mb:.1f}MB")
+            except:
+                pass
+        
+        debug_memory_model("FORWARD_START")
         batch_size, seq_len, enc_in = x_enc.shape
+        print(f"🔍 MODEL_DEBUG: Input shapes - x_enc: {x_enc.shape}, x_dec: {x_dec.shape}")
         
         # 0. Enhanced Phase-Aware Wave Processing (if enabled)
-        wave_metadata = {}
+        debug_memory_model("PHASE_PROCESSING_START")
+        wave_metadata: Dict[str, Any] = {}
+        phase_based_adj: Optional[torch.Tensor] = None
+        target_shape = (batch_size, seq_len, len(self.target_wave_indices))
         if self.aggregate_waves_to_celestial and enc_in == self.num_input_waves:
             # Use phase-aware processor for rich celestial representations
+            print(f"🔍 MODEL_DEBUG: Starting phase-aware processing...")
             celestial_features, adjacency_matrix, phase_metadata = self.phase_aware_processor(x_enc)
+            debug_memory_model("PHASE_PROCESSING_COMPLETE")
             # celestial_features: [batch, seq_len, 13 * 32] Rich multi-dimensional representations
             # adjacency_matrix: [batch, 13, 13] Phase-difference based edges
-            
-            # Extract targets using the old processor (for compatibility)
-            _, target_waves, target_metadata = self.data_processor.process_batch(x_enc)
-            
+            phase_based_adj = adjacency_matrix
+            print(f"🔍 MODEL_DEBUG: Phase processing complete - celestial_features: {celestial_features.shape}")
+
+            # Extract targets using the classic processor only when diagnostics are requested.
+            target_metadata: Dict[str, Any] = {}
+            if self.collect_diagnostics:
+                _, target_waves, target_metadata = self.data_processor.process_batch(x_enc)
+                target_waves = target_waves.detach().cpu()
+            else:
+                target_waves = None
+
             # Use rich celestial features as encoder input
             x_enc_processed = celestial_features  # [batch, seq_len, 13 * 32]
             
             # Store comprehensive metadata
-            wave_metadata = {
-                'original_targets': target_waves,  # [batch, seq_len, 4]
-                'phase_metadata': phase_metadata,
-                'target_metadata': target_metadata,
-                'adjacency_matrix': adjacency_matrix,
-                'celestial_features_shape': celestial_features.shape
-            }
+            if self.collect_diagnostics:
+                wave_metadata = self._move_to_cpu({
+                    'original_targets': target_waves,  # [batch, seq_len, 4]
+                    'phase_metadata': phase_metadata,
+                    'target_metadata': target_metadata,
+                    'adjacency_matrix_stats': {
+                        'mean': adjacency_matrix.mean().item(),
+                        'std': adjacency_matrix.std().item(),
+                    },
+                    'celestial_features_shape': celestial_features.shape,
+                })
             
-            print(f"🌌 Phase-aware processing: {x_enc.shape} → celestial {celestial_features.shape}, targets {target_waves.shape}")
+            print(
+                "🌌 Phase-aware processing: "
+                f"{x_enc.shape} → celestial {celestial_features.shape}, targets {target_shape}"
+            )
             print(f"🔗 Phase-based adjacency matrix: {adjacency_matrix.shape}")
         else:
             x_enc_processed = x_enc
             wave_metadata['original_targets'] = None
         
         # 1. Input embeddings - ensure correct dimensions
+        debug_memory_model("EMBEDDING_START")
         try:
+            print(f"🔍 MODEL_DEBUG: Starting encoder embedding...")
             enc_out = self.enc_embedding(x_enc_processed, x_mark_enc)  # [batch, seq_len, d_model]
+            debug_memory_model("ENC_EMBEDDING_COMPLETE")
+            print(f"🔍 MODEL_DEBUG: Encoder embedding complete - enc_out: {enc_out.shape}")
         except Exception as e:
             print(f"❌ Embedding error: {e}")
             print(f"   Input shape: {x_enc_processed.shape}")
             print(f"   Expected embedding input dim: {self.enc_embedding.value_embedding.c_in}")
+            debug_memory_model("ENC_EMBEDDING_ERROR")
             raise e
+        
+        print(f"🔍 MODEL_DEBUG: Starting decoder embedding...")
         dec_out = self.dec_embedding(x_dec, x_mark_dec)  # [batch, label_len+pred_len, d_model]
+        debug_memory_model("DEC_EMBEDDING_COMPLETE")
+        print(f"🔍 MODEL_DEBUG: Decoder embedding complete - dec_out: {dec_out.shape}")
         
         # 2. Generate market context from encoder output (fix information bottleneck)
         # Use last hidden state instead of mean to preserve temporal information
@@ -320,66 +474,99 @@ class Model(nn.Module):
         
         # 3. Enhanced Celestial Body Graph Processing
         if self.use_celestial_graph:
-            if self.aggregate_waves_to_celestial and 'adjacency_matrix' in wave_metadata:
+            if self.aggregate_waves_to_celestial and phase_based_adj is not None:
                 # Use phase-based adjacency matrix from phase-aware processor
-                phase_based_adj = wave_metadata['adjacency_matrix']  # [batch, 13, 13]
                 
                 # Still process celestial graph for additional features
-                celestial_results = self._process_celestial_graph(x_enc_processed, market_context)
+                celestial_results = self._process_celestial_graph(x_enc_processed, enc_out)
                 astronomical_adj = celestial_results['astronomical_adj']
                 dynamic_adj = celestial_results['dynamic_adj'] 
                 celestial_features = celestial_results['celestial_features']
                 celestial_metadata = celestial_results['metadata']
+                enc_out = celestial_results['enhanced_enc_out'] # Use enhanced output
                 
                 # Learned context-aware fusion of phase, astronomical, and dynamic adjacencies
+                # NOTE: This fusion is now static, based on last time step. Should be revisited.
                 weights = F.softmax(self.adj_weight_mlp(market_context), dim=-1)  # [batch, 3]
                 w_phase, w_astro, w_dyn = weights[:, 0], weights[:, 1], weights[:, 2]
+                
+                # Normalize and combine
                 phase_norm = self._normalize_adj(phase_based_adj)
-                astro_norm = self._normalize_adj(astronomical_adj)
-                dyn_norm = self._normalize_adj(dynamic_adj)
+                astro_norm = self._normalize_adj(astronomical_adj) # Now dynamic
+                dyn_norm = self._normalize_adj(dynamic_adj)       # Now dynamic
+                
+                # Unsqueeze weights for broadcasting with dynamic adjs
+                w_phase = w_phase.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                w_astro = w_astro.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                w_dyn = w_dyn.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                
+                # Broadcast phase_norm to be dynamic
+                phase_norm = phase_norm.unsqueeze(1).expand(-1, self.seq_len, -1, -1)
+
                 combined_phase_adj = (
-                    w_phase.unsqueeze(-1).unsqueeze(-1) * phase_norm +
-                    w_astro.unsqueeze(-1).unsqueeze(-1) * astro_norm +
-                    w_dyn.unsqueeze(-1).unsqueeze(-1) * dyn_norm
+                    w_phase * phase_norm +
+                    w_astro * astro_norm +
+                    w_dyn * dyn_norm
                 )
                 astronomical_adj = combined_phase_adj  # Use learned-fusion matrix
                 
                 print(f"🌟 Using phase-based adjacency matrix with learned fusion weights")
             else:
                 # Fallback to traditional celestial graph processing
-                celestial_results = self._process_celestial_graph(x_enc_processed, market_context)
+                celestial_results = self._process_celestial_graph(x_enc_processed, enc_out)
                 astronomical_adj = celestial_results['astronomical_adj']
                 dynamic_adj = celestial_results['dynamic_adj'] 
                 celestial_features = celestial_results['celestial_features']
                 celestial_metadata = celestial_results['metadata']
+                enc_out = celestial_results['enhanced_enc_out'] # Use enhanced output
         else:
             # Fallback to traditional graph learning
-            traditional_adj = self._learn_traditional_graph(market_context, batch_size)
+            traditional_adj = self._learn_traditional_graph(enc_out)
             astronomical_adj = traditional_adj
-            dynamic_adj = self._learn_simple_dynamic_graph(market_context, batch_size)
+            dynamic_adj = self._learn_simple_dynamic_graph(enc_out)
             celestial_features = None
             celestial_metadata = {}
         
         # 4. Learn data-driven graph
-        learned_adj = self._learn_data_driven_graph(enc_out, market_context)
+        learned_adj = self._learn_data_driven_graph(enc_out)
         
         # 5. Combine all graph types with hierarchical fusion
         if self.use_celestial_graph:
+            # astronomical_adj and dynamic_adj from celestial_nodes are static [B, N, N]
+            # learned_adj is dynamic [B, S, N, N]. We must align them.
+            seq_len = enc_out.size(1)
+            
+            # Broadcast static graphs to match the dynamic graph's sequence length
+            if astronomical_adj.dim() == 3:
+                astronomical_adj = astronomical_adj.unsqueeze(1).expand(-1, seq_len, -1, -1)
+            if dynamic_adj.dim() == 3:
+                dynamic_adj = dynamic_adj.unsqueeze(1).expand(-1, seq_len, -1, -1)
+
+            # The combiner now receives three dynamic graphs and the full encoder output
+            # This assumes celestial_combiner is adapted to handle rank-4 adjs and rank-3 context
             combined_adj, fusion_metadata = self.celestial_combiner(
-                astronomical_adj, learned_adj, dynamic_adj, market_context
+                astronomical_adj, learned_adj, dynamic_adj, enc_out
             )
         else:
-            # Simple combination for fallback
-            # Replace naive average with learned, normalized weighted fusion
-            weights = F.softmax(self.adj_weight_mlp(market_context), dim=-1)  # [batch, 3]
-            w_astro, w_learned, w_dyn = weights[:, 0], weights[:, 1], weights[:, 2]
+            # Simple combination for fallback with dynamic weighting
+            # Generate dynamic weights for each time step from enc_out
+            weights = F.softmax(self.adj_weight_mlp(enc_out), dim=-1)  # [batch, seq_len, 3]
+            w_astro, w_learned, w_dyn = weights[..., 0], weights[..., 1], weights[..., 2]
+
+            # Normalize adjacency matrices (now all dynamic)
             astro_norm = self._normalize_adj(astronomical_adj)
             learned_norm = self._normalize_adj(learned_adj)
             dyn_norm = self._normalize_adj(dynamic_adj)
+            
+            # Unsqueeze weights to be broadcastable with [batch, seq_len, nodes, nodes]
+            w_astro = w_astro.unsqueeze(-1).unsqueeze(-1)
+            w_learned = w_learned.unsqueeze(-1).unsqueeze(-1)
+            w_dyn = w_dyn.unsqueeze(-1).unsqueeze(-1)
+
             combined_adj = (
-                w_astro.unsqueeze(-1).unsqueeze(-1) * astro_norm +
-                w_learned.unsqueeze(-1).unsqueeze(-1) * learned_norm +
-                w_dyn.unsqueeze(-1).unsqueeze(-1) * dyn_norm
+                w_astro * astro_norm +
+                w_learned * learned_norm +
+                w_dyn * dyn_norm
             )
             fusion_metadata = {
                 'weights': weights.detach().cpu()
@@ -403,63 +590,67 @@ class Model(nn.Module):
                 print("   Continuing without hierarchical features")
         
         # 7. Spatiotemporal encoding with graph attention
-        try:
-            # The spatiotemporal encoder now handles both 3D and 4D inputs
-            # Prepare adjacency matrix
-            if combined_adj.dim() == 3:  # [batch, num_nodes, num_nodes]
-                # Use the first batch's adjacency matrix (assuming they're similar)
-                adj_for_spatiotemporal = combined_adj[0]  # [num_nodes, num_nodes]
+        encoded_features: torch.Tensor
+        use_dynamic_encoder = (
+            self.use_dynamic_spatiotemporal_encoder
+            and self.dynamic_spatiotemporal_encoder is not None
+            and combined_adj.dim() == 4
+        )
+
+        if use_dynamic_encoder:
+            dynamic_encoder = self.dynamic_spatiotemporal_encoder
+            if dynamic_encoder is None:
+                encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
             else:
-                adj_for_spatiotemporal = combined_adj
-            
-            if self.use_celestial_graph and self.aggregate_waves_to_celestial:
-                # For celestial aggregation, pass 3D input directly
-                # The spatiotemporal encoder will handle it with the aggregated method
-                num_nodes = self.num_celestial_bodies
-                
-                # Ensure adjacency matrix matches celestial bodies
-                if adj_for_spatiotemporal.size(0) != num_nodes:
-                    adj_for_spatiotemporal = torch.eye(num_nodes, device=enc_out.device)
-                
-                # Pass 3D input - spatiotemporal encoder will use _forward_aggregated
-                encoded_features = self.spatiotemporal_encoder(enc_out, adj_for_spatiotemporal)
-            else:
-                # For original case, reshape to 4D and use original method
-                batch_size, seq_len, d_model = enc_out.shape
-                num_nodes = self.enc_in
-                
-                # Ensure adjacency matrix matches number of nodes
-                if adj_for_spatiotemporal.size(0) != num_nodes:
-                    adj_for_spatiotemporal = torch.eye(num_nodes, device=enc_out.device)
-                
-                # Reshape to 4D for original spatiotemporal processing
-                node_dim = d_model // num_nodes if d_model % num_nodes == 0 else 1
-                if d_model % num_nodes == 0:
-                    enc_out_4d = enc_out.view(batch_size, seq_len, num_nodes, node_dim)
-                    encoded_features_4d = self.spatiotemporal_encoder(enc_out_4d, adj_for_spatiotemporal)
-                    encoded_features = encoded_features_4d.view(batch_size, seq_len, d_model)
-                else:
-                    # Use 3D aggregated method as fallback
-                    encoded_features = self.spatiotemporal_encoder(enc_out, adj_for_spatiotemporal)
-            
-        except Exception as e:
-            print(f"⚠️  Spatiotemporal encoding failed: {e}")
-            encoded_features = enc_out
+                try:
+                    encoded_features = dynamic_encoder(enc_out, combined_adj)
+                except ValueError as exc:
+                    logging.warning("Dynamic spatiotemporal encoder fallback: %s", exc)
+                    encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+        else:
+            encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
         
-        # 8. Graph attention processing with proper adjacency matrix usage
-        graph_features = encoded_features
-        for i, layer in enumerate(self.graph_attention_layers):
-            try:
-                # Use the adjacency matrix properly in graph attention
-                graph_features = layer(graph_features, combined_adj)
-                
-                if i == 0:  # Log once to confirm adjacency matrix is being used
-                    print(f"🔗 Graph attention layer {i+1} using adjacency matrix: {combined_adj.shape}")
+        # 8. Graph attention processing
+        if self.use_efficient_covariate_interaction:
+            # Efficient, partitioned graph processing that respects covariate independence
+            graph_features = self._efficient_graph_processing(encoded_features, combined_adj)
+            print("⚡ Using efficient partitioned graph processing.")
+        else:
+            # Original, iterative graph attention processing
+            graph_features = encoded_features
+            
+            # combined_adj should now be dynamic [batch, seq_len, nodes, nodes]
+            is_dynamic_adj = combined_adj.dim() == 4
+            
+            if is_dynamic_adj:
+                processed_features_over_time = []
+                for t in range(self.seq_len):
+                    time_step_features = graph_features[:, t:t+1, :]
+                    adj_for_step = combined_adj[:, t, :, :]
                     
-            except Exception as e:
-                print(f"⚠️  Graph attention layer {i+1} failed: {e}")
-                # Fallback: use without adjacency matrix
-                graph_features = layer(graph_features, None)
+                    processed_step = time_step_features
+                    for i, layer in enumerate(self.graph_attention_layers):
+                        try:
+                            processed_step = layer(processed_step, adj_for_step)
+                        except Exception as e:
+                            print(f"⚠️  Graph attention layer {i+1} at step {t} failed: {e}")
+                            processed_step = layer(processed_step, None) # Fallback
+                    
+                    processed_features_over_time.append(processed_step)
+                
+                graph_features = torch.cat(processed_features_over_time, dim=1)
+                if self.seq_len > 0:
+                     print(f"🔗 Applied dynamic graph attention across {self.seq_len} time steps.")
+
+            else:
+                for i, layer in enumerate(self.graph_attention_layers):
+                    try:
+                        graph_features = layer(graph_features, combined_adj)
+                        if i == 0:
+                            print(f"🔗 Graph attention layer {i+1} using STATIC adjacency matrix: {combined_adj.shape}")
+                    except Exception as e:
+                        print(f"⚠️  Graph attention layer {i+1} failed with static adj: {e}")
+                        graph_features = layer(graph_features, None) # Fallback
         
         # 9. Decoder processing
         decoder_features = dec_out
@@ -467,6 +658,10 @@ class Model(nn.Module):
             decoder_features = layer(decoder_features, graph_features)
         
         # 10. Final prediction with Sequential Mixture Decoder
+        output: torch.Tensor | Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        predictions: Optional[torch.Tensor] = None
+        mdn_components: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None
+
         if self.use_mixture_decoder:
             # Sequential mixture density decoder preserves temporal structure
             try:
@@ -488,34 +683,41 @@ class Model(nn.Module):
                     # Fallback to projection
                     predictions = self.projection(prediction_features)
                 
-                # Always return tuple for consistency with get_point_prediction
-                output = (means, log_stds, log_weights)
-                
-                print(f"🎯 Sequential mixture decoder output: means {means.shape}, predictions {predictions.shape}")
+                mdn_components = (means, log_stds, log_weights)
+                if predictions is not None:
+                    print(
+                        f"🎯 Sequential mixture decoder output: means {means.shape}, predictions {predictions.shape}"
+                    )
                 
             except Exception as e:
                 print(f"⚠️  Sequential mixture decoder failed: {e}")
                 import traceback
                 traceback.print_exc()
                 # Fallback to simple projection
-                output = self.projection(decoder_features[:, -self.pred_len:, :])
+                predictions = self.projection(decoder_features[:, -self.pred_len:, :])
         else:
             # Ensure consistent slicing for deterministic case
-            output = self.projection(decoder_features[:, -self.pred_len:, :])
+            predictions = self.projection(decoder_features[:, -self.pred_len:, :])
         
         # Prepare metadata for return
-        final_metadata = {
-            **wave_metadata,  # Include wave aggregation metadata
-            'celestial_metadata': celestial_metadata if self.use_celestial_graph else {},
-            'fusion_metadata': fusion_metadata if self.use_celestial_graph else {}
-        }
+        final_metadata: Optional[Dict[str, Any]]
+        if self.collect_diagnostics:
+            final_metadata = {
+                **wave_metadata,
+                'celestial_metadata': self._move_to_cpu(celestial_metadata) if self.use_celestial_graph else {},
+                'fusion_metadata': self._move_to_cpu(fusion_metadata) if self.use_celestial_graph else {},
+            }
+        else:
+            final_metadata = None
         
         # In case of MDN, the raw tuple/dict is returned for the loss function
         # A point prediction is calculated within the training script for metrics
-        if self.use_mixture_decoder and 'means' in locals():
-            output = (means, log_stds, log_weights)
+        if mdn_components is not None:
+            output = mdn_components
+        elif predictions is not None:
+            output = predictions
         else:
-            output = predictions if 'predictions' in locals() else output
+            output = self.projection(decoder_features[:, -self.pred_len:, :])
         
         return output, final_metadata
     
@@ -543,80 +745,119 @@ class Model(nn.Module):
                 if predictions.size(-1) != self.c_out:
                     return means[..., 0] if means.dim() == 4 else means[..., 0].unsqueeze(-1)
                 return predictions
-        return forward_output # Output is already a point prediction
+        return forward_output  # Output is already a point prediction
     
-    def _process_celestial_graph(self, x_enc, market_context):
-        """Process input through celestial body graph system"""
-        batch_size = x_enc.size(0)
+    def _process_celestial_graph(self, x_enc: torch.Tensor, enc_out: torch.Tensor) -> Dict[str, Any]:
+        """Process encoder features through the dynamic celestial body graph system."""
+        astronomical_adj, dynamic_adj, celestial_features, metadata = self.celestial_nodes(enc_out)
         
-        # Get celestial body representations
-        astronomical_adj, dynamic_adj, celestial_features, metadata = self.celestial_nodes(market_context)
-        
-        # Map input features to celestial space for enhanced processing
-        if hasattr(self, 'phase_aware_processor') and x_enc.size(-1) > 13:
-            # Use the new projection layer to correctly map rich features
-            celestial_mapped = self.rich_feature_to_celestial(x_enc)
+        # The celestial features are dynamic: [batch, seq_len, num_bodies, d_model]
+        batch_size, seq_len, num_bodies, hidden_dim = celestial_features.shape
+        if self.celestial_fusion_attention is None or self.celestial_fusion_gate is None:
+            raise RuntimeError("Celestial fusion modules must be initialized before processing the graph.")
+
+        projected_query = self.celestial_query_projection(enc_out)
+        projected_keys = self.celestial_key_projection(celestial_features)
+        projected_values = self.celestial_value_projection(celestial_features)
+
+        query = projected_query.reshape(batch_size * seq_len, 1, self.celestial_fusion_dim)
+        key = projected_keys.reshape(batch_size * seq_len, num_bodies, self.celestial_fusion_dim)
+        value = projected_values.reshape(batch_size * seq_len, num_bodies, self.celestial_fusion_dim)
+
+        fused_output, attention_weights = self.celestial_fusion_attention(query, key, value)
+        fused_output = fused_output.reshape(batch_size, seq_len, self.celestial_fusion_dim)
+        fused_output = self.celestial_output_projection(fused_output)
+        gate_input = torch.cat([enc_out, fused_output], dim=-1)
+        fusion_gate = self.celestial_fusion_gate(gate_input)
+        celestial_influence = fusion_gate * fused_output
+        enhanced_enc_out = enc_out + celestial_influence
+        if self.collect_diagnostics:
+            metadata['celestial_attention_weights'] = (
+                attention_weights.reshape(batch_size, seq_len, num_bodies).detach().cpu()
+            )
         else:
-            # Traditional mapping for 13D input
-            celestial_mapped = self.feature_to_celestial(x_enc)  # [batch, seq_len, num_celestial_bodies]
-        
-        # Enhance celestial features with temporal information (fix oversimplification)
-        # Use last time step instead of mean to preserve temporal information
-        temporal_celestial = celestial_mapped[:, -1, :]  # [batch, num_celestial_bodies]
-        
-        # Create a more sophisticated celestial influence using proper dimension handling
-        # celestial_features: [batch, num_celestial_bodies, d_model]
-        # temporal_celestial: [batch, num_celestial_bodies]
-        
-        # Project temporal celestial to d_model space
-        temporal_celestial_expanded = temporal_celestial.unsqueeze(-1).expand(-1, -1, self.d_model)  # [batch, num_celestial_bodies, d_model]
-        
-        # Element-wise multiplication and sum to create influence
-        celestial_influence_raw = (celestial_features * temporal_celestial_expanded).sum(dim=1)  # [batch, d_model]
-        
-        # Normalize the influence
-        celestial_influence = F.tanh(celestial_influence_raw)  # [batch, d_model]
-        
-        # Add celestial influence to market context
-        enhanced_context = market_context + celestial_influence
+            metadata = {}
         
         return {
-            'astronomical_adj': astronomical_adj,
-            'dynamic_adj': dynamic_adj,
-            'celestial_features': celestial_features,
-            'enhanced_context': enhanced_context,
-            'metadata': metadata
+            'astronomical_adj': astronomical_adj,  # [batch, seq_len, num_nodes, num_nodes]
+            'dynamic_adj': dynamic_adj,            # [batch, seq_len, num_nodes, num_nodes]
+            'celestial_features': celestial_features,  # [batch, seq_len, num_nodes, d_model]
+            'enhanced_enc_out': enhanced_enc_out,  # [batch, seq_len, d_model]
+            'metadata': metadata,
         }
+
+    def _apply_static_spatiotemporal_encoding(
+        self,
+        enc_out: torch.Tensor,
+        combined_adj: torch.Tensor,
+    ) -> torch.Tensor:
+        """Fallback path that uses the legacy joint encoder with best effort adjacencies."""
+        try:
+            if combined_adj.dim() == 4:
+                adj_for_encoder = combined_adj[:, -1, :, :]
+            else:
+                adj_for_encoder = combined_adj
+
+            if adj_for_encoder.dim() == 3:
+                adj_for_encoder = adj_for_encoder[0]
+
+            if self.use_celestial_graph and self.aggregate_waves_to_celestial:
+                num_nodes = self.num_celestial_bodies
+                if adj_for_encoder.size(0) != num_nodes:
+                    adj_for_encoder = torch.eye(num_nodes, device=enc_out.device)
+                return self.spatiotemporal_encoder(enc_out, adj_for_encoder)
+
+            batch_size, seq_len, d_model = enc_out.shape
+            num_nodes = self.enc_in
+            if adj_for_encoder.size(0) != num_nodes:
+                adj_for_encoder = torch.eye(num_nodes, device=enc_out.device)
+
+            if d_model % num_nodes == 0 and num_nodes > 0:
+                node_dim = d_model // num_nodes
+                enc_out_4d = enc_out.view(batch_size, seq_len, num_nodes, node_dim)
+                encoded_features_4d = self.spatiotemporal_encoder(enc_out_4d, adj_for_encoder)
+                return encoded_features_4d.view(batch_size, seq_len, d_model)
+
+            return self.spatiotemporal_encoder(enc_out, adj_for_encoder)
+
+        except Exception as error:  # pylint: disable=broad-except
+            print(f"⚠️  Spatiotemporal encoding failed: {error}")
+            return enc_out
     
-    def _learn_traditional_graph(self, market_context, batch_size):
-        """Learn traditional graph adjacency"""
-        adj_flat = self.traditional_graph_learner(market_context)
-        if self.use_celestial_graph and getattr(self, 'aggregate_waves_to_celestial', False):
-            adj_matrix = adj_flat.view(batch_size, self.num_celestial_bodies, self.num_celestial_bodies)
-        else:
-            adj_matrix = adj_flat.view(batch_size, self.enc_in, self.enc_in)
+    def _learn_traditional_graph(self, enc_out):
+        """Learn a dynamic traditional graph adjacency for each time step."""
+        batch_size, seq_len, d_model = enc_out.shape
+        
+        # Reshape to apply the learner to each time step independently
+        enc_out_flat = enc_out.reshape(batch_size * seq_len, d_model)
+        adj_flat = self.traditional_graph_learner(enc_out_flat)
+        
+        # Determine the number of nodes
+        num_nodes = self.num_celestial_bodies if (self.use_celestial_graph and self.aggregate_waves_to_celestial) else self.enc_in
+        
+        # Reshape back to a time-varying adjacency matrix
+        adj_matrix = adj_flat.view(batch_size, seq_len, num_nodes, num_nodes)
         return adj_matrix
     
-    def _learn_simple_dynamic_graph(self, market_context, batch_size):
-        """Compute a simple distinct dynamic adjacency for balanced fallback weighting.
-        Uses identity adjacency to avoid double-counting the traditional adjacency when celestial graph is disabled.
-        """
-        device = market_context.device
-        identity = torch.eye(self.enc_in, device=device).unsqueeze(0)
-        return identity.expand(batch_size, self.enc_in, self.enc_in)
+    def _learn_simple_dynamic_graph(self, enc_out):
+        """Compute a simple distinct dynamic identity adjacency for each time step."""
+        batch_size, seq_len, _ = enc_out.shape
+        device = enc_out.device
+        num_nodes = self.num_celestial_bodies if (self.use_celestial_graph and self.aggregate_waves_to_celestial) else self.enc_in
+        identity = torch.eye(num_nodes, device=device).unsqueeze(0).unsqueeze(0)
+        return identity.expand(batch_size, seq_len, num_nodes, num_nodes)
     
-    def _learn_data_driven_graph(self, enc_out, market_context):
-        """Learn data-driven graph from encoded features"""
-        batch_size = enc_out.size(0)
+    def _learn_data_driven_graph(self, enc_out):
+        """Learn a dynamic data-driven graph from encoded features for each time step."""
+        batch_size, seq_len, d_model = enc_out.shape
         
-        # Compute feature similarities
-        feature_summary = enc_out.mean(dim=1)  # [batch, d_model]
-        combined_context = feature_summary + market_context
+        # Reshape to apply the learner to each time step
+        enc_out_flat = enc_out.reshape(batch_size * seq_len, d_model)
         
         if self.use_stochastic_learner:
-            # Stochastic graph learning
-            mean = self.stochastic_mean(combined_context)
-            logvar = self.stochastic_logvar(combined_context)
+            # Stochastic graph learning for each time step
+            mean = self.stochastic_mean(enc_out_flat)
+            logvar = self.stochastic_logvar(enc_out_flat)
             
             if self.training:
                 # Sample during training
@@ -624,40 +865,108 @@ class Model(nn.Module):
                 eps = torch.randn_like(std)
                 adj_flat = mean + eps * std
                 
-                # Store KL divergence as regularization loss (per batch item)
-                # CRITICAL FIX: Normalize KL divergence by the number of dimensions to prevent explosion
+                # Calculate KL divergence for each element in the batch*seq_len dimension
                 kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp(), dim=1)
-                # Normalize by the dimensionality to keep values reasonable
-                kl_div_normalized = kl_div / mean.shape[1]  # Divide by feature dimension
-                self.latest_stochastic_loss = kl_div_normalized.mean()
+                
+                # Reshape to [batch, seq_len] to correctly average over the sequence
+                kl_div_per_step = kl_div.view(batch_size, seq_len)
+                
+                # Average across sequence length and then batch to get a single scalar loss
+                self.latest_stochastic_loss = kl_div_per_step.mean()
             else:
                 # Use mean during inference
                 adj_flat = mean
                 self.latest_stochastic_loss = 0.0
         else:
             # Deterministic graph learning
-            adj_flat = self.traditional_graph_learner(combined_context)
+            adj_flat = self.traditional_graph_learner(enc_out_flat)
             self.latest_stochastic_loss = 0.0
         
-        # Reshape to adjacency matrix
-        if self.use_celestial_graph:
-            adj_matrix = adj_flat.view(batch_size, self.num_celestial_bodies, self.num_celestial_bodies)
-        else:
-            adj_matrix = adj_flat.view(batch_size, self.enc_in, self.enc_in)
+        # Determine the number of nodes
+        num_nodes = self.num_celestial_bodies if self.use_celestial_graph else self.enc_in
+        
+        # Reshape to a time-varying adjacency matrix
+        adj_matrix = adj_flat.view(batch_size, seq_len, num_nodes, num_nodes)
         
         return adj_matrix
     
     def _normalize_adj(self, adj_matrix):
-        """Normalize adjacency matrix for stable fusion"""
+        """Normalize adjacency matrix for stable fusion. Handles both static (rank 3) and dynamic (rank 4) matrices."""
         # Add self-loops for stability
         identity = torch.eye(adj_matrix.size(-1), device=adj_matrix.device)
-        adj_with_self_loops = adj_matrix + identity.unsqueeze(0).expand_as(adj_matrix)
+        
+        if adj_matrix.dim() == 4:  # Dynamic [batch, seq_len, nodes, nodes]
+            identity = identity.unsqueeze(0).unsqueeze(0)  # Expand to [1, 1, nodes, nodes]
+        else:  # Static [batch, nodes, nodes]
+            identity = identity.unsqueeze(0)  # Expand to [1, nodes, nodes]
+            
+        adj_with_self_loops = adj_matrix + identity.expand_as(adj_matrix)
         
         # Row normalization (convert to stochastic matrix)
         row_sums = adj_with_self_loops.sum(dim=-1, keepdim=True)
         normalized = adj_with_self_loops / (row_sums + 1e-8)
         
         return normalized
+
+
+    def _efficient_graph_processing(self, encoded_features, combined_adj):
+        """
+        Performs partitioned graph processing.
+        1. Computes a context vector from the independent covariate graph.
+        2. Updates target node features based on their interactions and influence from the covariate context.
+        This is much more memory-efficient than processing the full graph iteratively.
+        """
+        batch_size, seq_len, _ = encoded_features.shape
+        num_nodes = self.num_graph_nodes
+        
+        # This architecture assumes d_model is divisible by the number of nodes.
+        if self.d_model % num_nodes != 0:
+            raise ValueError(f"d_model ({self.d_model}) must be divisible by num_graph_nodes ({num_nodes}) for efficient processing.")
+        node_dim = self.d_model // num_nodes
+        
+        features_per_node = encoded_features.view(batch_size, seq_len, num_nodes, node_dim)
+        
+        # Partition features and adjacency matrix
+        num_covariates = self.num_graph_nodes - self.c_out
+        covariate_features = features_per_node[:, :, :num_covariates, :]
+        target_features = features_per_node[:, :, num_covariates:, :]
+        
+        adj_cov_cov = combined_adj[:, :, :num_covariates, :num_covariates]
+        adj_tar_cov = combined_adj[:, :, num_covariates:, :num_covariates]
+        adj_tar_tar = combined_adj[:, :, num_covariates:, num_covariates:]
+        
+        # 1. Process Covariates to get a context summary
+        # Perform graph convolution: A * X
+        cov_interaction = torch.einsum('bsnm,bsmd->bsnd', adj_cov_cov, covariate_features)
+        # Apply shared weight matrix: (A * X) * W
+        processed_covariates = self.covariate_interaction_layer(cov_interaction)
+        # Aggregate across covariate nodes to get a single context vector per timestep
+        covariate_context = processed_covariates.mean(dim=2)  # Shape: [batch, seq_len, node_dim]
+        
+        # 2. Update Target Features
+        # Influence from covariates on targets: A_tc * C
+        influence_from_cov = torch.einsum('bsnm,bsmd->bsnd', adj_tar_cov, covariate_features)
+        # Self-influence of targets: A_tt * T
+        influence_from_self = torch.einsum('bsnm,bsmd->bsnd', adj_tar_tar, target_features)
+        
+        # The new features for targets are a combination of their old state and influences
+        updated_target_features = target_features + influence_from_cov + influence_from_self
+        
+        # 3. Fuse with global covariate context
+        # Expand context to be concatenated with each target node's features
+        expanded_context = covariate_context.unsqueeze(2).expand(-1, -1, self.c_out, -1)
+        
+        # Reshape for fusion layer
+        fusion_input = torch.cat([updated_target_features, expanded_context], dim=-1)
+        
+        fused_target_features = self.target_fusion_layer(fusion_input)
+        
+        # 4. Reconstruct the full feature tensor
+        # We use the original, unchanged covariate features and the updated target features
+        final_features_per_node = torch.cat([covariate_features, fused_target_features], dim=2)
+        
+        # Reshape back to the expected [batch, seq_len, d_model]
+        return final_features_per_node.view(batch_size, seq_len, self.d_model)
 
 
 class DecoderLayer(nn.Module):
@@ -740,7 +1049,7 @@ class PositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000):
         super().__init__()
         pe = torch.zeros(max_len, d_model).float()
-        pe.require_grad = False
+        pe.requires_grad = False
         
         position = torch.arange(0, max_len).float().unsqueeze(1)
         div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()

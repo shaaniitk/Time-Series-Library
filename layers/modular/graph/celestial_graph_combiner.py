@@ -107,27 +107,60 @@ class CelestialGraphCombiner(nn.Module):
         astronomical_edges: torch.Tensor,
         learned_edges: torch.Tensor, 
         attention_edges: torch.Tensor,
-        market_context: torch.Tensor,
+        enc_out: torch.Tensor, # Changed from market_context
         market_regime: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
-        Forward pass with hierarchical attention fusion
+        Forward pass with hierarchical attention fusion, now adapted for dynamic inputs.
         
         Args:
-            astronomical_edges: [batch, num_nodes, num_nodes] Fixed astronomical adjacency
-            learned_edges: [batch, num_nodes, num_nodes] Data-driven adjacency
-            attention_edges: [batch, num_nodes, num_nodes] Attention-based adjacency
-            market_context: [batch, d_model] Market state representation
+            astronomical_edges: [batch, seq_len, num_nodes, num_nodes]
+            learned_edges: [batch, seq_len, num_nodes, num_nodes]
+            attention_edges: [batch, seq_len, num_nodes, num_nodes]
+            enc_out: [batch, seq_len, d_model] Full encoder output
             market_regime: [batch] Optional market regime indicators
             
         Returns:
             Tuple of:
-            - combined_edges: [batch, num_nodes, num_nodes] Final combined adjacency
-            - metadata: Dict with fusion information and interpretability
+            - combined_edges: [batch, seq_len, num_nodes, num_nodes] Final combined adjacency
+            - metadata: Dict with fusion information from the last time step
         """
-        batch_size = astronomical_edges.size(0)
-        device = astronomical_edges.device
+        batch_size, seq_len, _, _ = astronomical_edges.shape
         
+        combined_edges_over_time = []
+        last_metadata = {}
+
+        # Iterate over each time step
+        for t in range(seq_len):
+            # Slice inputs for the current time step to make them static
+            astro_t = astronomical_edges[:, t, :, :]
+            learned_t = learned_edges[:, t, :, :]
+            attn_t = attention_edges[:, t, :, :]
+            context_t = enc_out[:, t, :] # Use the encoder output for this step as context
+
+            # Call the original fusion logic for this single time step
+            combined_t, metadata_t = self._forward_static(
+                astro_t, learned_t, attn_t, context_t, market_regime
+            )
+            combined_edges_over_time.append(combined_t)
+            last_metadata = metadata_t
+
+        # Stack the results from all time steps
+        combined_edges = torch.stack(combined_edges_over_time, dim=1)
+        
+        return combined_edges, last_metadata
+
+    def _forward_static(
+        self,
+        astronomical_edges: torch.Tensor,
+        learned_edges: torch.Tensor, 
+        attention_edges: torch.Tensor,
+        market_context: torch.Tensor,
+        market_regime: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        """
+        Original forward pass logic, now used for a single time step.
+        """
         # 1. Transform each edge type to feature space
         edge_features = self._transform_edges_to_features(
             astronomical_edges, learned_edges, attention_edges

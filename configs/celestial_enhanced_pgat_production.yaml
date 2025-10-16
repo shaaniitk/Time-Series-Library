@@ -16,17 +16,17 @@ freq: d               # Daily frequency
 use_gpu: true
 
 # PRODUCTION Sequence settings - HEAVY DUTY
-seq_len: 500          # Long sequence for better pattern recognition
-label_len: 250        # Half of seq_len
-pred_len: 20          # Shorter prediction horizon for better accuracy
+seq_len: 250          # Long sequence for better pattern recognition
+label_len: 125        # Half of seq_len
+pred_len: 10        # Shorter prediction horizon for better accuracy
 
 # Data split settings - Larger sets for production
-validation_length: 800   # Large validation set
-test_length: 400         # Large test set
+validation_length: 50   # Large validation set
+test_length: 50         # Large test set
 
 # PRODUCTION Optimization - 20 epochs overnight with advanced scheduling
 learning_rate: 0.001     # Base learning rate after warmup
-train_epochs: 20         # Full overnight training
+train_epochs: 50        # Full overnight training
 batch_size: 16           # Smaller batch size due to longer sequences
 patience: 999            # Effectively disable early stopping
 lradj: warmup_cosine     # Warmup + Cosine Annealing for robust training
@@ -36,7 +36,7 @@ weight_decay: 0.0001
 clip_grad_norm: 1.0
 
 # HEAVY MODEL hyperparameters - Maximum capacity
-d_model: 128             # Double the model dimension
+d_model: 130             # Double the model dimension
 n_heads: 8               # More attention heads
 e_layers: 4              # Deeper encoder
 d_layers: 2              # Deeper decoder
@@ -61,6 +61,7 @@ target_wave_indices: [0, 1, 2, 3]  # All OHLC targets
 use_mixture_decoder: false              # Keep deterministic for stability
 use_stochastic_learner: false           # Disable for production stability
 use_hierarchical_mapping: false         # Disable for production stability
+use_efficient_covariate_interaction: true # Use memory-efficient partitioned graph processing
 mdn_multivariate_mode: independent
 
 # Regularization - PRODUCTION TUNED
