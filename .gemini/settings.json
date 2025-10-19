@@ -1,6 +1,4 @@
 {
-  "theme": "GitHub",
-  "selectedAuthType": "gemini-api-key",
   "mcpServers": {
     "sequentialthinking": {
       "command": "npx",

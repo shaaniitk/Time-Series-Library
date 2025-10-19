@@ -7,16 +7,17 @@ Heavy-duty overnight training with maximum model capacity
 import os
 import sys
 import io
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, cast
 
 # Ensure stdout/stderr can emit UTF-8 on Windows to avoid UnicodeEncodeError
 try:
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        cast(Any, sys.stdout).reconfigure(encoding="utf-8", errors="replace")
     else:
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        cast(Any, sys.stderr).reconfigure(encoding="utf-8", errors="replace")
     else:
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 except Exception:
@@ -25,6 +26,24 @@ except Exception:
 
 import torch
 import torch.nn as nn
+from torch.optim.adam import Adam
+from torch.optim.optimizer import Optimizer
+
+try:
+    import torch.cuda.amp as torch_amp
+except (ImportError, AttributeError):  # pragma: no cover - AMP unavailable on some builds
+    torch_amp = None  # type: ignore[assignment]
+
+if torch_amp is not None and hasattr(torch_amp, "GradScaler"):
+    GradScaler = cast(Any, getattr(torch_amp, "GradScaler"))
+else:  # pragma: no cover - AMP unavailable
+    GradScaler = None  # type: ignore[assignment]
+
+torch_autocast: Optional[Callable[..., Any]]
+if torch_amp is not None and hasattr(torch_amp, "autocast"):
+    torch_autocast = cast(Callable[..., Any], getattr(torch_amp, "autocast"))
+else:  # pragma: no cover - AMP unavailable
+    torch_autocast = None
 import numpy as np
 import pandas as pd
 import yaml
@@ -50,12 +69,38 @@ warnings.filterwarnings('ignore')
 logging.getLogger('utils.logger').setLevel(logging.ERROR)
 
 class SimpleConfig:
-    """Simple configuration class"""
-    def __init__(self, config_dict):
-        for key, value in config_dict.items():
-            setattr(self, key, value)
+    """Dictionary-backed configuration with attribute access support."""
 
-def scale_targets_for_loss(targets_unscaled, target_scaler, target_indices, device):
+    __slots__ = ("_data",)
+
+    def __init__(self, config_dict: Mapping[str, Any]) -> None:
+        super().__setattr__("_data", dict(config_dict))
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._data[name]
+        except KeyError as exc:  # pragma: no cover - diagnostic aid only
+            raise AttributeError(f"Configuration does not define attribute '{name}'.") from exc
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        self._data[name] = value
+
+    def get(self, name: str, default: Any = None) -> Any:
+        """Dictionary-style getter used for compatibility with mapping APIs."""
+
+        return self._data.get(name, default)
+
+    def items(self) -> Iterable[Tuple[str, Any]]:
+        """Iterate over stored configuration keys and values."""
+
+        return self._data.items()
+
+def scale_targets_for_loss(
+    targets_unscaled: torch.Tensor,
+    target_scaler: Any,
+    target_indices: Sequence[int],
+    device: torch.device,
+) -> torch.Tensor:
     """
     Scale target values for loss computation to match scaled predictions
     
@@ -90,7 +135,13 @@ def scale_targets_for_loss(targets_unscaled, target_scaler, target_indices, devi
         # Fallback: return unscaled targets (will cause scale mismatch but won't crash)
         return targets_unscaled[:, :, target_indices].to(device)
 
-def get_warmup_cosine_lr(epoch, warmup_epochs, total_epochs, base_lr, min_lr=1e-6):
+def get_warmup_cosine_lr(
+    epoch: int,
+    warmup_epochs: int,
+    total_epochs: int,
+    base_lr: float,
+    min_lr: float = 1e-6,
+) -> float:
     """
     Warmup + Cosine Annealing Learning Rate Schedule
     
@@ -112,7 +163,7 @@ def get_warmup_cosine_lr(epoch, warmup_epochs, total_epochs, base_lr, min_lr=1e-
         progress = (epoch - warmup_epochs) / (total_epochs - warmup_epochs)
         return min_lr + (base_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * progress))
 
-def adjust_learning_rate_warmup_cosine(optimizer, epoch, args):
+def adjust_learning_rate_warmup_cosine(optimizer: Optimizer, epoch: int, args: Any) -> float:
     """
     Enhanced learning rate adjustment with warmup + cosine annealing
     """
@@ -136,7 +187,9 @@ def adjust_learning_rate_warmup_cosine(optimizer, epoch, args):
         adjust_learning_rate(optimizer, epoch, args)
         return optimizer.param_groups[0]['lr']
 
-def _normalize_model_output(raw_output):
+def _normalize_model_output(
+    raw_output: Any,
+) -> Tuple[torch.Tensor, float, Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]], Optional[Dict[str, Any]]]:
     """Convert mixed forward outputs into tensor, scalar aux loss, optional MDN tuple, and metadata."""
     aux_loss = 0.0
     mdn_tuple = None
@@ -259,7 +312,7 @@ def train_celestial_pgat_production():
         target_scaler = train_scaler
     
     # Define target indices for OHLC
-    target_indices = [0, 1, 2, 3]  # OHLC indices
+    target_indices: List[int] = [0, 1, 2, 3]  # OHLC indices
     print(f"   - Target indices for OHLC: {target_indices}")
     
     # Initialize HEAVY model
@@ -288,12 +341,13 @@ def train_celestial_pgat_production():
     # Ensure learning_rate is float (YAML might load it as string)
     learning_rate = float(args.learning_rate)
     weight_decay = float(getattr(args, 'weight_decay', 0.0001))
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     
     # Mixed precision training
     use_amp = getattr(args, 'mixed_precision', False) and device.type == 'cuda'
     if use_amp:
-        from torch.cuda.amp import GradScaler, autocast
+        if GradScaler is None or torch_autocast is None:
+            raise RuntimeError("Mixed precision requested but torch.cuda.amp is unavailable in this environment.")
         scaler = GradScaler()
         print("🚀 Mixed precision training enabled")
     else:
@@ -351,7 +405,7 @@ def train_celestial_pgat_production():
     print(f"💾 Checkpoints will be saved to: {checkpoint_dir}")
     
     # Auto-detect target indices from CSV header
-    target_indices = None
+    detected_target_indices: Optional[List[int]] = None
     try:
         if hasattr(args, 'target') and args.target:
             csv_path = os.path.join(args.root_path, args.data_path)
@@ -378,20 +432,23 @@ def train_celestial_pgat_production():
             else:
                 target_names = list(args.target)
             name_to_index = {name: idx for idx, name in enumerate(feature_cols)}
-            target_indices = [name_to_index[n] for n in target_names if n in name_to_index]
-            
-            if not target_indices:
-                target_indices = list(range(getattr(args, 'c_out', 1)))
-            print(f"🎯 Target indices resolved: {target_indices}")
+            detected_target_indices = [name_to_index[n] for n in target_names if n in name_to_index]
+
+            if not detected_target_indices:
+                detected_target_indices = list(range(getattr(args, 'c_out', 1)))
+            print(f"🎯 Target indices resolved: {detected_target_indices}")
             print(f"🎯 Target names: {target_names}")
             
-            if len(target_indices) != args.c_out:
-                print(f"⚠️  Adjusting c_out from {args.c_out} to {len(target_indices)}")
-                args.c_out = len(target_indices)
+            if len(detected_target_indices) != args.c_out:
+                print(f"⚠️  Adjusting c_out from {args.c_out} to {len(detected_target_indices)}")
+                args.c_out = len(detected_target_indices)
                 
     except Exception as e:
         print(f"⚠️  Failed to auto-detect target indices: {e}")
-        target_indices = list(range(getattr(args, 'c_out', 4)))
+        detected_target_indices = list(range(getattr(args, 'c_out', 4)))
+
+    if detected_target_indices is not None:
+        target_indices = detected_target_indices
 
     # PRODUCTION Training loop
     print("\\n🔥 Starting PRODUCTION training loop...")
@@ -402,6 +459,10 @@ def train_celestial_pgat_production():
     # Training start time
     training_start_time = time.time()
     
+    total_train_batches = len(train_loader)
+    full_cycles, remainder_batches = divmod(total_train_batches, gradient_accumulation_steps)
+    best_val_loss = float('inf')
+
     for epoch in range(args.train_epochs):
         epoch_start = time.time()
         
@@ -409,13 +470,11 @@ def train_celestial_pgat_production():
         model.train()
         train_loss = 0.0
         train_batches = 0
+        optimizer.zero_grad(set_to_none=True)
         
         print(f"\\n🌌 Epoch {epoch+1}/{args.train_epochs} - PRODUCTION TRAINING")
         
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
-            # Zero gradients only at the start of accumulation cycle
-            if i % gradient_accumulation_steps == 0:
-                optimizer.zero_grad()
             
             # Move to device
             batch_x = batch_x.float().to(device)
@@ -433,22 +492,26 @@ def train_celestial_pgat_production():
             try:
                 # Forward pass with optional mixed precision
                 if use_amp:
-                    with autocast():
+                    if torch_autocast is None:
+                        raise RuntimeError("AMP training requested but torch.cuda.amp.autocast is unavailable on this platform.")
+                    amp_autocast = torch_autocast
+                    with amp_autocast():
                         outputs_raw = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
                 else:
                     outputs_raw = model(batch_x_input, batch_x_mark, dec_inp, batch_y_mark)
-                
-                # Normalize model output using consistent approach
+
                 outputs_tensor, aux_loss, mdn_outputs, metadata = _normalize_model_output(outputs_raw)
-                
-                # Prepare y_true for loss: scale the target part of batch_y
+
                 c_out_evaluation = len(target_indices)
                 y_true_for_loss = scale_targets_for_loss(
                     batch_y[:, -args.pred_len:, :], target_scaler, target_indices, device
                 )
-                
-                # Compute loss using consistent approach
-                if isinstance(criterion, (MixtureNLLLoss, SequentialMixtureNLLLoss)) or mdn_outputs is not None:
+
+                # Compute raw loss before applying accumulation scaling
+                raw_loss: torch.Tensor
+                is_seq_mixture = SequentialMixtureNLLLoss is not None and isinstance(criterion, SequentialMixtureNLLLoss)
+                is_mixture = MixtureNLLLoss is not None and isinstance(criterion, MixtureNLLLoss)
+                if is_seq_mixture or is_mixture or mdn_outputs is not None:
                     if mdn_outputs is None:
                         raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple during training.")
                     means_t, stds_t, weights_t = mdn_outputs
@@ -457,73 +520,69 @@ def train_celestial_pgat_production():
                         stds_t = stds_t[:, -args.pred_len:, ...]
                         weights_t = weights_t[:, -args.pred_len:, ...]
                     targets_t = y_true_for_loss.squeeze(-1) if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1 else y_true_for_loss
-                    loss = criterion((means_t, stds_t, weights_t), targets_t)
+                    raw_loss = criterion((means_t, stds_t, weights_t), targets_t)
                 else:
-                    # Standard deterministic output
                     y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
-                    loss = criterion(y_pred_for_loss, y_true_for_loss)
-                
-                # Add auxiliary loss if present
+                    raw_loss = criterion(y_pred_for_loss, y_true_for_loss)
+
                 if aux_loss:
-                    loss = loss + aux_loss
-                
-                # Add regularization if enabled
+                    raw_loss = raw_loss + aux_loss
+
                 if getattr(model, 'use_stochastic_learner', False):
                     reg_loss = model.get_regularization_loss()
-                    reg_weight = getattr(args, 'reg_loss_weight', 0.0005)
-                    reg_contribution = reg_loss * reg_weight
-                    loss = loss + reg_contribution
+                    reg_weight = float(getattr(args, 'reg_loss_weight', 0.0005))
+                    raw_loss = raw_loss + (reg_loss * reg_weight)
 
-                # Scale loss for gradient accumulation
-                loss = loss / gradient_accumulation_steps
+                cycle_index = i // gradient_accumulation_steps
+                effective_cycle = gradient_accumulation_steps
+                if remainder_batches and cycle_index >= full_cycles:
+                    effective_cycle = remainder_batches
 
-                # Backward pass with optional mixed precision
-                if use_amp:
+                loss = raw_loss / effective_cycle
+
+                if use_amp and scaler is not None:
                     scaler.scale(loss).backward()
                 else:
                     loss.backward()
-                
-                # Update parameters only after accumulation steps
-                if (i + 1) % gradient_accumulation_steps == 0:
-                    # Gradient clipping
+
+                is_cycle_end = (i + 1) % gradient_accumulation_steps == 0
+                is_final_partial = remainder_batches and cycle_index >= full_cycles and i == total_train_batches - 1
+                if is_cycle_end or is_final_partial:
                     if hasattr(args, 'clip_grad_norm'):
-                        if use_amp:
+                        clip_value = float(getattr(args, 'clip_grad_norm', 0.0))
+                        if use_amp and scaler is not None:
                             scaler.unscale_(optimizer)
-                            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
-                            scaler.step(optimizer)
-                            scaler.update()
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
                         else:
-                            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
-                            optimizer.step()
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
+                    if use_amp and scaler is not None:
+                        scaler.step(optimizer)
+                        scaler.update()
                     else:
-                        if use_amp:
-                            scaler.step(optimizer)
-                            scaler.update()
-                        else:
-                            optimizer.step()
-                
-                # Accumulate loss (multiply back by accumulation steps for correct averaging)
-                train_loss += loss.item() * gradient_accumulation_steps
+                        optimizer.step()
+                    if i != total_train_batches - 1:
+                        optimizer.zero_grad(set_to_none=True)
+
+                train_loss += raw_loss.detach().item()
                 train_batches += 1
-                
-                # Log progress
+
                 log_interval = getattr(args, 'log_interval', 10)
                 if i % log_interval == 0:
                     elapsed = time.time() - epoch_start
-                    print(f"      Batch {i:4d}/{len(train_loader)} | Loss: {loss.item():.6f} | Time: {elapsed:.1f}s")
-                    
-                    # Debug scaling for first epoch, first batch
+                    print(f"      Batch {i:4d}/{len(train_loader)} | Loss: {raw_loss.detach().item():.6f} | Time: {elapsed:.1f}s")
+
                     if epoch == 0 and i == 0:
                         print(f"🔍 PRODUCTION TRAIN - First batch scaling check:")
                         print(f"   - Raw batch_y OHLC: mean={batch_y[:, -args.pred_len:, :4].mean():.6f}, std={batch_y[:, -args.pred_len:, :4].std():.6f}")
                         print(f"   - Scaled targets: mean={y_true_for_loss.mean():.6f}, std={y_true_for_loss.std():.6f}")
                         print(f"   - Model outputs: mean={outputs_tensor.mean():.6f}, std={outputs_tensor.std():.6f}")
                         print(f"   - ✅ Scaling consistency verified for production training")
-                
+
             except Exception as e:
                 print(f"❌ Training step failed: {e}")
                 import traceback
                 traceback.print_exc()
+                optimizer.zero_grad(set_to_none=True)
                 continue
         
         avg_train_loss = train_loss / max(train_batches, 1)
@@ -558,7 +617,13 @@ def train_celestial_pgat_production():
                     )
                     
                     # Compute validation loss using consistent approach
-                    if isinstance(criterion, (MixtureNLLLoss, SequentialMixtureNLLLoss)) or mdn_outputs is not None:
+                    use_mixture_loss = False
+                    if MixtureNLLLoss is not None and isinstance(criterion, MixtureNLLLoss):
+                        use_mixture_loss = True
+                    elif SequentialMixtureNLLLoss is not None and isinstance(criterion, SequentialMixtureNLLLoss):
+                        use_mixture_loss = True
+
+                    if use_mixture_loss or mdn_outputs is not None:
                         if mdn_outputs is None:
                             raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple.")
                         means_v, stds_v, weights_v = mdn_outputs
@@ -616,12 +681,8 @@ def train_celestial_pgat_production():
         checkpoint_interval = getattr(args, 'checkpoint_interval', 5)
         save_best_only = getattr(args, 'save_best_only', False)
         
-        # Save best model
-        if not hasattr(train_celestial_pgat_production, 'best_val_loss'):
-            train_celestial_pgat_production.best_val_loss = float('inf')
-        
-        if avg_val_loss < train_celestial_pgat_production.best_val_loss:
-            train_celestial_pgat_production.best_val_loss = avg_val_loss
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
             best_checkpoint_path = checkpoint_dir / 'best_model.pth'
             torch.save({
                 'epoch': epoch + 1,

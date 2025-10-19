@@ -130,6 +130,79 @@
              "redirectOutput": true
          },
          {
+             "name": "Debug: Celestial Production Training",
+             "type": "debugpy",
+             "request": "launch",
+             "program": "${workspaceFolder}/scripts/train/train_celestial_production.py",
+             "console": "integratedTerminal",
+             "cwd": "${workspaceFolder}",
+             "env": {
+                 "PYTHONPATH": "${workspaceFolder}",
+                 "CUDA_VISIBLE_DEVICES": "0"
+             },
+             "args": [],
+             "justMyCode": false,
+             "stopOnEntry": false,
+             "showReturnValue": true,
+             "redirectOutput": true,
+             "internalConsoleOptions": "neverOpen"
+         },
+         {
+             "name": "Debug: Celestial Production (Memory Profiling)",
+             "type": "debugpy",
+             "request": "launch",
+             "program": "${workspaceFolder}/scripts/train/train_celestial_production.py",
+             "console": "integratedTerminal",
+             "cwd": "${workspaceFolder}",
+             "env": {
+                 "PYTHONPATH": "${workspaceFolder}",
+                 "CUDA_VISIBLE_DEVICES": "0",
+                 "PYTORCH_CUDA_ALLOC_CONF": "max_split_size_mb:512"
+             },
+             "args": [],
+             "justMyCode": false,
+             "stopOnEntry": false,
+             "showReturnValue": true,
+             "redirectOutput": true,
+             "internalConsoleOptions": "neverOpen"
+         },
+         {
+             "name": "Debug: Celestial Production (Simplified)",
+             "type": "debugpy",
+             "request": "launch",
+             "program": "${workspaceFolder}/scripts/train/debug_celestial_production.py",
+             "console": "integratedTerminal",
+             "cwd": "${workspaceFolder}",
+             "env": {
+                 "PYTHONPATH": "${workspaceFolder}",
+                 "CUDA_VISIBLE_DEVICES": "0"
+             },
+             "args": [],
+             "justMyCode": false,
+             "stopOnEntry": false,
+             "showReturnValue": true,
+             "redirectOutput": true,
+             "internalConsoleOptions": "neverOpen"
+         },
+         {
+             "name": "Debug: Celestial Memory Fix",
+             "type": "debugpy",
+             "request": "launch",
+             "program": "${workspaceFolder}/scripts/train/debug_celestial_memory_fix.py",
+             "console": "integratedTerminal",
+             "cwd": "${workspaceFolder}",
+             "env": {
+                 "PYTHONPATH": "${workspaceFolder}",
+                 "CUDA_VISIBLE_DEVICES": "0"
+             },
+             "args": [],
+             "justMyCode": false,
+             "stopOnEntry": false,
+             "showReturnValue": true,
+             "redirectOutput": true,
+             "internalConsoleOptions": "neverOpen"
+         },
+         {
              "name": "Python: Attach to debugpy",
              "type": "debugpy",
              "request": "attach",

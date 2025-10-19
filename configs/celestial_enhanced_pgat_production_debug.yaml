@@ -1,0 +1,77 @@
+# Celestial Enhanced PGAT DEBUG PRODUCTION training configuration
+# Memory-optimized version for debugging
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: celestial_enhanced_pgat_debug_production
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS          # Multivariate input, univariate output
+target: log_Open,log_High,log_Low,log_Close     # Predict all OHLC values
+embed: timeF
+freq: d               # Daily frequency
+use_gpu: true
+
+# DEBUG Sequence settings - MEMORY OPTIMIZED
+seq_len: 96           # Reduced from 250 for memory debugging
+label_len: 48         # Half of seq_len
+pred_len: 24          # Reduced from 10 for debugging
+
+# Data split settings
+validation_length: 30   # Smaller validation set
+test_length: 30         # Smaller test set
+
+# DEBUG Optimization - Fewer epochs for testing
+learning_rate: 0.001     # Base learning rate after warmup
+train_epochs: 5          # Just 5 epochs for debugging
+batch_size: 4            # Very small batch size for memory debugging
+patience: 999            # Effectively disable early stopping
+lradj: warmup_cosine     # Warmup + Cosine Annealing for robust training
+warmup_epochs: 2         # 2 epochs of linear warmup
+min_lr: 1e-6             # Minimum learning rate at the end
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# DEBUG MODEL hyperparameters - MEMORY OPTIMIZED
+d_model: 64              # Reduced from 130 for memory debugging
+n_heads: 4               # Reduced from 8 for memory debugging
+e_layers: 2              # Reduced from 4 for memory debugging
+d_layers: 1              # Reduced from 2 for memory debugging
+d_ff: 256                # Reduced from 512 for memory debugging
+dropout: 0.1
+
+# Input/Output dimensions (based on prepared_financial_data.csv)
+enc_in: 118    # Number of celestial wave features
+dec_in: 118    # Same as encoder input  
+c_out: 4       # Four target outputs (OHLC)
+
+# CELESTIAL SYSTEM - MEMORY OPTIMIZED 🌌
+use_celestial_graph: true               # Enable celestial system
+aggregate_waves_to_celestial: true      # Enable wave aggregation to celestial bodies
+celestial_fusion_layers: 2              # Reduced from 4 for memory debugging
+
+# Wave aggregation settings - OPTIMIZED FOR DEBUGGING
+num_input_waves: 118   # Full celestial wave features
+target_wave_indices: [0, 1, 2, 3]  # All OHLC targets
+
+# Advanced features - DISABLED FOR DEBUGGING STABILITY
+use_mixture_decoder: false              # Keep deterministic for stability
+use_stochastic_learner: false           # Disable for debugging stability
+use_hierarchical_mapping: false         # Disable for debugging stability
+use_efficient_covariate_interaction: true # Use memory-efficient partitioned graph processing
+mdn_multivariate_mode: independent
+
+# Regularization - LIGHT FOR DEBUGGING
+reg_loss_weight: 0.0005  # Light regularization
+kl_weight: 0.00005       # Very light KL regularization
+
+# Debug settings - Enhanced monitoring
+save_checkpoints: true
+checkpoint_interval: 2   # Save every 2 epochs for debugging
+log_interval: 5          # Log every 5 batches for debugging
+gradient_accumulation_steps: 1  # No accumulation for debugging
+mixed_precision: false   # Disable mixed precision for debugging clarity
+save_best_only: false    # Save all checkpoints for analysis
