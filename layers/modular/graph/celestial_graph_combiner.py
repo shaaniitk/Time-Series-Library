@@ -166,9 +166,8 @@ class CelestialGraphCombiner(nn.Module):
             astronomical_edges, learned_edges, attention_edges
         )  # [batch, 3, num_nodes, num_nodes, d_model]
         
-        # 2. Hierarchical attention fusion
+        # 2. Hierarchical attention fusion (returns [batch, num_nodes, num_nodes, d_model])
         fused_features = self._hierarchical_fusion(edge_features, market_context)
-        # [batch, num_nodes, num_nodes, d_model]
         
         # 3. Cross-modal interactions
         interaction_features = self._compute_cross_interactions(
@@ -376,31 +375,62 @@ class HierarchicalFusionLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
     
     def forward(self, edge_features: torch.Tensor, market_context: torch.Tensor) -> torch.Tensor:
-        """
+        """Memory-efficient hierarchical fusion over edge features.
+
         Args:
-            edge_features: [batch, num_edge_types, seq_len, d_model]
+            edge_features: [batch, num_edge_types, seq_len, d_model] flattened adjacency features.
             market_context: [batch, d_model]
+
+        Returns:
+            torch.Tensor: [batch, num_edge_types, seq_len, d_model] refined edge features.
         """
         batch_size, num_edge_types, seq_len, d_model = edge_features.shape
-        
-        # Flatten for attention
-        features_flat = edge_features.view(batch_size, num_edge_types * seq_len, d_model)
-        
-        # Self-attention across edge types and positions
-        attended, _ = self.self_attention(features_flat, features_flat, features_flat)
-        features_flat = self.norm1(features_flat + self.dropout(attended))
-        
-        # Cross-attention with market context
-        market_expanded = market_context.unsqueeze(1).expand(-1, num_edge_types * seq_len, -1)
-        cross_attended, _ = self.cross_attention(features_flat, market_expanded, market_expanded)
-        features_flat = self.norm2(features_flat + self.dropout(cross_attended))
-        
-        # Feed forward
-        ff_output = self.feed_forward(features_flat)
-        features_flat = self.norm3(features_flat + self.dropout(ff_output))
-        
-        # Reshape back
-        return features_flat.view(batch_size, num_edge_types, seq_len, d_model)
+        num_nodes = math.isqrt(seq_len)
+        has_square_layout = num_nodes > 0 and num_nodes * num_nodes == seq_len
+
+        if has_square_layout:
+            # Reshape to structured adjacency for per-node grouping
+            adjacency = edge_features.view(batch_size, num_edge_types, num_nodes, num_nodes, d_model)
+
+            # Group edges per source node to keep attention windows small (tokens = edge_types * num_nodes)
+            node_grouped = adjacency.permute(0, 2, 1, 3, 4).contiguous()
+            node_grouped = node_grouped.view(batch_size * num_nodes, num_edge_types * num_nodes, d_model)
+
+            # Self-attention within each node group
+            attended, _ = self.self_attention(node_grouped, node_grouped, node_grouped)
+            node_grouped = self.norm1(node_grouped + self.dropout(attended))
+
+            # Cross-attention with market context (broadcast context per group)
+            market_context_expanded = market_context.unsqueeze(1).expand(batch_size, num_nodes, d_model)
+            market_context_flat = market_context_expanded.reshape(batch_size * num_nodes, 1, d_model)
+            market_context_broadcast = market_context_flat.expand(-1, num_edge_types * num_nodes, -1)
+            cross_attended, _ = self.cross_attention(node_grouped, market_context_broadcast, market_context_broadcast)
+            node_grouped = self.norm2(node_grouped + self.dropout(cross_attended))
+
+            # Feed-forward refinement
+            ff_output = self.feed_forward(node_grouped)
+            node_grouped = self.norm3(node_grouped + self.dropout(ff_output))
+
+            # Restore original flattened layout
+            node_grouped = node_grouped.view(batch_size, num_nodes, num_edge_types, num_nodes, d_model)
+            fused = node_grouped.permute(0, 2, 1, 3, 4).contiguous()
+            return fused.view(batch_size, num_edge_types, seq_len, d_model)
+
+        # Fallback: treat sequence generically when adjacency layout is unavailable
+        tokens_grouped = edge_features.view(batch_size * num_edge_types, seq_len, d_model)
+
+        attended, _ = self.self_attention(tokens_grouped, tokens_grouped, tokens_grouped)
+        tokens_grouped = self.norm1(tokens_grouped + self.dropout(attended))
+
+        market_context_repeated = market_context.repeat_interleave(num_edge_types, dim=0)
+        market_context_repeated = market_context_repeated.unsqueeze(1).expand(-1, seq_len, -1)
+        cross_attended, _ = self.cross_attention(tokens_grouped, market_context_repeated, market_context_repeated)
+        tokens_grouped = self.norm2(tokens_grouped + self.dropout(cross_attended))
+
+        ff_output = self.feed_forward(tokens_grouped)
+        tokens_grouped = self.norm3(tokens_grouped + self.dropout(ff_output))
+
+        return tokens_grouped.view(batch_size, num_edge_types, seq_len, d_model)
 
 
 class CrossInteractionLayer(nn.Module):

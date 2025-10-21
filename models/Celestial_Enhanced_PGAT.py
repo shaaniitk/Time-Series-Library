@@ -7,7 +7,8 @@ creating the world's first astronomically-informed time series forecasting model
 
 import logging
 import math
-from typing import Optional, Tuple, Dict, Any
+import os
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -39,6 +40,9 @@ class Model(nn.Module):
     def __init__(self, configs):
         super().__init__()
         self.configs = configs
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.verbose_logging = bool(getattr(configs, "verbose_logging", False))
+        self.enable_memory_debug = bool(getattr(configs, "enable_memory_debug", False))
         
         # Core parameters
         self.seq_len = configs.seq_len
@@ -88,9 +92,14 @@ class Model(nn.Module):
             original_d_model = self.d_model
             # Calculate the next highest multiple of the required_multiple
             self.d_model = (original_d_model + required_multiple - 1) // required_multiple * required_multiple
-            print(f"⚠️  WARNING: d_model ({original_d_model}) is not compatible with graph/attention dimensions.")
-            print(f"   It must be a multiple of {required_multiple} (LCM of {num_nodes_for_adjustment} nodes and {self.n_heads} heads).")
-            print(f"   Automatically adjusting d_model to {self.d_model} for compatibility.")
+            self.logger.warning(
+                "d_model=%s is not compatible with graph/attention dimensions; required multiple=%s (nodes=%s heads=%s). Adjusted to %s.",
+                original_d_model,
+                required_multiple,
+                num_nodes_for_adjustment,
+                self.n_heads,
+                self.d_model,
+            )
         # --- End of adjustment ---
         
         # Wave aggregation settings
@@ -125,17 +134,7 @@ class Model(nn.Module):
             # New projection layer to fix information bottleneck
             self.rich_feature_to_celestial = nn.Linear(self.num_celestial_bodies * 32, self.num_celestial_bodies)
         
-        print(f"🌌 Initializing Celestial Enhanced PGAT:")
-        print(f"   - Sequence length: {self.seq_len}")
-        print(f"   - Prediction length: {self.pred_len}")
-        print(f"   - Model dimension: {self.d_model}")
-        print(f"   - Celestial bodies: {self.num_celestial_bodies}")
-        print(f"   - Wave aggregation: {self.aggregate_waves_to_celestial}")
-        if self.aggregate_waves_to_celestial:
-            print(f"   - Input waves: {self.num_input_waves} → {self.num_celestial_bodies} celestial bodies")
-            print(f"   - Target waves: {len(self.target_wave_indices)} (OHLC)")
-        print(f"   - Enhanced features: MixtureDec={self.use_mixture_decoder}, "
-              f"Stochastic={self.use_stochastic_learner}, Hierarchical={self.use_hierarchical_mapping}")
+        self._log_configuration_summary()
         
         # Input embeddings - adjust for phase-aware celestial aggregation
         if self.aggregate_waves_to_celestial:
@@ -360,6 +359,54 @@ class Model(nn.Module):
             elif 'bias' in name:
                 nn.init.zeros_(param)
 
+    def _log_info(self, message: str, *args: Any) -> None:
+        """Log informational messages when verbose logging is enabled."""
+        if self.verbose_logging:
+            self.logger.info(message, *args)
+
+    def _log_debug(self, message: str, *args: Any) -> None:
+        """Log debug diagnostics when diagnostics are requested."""
+        if self.collect_diagnostics or self.verbose_logging:
+            self.logger.debug(message, *args)
+
+    def _log_configuration_summary(self) -> None:
+        """Emit a concise configuration summary when verbose logging is enabled."""
+        if not self.verbose_logging:
+            return
+        self.logger.info(
+            (
+                "Initializing Celestial Enhanced PGAT | seq_len=%s pred_len=%s d_model=%s "
+                "celestial_bodies=%s wave_aggregation=%s mixture_decoder=%s stochastic_learner=%s "
+                "hierarchical_mapping=%s"
+            ),
+            self.seq_len,
+            self.pred_len,
+            self.d_model,
+            self.num_celestial_bodies,
+            self.aggregate_waves_to_celestial,
+            self.use_mixture_decoder,
+            self.use_stochastic_learner,
+            self.use_hierarchical_mapping,
+        )
+        if self.aggregate_waves_to_celestial:
+            self.logger.info(
+                "Phase-aware aggregation configured | input_waves=%s target_wave_indices=%s",
+                self.num_input_waves,
+                self.target_wave_indices,
+            )
+
+    def _debug_memory(self, stage: str) -> None:
+        """Emit lightweight memory diagnostics when requested."""
+        if not (self.enable_memory_debug or self.collect_diagnostics or self.verbose_logging):
+            return
+        try:
+            import psutil  # type: ignore[import-not-found]
+            process = psutil.Process(os.getpid())
+            cpu_mb = process.memory_info().rss / (1024 * 1024)
+            self.logger.debug("MODEL_DEBUG [%s]: CPU=%0.1fMB", stage, cpu_mb)
+        except Exception:  # pragma: no cover - best effort diagnostics
+            self.logger.debug("MODEL_DEBUG [%s]: memory diagnostic unavailable", stage)
+
     @staticmethod
     def _move_to_cpu(value: Any) -> Any:
         """Recursively detach tensors and move them to CPU for lightweight diagnostics."""
@@ -386,35 +433,27 @@ class Model(nn.Module):
         Returns:
             Predictions and metadata
         """
-        # DEBUG: Add memory monitoring
-        import psutil
-        import os
-        def debug_memory_model(stage):
-            try:
-                process = psutil.Process(os.getpid())
-                cpu_mb = process.memory_info().rss / 1024 / 1024
-                print(f"🔍 MODEL_DEBUG [{stage}]: CPU={cpu_mb:.1f}MB")
-            except:
-                pass
-        
-        debug_memory_model("FORWARD_START")
+        self._debug_memory("FORWARD_START")
         batch_size, seq_len, enc_in = x_enc.shape
-        print(f"🔍 MODEL_DEBUG: Input shapes - x_enc: {x_enc.shape}, x_dec: {x_dec.shape}")
+        self._log_debug("MODEL_DEBUG: Input shapes - x_enc=%s x_dec=%s", x_enc.shape, x_dec.shape)
         
         # 0. Enhanced Phase-Aware Wave Processing (if enabled)
-        debug_memory_model("PHASE_PROCESSING_START")
+        self._debug_memory("PHASE_PROCESSING_START")
         wave_metadata: Dict[str, Any] = {}
         phase_based_adj: Optional[torch.Tensor] = None
         target_shape = (batch_size, seq_len, len(self.target_wave_indices))
         if self.aggregate_waves_to_celestial and enc_in == self.num_input_waves:
             # Use phase-aware processor for rich celestial representations
-            print(f"🔍 MODEL_DEBUG: Starting phase-aware processing...")
+            self._log_debug("MODEL_DEBUG: Starting phase-aware processing...")
             celestial_features, adjacency_matrix, phase_metadata = self.phase_aware_processor(x_enc)
-            debug_memory_model("PHASE_PROCESSING_COMPLETE")
+            self._debug_memory("PHASE_PROCESSING_COMPLETE")
             # celestial_features: [batch, seq_len, 13 * 32] Rich multi-dimensional representations
             # adjacency_matrix: [batch, 13, 13] Phase-difference based edges
             phase_based_adj = adjacency_matrix
-            print(f"🔍 MODEL_DEBUG: Phase processing complete - celestial_features: {celestial_features.shape}")
+            self._log_debug(
+                "MODEL_DEBUG: Phase processing complete - celestial_features=%s",
+                celestial_features.shape,
+            )
 
             # Extract targets using the classic processor only when diagnostics are requested.
             target_metadata: Dict[str, Any] = {}
@@ -440,33 +479,37 @@ class Model(nn.Module):
                     'celestial_features_shape': celestial_features.shape,
                 })
             
-            print(
-                "🌌 Phase-aware processing: "
-                f"{x_enc.shape} → celestial {celestial_features.shape}, targets {target_shape}"
+            self._log_debug(
+                "Phase-aware processing: %s → celestial %s, targets %s",
+                x_enc.shape,
+                celestial_features.shape,
+                target_shape,
             )
-            print(f"🔗 Phase-based adjacency matrix: {adjacency_matrix.shape}")
+            self._log_debug("Phase-based adjacency matrix: %s", adjacency_matrix.shape)
         else:
             x_enc_processed = x_enc
             wave_metadata['original_targets'] = None
         
         # 1. Input embeddings - ensure correct dimensions
-        debug_memory_model("EMBEDDING_START")
+        self._debug_memory("EMBEDDING_START")
         try:
-            print(f"🔍 MODEL_DEBUG: Starting encoder embedding...")
+            self._log_debug("MODEL_DEBUG: Starting encoder embedding...")
             enc_out = self.enc_embedding(x_enc_processed, x_mark_enc)  # [batch, seq_len, d_model]
-            debug_memory_model("ENC_EMBEDDING_COMPLETE")
-            print(f"🔍 MODEL_DEBUG: Encoder embedding complete - enc_out: {enc_out.shape}")
-        except Exception as e:
-            print(f"❌ Embedding error: {e}")
-            print(f"   Input shape: {x_enc_processed.shape}")
-            print(f"   Expected embedding input dim: {self.enc_embedding.value_embedding.c_in}")
-            debug_memory_model("ENC_EMBEDDING_ERROR")
-            raise e
-        
-        print(f"🔍 MODEL_DEBUG: Starting decoder embedding...")
+            self._debug_memory("ENC_EMBEDDING_COMPLETE")
+            self._log_debug("MODEL_DEBUG: Encoder embedding complete - enc_out=%s", enc_out.shape)
+        except Exception as exc:
+            self.logger.exception(
+                "Encoder embedding failed | input_shape=%s expected_dim=%s",
+                x_enc_processed.shape,
+                self.enc_embedding.value_embedding.c_in,
+            )
+            self._debug_memory("ENC_EMBEDDING_ERROR")
+            raise exc
+
+        self._log_debug("MODEL_DEBUG: Starting decoder embedding...")
         dec_out = self.dec_embedding(x_dec, x_mark_dec)  # [batch, label_len+pred_len, d_model]
-        debug_memory_model("DEC_EMBEDDING_COMPLETE")
-        print(f"🔍 MODEL_DEBUG: Decoder embedding complete - dec_out: {dec_out.shape}")
+        self._debug_memory("DEC_EMBEDDING_COMPLETE")
+        self._log_debug("MODEL_DEBUG: Decoder embedding complete - dec_out=%s", dec_out.shape)
         
         # 2. Generate market context from encoder output (fix information bottleneck)
         # Use last hidden state instead of mean to preserve temporal information
@@ -509,8 +552,7 @@ class Model(nn.Module):
                     w_dyn * dyn_norm
                 )
                 astronomical_adj = combined_phase_adj  # Use learned-fusion matrix
-                
-                print(f"🌟 Using phase-based adjacency matrix with learned fusion weights")
+                self._log_debug("Using phase-based adjacency matrix with learned fusion weights")
             else:
                 # Fallback to traditional celestial graph processing
                 celestial_results = self._process_celestial_graph(x_enc_processed, enc_out)
@@ -585,9 +627,9 @@ class Model(nn.Module):
                 # Add to encoder output, broadcasting across sequence length
                 enc_out = enc_out + projected_features
                 
-            except Exception as e:
-                print(f"⚠️  Hierarchical mapping failed: {e}")
-                print("   Continuing without hierarchical features")
+            except Exception as exc:
+                self.logger.warning("Hierarchical mapping failed: %s", exc)
+                self._log_debug("Continuing without hierarchical features")
         
         # 7. Spatiotemporal encoding with graph attention
         encoded_features: torch.Tensor
@@ -605,7 +647,7 @@ class Model(nn.Module):
                 try:
                     encoded_features = dynamic_encoder(enc_out, combined_adj)
                 except ValueError as exc:
-                    logging.warning("Dynamic spatiotemporal encoder fallback: %s", exc)
+                    self.logger.warning("Dynamic spatiotemporal encoder fallback: %s", exc)
                     encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
         else:
             encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
@@ -614,7 +656,7 @@ class Model(nn.Module):
         if self.use_efficient_covariate_interaction:
             # Efficient, partitioned graph processing that respects covariate independence
             graph_features = self._efficient_graph_processing(encoded_features, combined_adj)
-            print("⚡ Using efficient partitioned graph processing.")
+            self._log_debug("Using efficient partitioned graph processing.")
         else:
             # Original, iterative graph attention processing
             graph_features = encoded_features
@@ -632,25 +674,38 @@ class Model(nn.Module):
                     for i, layer in enumerate(self.graph_attention_layers):
                         try:
                             processed_step = layer(processed_step, adj_for_step)
-                        except Exception as e:
-                            print(f"⚠️  Graph attention layer {i+1} at step {t} failed: {e}")
-                            processed_step = layer(processed_step, None) # Fallback
+                        except Exception as exc:
+                            self.logger.warning(
+                                "Graph attention layer %s at step %s failed: %s",
+                                i + 1,
+                                t,
+                                exc,
+                            )
+                            processed_step = layer(processed_step, None)
                     
                     processed_features_over_time.append(processed_step)
                 
                 graph_features = torch.cat(processed_features_over_time, dim=1)
                 if self.seq_len > 0:
-                     print(f"🔗 Applied dynamic graph attention across {self.seq_len} time steps.")
+                    self._log_debug("Applied dynamic graph attention across %s time steps.", self.seq_len)
 
             else:
                 for i, layer in enumerate(self.graph_attention_layers):
                     try:
                         graph_features = layer(graph_features, combined_adj)
                         if i == 0:
-                            print(f"🔗 Graph attention layer {i+1} using STATIC adjacency matrix: {combined_adj.shape}")
-                    except Exception as e:
-                        print(f"⚠️  Graph attention layer {i+1} failed with static adj: {e}")
-                        graph_features = layer(graph_features, None) # Fallback
+                            self._log_debug(
+                                "Graph attention layer %s using static adjacency matrix: %s",
+                                i + 1,
+                                combined_adj.shape,
+                            )
+                    except Exception as exc:
+                        self.logger.warning(
+                            "Graph attention layer %s failed with static adjacency: %s",
+                            i + 1,
+                            exc,
+                        )
+                        graph_features = layer(graph_features, None)
         
         # 9. Decoder processing
         decoder_features = dec_out
@@ -679,20 +734,23 @@ class Model(nn.Module):
                 
                 # Ensure output has correct shape [batch, pred_len, c_out]
                 if predictions.size(-1) != self.c_out:
-                    print(f"⚠️  Sequential mixture decoder output shape mismatch: {predictions.shape} vs expected [..., {self.c_out}]")
-                    # Fallback to projection
+                    self.logger.warning(
+                        "Sequential mixture decoder output shape mismatch | got=%s expected_c_out=%s",
+                        predictions.shape,
+                        self.c_out,
+                    )
                     predictions = self.projection(prediction_features)
                 
                 mdn_components = (means, log_stds, log_weights)
                 if predictions is not None:
-                    print(
-                        f"🎯 Sequential mixture decoder output: means {means.shape}, predictions {predictions.shape}"
+                    self._log_debug(
+                        "Sequential mixture decoder output | means=%s predictions=%s",
+                        means.shape,
+                        predictions.shape,
                     )
                 
-            except Exception as e:
-                print(f"⚠️  Sequential mixture decoder failed: {e}")
-                import traceback
-                traceback.print_exc()
+            except Exception as exc:
+                self.logger.exception("Sequential mixture decoder failed: %s", exc)
                 # Fallback to simple projection
                 predictions = self.projection(decoder_features[:, -self.pred_len:, :])
         else:
@@ -821,7 +879,7 @@ class Model(nn.Module):
             return self.spatiotemporal_encoder(enc_out, adj_for_encoder)
 
         except Exception as error:  # pylint: disable=broad-except
-            print(f"⚠️  Spatiotemporal encoding failed: {error}")
+            self.logger.warning("Spatiotemporal encoding failed: %s", error)
             return enc_out
     
     def _learn_traditional_graph(self, enc_out):

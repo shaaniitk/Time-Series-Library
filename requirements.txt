@@ -9,7 +9,7 @@ einops==0.8.0
 local-attention==1.9.14
 matplotlib
 numpy>=2,<2.6
-pandas==1.5.3
+pandas>=2.2.2
 patool
 reformer-pytorch==1.4.4
 scikit-learn
