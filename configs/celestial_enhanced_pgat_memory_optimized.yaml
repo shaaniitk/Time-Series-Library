@@ -1,0 +1,85 @@
+# Celestial Enhanced PGAT MEMORY OPTIMIZED Configuration
+# Designed to solve >64GB memory issues while maintaining model performance
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: celestial_enhanced_pgat_memory_optimized
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: true
+
+# MEMORY OPTIMIZED Sequence settings - Reduced from 250 to 96
+seq_len: 96           # Reduced by 62% - still captures long-term patterns
+label_len: 48         # Half of seq_len
+pred_len: 10          # Keep prediction horizon
+
+# Data split settings
+validation_length: 50
+test_length: 50
+
+# MEMORY OPTIMIZED Training - Smaller batches, more accumulation
+learning_rate: 0.001
+train_epochs: 50
+batch_size: 8         # Reduced from 16 to 8 (50% reduction)
+patience: 999
+lradj: warmup_cosine
+warmup_epochs: 5
+min_lr: 1e-6
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# MEMORY OPTIMIZED Model hyperparameters
+d_model: 104          # Reduced from 130, divisible by 8 and 13
+n_heads: 8            # Keep attention heads
+e_layers: 3           # Reduced from 4 layers
+d_layers: 2           # Keep decoder layers
+d_ff: 312             # 3x d_model instead of 4x
+dropout: 0.1
+
+# Input/Output dimensions
+enc_in: 118
+dec_in: 118
+c_out: 4
+
+# MEMORY OPTIMIZED Celestial System
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+celestial_fusion_layers: 2    # Reduced from 4 to 2
+
+# MEMORY OPTIMIZED Wave aggregation
+num_input_waves: 118
+target_wave_indices: [0, 1, 2, 3]
+celestial_dim: 16             # Reduced from 32 to 16 (50% reduction)
+
+# MEMORY OPTIMIZED Features - Disable expensive components
+use_mixture_decoder: false              # Disable transformer decoder
+use_stochastic_learner: false           # Disable stochastic graphs
+use_hierarchical_mapping: false         # Disable hierarchical mapping
+use_efficient_covariate_interaction: true
+use_static_adjacency: true              # NEW: Use static adjacency matrices
+use_gradient_checkpointing: true        # NEW: Enable gradient checkpointing
+
+# Memory management settings
+enable_memory_diagnostics: true
+memory_log_interval: 50
+dump_cuda_memory_summary: false
+memory_summary_on_exception: true
+
+# Production settings with memory optimization
+save_checkpoints: true
+checkpoint_interval: 10
+log_interval: 20
+gradient_accumulation_steps: 4    # Increased to maintain effective batch size of 32
+mixed_precision: true
+save_best_only: true              # Save only best to reduce disk usage
+
+# Memory cleanup settings
+clear_cache_every_n_batches: 10   # NEW: Clear CUDA cache periodically
+max_memory_usage_gb: 32           # NEW: Memory usage limit
