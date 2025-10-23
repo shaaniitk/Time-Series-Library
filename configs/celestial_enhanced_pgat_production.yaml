@@ -44,8 +44,8 @@ d_ff: 512                # Larger feed-forward dimension
 dropout: 0.1
 
 # Input/Output dimensions (based on prepared_financial_data.csv)
-enc_in: 113    # Number of celestial wave features (auto-detected from CSV)
-dec_in: 113    # Same as encoder input  
+enc_in: 118    # Number of celestial wave features (CORRECTED to match actual CSV)
+dec_in: 118    # Same as encoder input  
 c_out: 4       # Four target outputs (OHLC)
 
 # FULL CELESTIAL SYSTEM - MAXIMUM POWER 🌌
@@ -54,7 +54,7 @@ aggregate_waves_to_celestial: true      # Enable wave aggregation to celestial b
 celestial_fusion_layers: 4              # More fusion layers for better integration
 
 # Wave aggregation settings - OPTIMIZED FOR PRODUCTION
-num_input_waves: 113   # Full celestial wave features (auto-detected from CSV)
+num_input_waves: 118   # Full celestial wave features (CORRECTED to match actual CSV)
 target_wave_indices: [0, 1, 2, 3]  # All OHLC targets
 
 # Advanced features - PRODUCTION READY
