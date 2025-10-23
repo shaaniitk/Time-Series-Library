@@ -1,5 +1,5 @@
 # Celestial Enhanced PGAT PRODUCTION training configuration
-# Heavy-duty overnight training setup
+# Heavy-duty overnight training setup - NO MIXED PRECISION
 
 # Model and training identifiers
 model: Celestial_Enhanced_PGAT
@@ -73,5 +73,5 @@ save_checkpoints: true
 checkpoint_interval: 5   # Save every 5 epochs
 log_interval: 10         # Log every 10 batches
 gradient_accumulation_steps: 2  # Accumulate gradients for effective batch size of 32
-mixed_precision: false   # Disabled for stability (enable if GPU supports it)
+mixed_precision: false   # DISABLED - Fixes dtype mismatch issues
 save_best_only: false    # Save all checkpoints for analysis

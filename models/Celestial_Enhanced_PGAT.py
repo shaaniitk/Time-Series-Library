@@ -489,7 +489,8 @@ class Model(nn.Module):
             self._debug_memory("PHASE_PROCESSING_COMPLETE")
             # celestial_features: [batch, seq_len, 13 * 32] Rich multi-dimensional representations
             # adjacency_matrix: [batch, 13, 13] Phase-difference based edges
-            phase_based_adj = adjacency_matrix
+            # FIXED: Expand phase-based adjacency to 4D for consistency
+            phase_based_adj = adjacency_matrix.unsqueeze(1).expand(-1, seq_len, -1, -1)
             self._log_debug(
                 "MODEL_DEBUG: Phase processing complete - celestial_features=%s",
                 celestial_features.shape,
@@ -600,8 +601,7 @@ class Model(nn.Module):
                 w_astro = w_astro.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
                 w_dyn = w_dyn.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
                 
-                # Broadcast phase_norm to be dynamic
-                phase_norm = phase_norm.unsqueeze(1).expand(-1, self.seq_len, -1, -1)
+                # FIXED: phase_norm is already 4D, no need to expand
 
                 combined_phase_adj = (
                     w_phase * phase_norm +
@@ -631,15 +631,11 @@ class Model(nn.Module):
         
         # 5. Combine all graph types with hierarchical fusion
         if self.use_celestial_graph:
-            # astronomical_adj and dynamic_adj from celestial_nodes are static [B, N, N]
-            # learned_adj is dynamic [B, S, N, N]. We must align them.
-            seq_len = enc_out.size(1)
+            # FIXED: All adjacency matrices are now consistently 4D [batch, seq_len, nodes, nodes]
+            # CelestialBodyNodes already returns 4D tensors - no manual broadcasting needed
             
-            # Broadcast static graphs to match the dynamic graph's sequence length
-            if astronomical_adj.dim() == 3:
-                astronomical_adj = astronomical_adj.unsqueeze(1).expand(-1, seq_len, -1, -1)
-            if dynamic_adj.dim() == 3:
-                dynamic_adj = dynamic_adj.unsqueeze(1).expand(-1, seq_len, -1, -1)
+            # Validate dimensions for safety and debugging
+            self._validate_adjacency_dimensions(astronomical_adj, learned_adj, dynamic_adj, enc_out)
 
             # DEBUG: Memory check before celestial_combiner
             import torch
@@ -729,7 +725,7 @@ class Model(nn.Module):
         use_dynamic_encoder = (
             self.use_dynamic_spatiotemporal_encoder
             and self.dynamic_spatiotemporal_encoder is not None
-            and combined_adj.dim() == 4
+            # FIXED: No need to check dimensions - all adjacency matrices are 4D
         )
 
         if use_dynamic_encoder:
@@ -754,51 +750,30 @@ class Model(nn.Module):
             # Original, iterative graph attention processing
             graph_features = encoded_features
             
-            # combined_adj should now be dynamic [batch, seq_len, nodes, nodes]
-            is_dynamic_adj = combined_adj.dim() == 4
-            
-            if is_dynamic_adj:
-                processed_features_over_time = []
-                for t in range(self.seq_len):
-                    time_step_features = graph_features[:, t:t+1, :]
-                    adj_for_step = combined_adj[:, t, :, :]
-                    
-                    processed_step = time_step_features
-                    for i, layer in enumerate(self.graph_attention_layers):
-                        try:
-                            processed_step = layer(processed_step, adj_for_step)
-                        except Exception as exc:
-                            self.logger.warning(
-                                "Graph attention layer %s at step %s failed: %s",
-                                i + 1,
-                                t,
-                                exc,
-                            )
-                            processed_step = layer(processed_step, None)
-                    
-                    processed_features_over_time.append(processed_step)
+            # FIXED: combined_adj is always dynamic [batch, seq_len, nodes, nodes]
+            # Process each timestep with its corresponding adjacency matrix
+            processed_features_over_time = []
+            for t in range(self.seq_len):
+                time_step_features = graph_features[:, t:t+1, :]
+                adj_for_step = combined_adj[:, t, :, :]
                 
-                graph_features = torch.cat(processed_features_over_time, dim=1)
-                if self.seq_len > 0:
-                    self._log_debug("Applied dynamic graph attention across %s time steps.", self.seq_len)
-
-            else:
+                processed_step = time_step_features
                 for i, layer in enumerate(self.graph_attention_layers):
                     try:
-                        graph_features = layer(graph_features, combined_adj)
-                        if i == 0:
-                            self._log_debug(
-                                "Graph attention layer %s using static adjacency matrix: %s",
-                                i + 1,
-                                combined_adj.shape,
-                            )
+                        processed_step = layer(processed_step, adj_for_step)
                     except Exception as exc:
                         self.logger.warning(
-                            "Graph attention layer %s failed with static adjacency: %s",
+                            "Graph attention layer %s at step %s failed: %s",
                             i + 1,
+                            t,
                             exc,
                         )
-                        graph_features = layer(graph_features, None)
+                        processed_step = layer(processed_step, None)
+                
+                processed_features_over_time.append(processed_step)
+            
+            graph_features = torch.cat(processed_features_over_time, dim=1)
+            self._log_debug("Applied dynamic graph attention across %s time steps.", self.seq_len)
         
         # 9. Decoder processing
         decoder_features = dec_out
@@ -944,24 +919,19 @@ class Model(nn.Module):
     ) -> torch.Tensor:
         """Fallback path that uses the legacy joint encoder with best effort adjacencies."""
         try:
-            if combined_adj.dim() == 4:
-                adj_for_encoder = combined_adj[:, -1, :, :]
-            else:
-                adj_for_encoder = combined_adj
-
-            if adj_for_encoder.dim() == 3:
-                adj_for_encoder = adj_for_encoder[0]
+            # FIXED: combined_adj is always 4D, use last timestep for static encoder
+            adj_for_encoder = combined_adj[:, -1, :, :]
 
             if self.use_celestial_graph and self.aggregate_waves_to_celestial:
                 num_nodes = self.num_celestial_bodies
                 if adj_for_encoder.size(0) != num_nodes:
-                    adj_for_encoder = torch.eye(num_nodes, device=enc_out.device)
+                    adj_for_encoder = torch.eye(num_nodes, device=enc_out.device, dtype=torch.float32)
                 return self.spatiotemporal_encoder(enc_out, adj_for_encoder)
 
             batch_size, seq_len, d_model = enc_out.shape
             num_nodes = self.enc_in
             if adj_for_encoder.size(0) != num_nodes:
-                adj_for_encoder = torch.eye(num_nodes, device=enc_out.device)
+                adj_for_encoder = torch.eye(num_nodes, device=enc_out.device, dtype=torch.float32)
 
             if d_model % num_nodes == 0 and num_nodes > 0:
                 node_dim = d_model // num_nodes
@@ -995,7 +965,7 @@ class Model(nn.Module):
         batch_size, seq_len, _ = enc_out.shape
         device = enc_out.device
         num_nodes = self.num_celestial_bodies if (self.use_celestial_graph and self.aggregate_waves_to_celestial) else self.enc_in
-        identity = torch.eye(num_nodes, device=device).unsqueeze(0).unsqueeze(0)
+        identity = torch.eye(num_nodes, device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
         return identity.expand(batch_size, seq_len, num_nodes, num_nodes)
     
     def _learn_data_driven_graph(self, enc_out):
@@ -1041,16 +1011,41 @@ class Model(nn.Module):
         
         return adj_matrix
     
-    def _normalize_adj(self, adj_matrix):
-        """Normalize adjacency matrix for stable fusion. Handles both static (rank 3) and dynamic (rank 4) matrices."""
-        # Add self-loops for stability
-        identity = torch.eye(adj_matrix.size(-1), device=adj_matrix.device)
+    def _validate_adjacency_dimensions(self, astronomical_adj: torch.Tensor, 
+                                     learned_adj: torch.Tensor, 
+                                     dynamic_adj: torch.Tensor, 
+                                     enc_out: torch.Tensor) -> None:
+        """Validate that all adjacency matrices have consistent 4D dimensions."""
+        batch_size, seq_len, d_model = enc_out.shape
+        expected_shape = (batch_size, seq_len, self.num_celestial_bodies, self.num_celestial_bodies)
         
-        if adj_matrix.dim() == 4:  # Dynamic [batch, seq_len, nodes, nodes]
-            identity = identity.unsqueeze(0).unsqueeze(0)  # Expand to [1, 1, nodes, nodes]
-        else:  # Static [batch, nodes, nodes]
-            identity = identity.unsqueeze(0)  # Expand to [1, nodes, nodes]
-            
+        matrices = {
+            'astronomical_adj': astronomical_adj,
+            'learned_adj': learned_adj, 
+            'dynamic_adj': dynamic_adj
+        }
+        
+        for name, matrix in matrices.items():
+            if matrix.shape != expected_shape:
+                self.logger.error(
+                    "Adjacency matrix dimension mismatch: %s has shape %s, expected %s",
+                    name, matrix.shape, expected_shape
+                )
+                raise ValueError(
+                    f"Adjacency matrix {name} has incorrect dimensions: "
+                    f"got {matrix.shape}, expected {expected_shape}"
+                )
+        
+        self._log_debug("✅ All adjacency matrices validated: %s", expected_shape)
+    
+    def _normalize_adj(self, adj_matrix):
+        """Normalize adjacency matrix for stable fusion. Handles 4D dynamic matrices only."""
+        # FIXED: All adjacency matrices are now 4D [batch, seq_len, nodes, nodes]
+        
+        # Add self-loops for stability
+        identity = torch.eye(adj_matrix.size(-1), device=adj_matrix.device, dtype=torch.float32)
+        identity = identity.unsqueeze(0).unsqueeze(0)  # Expand to [1, 1, nodes, nodes]
+        
         adj_with_self_loops = adj_matrix + identity.expand_as(adj_matrix)
         
         # Row normalization (convert to stochastic matrix)
@@ -1199,11 +1194,11 @@ class TokenEmbedding(nn.Module):
 class PositionalEmbedding(nn.Module):
     def __init__(self, d_model, max_len=5000):
         super().__init__()
-        pe = torch.zeros(max_len, d_model).float()
+        pe = torch.zeros(max_len, d_model, dtype=torch.float32)
         pe.requires_grad = False
         
-        position = torch.arange(0, max_len).float().unsqueeze(1)
-        div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()
+        position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
+        div_term = (torch.arange(0, d_model, 2, dtype=torch.float32) * -(math.log(10000.0) / d_model)).exp()
         
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
