@@ -69,38 +69,45 @@ class Model(nn.Module):
         self.collect_diagnostics = bool(getattr(configs, 'collect_diagnostics', True))
         self.use_efficient_covariate_interaction = getattr(configs, 'use_efficient_covariate_interaction', False)
         
-        # --- Automatic d_model adjustment for partitioned graph processing ---
-        # First, determine the number of nodes that d_model will be partitioned across.
+        # --- FIXED: Dimension Consistency Management ---
+        # Determine celestial feature dimension
+        self.celestial_feature_dim = self.num_celestial_bodies * 32  # 13 × 32 = 416
+        
+        # Validate d_model configuration
         if self.use_celestial_graph and getattr(configs, 'aggregate_waves_to_celestial', True):
-            num_nodes_for_adjustment = self.num_celestial_bodies
+            # For celestial mode, d_model should match or be compatible with celestial features
+            if self.d_model != self.celestial_feature_dim:
+                if self.d_model < self.celestial_feature_dim:
+                    self.logger.warning(
+                        "d_model=%s is smaller than celestial_feature_dim=%s. This will cause information loss!",
+                        self.d_model, self.celestial_feature_dim
+                    )
+                    # Keep user's d_model but warn about information loss
+                else:
+                    # d_model is larger, which is fine - we can project up
+                    self.logger.info(
+                        "d_model=%s is larger than celestial_feature_dim=%s. Will project celestial features up.",
+                        self.d_model, self.celestial_feature_dim
+                    )
+            
+            # Ensure d_model is divisible by n_heads for attention
+            if self.d_model % self.n_heads != 0:
+                original_d_model = self.d_model
+                self.d_model = ((self.d_model // self.n_heads) + 1) * self.n_heads
+                self.logger.warning(
+                    "d_model=%s adjusted to %s for attention head compatibility (n_heads=%s)",
+                    original_d_model, self.d_model, self.n_heads
+                )
         else:
-            num_nodes_for_adjustment = self.enc_in
-        
-        # Now, check for divisibility against both nodes and heads, and auto-adjust if necessary.
-        # d_model must be a multiple of the Least Common Multiple (LCM) of nodes and heads.
-        def gcd(a, b):
-            while b:
-                a, b = b, a % b
-            return a
-
-        def lcm(a, b):
-            return abs(a * b) // gcd(a, b) if a != 0 and b != 0 else 0
-
-        required_multiple = lcm(num_nodes_for_adjustment, self.n_heads)
-        
-        if self.d_model % required_multiple != 0:
-            original_d_model = self.d_model
-            # Calculate the next highest multiple of the required_multiple
-            self.d_model = (original_d_model + required_multiple - 1) // required_multiple * required_multiple
-            self.logger.warning(
-                "d_model=%s is not compatible with graph/attention dimensions; required multiple=%s (nodes=%s heads=%s). Adjusted to %s.",
-                original_d_model,
-                required_multiple,
-                num_nodes_for_adjustment,
-                self.n_heads,
-                self.d_model,
-            )
-        # --- End of adjustment ---
+            # For non-celestial mode, ensure d_model is compatible with n_heads
+            if self.d_model % self.n_heads != 0:
+                original_d_model = self.d_model
+                self.d_model = ((self.d_model // self.n_heads) + 1) * self.n_heads
+                self.logger.warning(
+                    "d_model=%s adjusted to %s for attention head compatibility (n_heads=%s)",
+                    original_d_model, self.d_model, self.n_heads
+                )
+        # --- End of dimension management ---
         
         # Wave aggregation settings
         self.aggregate_waves_to_celestial = getattr(configs, 'aggregate_waves_to_celestial', True)
@@ -136,17 +143,48 @@ class Model(nn.Module):
         
         self._log_configuration_summary()
         
-        # Input embeddings - adjust for phase-aware celestial aggregation
+        # Input embeddings - FIXED: Correct dimension flow
         if self.aggregate_waves_to_celestial:
             # Phase-aware processor outputs 13 celestial bodies × 32D = 416D
-            enc_embedding_dim = self.num_celestial_bodies * 32
+            celestial_output_dim = self.celestial_feature_dim  # 416D
+            
+            # CRITICAL FIX: Project celestial features to d_model before embedding
+            self.celestial_projection = nn.Sequential(
+                nn.Linear(celestial_output_dim, self.d_model),
+                nn.LayerNorm(self.d_model),
+                nn.GELU(),
+                nn.Dropout(self.dropout)
+            )
+            
+            if self.d_model < celestial_output_dim:
+                self.logger.warning(
+                    "Celestial projection compresses: %sD → %sD (%.1fx compression)",
+                    celestial_output_dim, self.d_model, celestial_output_dim / self.d_model
+                )
+            elif self.d_model > celestial_output_dim:
+                self.logger.info(
+                    "Celestial projection expands: %sD → %sD (%.1fx expansion)",
+                    celestial_output_dim, self.d_model, self.d_model / celestial_output_dim
+                )
+            else:
+                self.logger.info(
+                    "Celestial projection preserves: %sD → %sD (1.0x)",
+                    celestial_output_dim, self.d_model
+                )
+                
+            # Embedding expects d_model dimensions (after projection)
+            embedding_input_dim = self.d_model
         else:
-            # Embedding expects original wave count
-            enc_embedding_dim = self.enc_in
+            # Non-celestial mode: use original features
+            embedding_input_dim = self.enc_in
+            self.celestial_projection = None
             
         self.enc_embedding = DataEmbedding(
-            enc_embedding_dim, self.d_model, configs.embed, configs.freq, self.dropout
+            embedding_input_dim, self.d_model, configs.embed, configs.freq, self.dropout
         )
+        
+        # Store the expected embedding input dimension for validation
+        self.expected_embedding_input_dim = embedding_input_dim
         self.dec_embedding = DataEmbedding(
             self.dec_in, self.d_model, configs.embed, configs.freq, self.dropout
         )
@@ -183,15 +221,16 @@ class Model(nn.Module):
                 batch_first=True
             )
 
-            # Map input features to celestial space - adjust for aggregation
+            # FIXED: Standardized celestial graph processing
+            # Always use celestial bodies as graph nodes for consistency
             if self.aggregate_waves_to_celestial:
-                # After aggregation: 13 celestial → 13 celestial (identity or refinement)
-                self.feature_to_celestial = nn.Linear(self.num_celestial_bodies, self.num_celestial_bodies)
-                self.celestial_to_feature = nn.Linear(self.num_celestial_bodies, self.num_celestial_bodies)
+                # After aggregation: d_model → 13 celestial nodes
+                self.feature_to_celestial = nn.Linear(self.d_model, self.num_celestial_bodies)
+                self.celestial_to_feature = nn.Linear(self.num_celestial_bodies, self.d_model)
             else:
-                # Before aggregation: 118 waves → 13 celestial
-                self.feature_to_celestial = nn.Linear(self.enc_in, self.num_celestial_bodies)
-                self.celestial_to_feature = nn.Linear(self.num_celestial_bodies, self.enc_in)
+                # Before aggregation: d_model → 13 celestial nodes (learned mapping)
+                self.feature_to_celestial = nn.Linear(self.d_model, self.num_celestial_bodies)
+                self.celestial_to_feature = nn.Linear(self.num_celestial_bodies, self.d_model)
             self.celestial_fusion_gate = nn.Sequential(
                 nn.Linear(self.d_model * 2, self.d_model),
                 nn.GELU(),
@@ -456,16 +495,18 @@ class Model(nn.Module):
                 celestial_features.shape,
             )
 
-            # Extract targets using the classic processor only when diagnostics are requested.
+            # FIXED: Skip old processor to avoid dimension mismatch
+            # The old data_processor has incorrect wave mappings that cause index errors
             target_metadata: Dict[str, Any] = {}
+            target_waves = None  # Disable old processor diagnostics
+            
+            # TODO: Update old data_processor to use correct mappings if diagnostics needed
             if self.collect_diagnostics:
-                _, target_waves, target_metadata = self.data_processor.process_batch(x_enc)
-                target_waves = target_waves.detach().cpu()
-            else:
-                target_waves = None
+                self.logger.debug("Diagnostics disabled due to dimension mismatch in old processor")
+                target_metadata['diagnostics_disabled'] = True
 
-            # Use rich celestial features as encoder input
-            x_enc_processed = celestial_features  # [batch, seq_len, 13 * 32]
+            # FIXED: Apply celestial projection to match d_model
+            x_enc_processed = self.celestial_projection(celestial_features)  # [batch, seq_len, d_model]
             
             # Store comprehensive metadata
             if self.collect_diagnostics:
@@ -491,18 +532,33 @@ class Model(nn.Module):
             x_enc_processed = x_enc
             wave_metadata['original_targets'] = None
         
-        # 1. Input embeddings - ensure correct dimensions
+        # 1. Input embeddings - FIXED: Ensure correct dimensions
         self._debug_memory("EMBEDDING_START")
         try:
             self._log_debug("MODEL_DEBUG: Starting encoder embedding...")
+            self._log_debug("MODEL_DEBUG: x_enc_processed shape=%s, expected_dim=%s", 
+                          x_enc_processed.shape, self.expected_embedding_input_dim)
+            
+            # Validate input dimensions
+            if x_enc_processed.shape[-1] != self.expected_embedding_input_dim:
+                self.logger.error(
+                    "Dimension mismatch: x_enc_processed has %d features, but embedding expects %d",
+                    x_enc_processed.shape[-1], self.expected_embedding_input_dim
+                )
+                raise ValueError(
+                    f"Input dimension mismatch: got {x_enc_processed.shape[-1]}, "
+                    f"expected {self.expected_embedding_input_dim}"
+                )
+            
             enc_out = self.enc_embedding(x_enc_processed, x_mark_enc)  # [batch, seq_len, d_model]
             self._debug_memory("ENC_EMBEDDING_COMPLETE")
             self._log_debug("MODEL_DEBUG: Encoder embedding complete - enc_out=%s", enc_out.shape)
         except Exception as exc:
             self.logger.exception(
-                "Encoder embedding failed | input_shape=%s expected_dim=%s",
+                "Encoder embedding failed | input_shape=%s expected_dim=%s embedding_c_in=%s",
                 x_enc_processed.shape,
-                self.enc_embedding.value_embedding.c_in,
+                self.expected_embedding_input_dim,
+                self.enc_embedding.value_embedding.tokenConv.in_channels,
             )
             self._debug_memory("ENC_EMBEDDING_ERROR")
             raise exc

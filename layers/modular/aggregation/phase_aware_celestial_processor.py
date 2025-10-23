@@ -711,11 +711,11 @@ class PhaseDifferenceEdgeComputer(nn.Module):
                     return tensor.view(batch_size, -1)[:, -1]  # Flatten and extract last
             
             current_phases[i] = {
-                'theta': safe_extract_last(body_info.get('theta_phase'), (batch_size,)),
-                'phi': safe_extract_last(body_info.get('phi_phase'), (batch_size,)),
-                'velocity': safe_extract_last(body_info.get('velocity'), (batch_size,)),
-                'radius': safe_extract_last(body_info.get('radius'), (batch_size,)),
-                'longitude': safe_extract_last(body_info.get('longitude'), (batch_size,))
+                'theta': safe_extract_last(body_info.get('longitude_phase'), (batch_size,)),  # FIXED: longitude_phase -> theta
+                'phi': safe_extract_last(body_info.get('sign_phase'), (batch_size,)),         # FIXED: sign_phase -> phi
+                'velocity': safe_extract_last(body_info.get('speed'), (batch_size,)),         # FIXED: speed -> velocity
+                'radius': safe_extract_last(body_info.get('distance'), (batch_size,)),        # FIXED: distance -> radius
+                'longitude': safe_extract_last(body_info.get('ecliptic_longitude'), (batch_size,))  # FIXED: ecliptic_longitude -> longitude
             }
         
         # Create adjacency matrix with explicit phase difference computation

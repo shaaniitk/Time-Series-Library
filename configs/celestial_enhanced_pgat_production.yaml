@@ -36,7 +36,7 @@ weight_decay: 0.0001
 clip_grad_norm: 1.0
 
 # HEAVY MODEL hyperparameters - Maximum capacity
-d_model: 130             # Double the model dimension
+d_model: 416             # Match celestial feature dimension (13 × 32)
 n_heads: 8               # More attention heads
 e_layers: 4              # Deeper encoder
 d_layers: 2              # Deeper decoder
