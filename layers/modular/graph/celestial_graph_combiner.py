@@ -125,28 +125,68 @@ class CelestialGraphCombiner(nn.Module):
             - combined_edges: [batch, seq_len, num_nodes, num_nodes] Final combined adjacency
             - metadata: Dict with fusion information from the last time step
         """
+        # DEBUG: Memory and shape logging at start
+        import torch
+        import psutil
+        import os
+        
+        def log_memory(stage):
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
+                print(f"🔍 COMBINER [{stage}]: GPU Allocated={allocated:.2f}GB, Reserved={reserved:.2f}GB")
+            else:
+                process = psutil.Process(os.getpid())
+                cpu_mem = process.memory_info().rss / 1024**3
+                print(f"🔍 COMBINER [{stage}]: CPU={cpu_mem:.2f}GB")
+        
         batch_size, seq_len, _, _ = astronomical_edges.shape
+        print(f"🔍 COMBINER START: Processing {seq_len} timesteps, batch_size={batch_size}")
+        log_memory("START")
         
         combined_edges_over_time = []
         last_metadata = {}
 
         # Iterate over each time step
         for t in range(seq_len):
+            if t % 50 == 0 or t < 5:  # Log first 5 and every 50th timestep
+                print(f"🔍 COMBINER: Processing timestep {t}/{seq_len}")
+                log_memory(f"TIMESTEP_{t}")
+            
             # Slice inputs for the current time step to make them static
             astro_t = astronomical_edges[:, t, :, :]
             learned_t = learned_edges[:, t, :, :]
             attn_t = attention_edges[:, t, :, :]
             context_t = enc_out[:, t, :] # Use the encoder output for this step as context
 
-            # Call the original fusion logic for this single time step
-            combined_t, metadata_t = self._forward_static(
-                astro_t, learned_t, attn_t, context_t, market_regime
-            )
-            combined_edges_over_time.append(combined_t)
-            last_metadata = metadata_t
+            if t == 0:  # Debug shapes for first timestep
+                print(f"🔍 COMBINER SHAPES: astro_t={astro_t.shape}, learned_t={learned_t.shape}, attn_t={attn_t.shape}, context_t={context_t.shape}")
 
+            # Call the original fusion logic for this single time step
+            try:
+                combined_t, metadata_t = self._forward_static(
+                    astro_t, learned_t, attn_t, context_t, market_regime
+                )
+                combined_edges_over_time.append(combined_t)
+                last_metadata = metadata_t
+                
+                if t == 0:
+                    print(f"🔍 COMBINER: First timestep output shape: {combined_t.shape}")
+                    log_memory("AFTER_FIRST_TIMESTEP")
+                
+            except Exception as e:
+                print(f"❌ COMBINER ERROR at timestep {t}: {e}")
+                log_memory(f"ERROR_TIMESTEP_{t}")
+                raise
+
+        print(f"🔍 COMBINER: About to stack {len(combined_edges_over_time)} tensors")
+        log_memory("BEFORE_STACK")
+        
         # Stack the results from all time steps
         combined_edges = torch.stack(combined_edges_over_time, dim=1)
+        
+        print(f"🔍 COMBINER: Final output shape: {combined_edges.shape}")
+        log_memory("END")
         
         return combined_edges, last_metadata
 
@@ -161,40 +201,110 @@ class CelestialGraphCombiner(nn.Module):
         """
         Original forward pass logic, now used for a single time step.
         """
+        # DEBUG: Track memory through each step
+        import torch
+        import psutil
+        import os
+        
+        def log_step_memory(step_name):
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                print(f"    🔍 STATIC [{step_name}]: GPU={allocated:.2f}GB")
+            else:
+                process = psutil.Process(os.getpid())
+                cpu_mem = process.memory_info().rss / 1024**3
+                print(f"    🔍 STATIC [{step_name}]: CPU={cpu_mem:.2f}GB")
+        
+        log_step_memory("START")
+        
         # 1. Transform each edge type to feature space
-        edge_features = self._transform_edges_to_features(
-            astronomical_edges, learned_edges, attention_edges
-        )  # [batch, 3, num_nodes, num_nodes, d_model]
+        try:
+            edge_features = self._transform_edges_to_features(
+                astronomical_edges, learned_edges, attention_edges
+            )  # [batch, 3, num_nodes, num_nodes, d_model]
+            print(f"    🔍 STATIC: edge_features shape: {edge_features.shape}")
+            log_step_memory("AFTER_EDGE_TRANSFORM")
+        except Exception as e:
+            print(f"    ❌ STATIC ERROR in edge transform: {e}")
+            log_step_memory("ERROR_EDGE_TRANSFORM")
+            raise
         
         # 2. Hierarchical attention fusion (returns [batch, num_nodes, num_nodes, d_model])
-        fused_features = self._hierarchical_fusion(edge_features, market_context)
+        try:
+            fused_features = self._hierarchical_fusion(edge_features, market_context)
+            print(f"    🔍 STATIC: fused_features shape: {fused_features.shape}")
+            log_step_memory("AFTER_HIERARCHICAL_FUSION")
+        except Exception as e:
+            print(f"    ❌ STATIC ERROR in hierarchical fusion: {e}")
+            log_step_memory("ERROR_HIERARCHICAL_FUSION")
+            raise
         
         # 3. Cross-modal interactions
-        interaction_features = self._compute_cross_interactions(
-            astronomical_edges, learned_edges, attention_edges, market_context
-        )  # [batch, num_nodes, num_nodes, d_model]
+        try:
+            interaction_features = self._compute_cross_interactions(
+                astronomical_edges, learned_edges, attention_edges, market_context
+            )  # [batch, num_nodes, num_nodes, d_model]
+            print(f"    🔍 STATIC: interaction_features shape: {interaction_features.shape}")
+            log_step_memory("AFTER_CROSS_INTERACTIONS")
+        except Exception as e:
+            print(f"    ❌ STATIC ERROR in cross interactions: {e}")
+            log_step_memory("ERROR_CROSS_INTERACTIONS")
+            raise
         
         # 4. Market regime adaptation
         if market_regime is not None:
-            regime_adapted = self.regime_adapter(fused_features, market_regime)
+            try:
+                regime_adapted = self.regime_adapter(fused_features, market_regime)
+                log_step_memory("AFTER_REGIME_ADAPTATION")
+            except Exception as e:
+                print(f"    ❌ STATIC ERROR in regime adaptation: {e}")
+                log_step_memory("ERROR_REGIME_ADAPTATION")
+                raise
         else:
             regime_adapted = fused_features
         
         # 5. Combine base fusion with interactions
-        combined_features = regime_adapted + interaction_features
+        try:
+            combined_features = regime_adapted + interaction_features
+            print(f"    🔍 STATIC: combined_features shape: {combined_features.shape}")
+            log_step_memory("AFTER_FEATURE_COMBINATION")
+        except Exception as e:
+            print(f"    ❌ STATIC ERROR in feature combination: {e}")
+            log_step_memory("ERROR_FEATURE_COMBINATION")
+            raise
         
         # 6. Edge strength calibration
-        calibrated_features = self.edge_calibrator(combined_features, market_context)
+        try:
+            calibrated_features = self.edge_calibrator(combined_features, market_context)
+            print(f"    🔍 STATIC: calibrated_features shape: {calibrated_features.shape}")
+            log_step_memory("AFTER_EDGE_CALIBRATION")
+        except Exception as e:
+            print(f"    ❌ STATIC ERROR in edge calibration: {e}")
+            log_step_memory("ERROR_EDGE_CALIBRATION")
+            raise
         
         # 7. Final projection to edge weights
-        combined_edges = self.output_projection(calibrated_features).squeeze(-1)
-        # [batch, num_nodes, num_nodes]
+        try:
+            combined_edges = self.output_projection(calibrated_features).squeeze(-1)
+            # [batch, num_nodes, num_nodes]
+            print(f"    🔍 STATIC: combined_edges shape: {combined_edges.shape}")
+            log_step_memory("AFTER_OUTPUT_PROJECTION")
+        except Exception as e:
+            print(f"    ❌ STATIC ERROR in output projection: {e}")
+            log_step_memory("ERROR_OUTPUT_PROJECTION")
+            raise
         
         # 8. Generate metadata for interpretability
-        metadata = self._generate_metadata(
-            astronomical_edges, learned_edges, attention_edges, 
-            combined_edges, market_context
-        )
+        try:
+            metadata = self._generate_metadata(
+                astronomical_edges, learned_edges, attention_edges, 
+                combined_edges, market_context
+            )
+            log_step_memory("AFTER_METADATA_GENERATION")
+        except Exception as e:
+            print(f"    ❌ STATIC ERROR in metadata generation: {e}")
+            log_step_memory("ERROR_METADATA_GENERATION")
+            raise
         
         return combined_edges, metadata
     

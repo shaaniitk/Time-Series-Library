@@ -296,8 +296,41 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             # Instead of simple mean, use attention-weighted pooling to preserve important features
             context = self._create_rich_context(all_node_features, wave_patched_outputs, target_patched_outputs)  # [batch_size, d_model]
             
+            # DEBUG: Memory check before graph_combiner
+            import torch
+            if torch.cuda.is_available():
+                allocated_before = torch.cuda.memory_allocated() / 1024**3
+                reserved_before = torch.cuda.memory_reserved() / 1024**3
+                print(f"🔍 MEMORY BEFORE graph_combiner: Allocated={allocated_before:.2f}GB, Reserved={reserved_before:.2f}GB")
+            else:
+                import psutil
+                process = psutil.Process()
+                cpu_before = process.memory_info().rss / 1024**3
+                print(f"🔍 MEMORY BEFORE graph_combiner: CPU={cpu_before:.2f}GB")
+            
+            # Debug input shapes
+            print(f"🔍 INPUT SHAPES: graph_proposals={len(graph_proposals)} items, context={context.shape}")
+            for i, proposal in enumerate(graph_proposals):
+                if isinstance(proposal, tuple) and len(proposal) >= 2:
+                    adj, weights = proposal[0], proposal[1]
+                    print(f"   proposal[{i}]: adj={adj.shape}, weights={weights.shape}")
+            
             # The improved gated combiner can handle variable number of graphs
             adjacency_matrix, edge_weights = self.graph_combiner(graph_proposals, context)
+            
+            # DEBUG: Memory check after graph_combiner
+            if torch.cuda.is_available():
+                allocated_after = torch.cuda.memory_allocated() / 1024**3
+                reserved_after = torch.cuda.memory_reserved() / 1024**3
+                print(f"✅ MEMORY AFTER graph_combiner: Allocated={allocated_after:.2f}GB, Reserved={reserved_after:.2f}GB")
+                print(f"📊 MEMORY DELTA: Allocated={allocated_after-allocated_before:+.2f}GB, Reserved={reserved_after-reserved_before:+.2f}GB")
+            else:
+                cpu_after = process.memory_info().rss / 1024**3
+                print(f"✅ MEMORY AFTER graph_combiner: CPU={cpu_after:.2f}GB")
+                print(f"📊 MEMORY DELTA: CPU={cpu_after-cpu_before:+.2f}GB")
+            
+            # Debug output shapes
+            print(f"✅ OUTPUT SHAPES: adjacency_matrix={adjacency_matrix.shape}, edge_weights={edge_weights.shape}")
             self.internal_logs = {
                 'graph_combination': 'success',
                 'num_proposals': len(graph_proposals),

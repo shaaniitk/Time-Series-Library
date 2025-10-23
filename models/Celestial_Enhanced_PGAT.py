@@ -584,11 +584,47 @@ class Model(nn.Module):
             if dynamic_adj.dim() == 3:
                 dynamic_adj = dynamic_adj.unsqueeze(1).expand(-1, seq_len, -1, -1)
 
+            # DEBUG: Memory check before celestial_combiner
+            import torch
+            if torch.cuda.is_available():
+                allocated_before = torch.cuda.memory_allocated() / 1024**3
+                reserved_before = torch.cuda.memory_reserved() / 1024**3
+                print(f"🔍 MEMORY BEFORE celestial_combiner: Allocated={allocated_before:.2f}GB, Reserved={reserved_before:.2f}GB")
+            else:
+                import psutil
+                import os
+                process = psutil.Process(os.getpid())
+                cpu_before = process.memory_info().rss / 1024**3
+                print(f"🔍 MEMORY BEFORE celestial_combiner: CPU={cpu_before:.2f}GB")
+            
+            # Debug input shapes
+            print(f"🔍 INPUT SHAPES to celestial_combiner:")
+            print(f"   astronomical_adj: {astronomical_adj.shape}")
+            print(f"   learned_adj: {learned_adj.shape}")
+            print(f"   dynamic_adj: {dynamic_adj.shape}")
+            print(f"   enc_out: {enc_out.shape}")
+            
             # The combiner now receives three dynamic graphs and the full encoder output
             # This assumes celestial_combiner is adapted to handle rank-4 adjs and rank-3 context
             combined_adj, fusion_metadata = self.celestial_combiner(
                 astronomical_adj, learned_adj, dynamic_adj, enc_out
             )
+            
+            # DEBUG: Memory check after celestial_combiner
+            if torch.cuda.is_available():
+                allocated_after = torch.cuda.memory_allocated() / 1024**3
+                reserved_after = torch.cuda.memory_reserved() / 1024**3
+                print(f"✅ MEMORY AFTER celestial_combiner: Allocated={allocated_after:.2f}GB, Reserved={reserved_after:.2f}GB")
+                print(f"📊 MEMORY DELTA: Allocated={allocated_after-allocated_before:+.2f}GB, Reserved={reserved_after-reserved_before:+.2f}GB")
+            else:
+                cpu_after = process.memory_info().rss / 1024**3
+                print(f"✅ MEMORY AFTER celestial_combiner: CPU={cpu_after:.2f}GB")
+                print(f"📊 MEMORY DELTA: CPU={cpu_after-cpu_before:+.2f}GB")
+            
+            # Debug output shapes
+            print(f"✅ OUTPUT SHAPES from celestial_combiner:")
+            print(f"   combined_adj: {combined_adj.shape}")
+            print(f"   fusion_metadata keys: {list(fusion_metadata.keys()) if fusion_metadata else 'None'}")
         else:
             # Simple combination for fallback with dynamic weighting
             # Generate dynamic weights for each time step from enc_out
