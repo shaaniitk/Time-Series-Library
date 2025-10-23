@@ -35,12 +35,14 @@ class PhaseAwareCelestialProcessor(nn.Module):
     def __init__(self, num_input_waves: int = 118, celestial_dim: int = 32, 
                  waves_per_body: int = 9, num_heads: int = 8):
         super().__init__()
-        self.num_input_waves = num_input_waves
+        
+        # Auto-detect correct number of input waves from CSV
+        self.num_input_waves = self._auto_detect_input_waves(num_input_waves)
         self.celestial_dim = celestial_dim
         self.waves_per_body = waves_per_body
         self.num_heads = num_heads
         
-        # Wave-to-celestial mapping
+        # Wave-to-celestial mapping (dynamic, data-driven)
         self.wave_mapping = self._create_astrological_mapping()
         
         # For each celestial body, create a processor that understands phase structure
@@ -67,54 +69,291 @@ class PhaseAwareCelestialProcessor(nn.Module):
         )
         
         print(f"🌌 Phase-Aware Celestial Processor initialized:")
-        print(f"   - Input waves: {num_input_waves}")
+        print(f"   - Input waves: {self.num_input_waves} (auto-detected)")
         print(f"   - Celestial bodies: {len(CelestialBody)}")
         print(f"   - Celestial dimension: {celestial_dim}")
+        print(f"   - Dynamic feature mapping: ENABLED")
         print(f"   - Assumes phase info already in inputs (sin/cos encoded)")
         print(f"   - Will compute explicit phase differences for edges")
     
+    def _auto_detect_input_waves(self, configured_waves: int) -> int:
+        """Auto-detect the correct number of input waves from the CSV file."""
+        csv_path = "data/prepared_financial_data.csv"
+        try:
+            import pandas as pd
+            df_header = pd.read_csv(csv_path, nrows=0)
+            column_names = df_header.columns.tolist()
+            
+            # Count actual celestial columns (exclude date, OHLC, time_delta)
+            skip_prefixes = ['date', 'log_', 'time_delta']
+            celestial_columns = [col for col in column_names 
+                               if not any(col.startswith(prefix) for prefix in skip_prefixes)]
+            actual_celestial_features = len(celestial_columns)
+            
+            if configured_waves != actual_celestial_features:
+                print(f"🔧 AUTO-CORRECTING INPUT WAVE COUNT:")
+                print(f"   Configured: {configured_waves}")
+                print(f"   Detected from CSV: {actual_celestial_features}")
+                print(f"   Using detected value: {actual_celestial_features}")
+                return actual_celestial_features
+            else:
+                print(f"✅ Input wave count matches CSV: {configured_waves}")
+                return configured_waves
+                
+        except Exception as e:
+            print(f"⚠️  Could not auto-detect input waves: {e}")
+            print(f"   Using configured value: {configured_waves}")
+            return configured_waves
+
+    
     def _create_astrological_mapping(self) -> Dict[CelestialBody, List[int]]:
         """
-        Create mapping from actual input features to celestial bodies.
+        FIXED: Dynamic mapping based on actual CSV header structure.
         
-        Based on analysis of prepared_financial_data.csv:
-        - Features 0-4: OHLC + time_delta (excluded)
-        - Features 5-91: Dynamic celestial features (7 per body for most)
-        - Features 92-98: Shadbala strength features  
-        - Features 99-120: Static celestial features (2 per body)
+        Automatically parses the data file header to create correct celestial body mappings.
+        No hardcoding - adapts to any CSV structure with celestial body features.
+        
+        CRITICAL FIX: Resolves Issue #3 - Feature Mapping Algorithmic Error
         """
+        # Load and parse the actual CSV header
+        csv_path = "data/prepared_financial_data.csv"
+        try:
+            import pandas as pd
+            df_header = pd.read_csv(csv_path, nrows=0)  # Read only header
+            column_names = df_header.columns.tolist()
+        except Exception as e:
+            print(f"⚠️  Could not read CSV header from {csv_path}: {e}")
+            print("⚠️  Falling back to manual column analysis...")
+            # Fallback: manual header based on known structure
+            column_names = [
+                'date', 'log_Open', 'log_High', 'log_Low', 'log_Close', 'time_delta',
+                'dyn_Sun_sin', 'dyn_Sun_cos', 'dyn_Sun_speed', 'dyn_Sun_sign_sin', 'dyn_Sun_sign_cos', 'dyn_Sun_distance', 'dyn_Sun_lat',
+                'dyn_Moon_sin', 'dyn_Moon_cos', 'dyn_Moon_speed', 'dyn_Moon_sign_sin', 'dyn_Moon_sign_cos', 'dyn_Moon_distance', 'dyn_Moon_lat',
+                'dyn_Mars_sin', 'dyn_Mars_cos', 'dyn_Mars_speed', 'dyn_Mars_sign_sin', 'dyn_Mars_sign_cos', 'dyn_Mars_distance', 'dyn_Mars_lat',
+                'dyn_Mercury_sin', 'dyn_Mercury_cos', 'dyn_Mercury_speed', 'dyn_Mercury_sign_sin', 'dyn_Mercury_sign_cos', 'dyn_Mercury_distance', 'dyn_Mercury_lat',
+                'dyn_Jupiter_sin', 'dyn_Jupiter_cos', 'dyn_Jupiter_speed', 'dyn_Jupiter_sign_sin', 'dyn_Jupiter_sign_cos', 'dyn_Jupiter_distance', 'dyn_Jupiter_lat',
+                'dyn_Venus_sin', 'dyn_Venus_cos', 'dyn_Venus_speed', 'dyn_Venus_sign_sin', 'dyn_Venus_sign_cos', 'dyn_Venus_distance', 'dyn_Venus_lat',
+                'dyn_Saturn_sin', 'dyn_Saturn_cos', 'dyn_Saturn_speed', 'dyn_Saturn_sign_sin', 'dyn_Saturn_sign_cos', 'dyn_Saturn_distance', 'dyn_Saturn_lat',
+                'dyn_Uranus_sin', 'dyn_Uranus_cos', 'dyn_Uranus_speed', 'dyn_Uranus_sign_sin', 'dyn_Uranus_sign_cos', 'dyn_Uranus_distance', 'dyn_Uranus_lat',
+                'dyn_Neptune_sin', 'dyn_Neptune_cos', 'dyn_Neptune_speed', 'dyn_Neptune_sign_sin', 'dyn_Neptune_sign_cos', 'dyn_Neptune_distance', 'dyn_Neptune_lat',
+                'dyn_Pluto_sin', 'dyn_Pluto_cos', 'dyn_Pluto_speed', 'dyn_Pluto_sign_sin', 'dyn_Pluto_sign_cos', 'dyn_Pluto_distance', 'dyn_Pluto_lat',
+                'dyn_Mean Rahu_sin', 'dyn_Mean Rahu_cos', 'dyn_Mean Rahu_speed', 'dyn_Mean Rahu_sign_sin', 'dyn_Mean Rahu_sign_cos',
+                'dyn_Mean Ketu_sin', 'dyn_Mean Ketu_cos', 'dyn_Mean Ketu_speed', 'dyn_Mean Ketu_sign_sin', 'dyn_Mean Ketu_sign_cos',
+                'dyn_Sun_shadbala', 'dyn_Moon_shadbala', 'dyn_Mars_shadbala', 'dyn_Mercury_shadbala', 'dyn_Jupiter_shadbala', 'dyn_Venus_shadbala', 'dyn_Saturn_shadbala',
+                'Sun_sin', 'Sun_cos', 'Moon_sin', 'Moon_cos', 'Mars_sin', 'Mars_cos', 'Mercury_sin', 'Mercury_cos',
+                'Jupiter_sin', 'Jupiter_cos', 'Venus_sin', 'Venus_cos', 'Saturn_sin', 'Saturn_cos',
+                'Uranus_sin', 'Uranus_cos', 'Neptune_sin', 'Neptune_cos', 'Pluto_sin', 'Pluto_cos',
+                'Mean Rahu_sin', 'Mean Rahu_cos', 'Mean Ketu_sin', 'Mean Ketu_cos', 'Ascendant_sin', 'Ascendant_cos'
+            ]
+        
+        print(f"📊 Analyzing CSV with {len(column_names)} columns...")
+        
+        # Create celestial body name mapping (handle variations in naming)
+        celestial_name_mapping = {
+            'Sun': CelestialBody.SUN,
+            'Moon': CelestialBody.MOON,
+            'Mars': CelestialBody.MARS,
+            'Mercury': CelestialBody.MERCURY,
+            'Jupiter': CelestialBody.JUPITER,
+            'Venus': CelestialBody.VENUS,
+            'Saturn': CelestialBody.SATURN,
+            'Uranus': CelestialBody.URANUS,
+            'Neptune': CelestialBody.NEPTUNE,
+            'Pluto': CelestialBody.PLUTO,
+            'Mean Rahu': CelestialBody.NORTH_NODE,  # Rahu = North Node
+            'Mean Ketu': CelestialBody.SOUTH_NODE,  # Ketu = South Node
+            'Chiron': CelestialBody.CHIRON,
+            # Note: Ascendant will be handled separately for Chiron
+        }
+        
+        # Initialize mapping dictionary
         mapping = {}
         
-        # Dynamic features start at index 5 (after OHLC + time_delta)
-        # Each celestial body has: sin, cos, speed, sign_sin, sign_cos, distance, lat
+        # Skip non-celestial columns (OHLC, date, time_delta)
+        skip_prefixes = ['date', 'log_', 'time_delta']
         
-        # Create safe mapping that stays within bounds
-        features_per_body = 9
-        start_idx = 5  # Skip OHLC + time_delta
+        # Group features by celestial body
+        celestial_features = {}
+        used_indices = set()  # Track used indices to avoid overlaps
         
-        bodies = [CelestialBody.SUN, CelestialBody.MOON, CelestialBody.MARS, 
-                 CelestialBody.MERCURY, CelestialBody.JUPITER, CelestialBody.VENUS,
-                 CelestialBody.SATURN, CelestialBody.URANUS, CelestialBody.NEPTUNE,
-                 CelestialBody.PLUTO, CelestialBody.NORTH_NODE, CelestialBody.SOUTH_NODE]
+        # First pass: collect all celestial features
+        celestial_columns = []
+        for idx, col_name in enumerate(column_names):
+            # Skip non-celestial columns
+            if any(col_name.startswith(prefix) for prefix in skip_prefixes):
+                continue
+            celestial_columns.append((idx, col_name))
         
-        for i, body in enumerate(bodies):
-            start = start_idx + i * features_per_body
-            end = min(start + features_per_body, self.num_input_waves)
-            if start < self.num_input_waves:
-                mapping[body] = list(range(start, end))
+        print(f"📊 Found {len(celestial_columns)} celestial columns out of {len(column_names)} total")
+        
+        # Second pass: assign features to celestial bodies
+        unassigned_features = []
+        
+        for idx, col_name in celestial_columns:
+            # Extract celestial body name from column
+            celestial_body_name = self._extract_celestial_body_name(col_name)
+            
+            if celestial_body_name and celestial_body_name in celestial_name_mapping:
+                celestial_body = celestial_name_mapping[celestial_body_name]
+                
+                if celestial_body not in celestial_features:
+                    celestial_features[celestial_body] = []
+                
+                # Only add if not already used (avoid overlaps)
+                if idx not in used_indices:
+                    celestial_features[celestial_body].append(idx)
+                    used_indices.add(idx)
             else:
-                # If we run out of features, use the last available ones
-                mapping[body] = list(range(max(5, self.num_input_waves - features_per_body), self.num_input_waves))
+                # Track unassigned features for debugging
+                unassigned_features.append((idx, col_name))
         
-        # CHIRON - use remaining features or duplicate some
-        chiron_start = start_idx + len(bodies) * features_per_body
-        if chiron_start < self.num_input_waves:
-            mapping[CelestialBody.CHIRON] = list(range(chiron_start, min(chiron_start + 3, self.num_input_waves)))
-        else:
-            # Use some features from the end
-            mapping[CelestialBody.CHIRON] = list(range(max(5, self.num_input_waves - 3), self.num_input_waves))
+        # Report unassigned features for debugging
+        if unassigned_features:
+            print(f"⚠️  {len(unassigned_features)} features could not be assigned to celestial bodies:")
+            for idx, col_name in unassigned_features[:10]:  # Show first 10
+                print(f"   {idx}: {col_name}")
+            if len(unassigned_features) > 10:
+                print(f"   ... and {len(unassigned_features) - 10} more")
+        
+        # Create final mapping, ensuring all celestial bodies are represented
+        for celestial_body in CelestialBody:
+            if celestial_body in celestial_features and celestial_features[celestial_body]:
+                # Convert to 0-based indexing for the celestial-only features
+                original_indices = celestial_features[celestial_body]
+                # Map from original CSV indices to celestial feature indices (0-based)
+                celestial_indices = []
+                for orig_idx in original_indices:
+                    # Find position in celestial_columns
+                    celestial_pos = next((i for i, (idx, _) in enumerate(celestial_columns) if idx == orig_idx), None)
+                    if celestial_pos is not None:
+                        celestial_indices.append(celestial_pos)
+                mapping[celestial_body] = celestial_indices
+            else:
+                # If a celestial body is missing, create empty mapping for now
+                print(f"⚠️  {celestial_body.value} not found in CSV")
+                mapping[celestial_body] = []
+        
+        # Handle special case: Chiron is not in the CSV, so assign it to Ascendant features
+        if not mapping[CelestialBody.CHIRON] and unassigned_features:
+            # Find Ascendant features for Chiron
+            ascendant_features = [(idx, col) for idx, col in unassigned_features if 'Ascendant' in col]
+            if ascendant_features:
+                print(f"📊 Assigning Ascendant features to Chiron (closest astrological match)")
+                chiron_indices = []
+                for orig_idx, col_name in ascendant_features:
+                    celestial_pos = next((i for i, (idx, _) in enumerate(celestial_columns) if idx == orig_idx), None)
+                    if celestial_pos is not None:
+                        chiron_indices.append(celestial_pos)
+                        used_indices.add(orig_idx)
+                mapping[CelestialBody.CHIRON] = chiron_indices
+        
+        # Validation and reporting
+        self._validate_and_report_mapping(mapping, column_names)
         
         return mapping
+    
+    def _extract_celestial_body_name(self, column_name: str) -> Optional[str]:
+        """
+        Extract celestial body name from column name.
+        
+        Handles various naming patterns:
+        - dyn_Sun_sin -> Sun
+        - Sun_sin -> Sun  
+        - dyn_Mean Rahu_cos -> Mean Rahu
+        - dyn_Sun_shadbala -> Sun
+        - dyn_Sun_sign_sin -> Sun (not sign!)
+        """
+        # Remove common prefixes
+        clean_name = column_name.replace('dyn_', '').replace('static_', '')
+        
+        # Handle special cases first (order matters!)
+        if 'Mean Rahu' in clean_name:
+            return 'Mean Rahu'
+        elif 'Mean Ketu' in clean_name:
+            return 'Mean Ketu'
+        elif 'Ascendant' in clean_name:
+            return 'Ascendant'  # Special case for Ascendant
+        
+        # List of known celestial bodies (in order of specificity)
+        celestial_bodies = [
+            'Mercury', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto',
+            'Venus', 'Mars', 'Moon', 'Sun'  # Put shorter names last to avoid conflicts
+        ]
+        
+        # Find the celestial body name in the column
+        for body in celestial_bodies:
+            if body in clean_name:
+                # Verify it's actually the body name, not part of another word
+                # Check if it's followed by underscore or end of string
+                body_index = clean_name.find(body)
+                if body_index != -1:
+                    # Check what comes after the body name
+                    after_body = clean_name[body_index + len(body):]
+                    if after_body == '' or after_body.startswith('_'):
+                        return body
+        
+        return None
+    
+    def _validate_and_report_mapping(self, mapping: Dict[CelestialBody, List[int]], column_names: List[str]) -> None:
+        """Validate the mapping and report statistics."""
+        print(f"\n🌌 CELESTIAL FEATURE MAPPING REPORT:")
+        print(f"{'='*60}")
+        
+        # Get celestial columns only (skip OHLC, date, time_delta)
+        skip_prefixes = ['date', 'log_', 'time_delta']
+        celestial_columns = [(idx, col) for idx, col in enumerate(column_names) 
+                           if not any(col.startswith(prefix) for prefix in skip_prefixes)]
+        
+        total_features = 0
+        max_index = -1
+        
+        for body, indices in mapping.items():
+            # Get actual feature names for these indices
+            feature_names = []
+            for idx in indices:
+                if idx < len(celestial_columns):
+                    _, col_name = celestial_columns[idx]
+                    feature_names.append(col_name)
+                else:
+                    feature_names.append(f"INDEX_{idx}")
+            
+            total_features += len(indices)
+            if indices:
+                max_index = max(max_index, max(indices))
+            
+            print(f"🪐 {body.value:12} ({len(indices):2d} features): {indices}")
+            if len(feature_names) <= 5:
+                print(f"   Features: {', '.join(feature_names)}")
+            else:
+                print(f"   Features: {', '.join(feature_names[:3])} ... {', '.join(feature_names[-2:])}")
+        
+        print(f"{'='*60}")
+        print(f"📊 Total celestial features mapped: {total_features}")
+        print(f"📊 Available celestial columns: {len(celestial_columns)}")
+        print(f"📊 Total CSV columns: {len(column_names)}")
+        print(f"📊 Expected input waves: {self.num_input_waves}")
+        print(f"📊 Max feature index used: {max_index}")
+        
+        # Validation checks
+        expected_celestial_features = len(celestial_columns)
+        if total_features != expected_celestial_features:
+            print(f"⚠️  WARNING: Feature count mismatch!")
+            print(f"   Expected celestial features: {expected_celestial_features}")
+            print(f"   Mapped features: {total_features}")
+        
+        # Check for overlapping indices
+        all_indices = []
+        for indices in mapping.values():
+            all_indices.extend(indices)
+        
+        if len(all_indices) != len(set(all_indices)):
+            print(f"⚠️  WARNING: Overlapping feature indices detected!")
+        
+        # Check index bounds
+        if max_index >= len(celestial_columns):
+            print(f"⚠️  WARNING: Index out of bounds! Max index: {max_index}, Available: {len(celestial_columns)}")
+        
+        print(f"✅ Celestial mapping validation complete.\n")
     
     def forward(self, wave_features: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, Dict]:
         """
@@ -334,10 +573,14 @@ class PhaseExtractor(nn.Module):
         phase_info['longitude_sin'] = sin_longitude
         phase_info['longitude_cos'] = cos_longitude
         
-        # Extract speed/velocity - always 3rd feature
-        phase_info['speed'] = features[:, :, 2]
+        # Extract speed/velocity - 3rd feature if available
+        if num_features >= 3:
+            phase_info['speed'] = features[:, :, 2]
+        else:
+            # For bodies with fewer features, use a default speed
+            phase_info['speed'] = torch.zeros_like(features[:, :, 0])
         
-        # Extract zodiac sign phase (φ) - always 4th and 5th features
+        # Extract zodiac sign phase (φ) - 4th and 5th features if available
         if num_features >= 5:
             sin_sign = features[:, :, 3]
             cos_sign = features[:, :, 4]
@@ -346,6 +589,11 @@ class PhaseExtractor(nn.Module):
             phase_info['sign_phase'] = sign_phase  # φ phase
             phase_info['sign_sin'] = sin_sign
             phase_info['sign_cos'] = cos_sign
+        else:
+            # For bodies with fewer features, use longitude phase as sign phase
+            phase_info['sign_phase'] = longitude_phase
+            phase_info['sign_sin'] = sin_longitude
+            phase_info['sign_cos'] = cos_longitude
         
         # Extract distance and latitude (if available)
         if self.has_distance_lat and num_features >= 7:
@@ -359,11 +607,13 @@ class PhaseExtractor(nn.Module):
             else:
                 static_start_idx = 7
         else:
-            # For nodes - no distance/lat
-            static_start_idx = 5
-            if self.has_shadbala and num_features > 5:
-                phase_info['shadbala'] = features[:, :, 5]
-                static_start_idx = 6
+            # For bodies with fewer features, use defaults
+            phase_info['distance'] = torch.ones_like(features[:, :, 0])  # Default distance
+            phase_info['latitude'] = torch.zeros_like(features[:, :, 0])  # Default latitude
+            static_start_idx = min(5, num_features)
+            if self.has_shadbala and num_features > static_start_idx:
+                phase_info['shadbala'] = features[:, :, static_start_idx]
+                static_start_idx += 1
         
         # Extract ecliptic longitude (fundamental astrological coordinate - 2D projection)
         if num_features >= static_start_idx + 2:
@@ -374,6 +624,11 @@ class PhaseExtractor(nn.Module):
             phase_info['ecliptic_longitude'] = ecliptic_longitude  # Fundamental astrological angle
             phase_info['ecliptic_sin'] = sin_ecliptic
             phase_info['ecliptic_cos'] = cos_ecliptic
+        else:
+            # For bodies with fewer features, use longitude phase as ecliptic
+            phase_info['ecliptic_longitude'] = longitude_phase
+            phase_info['ecliptic_sin'] = sin_longitude
+            phase_info['ecliptic_cos'] = cos_longitude
         
         # Compute phase velocity (temporal derivative of longitude phase)
         if seq_len > 1:

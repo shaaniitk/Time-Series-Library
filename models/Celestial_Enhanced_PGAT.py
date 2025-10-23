@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from layers.modular.graph.celestial_body_nodes import CelestialBodyNodes, CelestialBody
-from layers.modular.graph.celestial_graph_combiner_fixed import CelestialGraphCombinerFixed
+from layers.modular.graph.celestial_graph_combiner import CelestialGraphCombiner
 from layers.modular.decoder.mixture_density_decoder import MixtureDensityDecoder
 from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureDensityDecoder
 from layers.modular.embedding.hierarchical_mapper import HierarchicalTemporalSpatialMapper
@@ -158,7 +158,7 @@ class Model(nn.Module):
                 num_aspects=5
             )
             
-            self.celestial_combiner = CelestialGraphCombinerFixed(
+            self.celestial_combiner = CelestialGraphCombiner(
                 num_nodes=self.num_celestial_bodies,
                 d_model=self.d_model,
                 num_attention_heads=self.n_heads,
