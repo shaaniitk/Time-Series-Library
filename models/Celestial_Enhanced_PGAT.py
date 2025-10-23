@@ -27,6 +27,14 @@ from layers.modular.graph.gated_graph_combiner import GatedGraphCombiner
 from layers.Embed import DataEmbedding  # type: ignore[assignment]
 from utils.celestial_wave_aggregator import CelestialWaveAggregator, CelestialDataProcessor
 from layers.modular.aggregation.phase_aware_celestial_processor import PhaseAwareCelestialProcessor
+from layers.modular.decoder.target_autocorrelation_module import (
+    TargetAutocorrelationModule, 
+    DualStreamDecoder
+)
+from layers.modular.embedding.calendar_aware_embedding import (
+    EnhancedTemporalEmbedding,
+    CalendarEffectsEncoder
+)
 
 
 class Model(nn.Module):
@@ -68,6 +76,14 @@ class Model(nn.Module):
         self.use_hierarchical_mapping = getattr(configs, 'use_hierarchical_mapping', True)
         self.collect_diagnostics = bool(getattr(configs, 'collect_diagnostics', True))
         self.use_efficient_covariate_interaction = getattr(configs, 'use_efficient_covariate_interaction', False)
+        
+        # 🎯 NEW: Target autocorrelation modeling
+        self.use_target_autocorrelation = getattr(configs, 'use_target_autocorrelation', True)
+        self.target_autocorr_layers = getattr(configs, 'target_autocorr_layers', 2)
+        
+        # 📅 NEW: Calendar effects modeling
+        self.use_calendar_effects = getattr(configs, 'use_calendar_effects', True)
+        self.calendar_embedding_dim = getattr(configs, 'calendar_embedding_dim', self.d_model // 4)
         
         # --- FIXED: Dimension Consistency Management ---
         # Determine celestial feature dimension
@@ -373,6 +389,38 @@ class Model(nn.Module):
         # Always have a fallback projection layer
         self.projection = nn.Linear(self.d_model, self.c_out)
         
+        # 🎯 Target Autocorrelation Module
+        if self.use_target_autocorrelation:
+            self.dual_stream_decoder = DualStreamDecoder(
+                d_model=self.d_model,
+                num_targets=self.c_out,
+                num_heads=self.n_heads,
+                dropout=self.dropout
+            )
+            self.logger.info(
+                "🎯 Target Autocorrelation Module enabled with %d layers",
+                self.target_autocorr_layers
+            )
+        else:
+            self.dual_stream_decoder = None
+        
+        # 📅 Calendar Effects Encoder
+        if self.use_calendar_effects:
+            self.calendar_effects_encoder = CalendarEffectsEncoder(self.calendar_embedding_dim)
+            self.calendar_fusion = nn.Sequential(
+                nn.Linear(self.d_model + self.calendar_embedding_dim, self.d_model),
+                nn.LayerNorm(self.d_model),
+                nn.GELU(),
+                nn.Dropout(self.dropout)
+            )
+            self.logger.info(
+                "📅 Calendar Effects Module enabled with %dD embeddings",
+                self.calendar_embedding_dim
+            )
+        else:
+            self.calendar_effects_encoder = None
+            self.calendar_fusion = None
+        
         # Market context encoder
         self.market_context_encoder = nn.Sequential(
             nn.Linear(self.d_model, self.d_model),
@@ -552,6 +600,20 @@ class Model(nn.Module):
                 )
             
             enc_out = self.enc_embedding(x_enc_processed, x_mark_enc)  # [batch, seq_len, d_model]
+            
+            # 📅 Apply Calendar Effects Enhancement
+            if self.use_calendar_effects and self.calendar_effects_encoder is not None:
+                self._log_debug("MODEL_DEBUG: Applying calendar effects...")
+                # Extract date information from time marks (assuming first column is date-related)
+                date_info = x_mark_enc[:, :, 0]  # [batch, seq_len] - first time feature as date proxy
+                calendar_embeddings = self.calendar_effects_encoder(date_info)  # [batch, seq_len, calendar_dim]
+                
+                # Fuse calendar effects with encoder output
+                import torch as torch_module  # Explicit import to avoid scoping issues
+                combined_features = torch_module.cat([enc_out, calendar_embeddings], dim=-1)
+                enc_out = self.calendar_fusion(combined_features)  # [batch, seq_len, d_model]
+                self._log_debug("MODEL_DEBUG: Calendar effects applied - enc_out=%s", enc_out.shape)
+            
             self._debug_memory("ENC_EMBEDDING_COMPLETE")
             self._log_debug("MODEL_DEBUG: Encoder embedding complete - enc_out=%s", enc_out.shape)
         except Exception as exc:
@@ -566,12 +628,26 @@ class Model(nn.Module):
 
         self._log_debug("MODEL_DEBUG: Starting decoder embedding...")
         dec_out = self.dec_embedding(x_dec, x_mark_dec)  # [batch, label_len+pred_len, d_model]
+        
+        # 📅 Apply Calendar Effects to Decoder
+        if self.use_calendar_effects and self.calendar_effects_encoder is not None:
+            self._log_debug("MODEL_DEBUG: Applying calendar effects to decoder...")
+            # Extract date information from decoder time marks
+            dec_date_info = x_mark_dec[:, :, 0]  # [batch, label_len+pred_len]
+            dec_calendar_embeddings = self.calendar_effects_encoder(dec_date_info)
+            
+            # Fuse calendar effects with decoder output
+            import torch as torch_module  # Explicit import to avoid scoping issues
+            dec_combined_features = torch_module.cat([dec_out, dec_calendar_embeddings], dim=-1)
+            dec_out = self.calendar_fusion(dec_combined_features)  # [batch, label_len+pred_len, d_model]
+            self._log_debug("MODEL_DEBUG: Decoder calendar effects applied - dec_out=%s", dec_out.shape)
+        
         self._debug_memory("DEC_EMBEDDING_COMPLETE")
         self._log_debug("MODEL_DEBUG: Decoder embedding complete - dec_out=%s", dec_out.shape)
         
         # 2. Generate market context from encoder output (fix information bottleneck)
-        # Use last hidden state instead of mean to preserve temporal information
-        market_context = self.market_context_encoder(enc_out[:, -1, :])  # [batch, d_model]
+        # FIXED: Use full temporal sequence instead of just last timestep for dynamic adjacency fusion
+        market_context = self.market_context_encoder(enc_out)  # [batch, seq_len, d_model] - DYNAMIC!
         
         # 3. Enhanced Celestial Body Graph Processing
         if self.use_celestial_graph:
@@ -587,19 +663,19 @@ class Model(nn.Module):
                 enc_out = celestial_results['enhanced_enc_out'] # Use enhanced output
                 
                 # Learned context-aware fusion of phase, astronomical, and dynamic adjacencies
-                # NOTE: This fusion is now static, based on last time step. Should be revisited.
-                weights = F.softmax(self.adj_weight_mlp(market_context), dim=-1)  # [batch, 3]
-                w_phase, w_astro, w_dyn = weights[:, 0], weights[:, 1], weights[:, 2]
+                # FIXED: Dynamic fusion weights that adapt per timestep
+                weights = F.softmax(self.adj_weight_mlp(market_context), dim=-1)  # [batch, seq_len, 3] - DYNAMIC!
+                w_phase, w_astro, w_dyn = weights[..., 0], weights[..., 1], weights[..., 2]  # [batch, seq_len] each
                 
                 # Normalize and combine
                 phase_norm = self._normalize_adj(phase_based_adj)
                 astro_norm = self._normalize_adj(astronomical_adj) # Now dynamic
                 dyn_norm = self._normalize_adj(dynamic_adj)       # Now dynamic
                 
-                # Unsqueeze weights for broadcasting with dynamic adjs
-                w_phase = w_phase.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-                w_astro = w_astro.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-                w_dyn = w_dyn.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+                # Unsqueeze weights for broadcasting with dynamic adjs [batch, seq_len, nodes, nodes]
+                w_phase = w_phase.unsqueeze(-1).unsqueeze(-1)  # [batch, seq_len, 1, 1]
+                w_astro = w_astro.unsqueeze(-1).unsqueeze(-1)  # [batch, seq_len, 1, 1]
+                w_dyn = w_dyn.unsqueeze(-1).unsqueeze(-1)      # [batch, seq_len, 1, 1]
                 
                 # FIXED: phase_norm is already 4D, no need to expand
 
@@ -775,10 +851,16 @@ class Model(nn.Module):
             graph_features = torch.cat(processed_features_over_time, dim=1)
             self._log_debug("Applied dynamic graph attention across %s time steps.", self.seq_len)
         
-        # 9. Decoder processing
+        # 9. Enhanced Decoder processing with Target Autocorrelation
         decoder_features = dec_out
         for layer in self.decoder_layers:
             decoder_features = layer(decoder_features, graph_features)
+        
+        # 🎯 Apply Target Autocorrelation Module if enabled
+        if self.use_target_autocorrelation and self.dual_stream_decoder is not None:
+            self._log_debug("Applying target autocorrelation processing...")
+            decoder_features = self.dual_stream_decoder(decoder_features, graph_features)
+            self._log_debug("Target autocorrelation processing complete - shape=%s", decoder_features.shape)
         
         # 10. Final prediction with Sequential Mixture Decoder
         output: torch.Tensor | Tuple[torch.Tensor, torch.Tensor, torch.Tensor]

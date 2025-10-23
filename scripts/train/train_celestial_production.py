@@ -703,8 +703,8 @@ def train_epoch(
             batch_x_mark = batch_x_mark.to(device)
             batch_y_mark = batch_y_mark.to(device)
 
-            dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :], dtype=torch.float32)
-            dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
+            # 🚀 ENHANCED: Use future celestial data for better predictions
+            dec_inp = _create_enhanced_decoder_input(batch_y, args, logger).float().to(device)
 
             if use_amp:
                 if torch_autocast is None:
@@ -899,8 +899,8 @@ def validate_epoch(
                 batch_x_mark = batch_x_mark.float().to(device)
                 batch_y_mark = batch_y_mark.float().to(device)
 
-                dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :], dtype=torch.float32)
-                dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
+                # 🚀 ENHANCED: Use future celestial data for validation
+                dec_inp = _create_enhanced_decoder_input(batch_y, args, logger).float().to(device)
 
                 outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 outputs_tensor, aux_loss, mdn_outputs, _ = _normalize_model_output(outputs_raw)
@@ -1060,8 +1060,8 @@ def collect_predictions(
             batch_x_mark = batch_x_mark.to(device)
             batch_y_mark = batch_y_mark.to(device)
 
-            dec_inp = torch.zeros_like(batch_y[:, -args.pred_len:, :], dtype=torch.float32)
-            dec_inp = torch.cat([batch_y[:, :args.label_len, :], dec_inp], dim=1).float().to(device)
+            # 🚀 ENHANCED: Use future celestial data for testing
+            dec_inp = _create_enhanced_decoder_input(batch_y, args, logger).float().to(device)
 
             outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             outputs_tensor, _, mdn_outputs, _ = _normalize_model_output(outputs_raw)
@@ -1462,6 +1462,51 @@ def adjust_learning_rate_warmup_cosine(optimizer: Optimizer, epoch: int, args: A
         from utils.tools import adjust_learning_rate
         adjust_learning_rate(optimizer, epoch, args)
         return optimizer.param_groups[0]['lr']
+
+def _create_enhanced_decoder_input(batch_y, args, logger):
+    """
+    🚀 ENHANCED: Create decoder input with future celestial data
+    
+    This function leverages the unique advantage of having predictable celestial positions
+    to provide the model with known future covariate information during prediction.
+    
+    Args:
+        batch_y: Full batch data [batch, seq_len, features]
+        args: Training arguments with pred_len, label_len
+        logger: Logger for debugging
+    
+    Returns:
+        Enhanced decoder input with future celestial data
+    """
+    # Define feature indices based on CSV structure:
+    # [date(0), log_Open(1), log_High(2), log_Low(3), log_Close(4), time_delta(5), celestial_features(6-117)]
+    # But in the processed data, date is removed, so indices shift by -1:
+    # [log_Open(0), log_High(1), log_Low(2), log_Close(3), time_delta(4), celestial_features(5-117)]
+    
+    target_indices_in_data = [0, 1, 2, 3]  # OHLC positions in processed data
+    celestial_indices = list(range(4, batch_y.shape[-1]))  # time_delta + celestial features
+    
+    # Extract future celestial data (known via ephemeris)
+    future_celestial = batch_y[:, -args.pred_len:, celestial_indices]  # [batch, pred_len, 114]
+    
+    # Zero out future OHLC targets (unknown - what we're predicting)
+    future_targets = torch.zeros_like(batch_y[:, -args.pred_len:, target_indices_in_data])  # [batch, pred_len, 4]
+    
+    # Reconstruct future data maintaining original feature order: [OHLC_zeros, time_delta+celestial_known]
+    future_combined = torch.cat([future_targets, future_celestial], dim=-1)  # [batch, pred_len, 118]
+    
+    # Create enhanced decoder input: [historical_data, future_celestial_enhanced]
+    dec_inp = torch.cat([batch_y[:, :args.label_len, :], future_combined], dim=1)  # [batch, label_len+pred_len, 117]
+    
+    logger.debug(
+        f"🔮 Enhanced decoder input created: "
+        f"historical_shape={batch_y[:, :args.label_len, :].shape}, "
+        f"future_celestial_shape={future_combined.shape}, "
+        f"total_shape={dec_inp.shape}"
+    )
+    
+    return dec_inp
+
 
 def _normalize_model_output(
     raw_output: Any,

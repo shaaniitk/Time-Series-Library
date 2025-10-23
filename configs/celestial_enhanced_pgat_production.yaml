@@ -64,6 +64,14 @@ use_hierarchical_mapping: false         # Disable for production stability
 use_efficient_covariate_interaction: true # Use memory-efficient partitioned graph processing
 mdn_multivariate_mode: independent
 
+# 🎯 TARGET AUTOCORRELATION - NEW ENHANCEMENT
+use_target_autocorrelation: true        # Enable target autocorrelation modeling
+target_autocorr_layers: 2               # Number of LSTM layers for target processing
+
+# 📅 CALENDAR EFFECTS - NEW ENHANCEMENT
+use_calendar_effects: true              # Enable calendar effects modeling
+calendar_embedding_dim: 104             # Calendar embedding dimension (d_model/4)
+
 # Regularization - PRODUCTION TUNED
 reg_loss_weight: 0.0005  # Light regularization
 kl_weight: 0.00005       # Very light KL regularization
