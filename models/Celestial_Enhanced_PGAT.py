@@ -70,10 +70,10 @@ class Model(nn.Module):
         self.celestial_fusion_layers = getattr(configs, 'celestial_fusion_layers', 3)
         self.num_celestial_bodies = len(CelestialBody)  # 13 celestial bodies
         
-        # Enhanced features
-        self.use_mixture_decoder = getattr(configs, 'use_mixture_decoder', True)
-        self.use_stochastic_learner = getattr(configs, 'use_stochastic_learner', True)
-        self.use_hierarchical_mapping = getattr(configs, 'use_hierarchical_mapping', True)
+        # Enhanced features - FIXED: Defaults match production config
+        self.use_mixture_decoder = getattr(configs, 'use_mixture_decoder', False)  # Production default: False
+        self.use_stochastic_learner = getattr(configs, 'use_stochastic_learner', False)  # Production default: False
+        self.use_hierarchical_mapping = getattr(configs, 'use_hierarchical_mapping', False)  # Production default: False
         self.collect_diagnostics = bool(getattr(configs, 'collect_diagnostics', True))
         self.use_efficient_covariate_interaction = getattr(configs, 'use_efficient_covariate_interaction', False)
         
@@ -507,6 +507,33 @@ class Model(nn.Module):
             return tuple(converted) if isinstance(value, tuple) else converted
         return value
     
+    def _print_memory_debug(self, stage, extra_info=""):
+        """Print detailed memory information for debugging OOM issues."""
+        import torch
+        import gc
+        
+        # Force garbage collection
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            reserved = torch.cuda.memory_reserved() / 1024**3
+            max_allocated = torch.cuda.max_memory_allocated() / 1024**3
+            print(f"🔍 MEMORY [{stage}] {extra_info}")
+            print(f"   GPU Allocated: {allocated:.2f}GB")
+            print(f"   GPU Reserved: {reserved:.2f}GB") 
+            print(f"   GPU Max Allocated: {max_allocated:.2f}GB")
+        else:
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+            cpu_gb = process.memory_info().rss / 1024**3
+            print(f"🔍 MEMORY [{stage}] {extra_info}")
+            print(f"   CPU Memory: {cpu_gb:.2f}GB")
+
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         """
         Forward pass of Celestial Enhanced PGAT
@@ -521,6 +548,7 @@ class Model(nn.Module):
         Returns:
             Predictions and metadata
         """
+        self._print_memory_debug("FORWARD_START", f"Input shapes: x_enc={x_enc.shape}, x_dec={x_dec.shape}")
         self._debug_memory("FORWARD_START")
         batch_size, seq_len, enc_in = x_enc.shape
         self._log_debug("MODEL_DEBUG: Input shapes - x_enc=%s x_dec=%s", x_enc.shape, x_dec.shape)
@@ -599,7 +627,9 @@ class Model(nn.Module):
                     f"expected {self.expected_embedding_input_dim}"
                 )
             
+            self._print_memory_debug("BEFORE_ENC_EMBEDDING")
             enc_out = self.enc_embedding(x_enc_processed, x_mark_enc)  # [batch, seq_len, d_model]
+            self._print_memory_debug("AFTER_ENC_EMBEDDING", f"enc_out shape: {enc_out.shape}")
             
             # 📅 Apply Calendar Effects Enhancement
             if self.use_calendar_effects and self.calendar_effects_encoder is not None:
@@ -647,7 +677,9 @@ class Model(nn.Module):
         
         # 2. Generate market context from encoder output (fix information bottleneck)
         # FIXED: Use full temporal sequence instead of just last timestep for dynamic adjacency fusion
+        self._print_memory_debug("BEFORE_MARKET_CONTEXT")
         market_context = self.market_context_encoder(enc_out)  # [batch, seq_len, d_model] - DYNAMIC!
+        self._print_memory_debug("AFTER_MARKET_CONTEXT", f"market_context shape: {market_context.shape}")
         
         # 3. Enhanced Celestial Body Graph Processing
         if self.use_celestial_graph:
@@ -664,13 +696,17 @@ class Model(nn.Module):
                 
                 # Learned context-aware fusion of phase, astronomical, and dynamic adjacencies
                 # FIXED: Dynamic fusion weights that adapt per timestep
+                self._print_memory_debug("BEFORE_ADJ_WEIGHT_MLP", f"market_context: {market_context.shape}")
                 weights = F.softmax(self.adj_weight_mlp(market_context), dim=-1)  # [batch, seq_len, 3] - DYNAMIC!
+                self._print_memory_debug("AFTER_ADJ_WEIGHT_MLP", f"weights: {weights.shape}")
                 w_phase, w_astro, w_dyn = weights[..., 0], weights[..., 1], weights[..., 2]  # [batch, seq_len] each
                 
                 # Normalize and combine
+                self._print_memory_debug("BEFORE_ADJ_NORMALIZE")
                 phase_norm = self._normalize_adj(phase_based_adj)
                 astro_norm = self._normalize_adj(astronomical_adj) # Now dynamic
                 dyn_norm = self._normalize_adj(dynamic_adj)       # Now dynamic
+                self._print_memory_debug("AFTER_ADJ_NORMALIZE", f"phase_norm: {phase_norm.shape}, astro_norm: {astro_norm.shape}")
                 
                 # Unsqueeze weights for broadcasting with dynamic adjs [batch, seq_len, nodes, nodes]
                 w_phase = w_phase.unsqueeze(-1).unsqueeze(-1)  # [batch, seq_len, 1, 1]
@@ -678,12 +714,13 @@ class Model(nn.Module):
                 w_dyn = w_dyn.unsqueeze(-1).unsqueeze(-1)      # [batch, seq_len, 1, 1]
                 
                 # FIXED: phase_norm is already 4D, no need to expand
-
+                self._print_memory_debug("BEFORE_ADJ_FUSION", f"Broadcasting {w_phase.shape} with {phase_norm.shape}")
                 combined_phase_adj = (
                     w_phase * phase_norm +
                     w_astro * astro_norm +
                     w_dyn * dyn_norm
                 )
+                self._print_memory_debug("AFTER_ADJ_FUSION", f"combined_phase_adj: {combined_phase_adj.shape}")
                 astronomical_adj = combined_phase_adj  # Use learned-fusion matrix
                 self._log_debug("Using phase-based adjacency matrix with learned fusion weights")
             else:
