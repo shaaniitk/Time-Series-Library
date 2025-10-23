@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from layers.modular.graph.celestial_body_nodes import CelestialBodyNodes, CelestialBody
-from layers.modular.graph.celestial_graph_combiner import CelestialGraphCombiner
+from layers.modular.graph.celestial_graph_combiner_fixed import CelestialGraphCombinerFixed
 from layers.modular.decoder.mixture_density_decoder import MixtureDensityDecoder
 from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureDensityDecoder
 from layers.modular.embedding.hierarchical_mapper import HierarchicalTemporalSpatialMapper
@@ -158,12 +158,13 @@ class Model(nn.Module):
                 num_aspects=5
             )
             
-            self.celestial_combiner = CelestialGraphCombiner(
+            self.celestial_combiner = CelestialGraphCombinerFixed(
                 num_nodes=self.num_celestial_bodies,
                 d_model=self.d_model,
                 num_attention_heads=self.n_heads,
-                fusion_layers=self.celestial_fusion_layers,
-                dropout=self.dropout
+                fusion_layers=2,  # Reduced from self.celestial_fusion_layers for memory optimization
+                dropout=self.dropout,
+                use_gradient_checkpointing=True  # Enable gradient checkpointing for memory efficiency
             )
 
             fusion_dim_cfg = getattr(configs, 'celestial_fusion_dim', min(self.d_model, 64))
