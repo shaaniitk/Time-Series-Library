@@ -90,3 +90,9 @@ log_interval: 10         # Log every 10 batches
 gradient_accumulation_steps: 2  # Accumulate gradients for effective batch size of 32
 mixed_precision: false   # Disabled for stability (enable if GPU supports it)
 save_best_only: false    # Save all checkpoints for analysis
+ 
+# Diagnostics and memory logging
+# Tip: leave these enabled for short debugging runs; disable for long overnight runs to minimize overhead
+enable_memory_diagnostics: true   # Writes detailed snapshots to checkpoints/<run>/memory_diagnostics.log
+memory_log_interval: 50           # Log every N batches (increase to reduce log volume)
+collect_diagnostics: false        # Model will skip building per-batch metadata dicts to reduce transient allocations
