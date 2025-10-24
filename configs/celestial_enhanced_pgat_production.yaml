@@ -60,6 +60,9 @@ edge_feature_dim: 6                     # Dimension of edge feature vectors (the
 use_temporal_attention: true            # Enable delayed effect modeling (attention over time)
 use_spatial_attention: true             # Enable global pattern modeling (attention over nodes)
 
+# When Petri net combiner is active, bypass the legacy spatiotemporal encoder in Step 7 to reduce overhead
+bypass_spatiotemporal_with_petri: true
+
 # Wave aggregation settings - OPTIMIZED FOR PRODUCTION
 num_input_waves: 118   # Full celestial wave features (CORRECTED to match actual CSV)
 target_wave_indices: [0, 1, 2, 3]  # All OHLC targets

@@ -77,6 +77,8 @@ class Model(nn.Module):
         self.edge_feature_dim = getattr(configs, 'edge_feature_dim', 6)  # theta_diff, phi_diff, etc.
         self.use_temporal_attention = getattr(configs, 'use_temporal_attention', True)
         self.use_spatial_attention = getattr(configs, 'use_spatial_attention', True)
+        # Option to bypass legacy spatiotemporal encoder when Petri + edge-conditioned attention is active
+        self.bypass_spatiotemporal_with_petri = bool(getattr(configs, 'bypass_spatiotemporal_with_petri', True))
         
         # Enhanced features - FIXED: Defaults match production config
         self.use_mixture_decoder = getattr(configs, 'use_mixture_decoder', False)  # Production default: False
@@ -922,30 +924,36 @@ class Model(nn.Module):
         print(f"   enc_out shape: {enc_out.shape}")
         print(f"   combined_adj shape: {combined_adj.shape}")
         encoded_features: torch.Tensor
-        use_dynamic_encoder = (
-            self.use_dynamic_spatiotemporal_encoder
-            and self.dynamic_spatiotemporal_encoder is not None
-            # FIXED: No need to check dimensions - all adjacency matrices are 4D
-        )
-        print(f"   use_dynamic_encoder: {use_dynamic_encoder}")
 
-        if use_dynamic_encoder:
-            print(f"   Using DYNAMIC spatiotemporal encoder...")
-            dynamic_encoder = self.dynamic_spatiotemporal_encoder
-            if dynamic_encoder is None:
-                encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
-            else:
-                try:
-                    print(f"   Calling dynamic_encoder with enc_out={enc_out.shape}, adj={combined_adj.shape}")
-                    encoded_features = dynamic_encoder(enc_out, combined_adj)
-                    print(f"   ✅ Dynamic encoder completed: {encoded_features.shape}")
-                except ValueError as exc:
-                    self.logger.warning("Dynamic spatiotemporal encoder fallback: %s", exc)
-                    encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+        # Fast path: when Petri net combiner is active, it already applies temporal and spatial attention
+        # and Step 8 uses EdgeConditionedGraphAttention. The legacy spatiotemporal encoder may be redundant.
+        if self.use_petri_net_combiner and self.bypass_spatiotemporal_with_petri:
+            print(f"   ⏭️  Petri bypass enabled — using encoder output directly for graph processing")
+            encoded_features = enc_out  # [batch, seq_len, d_model]
         else:
-            print(f"   Using STATIC spatiotemporal encoding...")
-            encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
-            print(f"   ✅ Static encoding completed: {encoded_features.shape}")
+            use_dynamic_encoder = (
+                self.use_dynamic_spatiotemporal_encoder
+                and self.dynamic_spatiotemporal_encoder is not None
+            )
+            print(f"   use_dynamic_encoder: {use_dynamic_encoder}")
+
+            if use_dynamic_encoder:
+                print(f"   Using DYNAMIC spatiotemporal encoder...")
+                dynamic_encoder = self.dynamic_spatiotemporal_encoder
+                if dynamic_encoder is None:
+                    encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+                else:
+                    try:
+                        print(f"   Calling dynamic_encoder with enc_out={enc_out.shape}, adj={combined_adj.shape}")
+                        encoded_features = dynamic_encoder(enc_out, combined_adj)
+                        print(f"   ✅ Dynamic encoder completed: {encoded_features.shape}")
+                    except ValueError as exc:
+                        self.logger.warning("Dynamic spatiotemporal encoder fallback: %s", exc)
+                        encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+            else:
+                print(f"   Using STATIC spatiotemporal encoding...")
+                encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+                print(f"   ✅ Static encoding completed: {encoded_features.shape}")
         
         # 8. Graph attention processing
         print(f"🔍 STEP 8: Graph attention processing")
