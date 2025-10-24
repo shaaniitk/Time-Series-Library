@@ -797,6 +797,157 @@ class PhaseDifferenceEdgeComputer(nn.Module):
         
         return adjacency, metadata
     
+    def forward_rich_features(
+        self, 
+        celestial_tensor: torch.Tensor,
+        phase_info: Dict
+    ) -> Tuple[torch.Tensor, Dict]:
+        """
+        Compute rich edge feature VECTORS (NO compression to scalars!)
+        
+        This is the Petri net version that preserves ALL edge information.
+        
+        Args:
+            celestial_tensor: [batch, seq_len, num_bodies, celestial_dim]
+            phase_info: Dictionary with phase information
+            
+        Returns:
+            Tuple of:
+                - edge_features: [batch, seq_len, num_bodies, num_bodies, 6] 
+                  Full feature vectors with [theta_diff, phi_diff, velocity_diff, 
+                  radius_ratio, longitude_diff, phase_alignment]
+                - metadata: Diagnostics
+        """
+        batch_size, seq_len, num_bodies, celestial_dim = celestial_tensor.shape
+        device = celestial_tensor.device
+        
+        # Initialize edge feature tensor (VECTORS, not scalars!)
+        edge_features = torch.zeros(
+            batch_size, seq_len, num_bodies, num_bodies, 6,
+            device=device, dtype=torch.float32
+        )
+        
+        # Extract phase information for all timesteps
+        body_names = list(CelestialBody)
+        all_timestep_phases = {}
+        
+        for i, body in enumerate(body_names):
+            body_info = phase_info[body.value]
+            
+            all_timestep_phases[i] = {
+                'theta': self._safe_extract_all_timesteps(
+                    body_info.get('longitude_phase'), batch_size, seq_len, device
+                ),
+                'phi': self._safe_extract_all_timesteps(
+                    body_info.get('sign_phase'), batch_size, seq_len, device
+                ),
+                'velocity': self._safe_extract_all_timesteps(
+                    body_info.get('speed'), batch_size, seq_len, device
+                ),
+                'radius': self._safe_extract_all_timesteps(
+                    body_info.get('distance'), batch_size, seq_len, device
+                ),
+                'longitude': self._safe_extract_all_timesteps(
+                    body_info.get('ecliptic_longitude'), batch_size, seq_len, device
+                )
+            }
+        
+        # Compute edge features for all pairs (preserve full temporal dimension)
+        phase_diff_stats = {
+            'theta_diffs': [],
+            'phi_diffs': [],
+            'velocity_diffs': [],
+            'radius_ratios': [],
+            'longitude_diffs': [],
+            'phase_alignments': []
+        }
+        
+        for i in range(num_bodies):
+            for j in range(num_bodies):  # All edges including self-loops
+                # Compute phase differences across all timesteps
+                theta_diff = self._circular_difference(
+                    all_timestep_phases[i]['theta'],
+                    all_timestep_phases[j]['theta']
+                )  # [batch, seq_len]
+                
+                phi_diff = self._circular_difference(
+                    all_timestep_phases[i]['phi'],
+                    all_timestep_phases[j]['phi']
+                )  # [batch, seq_len]
+                
+                velocity_diff = (
+                    all_timestep_phases[i]['velocity'] - 
+                    all_timestep_phases[j]['velocity']
+                )  # [batch, seq_len]
+                
+                radius_ratio = (
+                    all_timestep_phases[i]['radius'] / 
+                    (all_timestep_phases[j]['radius'] + 1e-8)
+                )  # [batch, seq_len]
+                
+                longitude_diff = self._circular_difference(
+                    all_timestep_phases[i]['longitude'],
+                    all_timestep_phases[j]['longitude']
+                )  # [batch, seq_len]
+                
+                # Phase alignment measure
+                phase_alignment = (
+                    torch.cos(theta_diff) * torch.cos(phi_diff)
+                )  # [batch, seq_len]
+                
+                # Stack all features (PRESERVED AS VECTORS!)
+                edge_features[:, :, i, j, 0] = theta_diff
+                edge_features[:, :, i, j, 1] = phi_diff
+                edge_features[:, :, i, j, 2] = velocity_diff
+                edge_features[:, :, i, j, 3] = radius_ratio
+                edge_features[:, :, i, j, 4] = longitude_diff
+                edge_features[:, :, i, j, 5] = phase_alignment
+                
+                # Collect statistics (only for i < j to avoid duplicates)
+                if i < j:
+                    phase_diff_stats['theta_diffs'].append(theta_diff.abs().mean().item())
+                    phase_diff_stats['phi_diffs'].append(phi_diff.abs().mean().item())
+                    phase_diff_stats['velocity_diffs'].append(velocity_diff.abs().mean().item())
+                    phase_diff_stats['radius_ratios'].append(radius_ratio.mean().item())
+                    phase_diff_stats['longitude_diffs'].append(longitude_diff.abs().mean().item())
+                    phase_diff_stats['phase_alignments'].append(phase_alignment.mean().item())
+        
+        # Compute metadata
+        metadata = {
+            'avg_theta_diff': sum(phase_diff_stats['theta_diffs']) / len(phase_diff_stats['theta_diffs']),
+            'avg_phi_diff': sum(phase_diff_stats['phi_diffs']) / len(phase_diff_stats['phi_diffs']),
+            'avg_velocity_diff': sum(phase_diff_stats['velocity_diffs']) / len(phase_diff_stats['velocity_diffs']),
+            'avg_radius_ratio': sum(phase_diff_stats['radius_ratios']) / len(phase_diff_stats['radius_ratios']),
+            'avg_longitude_diff': sum(phase_diff_stats['longitude_diffs']) / len(phase_diff_stats['longitude_diffs']),
+            'avg_phase_alignment': sum(phase_diff_stats['phase_alignments']) / len(phase_diff_stats['phase_alignments']),
+            'edge_feature_dim': 6,
+            'edge_features_preserved': True,
+            'no_compression': True
+        }
+        
+        return edge_features, metadata
+    
+    def _safe_extract_all_timesteps(
+        self,
+        tensor: Optional[torch.Tensor],
+        batch_size: int,
+        seq_len: int,
+        device: torch.device
+    ) -> torch.Tensor:
+        """Extract all timesteps from phase information tensor."""
+        if tensor is None:
+            return torch.zeros(batch_size, seq_len, device=device)
+        
+        if tensor.dim() == 1:
+            # Broadcast across seq_len
+            return tensor.unsqueeze(-1).expand(-1, seq_len)
+        elif tensor.dim() == 2:
+            # Already [batch, seq_len]
+            return tensor
+        else:
+            # Reshape to [batch, seq_len]
+            return tensor.reshape(batch_size, seq_len)
+    
     def _circular_difference(self, angle1: torch.Tensor, angle2: torch.Tensor) -> torch.Tensor:
         """Compute circular difference between two angles."""
         diff = angle1 - angle2

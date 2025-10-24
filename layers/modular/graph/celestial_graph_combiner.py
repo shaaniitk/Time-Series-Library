@@ -44,7 +44,7 @@ class CelestialGraphCombiner(nn.Module):
         num_nodes: int,
         d_model: int, 
         num_attention_heads: int = 8,
-        fusion_layers: int = 2,  # Reduced but not eliminated for memory efficiency
+        fusion_layers: int = 2,  # Default: 2 layers (note: ignored when Petri net combiner is used)
         dropout: float = 0.1,
         use_gradient_checkpointing: bool = True
     ):

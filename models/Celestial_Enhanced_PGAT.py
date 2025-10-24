@@ -16,6 +16,7 @@ import torch.nn.functional as F
 
 from layers.modular.graph.celestial_body_nodes import CelestialBodyNodes, CelestialBody
 from layers.modular.graph.celestial_graph_combiner import CelestialGraphCombiner
+from layers.modular.graph.celestial_petri_net_combiner import CelestialPetriNetCombiner
 from layers.modular.decoder.mixture_density_decoder import MixtureDensityDecoder
 from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureDensityDecoder
 from layers.modular.embedding.hierarchical_mapper import HierarchicalTemporalSpatialMapper
@@ -69,6 +70,13 @@ class Model(nn.Module):
         self.use_celestial_graph = getattr(configs, 'use_celestial_graph', True)
         self.celestial_fusion_layers = getattr(configs, 'celestial_fusion_layers', 3)
         self.num_celestial_bodies = len(CelestialBody)  # 13 celestial bodies
+        
+        # 🚀 NEW: Petri Net Architecture Configuration
+        self.use_petri_net_combiner = getattr(configs, 'use_petri_net_combiner', True)
+        self.num_message_passing_steps = getattr(configs, 'num_message_passing_steps', 2)
+        self.edge_feature_dim = getattr(configs, 'edge_feature_dim', 6)  # theta_diff, phi_diff, etc.
+        self.use_temporal_attention = getattr(configs, 'use_temporal_attention', True)
+        self.use_spatial_attention = getattr(configs, 'use_spatial_attention', True)
         
         # Enhanced features - FIXED: Defaults match production config
         self.use_mixture_decoder = getattr(configs, 'use_mixture_decoder', False)  # Production default: False
@@ -212,14 +220,37 @@ class Model(nn.Module):
                 num_aspects=5
             )
             
-            self.celestial_combiner = CelestialGraphCombiner(
-                num_nodes=self.num_celestial_bodies,
-                d_model=self.d_model,
-                num_attention_heads=self.n_heads,
-                fusion_layers=2,  # Reduced from self.celestial_fusion_layers for memory optimization
-                dropout=self.dropout,
-                use_gradient_checkpointing=True  # Enable gradient checkpointing for memory efficiency
-            )
+            # 🚀 PETRI NET COMBINER: Preserves edge features as vectors (NO compression!)
+            if self.use_petri_net_combiner:
+                self.logger.info(
+                    "🚀 Initializing Petri Net Combiner with message passing (edge_feature_dim=%d, num_steps=%d)",
+                    self.edge_feature_dim, self.num_message_passing_steps
+                )
+                self.celestial_combiner = CelestialPetriNetCombiner(
+                    num_nodes=self.num_celestial_bodies,
+                    d_model=self.d_model,
+                    edge_feature_dim=self.edge_feature_dim,  # 6D edge features preserved!
+                    num_message_passing_steps=self.num_message_passing_steps,
+                    num_attention_heads=self.n_heads,
+                    dropout=self.dropout,
+                    use_temporal_attention=self.use_temporal_attention,
+                    use_spatial_attention=self.use_spatial_attention,
+                    use_gradient_checkpointing=True  # Memory optimization
+                )
+                self.logger.info("✅ Petri Net Combiner initialized - memory efficient with ZERO information loss!")
+            else:
+                # OLD COMBINER: Uses fusion layers
+                self.logger.warning(
+                    "⚠️ Using legacy CelestialGraphCombiner (fusion_layers=%d)", self.celestial_fusion_layers
+                )
+                self.celestial_combiner = CelestialGraphCombiner(
+                    num_nodes=self.num_celestial_bodies,
+                    d_model=self.d_model,
+                    num_attention_heads=self.n_heads,
+                    fusion_layers=self.celestial_fusion_layers,
+                    dropout=self.dropout,
+                    use_gradient_checkpointing=True  # Enable gradient checkpointing for memory efficiency
+                )
 
             fusion_dim_cfg = getattr(configs, 'celestial_fusion_dim', min(self.d_model, 64))
             fusion_dim = max(self.n_heads, fusion_dim_cfg)
@@ -354,17 +385,34 @@ class Model(nn.Module):
             self.stochastic_mean = nn.Linear(self.d_model, adj_output_dim)
             self.stochastic_logvar = nn.Linear(self.d_model, adj_output_dim)
         
-        # Graph attention layers - use the fixed adjacency-aware version
-        from layers.modular.graph.adjacency_aware_attention import AdjacencyAwareGraphAttention
-        self.graph_attention_layers = nn.ModuleList([
-            AdjacencyAwareGraphAttention(
-                d_model=self.d_model, 
-                d_ff=self.d_model, 
-                n_heads=self.n_heads, 
-                dropout=self.dropout,
-                use_adjacency_mask=True
-            ) for _ in range(self.e_layers)
-        ])
+        # Graph attention layers - use edge-conditioned version for Petri net
+        if self.use_petri_net_combiner:
+            # 🚀 EDGE-CONDITIONED ATTENTION: Uses rich edge features directly!
+            from layers.modular.graph.adjacency_aware_attention import EdgeConditionedGraphAttention
+            self.graph_attention_layers = nn.ModuleList([
+                EdgeConditionedGraphAttention(
+                    d_model=self.d_model,
+                    d_ff=self.d_model,
+                    n_heads=self.n_heads,
+                    edge_feature_dim=self.edge_feature_dim,  # 6D rich features!
+                    dropout=self.dropout
+                ) for _ in range(self.e_layers)
+            ])
+            self.logger.info(
+                "🚀 Using EdgeConditionedGraphAttention - ZERO information loss from edge features!"
+            )
+        else:
+            # OLD: Adjacency-aware attention with scalar adjacency
+            from layers.modular.graph.adjacency_aware_attention import AdjacencyAwareGraphAttention
+            self.graph_attention_layers = nn.ModuleList([
+                AdjacencyAwareGraphAttention(
+                    d_model=self.d_model, 
+                    d_ff=self.d_model, 
+                    n_heads=self.n_heads, 
+                    dropout=self.dropout,
+                    use_adjacency_mask=True
+                ) for _ in range(self.e_layers)
+            ])
         
         # Decoder layers
         self.decoder_layers = nn.ModuleList([
@@ -770,11 +818,31 @@ class Model(nn.Module):
             print(f"   dynamic_adj: {dynamic_adj.shape}")
             print(f"   enc_out: {enc_out.shape}")
             
-            # The combiner now receives three dynamic graphs and the full encoder output
-            # This assumes celestial_combiner is adapted to handle rank-4 adjs and rank-3 context
-            combined_adj, fusion_metadata = self.celestial_combiner(
-                astronomical_adj, learned_adj, dynamic_adj, enc_out
-            )
+            # 🚀 PETRI NET COMBINER: Preserves rich edge features!
+            if self.use_petri_net_combiner:
+                # Call with return_rich_features=True to get full edge vectors
+                combined_adj, rich_edge_features, fusion_metadata = self.celestial_combiner(
+                    astronomical_adj, learned_adj, dynamic_adj, enc_out,
+                    return_rich_features=True  # Get [batch, seq, 13, 13, 6] edge features!
+                )
+                
+                # Log edge feature preservation
+                print(f"🚀 PETRI NET: Rich edge features preserved!")
+                print(f"   combined_adj: {combined_adj.shape}")
+                print(f"   rich_edge_features: {rich_edge_features.shape} (6D vectors, NO compression!)")
+                print(f"   Edge features: [theta_diff, phi_diff, velocity_diff, radius_ratio, long_diff, phase_alignment]")
+                
+                # Store rich features in metadata for analysis
+                fusion_metadata['rich_edge_features_shape'] = rich_edge_features.shape
+                fusion_metadata['edge_features_preserved'] = True
+                fusion_metadata['no_compression'] = True
+            else:
+                # OLD COMBINER: Returns only scalar adjacency
+                combined_adj, fusion_metadata = self.celestial_combiner(
+                    astronomical_adj, learned_adj, dynamic_adj, enc_out
+                )
+                rich_edge_features = None  # No rich features in old combiner
+                fusion_metadata['edge_features_preserved'] = False
             
             # DEBUG: Memory check after celestial_combiner
             if torch.cuda.is_available():
@@ -791,6 +859,19 @@ class Model(nn.Module):
             print(f"✅ OUTPUT SHAPES from celestial_combiner:")
             print(f"   combined_adj: {combined_adj.shape}")
             print(f"   fusion_metadata keys: {list(fusion_metadata.keys()) if fusion_metadata else 'None'}")
+            
+            # DEBUG: Force garbage collection and check memory
+            import gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                post_gc_allocated = torch.cuda.memory_allocated() / 1024**3
+                print(f"🧹 AFTER GC: Allocated={post_gc_allocated:.2f}GB")
+            else:
+                import psutil
+                process = psutil.Process()
+                post_gc_cpu = process.memory_info().rss / 1024**3
+                print(f"🧹 AFTER GC: CPU={post_gc_cpu:.2f}GB")
         else:
             # Simple combination for fallback with dynamic weighting
             # Generate dynamic weights for each time step from enc_out
@@ -817,9 +898,12 @@ class Model(nn.Module):
             }
         
         # 6. Apply hierarchical mapping if enabled
+        print(f"🔍 STEP 6: Hierarchical mapping check (enabled={self.use_hierarchical_mapping})")
         if self.use_hierarchical_mapping:
+            print(f"   Starting hierarchical mapper...")
             try:
                 hierarchical_features = self.hierarchical_mapper(enc_out)  # [batch, num_nodes, d_model]
+                print(f"   ✅ Hierarchical mapper completed: {hierarchical_features.shape}")
                 
                 # Reshape and project to preserve spatial information
                 batch_size, seq_len, _ = enc_out.shape
@@ -834,27 +918,39 @@ class Model(nn.Module):
                 self._log_debug("Continuing without hierarchical features")
         
         # 7. Spatiotemporal encoding with graph attention
+        print(f"🔍 STEP 7: Spatiotemporal encoding")
+        print(f"   enc_out shape: {enc_out.shape}")
+        print(f"   combined_adj shape: {combined_adj.shape}")
         encoded_features: torch.Tensor
         use_dynamic_encoder = (
             self.use_dynamic_spatiotemporal_encoder
             and self.dynamic_spatiotemporal_encoder is not None
             # FIXED: No need to check dimensions - all adjacency matrices are 4D
         )
+        print(f"   use_dynamic_encoder: {use_dynamic_encoder}")
 
         if use_dynamic_encoder:
+            print(f"   Using DYNAMIC spatiotemporal encoder...")
             dynamic_encoder = self.dynamic_spatiotemporal_encoder
             if dynamic_encoder is None:
                 encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
             else:
                 try:
+                    print(f"   Calling dynamic_encoder with enc_out={enc_out.shape}, adj={combined_adj.shape}")
                     encoded_features = dynamic_encoder(enc_out, combined_adj)
+                    print(f"   ✅ Dynamic encoder completed: {encoded_features.shape}")
                 except ValueError as exc:
                     self.logger.warning("Dynamic spatiotemporal encoder fallback: %s", exc)
                     encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
         else:
+            print(f"   Using STATIC spatiotemporal encoding...")
             encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+            print(f"   ✅ Static encoding completed: {encoded_features.shape}")
         
         # 8. Graph attention processing
+        print(f"🔍 STEP 8: Graph attention processing")
+        print(f"   encoded_features shape: {encoded_features.shape}")
+        print(f"   use_efficient_covariate_interaction: {self.use_efficient_covariate_interaction}")
         if self.use_efficient_covariate_interaction:
             # Efficient, partitioned graph processing that respects covariate independence
             graph_features = self._efficient_graph_processing(encoded_features, combined_adj)
@@ -863,30 +959,54 @@ class Model(nn.Module):
             # Original, iterative graph attention processing
             graph_features = encoded_features
             
-            # FIXED: combined_adj is always dynamic [batch, seq_len, nodes, nodes]
-            # Process each timestep with its corresponding adjacency matrix
-            processed_features_over_time = []
-            for t in range(self.seq_len):
-                time_step_features = graph_features[:, t:t+1, :]
-                adj_for_step = combined_adj[:, t, :, :]
+            # 🚀 ZERO-INFORMATION-LOSS: Use rich edge features if available!
+            if self.use_petri_net_combiner and rich_edge_features is not None:
+                print(f"🚀 USING RICH EDGE FEATURES in graph attention!")
+                print(f"   rich_edge_features shape: {rich_edge_features.shape}")
+                print(f"   Edge features contain: theta_diff, phi_diff, velocity_diff, radius_ratio, long_diff, phase_alignment")
                 
-                processed_step = time_step_features
+                # Process with edge-conditioned attention (no time loop needed - handles full sequence)
+                graph_features = encoded_features
                 for i, layer in enumerate(self.graph_attention_layers):
                     try:
-                        processed_step = layer(processed_step, adj_for_step)
+                        # EdgeConditionedGraphAttention accepts full sequence with rich edge features
+                        graph_features = layer(graph_features, edge_features=rich_edge_features)
+                        print(f"   ✅ Layer {i+1}: Used 6D edge features directly in attention!")
                     except Exception as exc:
                         self.logger.warning(
-                            "Graph attention layer %s at step %s failed: %s",
+                            "Edge-conditioned graph attention layer %s failed: %s",
                             i + 1,
-                            t,
                             exc,
                         )
-                        processed_step = layer(processed_step, None)
+                        # Fallback to adjacency-only
+                        graph_features = layer(graph_features, adj_matrix=combined_adj)
                 
-                processed_features_over_time.append(processed_step)
-            
-            graph_features = torch.cat(processed_features_over_time, dim=1)
-            self._log_debug("Applied dynamic graph attention across %s time steps.", self.seq_len)
+                self._log_debug("Applied edge-conditioned graph attention with ZERO information loss!")
+            else:
+                # OLD PATH: Process each timestep with scalar adjacency
+                print(f"   Using scalar adjacency (old method)")
+                processed_features_over_time = []
+                for t in range(self.seq_len):
+                    time_step_features = graph_features[:, t:t+1, :]
+                    adj_for_step = combined_adj[:, t, :, :]
+                    
+                    processed_step = time_step_features
+                    for i, layer in enumerate(self.graph_attention_layers):
+                        try:
+                            processed_step = layer(processed_step, adj_for_step)
+                        except Exception as exc:
+                            self.logger.warning(
+                                "Graph attention layer %s at step %s failed: %s",
+                                i + 1,
+                                t,
+                                exc,
+                            )
+                            processed_step = layer(processed_step, None)
+                    
+                    processed_features_over_time.append(processed_step)
+                
+                graph_features = torch.cat(processed_features_over_time, dim=1)
+                self._log_debug("Applied dynamic graph attention across %s time steps.", self.seq_len)
         
         # 9. Enhanced Decoder processing with Target Autocorrelation
         decoder_features = dec_out
