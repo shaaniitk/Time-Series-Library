@@ -51,7 +51,9 @@ class Model(nn.Module):
         self.configs = configs
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.verbose_logging = bool(getattr(configs, "verbose_logging", False))
+        # Unify memory diagnostic flags
         self.enable_memory_debug = bool(getattr(configs, "enable_memory_debug", False))
+        self.enable_memory_diagnostics = bool(getattr(configs, "enable_memory_diagnostics", False))
         
         # Core parameters
         self.seq_len = configs.seq_len
@@ -214,6 +216,10 @@ class Model(nn.Module):
         self.dec_embedding = DataEmbedding(
             self.dec_in, self.d_model, configs.embed, configs.freq, self.dropout
         )
+
+        # Dedicated memory logger dumps to file (configured by training script)
+        import logging as _logging  # local import to avoid polluting module namespace
+        self.memory_logger = _logging.getLogger("scripts.train.train_celestial_production.memory")
         
         # Celestial Body Graph System
         if self.use_celestial_graph:
@@ -560,31 +566,45 @@ class Model(nn.Module):
         return value
     
     def _print_memory_debug(self, stage, extra_info=""):
-        """Print detailed memory information for debugging OOM issues."""
+        """Emit memory diagnostics to the dedicated memory logger (file), not stdout."""
+        if not (self.enable_memory_debug or getattr(self, "enable_memory_diagnostics", False)):
+            return
         import torch
         import gc
-        
-        # Force garbage collection
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        
-        if torch.cuda.is_available():
-            allocated = torch.cuda.memory_allocated() / 1024**3
-            reserved = torch.cuda.memory_reserved() / 1024**3
-            max_allocated = torch.cuda.max_memory_allocated() / 1024**3
-            print(f"🔍 MEMORY [{stage}] {extra_info}")
-            print(f"   GPU Allocated: {allocated:.2f}GB")
-            print(f"   GPU Reserved: {reserved:.2f}GB") 
-            print(f"   GPU Max Allocated: {max_allocated:.2f}GB")
-        else:
-            import psutil
-            import os
-            process = psutil.Process(os.getpid())
-            cpu_gb = process.memory_info().rss / 1024**3
-            print(f"🔍 MEMORY [{stage}] {extra_info}")
-            print(f"   CPU Memory: {cpu_gb:.2f}GB")
+        import os
+        try:
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+        except Exception:
+            pass
+        try:
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
+                max_allocated = torch.cuda.max_memory_allocated() / 1024**3
+                self.memory_logger.debug(
+                    "MEMORY [%s] %s | GPU_Allocated=%.2fGB GPU_Reserved=%.2fGB GPU_MaxAllocated=%.2fGB",
+                    stage,
+                    extra_info,
+                    allocated,
+                    reserved,
+                    max_allocated,
+                )
+            else:
+                import psutil  # type: ignore[import-not-found]
+                process = psutil.Process(os.getpid())
+                cpu_gb = process.memory_info().rss / 1024**3
+                self.memory_logger.debug(
+                    "MEMORY [%s] %s | CPU=%.2fGB",
+                    stage,
+                    extra_info,
+                    cpu_gb,
+                )
+        except Exception:
+            # Best-effort; avoid raising from diagnostics
+            self.memory_logger.debug("MEMORY [%s] %s | unavailable", stage, extra_info)
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         """
@@ -807,20 +827,26 @@ class Model(nn.Module):
             if torch.cuda.is_available():
                 allocated_before = torch.cuda.memory_allocated() / 1024**3
                 reserved_before = torch.cuda.memory_reserved() / 1024**3
-                print(f"🔍 MEMORY BEFORE celestial_combiner: Allocated={allocated_before:.2f}GB, Reserved={reserved_before:.2f}GB")
+                self.memory_logger.debug(
+                    "MEMORY BEFORE celestial_combiner | Allocated=%.2fGB Reserved=%.2fGB",
+                    allocated_before,
+                    reserved_before,
+                )
             else:
                 import psutil
                 import os
                 process = psutil.Process(os.getpid())
                 cpu_before = process.memory_info().rss / 1024**3
-                print(f"🔍 MEMORY BEFORE celestial_combiner: CPU={cpu_before:.2f}GB")
+                self.memory_logger.debug("MEMORY BEFORE celestial_combiner | CPU=%.2fGB", cpu_before)
             
             # Debug input shapes
-            print(f"🔍 INPUT SHAPES to celestial_combiner:")
-            print(f"   astronomical_adj: {astronomical_adj.shape}")
-            print(f"   learned_adj: {learned_adj.shape}")
-            print(f"   dynamic_adj: {dynamic_adj.shape}")
-            print(f"   enc_out: {enc_out.shape}")
+            self._log_debug(
+                "INPUT to celestial_combiner: astronomical_adj=%s learned_adj=%s dynamic_adj=%s enc_out=%s",
+                astronomical_adj.shape,
+                learned_adj.shape,
+                dynamic_adj.shape,
+                enc_out.shape,
+            )
             
             # 🚀 PETRI NET COMBINER: Preserves rich edge features!
             if self.use_petri_net_combiner:
@@ -831,10 +857,11 @@ class Model(nn.Module):
                 )
                 
                 # Log edge feature preservation
-                print(f"🚀 PETRI NET: Rich edge features preserved!")
-                print(f"   combined_adj: {combined_adj.shape}")
-                print(f"   rich_edge_features: {rich_edge_features.shape} (6D vectors, NO compression!)")
-                print(f"   Edge features: [theta_diff, phi_diff, velocity_diff, radius_ratio, long_diff, phase_alignment]")
+                self._log_debug(
+                    "PETRI NET: Rich edge features preserved! combined_adj=%s rich_edge_features=%s",
+                    combined_adj.shape,
+                    (rich_edge_features.shape if rich_edge_features is not None else None),
+                )
                 
                 # Store rich features in metadata for analysis
                 fusion_metadata['rich_edge_features_shape'] = rich_edge_features.shape
@@ -852,17 +879,27 @@ class Model(nn.Module):
             if torch.cuda.is_available():
                 allocated_after = torch.cuda.memory_allocated() / 1024**3
                 reserved_after = torch.cuda.memory_reserved() / 1024**3
-                print(f"✅ MEMORY AFTER celestial_combiner: Allocated={allocated_after:.2f}GB, Reserved={reserved_after:.2f}GB")
-                print(f"📊 MEMORY DELTA: Allocated={allocated_after-allocated_before:+.2f}GB, Reserved={reserved_after-reserved_before:+.2f}GB")
+                self.memory_logger.debug(
+                    "MEMORY AFTER celestial_combiner | Allocated=%.2fGB Reserved=%.2fGB Delta_Allocated=%+.2fGB Delta_Reserved=%+.2fGB",
+                    allocated_after,
+                    reserved_after,
+                    allocated_after - allocated_before,
+                    reserved_after - reserved_before,
+                )
             else:
                 cpu_after = process.memory_info().rss / 1024**3
-                print(f"✅ MEMORY AFTER celestial_combiner: CPU={cpu_after:.2f}GB")
-                print(f"📊 MEMORY DELTA: CPU={cpu_after-cpu_before:+.2f}GB")
+                self.memory_logger.debug(
+                    "MEMORY AFTER celestial_combiner | CPU=%.2fGB Delta_CPU=%+.2fGB",
+                    cpu_after,
+                    cpu_after - cpu_before,
+                )
             
             # Debug output shapes
-            print(f"✅ OUTPUT SHAPES from celestial_combiner:")
-            print(f"   combined_adj: {combined_adj.shape}")
-            print(f"   fusion_metadata keys: {list(fusion_metadata.keys()) if fusion_metadata else 'None'}")
+            self._log_debug(
+                "OUTPUT from celestial_combiner: combined_adj=%s fusion_metadata_keys=%s",
+                combined_adj.shape,
+                list(fusion_metadata.keys()) if fusion_metadata else None,
+            )
             
             # DEBUG: Force garbage collection and check memory
             import gc
@@ -870,12 +907,12 @@ class Model(nn.Module):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 post_gc_allocated = torch.cuda.memory_allocated() / 1024**3
-                print(f"🧹 AFTER GC: Allocated={post_gc_allocated:.2f}GB")
+                self.memory_logger.debug("MEMORY AFTER GC | Allocated=%.2fGB", post_gc_allocated)
             else:
                 import psutil
                 process = psutil.Process()
                 post_gc_cpu = process.memory_info().rss / 1024**3
-                print(f"🧹 AFTER GC: CPU={post_gc_cpu:.2f}GB")
+                self.memory_logger.debug("MEMORY AFTER GC | CPU=%.2fGB", post_gc_cpu)
         else:
             # Simple combination for fallback with dynamic weighting
             # Generate dynamic weights for each time step from enc_out
@@ -902,12 +939,12 @@ class Model(nn.Module):
             }
         
         # 6. Apply hierarchical mapping if enabled
-        print(f"🔍 STEP 6: Hierarchical mapping check (enabled={self.use_hierarchical_mapping})")
+        self._log_debug("STEP 6: Hierarchical mapping check (enabled=%s)", self.use_hierarchical_mapping)
         if self.use_hierarchical_mapping:
-            print(f"   Starting hierarchical mapper...")
+            self._log_debug("Starting hierarchical mapper...")
             try:
                 hierarchical_features = self.hierarchical_mapper(enc_out)  # [batch, num_nodes, d_model]
-                print(f"   ✅ Hierarchical mapper completed: {hierarchical_features.shape}")
+                self._log_debug("Hierarchical mapper completed: %s", hierarchical_features.shape)
                 
                 # Reshape and project to preserve spatial information
                 batch_size, seq_len, _ = enc_out.shape
@@ -922,45 +959,45 @@ class Model(nn.Module):
                 self._log_debug("Continuing without hierarchical features")
         
         # 7. Spatiotemporal encoding with graph attention
-        print(f"🔍 STEP 7: Spatiotemporal encoding")
-        print(f"   enc_out shape: {enc_out.shape}")
-        print(f"   combined_adj shape: {combined_adj.shape}")
+        self._log_debug("STEP 7: Spatiotemporal encoding | enc_out=%s combined_adj=%s", enc_out.shape, combined_adj.shape)
         encoded_features: torch.Tensor
 
         # Fast path: when Petri net combiner is active, it already applies temporal and spatial attention
         # and Step 8 uses EdgeConditionedGraphAttention. The legacy spatiotemporal encoder may be redundant.
         if self.use_petri_net_combiner and self.bypass_spatiotemporal_with_petri:
-            print(f"   ⏭️  Petri bypass enabled — using encoder output directly for graph processing")
+            self._log_debug("Petri bypass enabled — using encoder output directly for graph processing")
             encoded_features = enc_out  # [batch, seq_len, d_model]
         else:
             use_dynamic_encoder = (
                 self.use_dynamic_spatiotemporal_encoder
                 and self.dynamic_spatiotemporal_encoder is not None
             )
-            print(f"   use_dynamic_encoder: {use_dynamic_encoder}")
+            self._log_debug("use_dynamic_encoder=%s", use_dynamic_encoder)
 
             if use_dynamic_encoder:
-                print(f"   Using DYNAMIC spatiotemporal encoder...")
+                self._log_debug("Using DYNAMIC spatiotemporal encoder...")
                 dynamic_encoder = self.dynamic_spatiotemporal_encoder
                 if dynamic_encoder is None:
                     encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
                 else:
                     try:
-                        print(f"   Calling dynamic_encoder with enc_out={enc_out.shape}, adj={combined_adj.shape}")
+                        self._log_debug("Calling dynamic_encoder with enc_out=%s adj=%s", enc_out.shape, combined_adj.shape)
                         encoded_features = dynamic_encoder(enc_out, combined_adj)
-                        print(f"   ✅ Dynamic encoder completed: {encoded_features.shape}")
+                        self._log_debug("Dynamic encoder completed: %s", encoded_features.shape)
                     except ValueError as exc:
                         self.logger.warning("Dynamic spatiotemporal encoder fallback: %s", exc)
                         encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
             else:
-                print(f"   Using STATIC spatiotemporal encoding...")
+                self._log_debug("Using STATIC spatiotemporal encoding...")
                 encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
-                print(f"   ✅ Static encoding completed: {encoded_features.shape}")
+                self._log_debug("Static encoding completed: %s", encoded_features.shape)
         
         # 8. Graph attention processing
-        print(f"🔍 STEP 8: Graph attention processing")
-        print(f"   encoded_features shape: {encoded_features.shape}")
-        print(f"   use_efficient_covariate_interaction: {self.use_efficient_covariate_interaction}")
+        self._log_debug(
+            "STEP 8: Graph attention processing | encoded_features=%s use_efficient_covariate_interaction=%s",
+            encoded_features.shape,
+            self.use_efficient_covariate_interaction,
+        )
         if self.use_efficient_covariate_interaction:
             # Efficient, partitioned graph processing that respects covariate independence
             graph_features = self._efficient_graph_processing(encoded_features, combined_adj)
@@ -971,9 +1008,10 @@ class Model(nn.Module):
             
             # 🚀 ZERO-INFORMATION-LOSS: Use rich edge features if available!
             if self.use_petri_net_combiner and rich_edge_features is not None:
-                print(f"🚀 USING RICH EDGE FEATURES in graph attention!")
-                print(f"   rich_edge_features shape: {rich_edge_features.shape}")
-                print(f"   Edge features contain: theta_diff, phi_diff, velocity_diff, radius_ratio, long_diff, phase_alignment")
+                self._log_debug(
+                    "Using rich edge features in graph attention | rich_edge_features=%s",
+                    rich_edge_features.shape,
+                )
                 
                 # Process with edge-conditioned attention (no time loop needed - handles full sequence)
                 graph_features = encoded_features
@@ -981,7 +1019,7 @@ class Model(nn.Module):
                     try:
                         # EdgeConditionedGraphAttention accepts full sequence with rich edge features
                         graph_features = layer(graph_features, edge_features=rich_edge_features)
-                        print(f"   ✅ Layer {i+1}: Used 6D edge features directly in attention!")
+                        self._log_debug("Layer %s: Used 6D edge features directly in attention!", i + 1)
                     except Exception as exc:
                         self.logger.warning(
                             "Edge-conditioned graph attention layer %s failed: %s",
@@ -994,7 +1032,7 @@ class Model(nn.Module):
                 self._log_debug("Applied edge-conditioned graph attention with ZERO information loss!")
             else:
                 # OLD PATH: Process each timestep with scalar adjacency
-                print(f"   Using scalar adjacency (old method)")
+                self._log_debug("Using scalar adjacency (old method)")
                 processed_features_over_time = []
                 for t in range(self.seq_len):
                     time_step_features = graph_features[:, t:t+1, :]

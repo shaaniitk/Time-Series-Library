@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Tuple, Optional
+import logging
 from layers.modular.graph.registry import GraphComponentRegistry
 from layers.modular.graph.petri_net_message_passing import (
     PetriNetMessagePassing,
@@ -76,6 +77,7 @@ class CelestialPetriNetCombiner(nn.Module):
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.enable_memory_debug = enable_memory_debug
         self.memory_debug_prefix = memory_debug_prefix
+        self.memory_logger = logging.getLogger("scripts.train.train_celestial_production.memory")
         
         # Edge type embeddings
         self.edge_type_embeddings = nn.Parameter(
@@ -155,7 +157,7 @@ class CelestialPetriNetCombiner(nn.Module):
         if not self.enable_memory_debug:
             return
         rss = self._rss_gb()
-        msg = f"🔬 {self.memory_debug_prefix} [{stage}] RSS={rss:.2f}GB"
+        parts = [f"{self.memory_debug_prefix} [{stage}] RSS={rss:.2f}GB"]
         if tensors:
             sizes = []
             for name, t in tensors.items():
@@ -164,10 +166,10 @@ class CelestialPetriNetCombiner(nn.Module):
                     bytes_ = numel * (t.element_size() if t.is_floating_point() or t.is_complex() else max(1, t.element_size()))
                     sizes.append(f"{name}={bytes_/1024**2:.1f}MB")
                 except Exception:
-                    pass
+                    continue
             if sizes:
-                msg += " | " + ", ".join(sizes)
-        print(msg)
+                parts.append(", ".join(sizes))
+        self.memory_logger.debug("🔬 %s", " | ".join(parts))
         
     def forward(
         self,

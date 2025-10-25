@@ -119,25 +119,49 @@ def configure_logging(config: SimpleConfig) -> logging.Logger:
         "%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+    class LossOnlyFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
+            try:
+                msg = record.getMessage()
+            except Exception:
+                return False
+            # Allow: per-batch loss, epoch summaries, and test loss
+            if "loss=" in msg:
+                return True
+            if msg.startswith("Epoch ") or ("Epoch " in msg and "production training" in msg):
+                return True
+            if "test_loss=" in msg:
+                return True
+            return False
+
     root_logger = logging.getLogger()
-    if not root_logger.handlers:
-        logging.basicConfig(level=level, format=log_format)
-    else:
-        root_logger.setLevel(level)
+    # Reset existing console handlers to enforce our console policy
+    for h in list(root_logger.handlers):
+        try:
+            h.flush()
+        except Exception:
+            pass
+        root_logger.removeHandler(h)
+
+    # File logging for general logs if configured
+    log_file = getattr(config, "log_file", None)
+    if log_file:
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(level)
+        file_handler.setFormatter(logging.Formatter(log_format))
+        root_logger.addHandler(file_handler)
+
+    # Console handler: only show loss lines
+    console_handler = logging.StreamHandler(stream=sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(logging.Formatter(log_format))
+    console_handler.addFilter(LossOnlyFilter())
+    root_logger.addHandler(console_handler)
+    root_logger.setLevel(level)
 
     LOGGER.setLevel(level)
     for handler in LOGGER.handlers:
         handler.setLevel(level)
-
-    log_file = getattr(config, "log_file", None)
-    if log_file and not any(
-        isinstance(handler, logging.FileHandler) and handler.baseFilename == log_file
-        for handler in LOGGER.handlers
-    ):
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
-        file_handler.setLevel(level)
-        file_handler.setFormatter(logging.Formatter(log_format))
-        LOGGER.addHandler(file_handler)
 
     return LOGGER
 
@@ -2060,6 +2084,14 @@ def train_celestial_pgat_production():
 
     overall_metrics = evaluation_result.overall
     rmse_value = overall_metrics.get("rmse", float("nan"))
+    # Emit a test_loss alias (rmse) so it appears on console with the loss-only filter
+    logger.info(
+        "Test summary | test_loss=%0.6f rmse=%0.6f mae=%0.6f mse=%0.6f",
+        rmse_value,
+        rmse_value,
+        overall_metrics.get("mae", float("nan")),
+        overall_metrics.get("mse", float("nan")),
+    )
     logger.info(
         "PRODUCTION results (OHLC prediction) | mae=%0.6f mse=%0.6f rmse=%0.6f mape=%0.6f mspe=%0.6f",
         overall_metrics.get("mae", float("nan")),
