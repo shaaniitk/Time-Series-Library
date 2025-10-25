@@ -1,0 +1,128 @@
+{
+  "Baseline (All Enhanced Features Disabled)": {
+    "success": true,
+    "train_losses": [
+      0.8034651935100555,
+      0.4131816655397415,
+      0.38359268605709074
+    ],
+    "val_losses": [
+      0.5590841074784597,
+      0.4430335561434428,
+      0.39830446243286133
+    ],
+    "train_improvement": 52.25770958648378,
+    "val_improvement": 28.757684737406503,
+    "final_train_loss": 0.38359268605709074,
+    "final_val_loss": 0.39830446243286133,
+    "total_params": 4492795
+  },
+  "Enable Stochastic Learner": {
+    "success": true,
+    "train_losses": [
+      1.0612772524356842,
+      0.5155118465423584,
+      0.41190730035305023
+    ],
+    "val_losses": [
+      0.7332644661267599,
+      0.5100913643836975,
+      0.4205550154050191
+    ],
+    "train_improvement": 61.18758793635665,
+    "val_improvement": 42.64620272321808,
+    "final_train_loss": 0.41190730035305023,
+    "final_val_loss": 0.4205550154050191,
+    "total_params": 4525820
+  },
+  "Enable Gated Graph Combiner": {
+    "success": true,
+    "train_losses": [
+      0.8420221149921417,
+      0.46343856751918794,
+      0.38517304956912995
+    ],
+    "val_losses": [
+      0.559697687625885,
+      0.4592605034510295,
+      0.4467239777247111
+    ],
+    "train_improvement": 54.25618369029125,
+    "val_improvement": 20.18477338728763,
+    "final_train_loss": 0.38517304956912995,
+    "final_val_loss": 0.4467239777247111,
+    "total_params": 4561019
+  },
+  "Enable Mixture Density Decoder": {
+    "success": true,
+    "train_losses": [
+      0.4316436737775803,
+      0.39263081550598145,
+      0.38138292282819747
+    ],
+    "val_losses": [
+      0.4903583725293477,
+      0.4580268959204356,
+      0.4269857903321584
+    ],
+    "train_improvement": 11.644037432431235,
+    "val_improvement": 12.92372798088535,
+    "final_train_loss": 0.38138292282819747,
+    "final_val_loss": 0.4269857903321584,
+    "total_params": 4583611
+  },
+  "Enable Complex Loss Function": {
+    "success": true,
+    "train_losses": [
+      0.9258097469806671,
+      0.45098327100276947,
+      0.3765724003314972
+    ],
+    "val_losses": [
+      0.5846620202064514,
+      0.46886595090230304,
+      0.38342172900835675
+    ],
+    "train_improvement": 59.325077148992165,
+    "val_improvement": 34.41993566249339,
+    "final_train_loss": 0.3765724003314972,
+    "final_val_loss": 0.38342172900835675,
+    "total_params": 4492795
+  },
+  "Stochastic + Gated Combiner": {
+    "success": true,
+    "train_losses": [
+      0.8627095341682434,
+      0.43984405100345614,
+      0.355164635181427
+    ],
+    "val_losses": [
+      0.5738363067309061,
+      0.44047707319259644,
+      0.41319138805071515
+    ],
+    "train_improvement": 58.83149297476481,
+    "val_improvement": 27.994903214711293,
+    "final_train_loss": 0.355164635181427,
+    "final_val_loss": 0.41319138805071515,
+    "total_params": 4594044
+  },
+  "All Enhanced Features": {
+    "success": true,
+    "train_losses": [
+      0.4248432397842407,
+      0.3853317528963089,
+      0.3761364370584488
+    ],
+    "val_losses": [
+      0.5011233488718668,
+      0.4490506152311961,
+      0.4250377416610718
+    ],
+    "train_improvement": 11.464652880090071,
+    "val_improvement": 15.183009808279662,
+    "final_train_loss": 0.3761364370584488,
+    "final_val_loss": 0.4250377416610718,
+    "total_params": 4684860
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "Baseline (All Enhanced Features Disabled)": {
+    "success": true,
+    "train_losses": [
+      0.8650508284568786,
+      0.4667383283376694,
+      0.39257155656814574
+    ],
+    "val_losses": [
+      0.5788680712381998,
+      0.4396023054917653,
+      0.4292098383108775
+    ],
+    "train_improvement": 54.61867168332354,
+    "val_improvement": 25.853599526953197,
+    "final_train_loss": 0.39257155656814574,
+    "final_val_loss": 0.4292098383108775,
+    "total_params": 4492795
+  },
+  "Enable Stochastic Learner": {
+    "success": true,
+    "train_losses": [
+      0.855471795797348,
+      0.4310642659664154,
+      0.38406921923160553
+    ],
+    "val_losses": [
+      0.5564398368199667,
+      0.43073418736457825,
+      0.3894221981366475
+    ],
+    "train_improvement": 55.104397232216016,
+    "val_improvement": 30.015399263614707,
+    "final_train_loss": 0.38406921923160553,
+    "final_val_loss": 0.3894221981366475,
+    "total_params": 4525820
+  },
+  "Enable Gated Graph Combiner": {
+    "success": true,
+    "train_losses": [
+      0.928870576620102,
+      0.4949871301651001,
+      0.3966920435428619
+    ],
+    "val_losses": [
+      0.6845672130584717,
+      0.4749925335248311,
+      0.41743114590644836
+    ],
+    "train_improvement": 57.29307682601893,
+    "val_improvement": 39.02262072390636,
+    "final_train_loss": 0.3966920435428619,
+    "final_val_loss": 0.41743114590644836,
+    "total_params": 4561019
+  },
+  "Enable Mixture Density Decoder": {
+    "success": false,
+    "error": "'tuple' object has no attribute 'shape'",
+    "traceback": "Traceback (most recent call last):\n  File \"/home/kalki/Documents/workspace/Time-Series-Library/scripts/train/test_enhanced_features.py\", line 113, in run_quick_training_test\n    if outputs.shape != batch_y.shape:\n       ^^^^^^^^^^^^^\nAttributeError: 'tuple' object has no attribute 'shape'\n"
+  },
+  "Enable Complex Loss Function": {
+    "success": true,
+    "train_losses": [
+      0.9130957722663879,
+      0.4105457693338394,
+      0.40596249103546145
+    ],
+    "val_losses": [
+      0.6577400962511698,
+      0.45092080036799115,
+      0.4349773625532786
+    ],
+    "train_improvement": 55.539987877961025,
+    "val_improvement": 33.867896296354914,
+    "final_train_loss": 0.40596249103546145,
+    "final_val_loss": 0.4349773625532786,
+    "total_params": 4492795
+  },
+  "Stochastic + Gated Combiner": {
+    "success": true,
+    "train_losses": [
+      0.9865826666355133,
+      0.4812793880701065,
+      0.3682561755180359
+    ],
+    "val_losses": [
+      0.6563709179560343,
+      0.45081164439519245,
+      0.38492437203725177
+    ],
+    "train_improvement": 62.673561175174605,
+    "val_improvement": 41.35566316132319,
+    "final_train_loss": 0.3682561755180359,
+    "final_val_loss": 0.38492437203725177,
+    "total_params": 4594044
+  },
+  "All Enhanced Features": {
+    "success": false,
+    "error": "'tuple' object has no attribute 'shape'",
+    "traceback": "Traceback (most recent call last):\n  File \"/home/kalki/Documents/workspace/Time-Series-Library/scripts/train/test_enhanced_features.py\", line 113, in run_quick_training_test\n    if outputs.shape != batch_y.shape:\n       ^^^^^^^^^^^^^\nAttributeError: 'tuple' object has no attribute 'shape'\n"
+  }
+}

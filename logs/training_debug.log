@@ -1,0 +1,46 @@
+2025-10-24 15:58:16,419 INFO __main__: Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-24 15:58:16,419 INFO __main__: Heavy-duty overnight configuration enabled
+2025-10-24 15:58:16,419 INFO __main__: ================================================================================
+2025-10-24 15:58:16,419 INFO __main__: Extra memory debug logs will also be written to /home/kalki/Documents/workspace/Time-Series-Library/production_backward_memory_debug.log
+2025-10-24 15:58:16,419 INFO __main__: Memory diagnostics enabled; detailed logs stored at checkpoints/celestial_enhanced_pgat_production_overnight/memory_diagnostics.log
+2025-10-24 15:58:16,419 INFO __main__: Configuration summary | model=Celestial_Enhanced_PGAT seq_len=250 pred_len=10 d_model=416 n_heads=8 e_layers=4 d_layers=2 train_epochs=50
+2025-10-24 15:58:16,420 INFO __main__: Optimization summary | batch_size=16 learning_rate=0.001 patience=999 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-10-24 15:58:16,420 INFO __main__: 🔍 GPU Detection:
+2025-10-24 15:58:16,420 INFO __main__:   - torch.cuda.is_available(): False
+2025-10-24 15:58:16,420 INFO __main__:   - torch.cuda.device_count(): 0
+2025-10-24 15:58:16,420 INFO __main__:   - getattr(args, 'use_gpu', True): True
+2025-10-24 15:58:16,420 INFO __main__: Using device: cpu (CPU fallback)
+2025-10-24 15:58:16,420 INFO __main__: Reproducibility seed configured to 2024
+2025-10-24 15:58:16,420 INFO __main__: Loading production data modules
+2025-10-24 15:58:16,497 INFO __main__: Loaded train data module | samples=6750 batches=421 batch_size=16 drop_last=True shuffle=True pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-24 15:58:16,560 INFO __main__: Loaded val data module | samples=41 batches=3 batch_size=16 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-24 15:58:16,623 INFO __main__: Loaded test data module | samples=41 batches=3 batch_size=16 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-24 15:58:16,623 INFO __main__: Data loader sizes | train=421 val=3 test=3
+2025-10-24 15:58:16,623 INFO __main__: Preparing scaling utilities for loss computation
+2025-10-24 15:58:16,623 INFO __main__: Main scaler detected with 118 features
+2025-10-24 15:58:16,623 INFO __main__: Target scaler detected with 4 features
+2025-10-24 15:58:16,623 INFO __main__: Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-24 15:58:16,624 INFO __main__: Initializing production Celestial Enhanced PGAT model
+2025-10-24 15:58:16,881 INFO __main__: Model initialized successfully
+2025-10-24 15:58:16,882 INFO __main__: Parameter statistics | total=43,540,417 trainable=43,540,417 approx_size_mb=166.1
+2025-10-24 15:58:16,883 INFO __main__: Model dtype summary: {'torch.float32': 764}
+2025-10-24 15:58:16,884 INFO __main__: Standard precision training
+2025-10-24 15:58:16,884 INFO __main__: Gradient accumulation configured | steps=2 effective_batch_size=32
+2025-10-24 15:58:16,884 INFO __main__: Learning rate schedule preview | warmup_epochs=5 base_lr=0.001000 min_lr=0.000001 remaining_epochs=45
+2025-10-24 15:58:16,884 INFO __main__: Sample learning rates: E1:0.000200, E5:0.001000, E6:0.001000, E26:0.000587, E50:0.000002
+2025-10-24 15:58:16,884 INFO __main__: Using MSE Loss for deterministic predictions
+2025-10-24 15:58:16,884 INFO __main__: Early stopping patience configured to 999 (effectively disabled)
+2025-10-24 15:58:16,884 INFO __main__: Checkpoints will be saved to checkpoints/celestial_enhanced_pgat_production_overnight
+2025-10-24 15:58:16,884 INFO __main__: Inspecting data file at ./data/prepared_financial_data.csv for target resolution
+2025-10-24 15:58:16,886 INFO __main__: Feature summary | total_columns=119 feature_columns=118
+2025-10-24 15:58:16,893 INFO __main__: Estimated CSV row count: 7109
+2025-10-24 15:58:16,893 INFO __main__: Auto-set enc_in/dec_in to 118 based on feature count
+2025-10-24 15:58:16,893 INFO __main__: Resolved target indices: [0, 1, 2, 3]
+2025-10-24 15:58:16,893 INFO __main__: Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-10-24 15:58:16,893 INFO __main__: Starting production training loop
+2025-10-24 15:58:16,893 INFO __main__: Configured for 50 training epochs
+2025-10-24 15:58:16,894 INFO __main__: Epoch 1/50 - production training
+2025-10-24 15:58:16,899 INFO __main__: 📦 BATCH 1/421 LOADED | shapes: batch_x=(16, 250, 118) batch_y=(16, 135, 118) batch_x_mark=(16, 250, 3) batch_y_mark=(16, 135, 3)
+2025-10-24 15:58:16,900 INFO __main__: ✅ BATCH 1 TRANSFERRED TO cpu | device_memory_before=N/A
+2025-10-24 15:58:16,901 INFO __main__: 🔮 PRE-FORWARD | dec_inp=(16, 135, 118) device=cpu use_amp=False
+2025-10-24 15:58:16,901 INFO __main__: 🔄 FORWARD PASS starting (standard mode)
