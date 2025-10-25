@@ -853,11 +853,11 @@ def train_epoch(
                 if batch_index != total_train_batches - 1:
                     optimizer.zero_grad(set_to_none=True)
 
-            # 🐛 FIX: Accumulate the SCALED loss, not raw_loss
-            # With gradient_accumulation_steps=3, raw_loss represents the full batch loss
-            # but backward() uses loss/3 for gradient scaling
-            # To report accurate training loss, we should accumulate the scaled loss
-            train_loss += loss.detach().item()
+            # Accumulate raw_loss for epoch averaging
+            # raw_loss is the mean loss per sample (MSELoss reduction='mean')
+            # We scale it by 1/gradient_accumulation_steps for backward() to get correct gradients
+            # But for reporting, we want the unscaled mean loss across batches
+            train_loss += raw_loss.detach().item()
             train_batches += 1
 
             # 🔍 DIAGNOSTIC: Log detailed training metrics
@@ -902,7 +902,7 @@ def train_epoch(
                     "Batch %s/%s | loss=%0.6f elapsed=%0.1fs",
                     batch_index,
                     len(train_loader),
-                    loss.detach().item(),
+                    raw_loss.detach().item(),
                     elapsed,
                 )
                 if epoch == 0 and batch_index == 0:
