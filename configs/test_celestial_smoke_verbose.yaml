@@ -1,0 +1,108 @@
+# Celestial Enhanced PGAT - VERBOSE SMOKE TEST Configuration
+# Same as regular smoke test but with ALL LOGGING ENABLED
+# Purpose: Validate edge stabilization + Phase 2/3 bug fixes + MDN decoder
+
+# Inherits from: test_celestial_smoke.yaml
+# Changes: verbose_logging=true, diagnostics enabled
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: test_celestial_smoke_verbose
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: true
+
+# SMOKE TEST: Minimal sequence settings
+seq_len: 30
+label_len: 15
+pred_len: 5
+
+# SMOKE TEST: Minimal data split
+validation_length: 20
+test_length: 20
+
+# SMOKE TEST: Fast training (2 epochs only)
+learning_rate: 0.001
+train_epochs: 2
+batch_size: 4
+patience: 999
+lradj: type1
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# SMOKE TEST: Minimal model dimensions  
+d_model: 65             # MUST be divisible by 13 celestial bodies (13 × 5 = 65)
+n_heads: 5              # Attention heads (d_model/n_heads = 13)
+e_layers: 2
+d_layers: 1
+d_ff: 130               # 2 × d_model
+dropout: 0.1
+
+# Input/Output dimensions
+enc_in: 113  # Updated to match auto-detected value
+dec_in: 113
+c_out: 4
+
+# Celestial system - ENABLED
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+celestial_fusion_layers: 1
+
+# Petri Net Architecture - ENABLED (uses stabilized edge features!)
+use_petri_net_combiner: true
+num_message_passing_steps: 1
+edge_feature_dim: 6  # theta_diff, phi_diff, velocity_ratio, radius_ratio, longitude_diff, phase_alignment
+use_temporal_attention: true
+use_spatial_attention: true
+bypass_spatiotemporal_with_petri: true
+
+# 🎲 MDN DECODER - ENABLED
+enable_mdn_decoder: true
+mdn_components: 3
+mdn_sigma_min: 0.001
+mdn_use_softplus: true
+
+calibration_metrics:
+  coverage_levels: [0.5, 0.9]
+  compute_crps: false
+  crps_samples: 50
+
+# Target autocorrelation - ENABLED
+use_target_autocorrelation: true
+target_autocorr_layers: 1
+
+# Calendar effects - ENABLED
+use_calendar_effects: true
+calendar_embedding_dim: 15      # MUST be divisible by n_heads=5
+
+# Other features
+use_mixture_decoder: false
+use_stochastic_learner: false
+use_hierarchical_mapping: false
+use_efficient_covariate_interaction: true
+enable_target_covariate_attention: true
+
+# 🔥 LOGGING - ALL ENABLED FOR SMOKE TEST
+verbose_logging: true              # ✅ Enable detailed logging
+enable_memory_diagnostics: true    # ✅ Memory tracking
+enable_memory_debug: true          # ✅ Memory debug logs
+collect_diagnostics: true          # ✅ Model diagnostics
+
+# Input waves
+num_input_waves: 113  # Updated to match CSV
+target_wave_indices: [0, 1, 2, 3]
+
+# Training output
+itr: 1
+use_amp: false
+
+# Checkpointing
+save_checkpoints: true
+checkpoint_dir: ./checkpoints/smoke_test

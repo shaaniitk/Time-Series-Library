@@ -64,7 +64,8 @@ use_spatial_attention: true             # Enable global pattern modeling (attent
 bypass_spatiotemporal_with_petri: true
 
 # Wave aggregation settings - OPTIMIZED FOR PRODUCTION
-num_input_waves: 118   # Full celestial wave features (CORRECTED to match actual CSV)
+# Auto-detected celestial feature count from CSV header mapping is 113
+num_input_waves: 113   # Celestial columns used by phase-aware processor
 target_wave_indices: [0, 1, 2, 3]  # All OHLC targets
 
 # Advanced features - PRODUCTION READY

@@ -149,6 +149,47 @@
              "internalConsoleOptions": "neverOpen"
          },
          {
+            "name": "Debug: Celestial Production (Smoke Verbose)",
+            "type": "debugpy",
+            "request": "launch",
+            // Prefer Windows venv interpreter; VS Code will fallback to selected interpreter if not found
+            "python": "${workspaceFolder}/tsl-env/Scripts/python.exe",
+            "program": "${workspaceFolder}/scripts/train/train_celestial_production.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "args": [
+                "--config", "configs/test_celestial_smoke_verbose.yaml",
+                "--model", "Celestial_Enhanced_PGAT",
+                "--data", "custom"
+            ],
+            "justMyCode": false,
+            "stopOnEntry": false,
+            "showReturnValue": true,
+            "redirectOutput": true,
+            "internalConsoleOptions": "neverOpen"
+        },
+        {
+            "name": "Debug: Training Failure Wrapper",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/tsl-env/Scripts/python.exe",
+            "program": "${workspaceFolder}/debug_training_failure.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "args": [],
+            "justMyCode": false,
+            "stopOnEntry": false,
+            "showReturnValue": true,
+            "redirectOutput": true,
+            "internalConsoleOptions": "neverOpen"
+        },
+         {
              "name": "Debug: Celestial Production (Memory Profiling)",
              "type": "debugpy",
              "request": "launch",

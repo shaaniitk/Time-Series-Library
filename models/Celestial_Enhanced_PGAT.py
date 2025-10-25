@@ -89,6 +89,22 @@ class Model(nn.Module):
         self.use_hierarchical_mapping = getattr(configs, 'use_hierarchical_mapping', False)  # Production default: False
         self.collect_diagnostics = bool(getattr(configs, 'collect_diagnostics', True))
         self.use_efficient_covariate_interaction = getattr(configs, 'use_efficient_covariate_interaction', False)
+
+        # Phase 2: Hierarchical Mapping + Adaptive TopK pooling (optional)
+        self.enable_adaptive_topk: bool = bool(getattr(configs, 'enable_adaptive_topk', False))
+        self.adaptive_topk_ratio: float = float(getattr(configs, 'adaptive_topk_ratio', 0.5))
+        self.adaptive_topk_k: Optional[int] = None  # initialized after num_nodes is known
+
+        # Phase 3: Stochastic Control (temperature-modulated noise injection)
+        self.use_stochastic_control: bool = bool(getattr(configs, 'use_stochastic_control', False))
+        self.stoch_temp_start: float = float(getattr(configs, 'stochastic_temperature_start', 1.0))
+        self.stoch_temp_end: float = float(getattr(configs, 'stochastic_temperature_end', 0.1))
+        self.stoch_decay_steps: int = int(getattr(configs, 'stochastic_decay_steps', 1000))
+        self.stoch_noise_std: float = float(getattr(configs, 'stochastic_noise_std', 1.0))
+        # FIX BUG #1: Make buffer persistent for checkpoint compatibility
+        self.register_buffer("_stoch_step", torch.tensor(0, dtype=torch.long), persistent=True)
+        # Support external step injection (for reproducible scheduling)
+        self.stoch_use_external_step: bool = bool(getattr(configs, 'stochastic_use_external_step', False))
         
         # 🎲 NEW: MDN Decoder for probabilistic forecasting (Phase 1)
         self.enable_mdn_decoder = bool(getattr(configs, 'enable_mdn_decoder', False))
@@ -105,8 +121,13 @@ class Model(nn.Module):
         self.calendar_embedding_dim = getattr(configs, 'calendar_embedding_dim', self.d_model // 4)
         
         # --- FIXED: Dimension Consistency Management ---
-        # Determine celestial feature dimension
-        self.celestial_feature_dim = self.num_celestial_bodies * 32  # 13 × 32 = 416
+        # Calculate celestial_dim to be compatible with n_heads for MultiheadAttention
+        # CRITICAL: Must be divisible by n_heads to avoid "embed_dim must be divisible by num_heads" errors
+        base_celestial_dim = 32
+        self.celestial_dim = ((base_celestial_dim + self.n_heads - 1) // self.n_heads) * self.n_heads
+        
+        # Determine celestial feature dimension using calculated celestial_dim
+        self.celestial_feature_dim = self.num_celestial_bodies * self.celestial_dim  # e.g., 13 × 35 = 455
         
         # Validate d_model configuration
         if self.use_celestial_graph and getattr(configs, 'aggregate_waves_to_celestial', True):
@@ -158,10 +179,14 @@ class Model(nn.Module):
             # Use the new phase-aware processor that understands the actual feature structure
             self.phase_aware_processor = PhaseAwareCelestialProcessor(
                 num_input_waves=self.num_input_waves,
-                celestial_dim=32,  # Rich 32D representation per celestial body
+                celestial_dim=self.celestial_dim,  # Use pre-calculated dimension
                 waves_per_body=9,  # Average waves per celestial body
                 num_heads=self.n_heads
             )
+            
+            # CRITICAL FIX: Update num_input_waves with auto-detected value from processor
+            # This ensures wave_aggregator uses the correct dimension (113, not 118)
+            self.num_input_waves = self.phase_aware_processor.num_input_waves
             
             # Keep the old processor for target extraction
             self.wave_aggregator = CelestialWaveAggregator(
@@ -174,7 +199,7 @@ class Model(nn.Module):
             )
             
             # New projection layer to fix information bottleneck
-            self.rich_feature_to_celestial = nn.Linear(self.num_celestial_bodies * 32, self.num_celestial_bodies)
+            self.rich_feature_to_celestial = nn.Linear(self.celestial_feature_dim, self.num_celestial_bodies)
         
         self._log_configuration_summary()
         
@@ -343,6 +368,52 @@ class Model(nn.Module):
                 nn.GELU(),
                 nn.Linear(node_dim, node_dim)
             )
+
+            # Enhancement 1: Target-Specific Covariate Attention (optional)
+            # Each target dynamically attends to covariates at each time step.
+            self.enable_target_covariate_attention: bool = getattr(configs, 'enable_target_covariate_attention', False)
+            if self.enable_target_covariate_attention:
+                # MultiheadAttention requires embed_dim % num_heads == 0.
+                # Use n_heads when compatible, else fall back to single head.
+                attn_heads = self.n_heads if (node_dim % self.n_heads) == 0 else 1
+                self.covariate_attention = nn.MultiheadAttention(
+                    embed_dim=node_dim,
+                    num_heads=attn_heads,
+                    dropout=getattr(configs, 'dropout', 0.1),
+                    batch_first=True,
+                )
+            else:
+                self.covariate_attention = None
+
+        # Initialize Adaptive TopK components (after num_graph_nodes is set)
+        # Compute a safe top-k based on ratio
+        if self.enable_adaptive_topk:
+            k = max(1, int(round(self.adaptive_topk_ratio * self.num_graph_nodes)))
+            k = min(k, self.num_graph_nodes)
+            self.adaptive_topk_k = k
+            # FIX BUG #7: Add temperature parameter for stable, differentiable selection
+            self.adaptive_topk_temperature: float = float(getattr(configs, 'adaptive_topk_temperature', 1.0))
+            # Only instantiate scorers/projections when per-node embedding is feasible
+            if (self.d_model % self.num_graph_nodes) == 0:
+                node_dim = self.d_model // self.num_graph_nodes
+                self.node_score = nn.Sequential(
+                    nn.Linear(node_dim, max(1, node_dim // 2)),
+                    nn.GELU(),
+                    nn.Linear(max(1, node_dim // 2), 1)
+                )
+                self.topk_projection = nn.Linear(k * node_dim, self.d_model)
+                self.logger.info(
+                    "Adaptive TopK enabled | k=%d (%.1f%% of %d nodes) temperature=%.2f node_dim=%d",
+                    k, self.adaptive_topk_ratio * 100, self.num_graph_nodes, self.adaptive_topk_temperature, node_dim
+                )
+            else:
+                # Fallback lazily created later if d_model changes; otherwise no-op in forward
+                self.node_score = None
+                self.topk_projection = None
+                self.logger.warning(
+                    "Adaptive TopK disabled: d_model=%d not divisible by num_nodes=%d",
+                    self.d_model, self.num_graph_nodes
+                )
         
         self.use_dynamic_spatiotemporal_encoder = getattr(
             configs,
@@ -654,7 +725,10 @@ class Model(nn.Module):
         wave_metadata: Dict[str, Any] = {}
         phase_based_adj: Optional[torch.Tensor] = None
         target_shape = (batch_size, seq_len, len(self.target_wave_indices))
-        if self.aggregate_waves_to_celestial and enc_in == self.num_input_waves:
+        # Allow processor to run when raw inputs include extra non-celestial columns
+        # (e.g., enc_in=118 while num_input_waves=113 celestial columns are mapped).
+        # The phase-aware processor will internally use the mapped celestial subset.
+        if self.aggregate_waves_to_celestial and enc_in >= self.num_input_waves:
             # Use phase-aware processor for rich celestial representations
             self._log_debug("MODEL_DEBUG: Starting phase-aware processing...")
             celestial_features, adjacency_matrix, phase_metadata = self.phase_aware_processor(x_enc)
@@ -970,13 +1044,30 @@ class Model(nn.Module):
                 hierarchical_features = self.hierarchical_mapper(enc_out)  # [batch, num_nodes, d_model]
                 self._log_debug("Hierarchical mapper completed: %s", hierarchical_features.shape)
                 
-                # Reshape and project to preserve spatial information
+                # FIX BUG #9: Preserve temporal information - don't broadcast single vector
+                # Instead, apply projection per-timestep or integrate hierarchical features properly
                 batch_size, seq_len, _ = enc_out.shape
-                reshaped_features = hierarchical_features.view(batch_size, -1)
-                projected_features = self.hierarchical_projection(reshaped_features).unsqueeze(1)
                 
-                # Add to encoder output, broadcasting across sequence length
-                enc_out = enc_out + projected_features
+                # Check if hierarchical_features has sequence dimension
+                if hierarchical_features.dim() == 3 and hierarchical_features.size(1) == seq_len:
+                    # hierarchical_features: [batch, seq_len, num_nodes*d_model] - already temporal
+                    # Reshape to [batch, seq_len, num_nodes*d_model] and project
+                    reshaped_features = hierarchical_features.view(batch_size, seq_len, -1)
+                    projected_features = self.hierarchical_projection(reshaped_features)  # [batch, seq_len, d_model]
+                    enc_out = enc_out + projected_features
+                    self._log_debug("Applied temporal hierarchical features: %s", projected_features.shape)
+                else:
+                    # Fallback: hierarchical_features is [batch, num_nodes, d_model] - spatial only
+                    # Apply per timestep instead of broadcasting
+                    reshaped_features = hierarchical_features.view(batch_size, -1)  # [batch, num_nodes*d_model]
+                    projected_features = self.hierarchical_projection(reshaped_features)  # [batch, d_model]
+                    # Expand to sequence length
+                    projected_features = projected_features.unsqueeze(1).expand(-1, seq_len, -1)
+                    enc_out = enc_out + projected_features
+                    self.logger.warning(
+                        "Hierarchical mapper lost temporal info - broadcasting spatial features. "
+                        "Consider updating HierarchicalTemporalSpatialMapper to output [batch, seq_len, ...]"
+                    )
                 
             except Exception as exc:
                 self.logger.warning("Hierarchical mapping failed: %s", exc)
@@ -1080,6 +1171,124 @@ class Model(nn.Module):
                 graph_features = torch.cat(processed_features_over_time, dim=1)
                 self._log_debug("Applied dynamic graph attention across %s time steps.", self.seq_len)
         
+        # Phase 2: Optional Adaptive TopK pooling over node-wise embeddings (post-graph features)
+        if (
+            getattr(self, 'enable_adaptive_topk', False)
+            and self.adaptive_topk_k is not None
+            and (self.d_model % self.num_graph_nodes) == 0
+            and hasattr(self, 'node_score')
+            and hasattr(self, 'topk_projection')
+            and self.node_score is not None
+            and self.topk_projection is not None
+        ):
+            try:
+                bsz, seqlen, dmodel = graph_features.shape
+                
+                # FIX BUG #8: Validate shape expectations
+                if dmodel != self.d_model:
+                    raise ValueError(
+                        f"Shape mismatch: graph_features has d_model={dmodel}, expected {self.d_model}"
+                    )
+                
+                node_dim = dmodel // self.num_graph_nodes
+                # Reshape to [B, S, N, Dn]
+                per_node = graph_features.view(bsz, seqlen, self.num_graph_nodes, node_dim)
+                
+                # Score each node independently per timestep: [B, S, N, 1]
+                scores = self.node_score(per_node).squeeze(-1)  # [B, S, N]
+                
+                # FIX BUG #7: Normalize scores for stability
+                scores_normalized = scores / (scores.std(dim=-1, keepdim=True) + 1e-6)
+                
+                # FIX BUG #6: Use soft differentiable selection instead of hard topk
+                # Apply temperature-scaled softmax for soft attention weights
+                if self.training:
+                    # Gumbel-Softmax for differentiable sampling during training
+                    # Add Gumbel noise for stochastic selection
+                    gumbel_noise = -torch.log(-torch.log(torch.rand_like(scores_normalized) + 1e-10) + 1e-10)
+                    logits = (scores_normalized + gumbel_noise) / self.adaptive_topk_temperature
+                    attention_weights = F.softmax(logits, dim=-1)  # [B, S, N]
+                else:
+                    # Deterministic soft selection during inference
+                    attention_weights = F.softmax(scores_normalized / self.adaptive_topk_temperature, dim=-1)
+                
+                # Apply soft attention to aggregate nodes (differentiable!)
+                # Weighted sum instead of hard selection
+                attention_weights_expanded = attention_weights.unsqueeze(-1)  # [B, S, N, 1]
+                weighted_nodes = per_node * attention_weights_expanded  # [B, S, N, Dn]
+                
+                # For top-k, we take the k highest-weighted nodes (soft version)
+                # Sort by attention weights and take top-k (still differentiable via the weights)
+                topk_attention, topk_idx = torch.topk(attention_weights, k=self.adaptive_topk_k, dim=2)  # [B, S, K]
+                
+                # Gather nodes using indices (hard selection for efficiency, but gradients flow through weights)
+                idx_expanded = topk_idx.unsqueeze(-1).expand(-1, -1, -1, node_dim)  # [B, S, K, Dn]
+                topk_nodes = torch.gather(per_node, dim=2, index=idx_expanded)  # [B, S, K, Dn]
+                
+                # Re-weight by normalized attention (preserve gradient flow)
+                topk_attention_norm = topk_attention / (topk_attention.sum(dim=-1, keepdim=True) + 1e-8)  # [B, S, K]
+                topk_attention_expanded = topk_attention_norm.unsqueeze(-1)  # [B, S, K, 1]
+                topk_nodes_weighted = topk_nodes * topk_attention_expanded  # [B, S, K, Dn]
+                
+                # Flatten selected nodes and project back to d_model
+                pooled = topk_nodes_weighted.reshape(bsz, seqlen, self.adaptive_topk_k * node_dim)
+                graph_features = self.topk_projection(pooled)  # [B, S, d_model]
+                
+                # FIX BUG #5: Log selection stats (removed dead code topk_vals)
+                if self.collect_diagnostics:
+                    self._log_debug(
+                        "Adaptive TopK applied | k=%d/%d nodes (%.1f%%) | "
+                        "score_mean=%.4f score_std=%.4f | top_attention=%.4f temp=%.2f",
+                        self.adaptive_topk_k,
+                        self.num_graph_nodes,
+                        100.0 * self.adaptive_topk_k / self.num_graph_nodes,
+                        scores.mean().item(),
+                        scores.std().item(),
+                        topk_attention.mean().item(),
+                        self.adaptive_topk_temperature,
+                    )
+            except Exception as exc:  # pragma: no cover - best effort optional path
+                self.logger.warning("Adaptive TopK pooling skipped due to error: %s", exc)
+
+        # Phase 3: Optional Stochastic Control (temperature-modulated noise)
+        if getattr(self, 'use_stochastic_control', False):
+            try:
+                # FIX BUG #2-4: Use external global_step if provided, otherwise use internal counter
+                # External step should be passed from training loop for reproducibility
+                global_step = getattr(self, '_external_global_step', None)
+                if global_step is None:
+                    # Fallback to internal counter (now persistent)
+                    step = int(self._stoch_step.item()) if isinstance(self._stoch_step, torch.Tensor) else int(self._stoch_step)
+                else:
+                    step = int(global_step)
+                
+                if self.stoch_decay_steps <= 0:
+                    temperature = self.stoch_temp_end
+                else:
+                    # Linear decay from start -> end over decay_steps, then clamp
+                    progress = min(1.0, max(0.0, step / float(self.stoch_decay_steps)))
+                    temperature = (1.0 - progress) * self.stoch_temp_start + progress * self.stoch_temp_end
+                
+                if self.training:
+                    noise = torch.randn_like(graph_features) * (self.stoch_noise_std * float(temperature))
+                    graph_features = graph_features + noise
+                    
+                    # FIX BUG #2: Only increment internal counter if NOT using external step
+                    # This prevents double-counting and per-forward increments
+                    if global_step is None and isinstance(self._stoch_step, torch.Tensor):
+                        # Note: This still increments per forward pass if no external step provided
+                        # Recommended: Always provide external step from training loop
+                        self._stoch_step += 1
+                
+                if self.collect_diagnostics:
+                    self._log_debug(
+                        "Stochastic control applied | step=%d temp=%.4f std=%.4f noise_scale=%.4f external_step=%s",
+                        step, temperature, self.stoch_noise_std, self.stoch_noise_std * temperature,
+                        global_step is not None
+                    )
+            except Exception as exc:  # pragma: no cover
+                self.logger.warning("Stochastic control skipped due to error: %s", exc)
+
         # 9. Enhanced Decoder processing with Target Autocorrelation
         decoder_features = dec_out
         for layer in self.decoder_layers:
@@ -1180,6 +1389,17 @@ class Model(nn.Module):
         else:
             output = self.projection(decoder_features[:, -self.pred_len:, :])
             return (output, final_metadata)
+    
+    def set_global_step(self, step: int) -> None:
+        """Set external global step for stochastic control scheduling.
+        
+        Call this from training loop before each forward pass to ensure
+        reproducible temperature scheduling independent of batch size.
+        
+        Args:
+            step: Global training step (e.g., total_batches_processed)
+        """
+        self._external_global_step = step
     
     def get_regularization_loss(self):
         """Get the regularization loss from the stochastic graph learner."""
@@ -1415,13 +1635,14 @@ class Model(nn.Module):
         adj_tar_cov = combined_adj[:, :, num_covariates:, :num_covariates]
         adj_tar_tar = combined_adj[:, :, num_covariates:, num_covariates:]
         
-        # 1. Process Covariates to get a context summary
+        # 1. Process Covariates to get a context summary or attention-ready values
         # Perform graph convolution: A * X
         cov_interaction = torch.einsum('bsnm,bsmd->bsnd', adj_cov_cov, covariate_features)
         # Apply shared weight matrix: (A * X) * W
         processed_covariates = self.covariate_interaction_layer(cov_interaction)
-        # Aggregate across covariate nodes to get a single context vector per timestep
-        covariate_context = processed_covariates.mean(dim=2)  # Shape: [batch, seq_len, node_dim]
+        # If attention is disabled, aggregate across covariate nodes to get a single context vector per timestep
+        if not getattr(self, 'enable_target_covariate_attention', False) or self.covariate_attention is None:
+            covariate_context = processed_covariates.mean(dim=2)  # Shape: [batch, seq_len, node_dim]
         
         # 2. Update Target Features
         # Influence from covariates on targets: A_tc * C
@@ -1432,12 +1653,20 @@ class Model(nn.Module):
         # The new features for targets are a combination of their old state and influences
         updated_target_features = target_features + influence_from_cov + influence_from_self
         
-        # 3. Fuse with global covariate context
-        # Expand context to be concatenated with each target node's features
-        expanded_context = covariate_context.unsqueeze(2).expand(-1, -1, self.c_out, -1)
-        
-        # Reshape for fusion layer
-        fusion_input = torch.cat([updated_target_features, expanded_context], dim=-1)
+        # 3. Fuse targets with covariate context (static mean or dynamic attention)
+        if getattr(self, 'enable_target_covariate_attention', False) and self.covariate_attention is not None:
+            # Target-specific covariate attention
+            # Reshape to [B*S, Lq, E] and [B*S, Lk, E]
+            query = updated_target_features.reshape(batch_size * seq_len, self.c_out, node_dim)
+            key = processed_covariates.reshape(batch_size * seq_len, num_covariates, node_dim)
+            value = key
+            attn_output, _ = self.covariate_attention(query, key, value)
+            attention_context = attn_output.reshape(batch_size, seq_len, self.c_out, node_dim)
+            fusion_input = torch.cat([updated_target_features, attention_context], dim=-1)
+        else:
+            # Static, shared covariate context for all targets at a time step
+            expanded_context = covariate_context.unsqueeze(2).expand(-1, -1, self.c_out, -1)
+            fusion_input = torch.cat([updated_target_features, expanded_context], dim=-1)
         
         fused_target_features = self.target_fusion_layer(fusion_input)
         
@@ -1532,10 +1761,17 @@ class PositionalEmbedding(nn.Module):
         pe.requires_grad = False
         
         position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
-        div_term = (torch.arange(0, d_model, 2, dtype=torch.float32) * -(math.log(10000.0) / d_model)).exp()
-        
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
+        # Use separate div terms for even and odd indices to handle odd d_model robustly
+        div_term_even = (torch.arange(0, d_model, 2, dtype=torch.float32) * -(math.log(10000.0) / d_model)).exp()
+        div_term_odd = (torch.arange(1, d_model, 2, dtype=torch.float32) * -(math.log(10000.0) / d_model)).exp()
+
+        # Shapes:
+        # - pe[:, 0::2] -> [max_len, ceil(d_model/2)]
+        # - pe[:, 1::2] -> [max_len, floor(d_model/2)]
+        # Ensure broadcasted multiplications match target slice widths
+        pe[:, 0::2] = torch.sin(position * div_term_even)
+        if div_term_odd.numel() > 0:
+            pe[:, 1::2] = torch.cos(position * div_term_odd)
         
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)

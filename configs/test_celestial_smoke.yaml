@@ -1,0 +1,101 @@
+# Celestial Enhanced PGAT - SMOKE TEST Configuration
+# Minimal dimensions for fast pipeline validation (NOT for actual training)
+# Purpose: Verify MDN decoder integration and full training pipeline
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: test_celestial_smoke
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: true
+
+# SMOKE TEST: Minimal sequence settings
+seq_len: 30          # Very short sequence
+label_len: 15        # Half of seq_len
+pred_len: 5          # Short prediction horizon
+
+# SMOKE TEST: Minimal data split
+validation_length: 20   # Minimal validation
+test_length: 20         # Minimal test
+
+# SMOKE TEST: Fast training (2 epochs only)
+learning_rate: 0.001
+train_epochs: 2         # Just 2 epochs for smoke test
+batch_size: 4           # Small batch for speed
+patience: 999
+lradj: type1            # Simple scheduler
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# SMOKE TEST: Minimal model dimensions
+d_model: 65             # Small dimension (MUST be divisible by 13 celestial bodies)
+n_heads: 5              # Attention heads (d_model/n_heads = 13)
+e_layers: 2             # Shallow encoder
+d_layers: 1             # Shallow decoder
+d_ff: 130               # Small feed-forward (2 × d_model)
+dropout: 0.1
+
+# Input/Output dimensions
+enc_in: 118
+dec_in: 118
+c_out: 4
+
+# Celestial system - ENABLED but minimal
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+celestial_fusion_layers: 1      # Minimal fusion
+
+# Petri Net Architecture - ENABLED
+use_petri_net_combiner: true
+num_message_passing_steps: 1    # Minimal steps
+edge_feature_dim: 6
+use_temporal_attention: true
+use_spatial_attention: true
+bypass_spatiotemporal_with_petri: true
+
+# 🎲 MDN DECODER - ENABLED FOR SMOKE TEST
+enable_mdn_decoder: true        # ✅ Testing MDN pipeline
+mdn_components: 3               # Minimal components (faster)
+mdn_sigma_min: 0.001
+mdn_use_softplus: true
+
+calibration_metrics:
+  coverage_levels: [0.5, 0.9]
+  compute_crps: false           # Disabled for speed
+  crps_samples: 50
+
+# Target autocorrelation - ENABLED
+use_target_autocorrelation: true
+target_autocorr_layers: 1       # Minimal
+
+# Calendar effects - ENABLED
+use_calendar_effects: true
+calendar_embedding_dim: 15      # MUST be divisible by n_heads=5 (15 = 3 × 5)
+
+# Other features - DISABLED for speed
+use_mixture_decoder: false
+use_stochastic_learner: false
+use_hierarchical_mapping: false
+use_efficient_covariate_interaction: true
+enable_target_covariate_attention: true
+
+# Logging and diagnostics - MINIMAL
+verbose_logging: false
+enable_memory_diagnostics: false
+enable_memory_debug: false
+collect_diagnostics: false
+
+# Input waves
+num_input_waves: 118
+target_wave_indices: [0, 1, 2, 3]
+
+# Training output
+itr: 1
+use_amp: false                  # Disabled for smoke test stability

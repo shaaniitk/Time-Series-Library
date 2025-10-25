@@ -1686,9 +1686,19 @@ def _normalize_model_output(
 
     return output_tensor, aux_loss, mdn_tuple, metadata
 
-def train_celestial_pgat_production():
-    """Production training function for overnight runs."""
-    config_path = "configs/celestial_enhanced_pgat_production.yaml"
+def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanced_pgat_production.yaml") -> bool:
+    """Production training function.
+
+    When invoked from CLI, an alternate YAML config path can be supplied via
+    the ``--config`` argument. This function keeps a backward-compatible
+    default pointing to the production configuration.
+
+    Args:
+        config_path: Path to the YAML configuration file.
+
+    Returns:
+        True if training and evaluation succeed, else False.
+    """
     with open(config_path, 'r', encoding='utf-8') as config_file:
         config_dict = yaml.safe_load(config_file)
 
@@ -2287,10 +2297,20 @@ def train_celestial_pgat_production():
 
     return True
 
-def main():
-    """Main function"""
+def main() -> int:
+    """CLI entrypoint.
+
+    Supports an optional ``--config`` argument to override the default
+    production YAML path. Any unknown extra arguments are ignored to keep
+    compatibility with external runners.
+    """
     try:
-        success = train_celestial_pgat_production()
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument("--config", type=str, default="configs/celestial_enhanced_pgat_production.yaml")
+        # Parse only known args to avoid breaking external wrappers
+        cli_args, _ = parser.parse_known_args()
+
+        success = train_celestial_pgat_production(config_path=cli_args.config)
         return 0 if success else 1
     except Exception as exc:
         LOGGER.exception("PRODUCTION training failed with error: %s", exc)

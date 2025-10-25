@@ -856,7 +856,7 @@ class PhaseDifferenceEdgeComputer(nn.Module):
         phase_diff_stats = {
             'theta_diffs': [],
             'phi_diffs': [],
-            'velocity_diffs': [],
+            'velocity_ratios': [],
             'radius_ratios': [],
             'longitude_diffs': [],
             'phase_alignments': []
@@ -875,9 +875,9 @@ class PhaseDifferenceEdgeComputer(nn.Module):
                     all_timestep_phases[j]['phi']
                 )  # [batch, seq_len]
                 
-                velocity_diff = (
-                    all_timestep_phases[i]['velocity'] - 
-                    all_timestep_phases[j]['velocity']
+                velocity_ratio = (
+                    all_timestep_phases[i]['velocity'] / 
+                    (all_timestep_phases[j]['velocity'] + 1e-8)
                 )  # [batch, seq_len]
                 
                 radius_ratio = (
@@ -895,20 +895,27 @@ class PhaseDifferenceEdgeComputer(nn.Module):
                     torch.cos(theta_diff) * torch.cos(phi_diff)
                 )  # [batch, seq_len]
                 
+                # --- STABILIZATION: Squash unbounded ratio features to [-1, 1] range ---
+                # Prevents exploding gradients from outlier values (e.g., extreme radius/velocity ratios)
+                stabilized_velocity_ratio = torch.tanh(velocity_ratio)
+                stabilized_radius_ratio = torch.tanh(radius_ratio)
+                # --- END STABILIZATION ---
+                
                 # Stack all features (PRESERVED AS VECTORS!)
-                edge_features[:, :, i, j, 0] = theta_diff
-                edge_features[:, :, i, j, 1] = phi_diff
-                edge_features[:, :, i, j, 2] = velocity_diff
-                edge_features[:, :, i, j, 3] = radius_ratio
-                edge_features[:, :, i, j, 4] = longitude_diff
-                edge_features[:, :, i, j, 5] = phase_alignment
+                edge_features[:, :, i, j, 0] = theta_diff  # Already bounded by circular_difference [-π, π]
+                edge_features[:, :, i, j, 1] = phi_diff    # Already bounded by circular_difference [-π, π]
+                edge_features[:, :, i, j, 2] = stabilized_velocity_ratio  # Stabilized to [-1, 1]
+                edge_features[:, :, i, j, 3] = stabilized_radius_ratio   # Stabilized to [-1, 1]
+                edge_features[:, :, i, j, 4] = longitude_diff  # Already bounded by circular_difference [-π, π]
+                edge_features[:, :, i, j, 5] = phase_alignment # Already bounded by cosine products [-1, 1]
                 
                 # Collect statistics (only for i < j to avoid duplicates)
                 if i < j:
+                    # Store raw values for statistics (before stabilization)
                     phase_diff_stats['theta_diffs'].append(theta_diff.abs().mean().item())
                     phase_diff_stats['phi_diffs'].append(phi_diff.abs().mean().item())
-                    phase_diff_stats['velocity_diffs'].append(velocity_diff.abs().mean().item())
-                    phase_diff_stats['radius_ratios'].append(radius_ratio.mean().item())
+                    phase_diff_stats['velocity_ratios'].append(velocity_ratio.mean().item())  # Raw ratio value
+                    phase_diff_stats['radius_ratios'].append(radius_ratio.mean().item())  # Raw ratio value
                     phase_diff_stats['longitude_diffs'].append(longitude_diff.abs().mean().item())
                     phase_diff_stats['phase_alignments'].append(phase_alignment.mean().item())
         
@@ -916,13 +923,15 @@ class PhaseDifferenceEdgeComputer(nn.Module):
         metadata = {
             'avg_theta_diff': sum(phase_diff_stats['theta_diffs']) / len(phase_diff_stats['theta_diffs']),
             'avg_phi_diff': sum(phase_diff_stats['phi_diffs']) / len(phase_diff_stats['phi_diffs']),
-            'avg_velocity_diff': sum(phase_diff_stats['velocity_diffs']) / len(phase_diff_stats['velocity_diffs']),
+            'avg_velocity_ratio': sum(phase_diff_stats['velocity_ratios']) / len(phase_diff_stats['velocity_ratios']),
             'avg_radius_ratio': sum(phase_diff_stats['radius_ratios']) / len(phase_diff_stats['radius_ratios']),
             'avg_longitude_diff': sum(phase_diff_stats['longitude_diffs']) / len(phase_diff_stats['longitude_diffs']),
             'avg_phase_alignment': sum(phase_diff_stats['phase_alignments']) / len(phase_diff_stats['phase_alignments']),
             'edge_feature_dim': 6,
             'edge_features_preserved': True,
-            'no_compression': True
+            'no_compression': True,
+            'stabilization_applied': True,  # NEW: Indicates tanh squashing is active
+            'stabilized_features': ['velocity_ratio', 'radius_ratio']  # NEW: Which features are stabilized
         }
         
         return edge_features, metadata

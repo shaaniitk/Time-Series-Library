@@ -104,12 +104,17 @@ class CelestialPetriNetCombiner(nn.Module):
         )
         
         # Petri net message passing layers
+        # Choose a message dimension compatible with attention heads
+        msg_dim_cfg = max(num_attention_heads, d_model // 2)
+        if msg_dim_cfg % num_attention_heads != 0:
+            msg_dim_cfg = ((msg_dim_cfg // num_attention_heads) + 1) * num_attention_heads
+
         self.message_passing_layers = nn.ModuleList([
             PetriNetMessagePassing(
                 num_nodes=num_nodes,
                 node_dim=d_model,
                 edge_feature_dim=edge_feature_dim,
-                message_dim=d_model // 2,
+                message_dim=msg_dim_cfg,
                 num_heads=num_attention_heads,
                 dropout=dropout,
                 use_local_attention=True
