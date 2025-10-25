@@ -817,16 +817,69 @@ def train_epoch(
                     if use_amp and scaler is not None:
                         scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
+                # 🔍 DIAGNOSTIC: Capture weight norms before optimizer step
+                if batch_index < 5 or batch_index % 50 == 0:
+                    param_norms_before = {}
+                    grad_norms = {}
+                    for name, param in model.named_parameters():
+                        if param.requires_grad and 'projection' in name:  # Track output layer
+                            param_norms_before[name] = param.data.norm().item()
+                            if param.grad is not None:
+                                grad_norms[name] = param.grad.norm().item()
+                
                 if use_amp and scaler is not None:
                     scaler.step(optimizer)
                     scaler.update()
                 else:
                     optimizer.step()
+                
+                # 🔍 DIAGNOSTIC: Capture weight changes after optimizer step
+                if batch_index < 5 or batch_index % 50 == 0:
+                    with open('training_diagnostic.log', 'a') as f:
+                        f.write(f"\n--- OPTIMIZER STEP DIAGNOSTICS ---\n")
+                        for name, param in model.named_parameters():
+                            if param.requires_grad and 'projection' in name:
+                                param_norm_after = param.data.norm().item()
+                                weight_change = abs(param_norm_after - param_norms_before.get(name, 0))
+                                f.write(f"{name}:\n")
+                                f.write(f"  weight_norm_before: {param_norms_before.get(name, 0):.8f}\n")
+                                f.write(f"  weight_norm_after: {param_norm_after:.8f}\n")
+                                f.write(f"  weight_change: {weight_change:.8f}\n")
+                                f.write(f"  grad_norm: {grad_norms.get(name, 0):.8f}\n")
+                        f.write(f"optimizer_step_executed: {is_cycle_end or is_final_partial}\n")
+                        current_lr = optimizer.param_groups[0]['lr']
+                        f.write(f"current_lr: {current_lr:.8f}\n")
+                
                 if batch_index != total_train_batches - 1:
                     optimizer.zero_grad(set_to_none=True)
 
-            train_loss += raw_loss.detach().item()
+            # 🐛 FIX: Accumulate the SCALED loss, not raw_loss
+            # With gradient_accumulation_steps=3, raw_loss represents the full batch loss
+            # but backward() uses loss/3 for gradient scaling
+            # To report accurate training loss, we should accumulate the scaled loss
+            train_loss += loss.detach().item()
             train_batches += 1
+
+            # 🔍 DIAGNOSTIC: Log detailed training metrics
+            if batch_index < 5 or batch_index % 50 == 0:
+                with open('training_diagnostic.log', 'a') as f:
+                    f.write(f"\n{'='*80}\n")
+                    f.write(f"EPOCH {epoch+1} | BATCH {batch_index}/{total_train_batches} | TRAINING MODE\n")
+                    f.write(f"{'='*80}\n")
+                    f.write(f"raw_loss (full batch loss): {raw_loss.item():.8f}\n")
+                    f.write(f"loss (scaled for backward): {loss.item():.8f}\n")
+                    f.write(f"effective_cycle (gradient_accumulation_steps): {effective_cycle}\n")
+                    f.write(f"loss/raw_loss ratio: {loss.item()/raw_loss.item():.4f} (should be ~1/{effective_cycle})\n")
+                    f.write(f"accumulated train_loss so far: {train_loss:.8f}\n")
+                    f.write(f"avg train_loss so far: {train_loss / max(train_batches, 1):.8f}\n")
+                    f.write(f"NOTE: NOW ACCUMULATING 'loss' (scaled), NOT 'raw_loss' (3x inflated)\n")
+                    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                    f.write(f"y_pred_for_loss mean/std: {y_pred_for_loss.mean().item():.6f} / {y_pred_for_loss.std().item():.6f}\n")
+                    f.write(f"y_true_for_loss mean/std: {y_true_for_loss.mean().item():.6f} / {y_true_for_loss.std().item():.6f}\n")
+                    if aux_loss:
+                        f.write(f"aux_loss contribution: {aux_loss:.8f}\n")
+                    if getattr(model, "use_stochastic_learner", False):
+                        f.write(f"reg_loss contribution: {(reg_loss * reg_weight).item():.8f}\n")
 
             if memory_logging_enabled and (
                 batch_index == 0 or (batch_index + 1) % memory_log_interval == 0
@@ -849,7 +902,7 @@ def train_epoch(
                     "Batch %s/%s | loss=%0.6f elapsed=%0.1fs",
                     batch_index,
                     len(train_loader),
-                    raw_loss.detach().item(),
+                    loss.detach().item(),
                     elapsed,
                 )
                 if epoch == 0 and batch_index == 0:
@@ -889,6 +942,18 @@ def train_epoch(
             continue
 
     avg_train_loss = train_loss / max(train_batches, 1)
+    
+    # 🔍 DIAGNOSTIC: Log epoch summary
+    with open('training_diagnostic.log', 'a') as f:
+        f.write(f"\n{'#'*80}\n")
+        f.write(f"EPOCH {epoch+1} TRAINING SUMMARY\n")
+        f.write(f"{'#'*80}\n")
+        f.write(f"total_train_loss: {train_loss:.8f}\n")
+        f.write(f"train_batches: {train_batches}\n")
+        f.write(f"avg_train_loss: {avg_train_loss:.8f}\n")
+        f.write(f"gradient_accumulation_steps: {gradient_accumulation_steps}\n")
+        f.write(f"\n")
+    
     if memory_logging_enabled:
         _log_memory_snapshot(
             f"train_epoch_{epoch + 1}_end",
@@ -1000,6 +1065,20 @@ def validate_epoch(
                 val_loss += float(loss.item())
                 val_batches += 1
 
+                # 🔍 DIAGNOSTIC: Log validation metrics
+                if batch_index < 5 or batch_index % 50 == 0:
+                    with open('training_diagnostic.log', 'a') as f:
+                        f.write(f"\n{'='*80}\n")
+                        f.write(f"EPOCH {epoch+1} | BATCH {batch_index} | VALIDATION MODE\n")
+                        f.write(f"{'='*80}\n")
+                        f.write(f"loss: {loss.item():.8f}\n")
+                        f.write(f"accumulated val_loss so far: {val_loss:.8f}\n")
+                        f.write(f"avg val_loss so far: {val_loss / max(val_batches, 1):.8f}\n")
+                        f.write(f"y_pred_for_loss mean/std: {y_pred_for_loss.mean().item():.6f} / {y_pred_for_loss.std().item():.6f}\n")
+                        f.write(f"y_true_for_loss mean/std: {y_true_for_loss.mean().item():.6f} / {y_true_for_loss.std().item():.6f}\n")
+                        if aux_loss:
+                            f.write(f"aux_loss contribution: {aux_loss:.8f}\n")
+
                 if memory_logging_enabled and (
                     batch_index == 0 or (batch_index + 1) % memory_log_interval == 0
                 ):
@@ -1049,6 +1128,17 @@ def validate_epoch(
                 continue
 
     avg_val_loss = val_loss / max(val_batches, 1)
+    
+    # 🔍 DIAGNOSTIC: Log validation summary
+    with open('training_diagnostic.log', 'a') as f:
+        f.write(f"\n{'#'*80}\n")
+        f.write(f"EPOCH {epoch+1} VALIDATION SUMMARY\n")
+        f.write(f"{'#'*80}\n")
+        f.write(f"total_val_loss: {val_loss:.8f}\n")
+        f.write(f"val_batches: {val_batches}\n")
+        f.write(f"avg_val_loss: {avg_val_loss:.8f}\n")
+        f.write(f"\n")
+    
     if memory_logging_enabled:
         _log_memory_snapshot(
             f"validate_epoch_{epoch + 1}_end",
@@ -1705,8 +1795,17 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
     args = SimpleConfig(config_dict)
     logger = configure_logging(args)
 
+    # 🔍 DIAGNOSTIC: Initialize diagnostic log
+    with open('training_diagnostic.log', 'w') as f:
+        f.write(f"CELESTIAL ENHANCED PGAT - TRAINING DIAGNOSTICS\n")
+        f.write(f"{'='*80}\n")
+        f.write(f"Config: {config_path}\n")
+        f.write(f"Start time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"{'='*80}\n\n")
+    
     logger.info("Starting PRODUCTION Celestial Enhanced PGAT training run")
     logger.info("Heavy-duty overnight configuration enabled")
+    logger.info("🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log")
     logger.info("=" * 80)
 
     # Add missing required attributes
@@ -2115,10 +2214,12 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
         remaining_epochs = args.train_epochs - (epoch + 1)
         estimated_remaining = (total_elapsed / (epoch + 1) * remaining_epochs) if (epoch + 1) else 0.0
 
+        warmup_status = f" [WARMUP {epoch+1}/{warmup_epochs}]" if epoch < warmup_epochs else ""
         logger.info(
-            "Epoch %s/%s complete | train_loss=%0.6f val_loss=%0.6f lr=%0.8f epoch_time=%0.2fs elapsed=%0.2fh remaining=%0.2fh",
+            "Epoch %s/%s complete%s | train_loss=%0.6f val_loss=%0.6f lr=%0.8f epoch_time=%0.2fs elapsed=%0.2fh remaining=%0.2fh",
             epoch + 1,
             args.train_epochs,
+            warmup_status,
             avg_train_loss,
             avg_val_loss,
             current_lr,

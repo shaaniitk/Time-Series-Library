@@ -1,0 +1,96 @@
+# Celestial Enhanced PGAT DIAGNOSTIC training configuration
+# Quick 1-epoch run with detailed logging
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: celestial_diagnostic_run
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: true
+
+# Sequence settings
+seq_len: 250
+label_len: 125
+pred_len: 10
+
+# Data split settings
+validation_length: 50
+test_length: 50
+
+# DIAGNOSTIC: Only 1 epoch
+learning_rate: 0.001
+train_epochs: 1
+batch_size: 12
+patience: 999
+lradj: warmup_cosine
+warmup_epochs: 8
+min_lr: 1e-6
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# Model hyperparameters
+d_model: 416
+n_heads: 8
+e_layers: 8
+d_layers: 4
+d_ff: 1024
+dropout: 0.1
+
+# Input/Output dimensions
+enc_in: 118
+dec_in: 118
+c_out: 4
+
+# Celestial system
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+celestial_fusion_layers: 2
+use_petri_net_combiner: true
+num_message_passing_steps: 3
+edge_feature_dim: 6
+use_temporal_attention: true
+use_spatial_attention: true
+bypass_spatiotemporal_with_petri: true
+
+# Wave aggregation settings
+num_input_waves: 118
+target_wave_indices: [0, 1, 2, 3]
+
+# Advanced features
+use_mixture_decoder: false
+use_stochastic_learner: false
+use_hierarchical_mapping: false
+use_efficient_covariate_interaction: true
+mdn_multivariate_mode: independent
+
+# Target autocorrelation
+use_target_autocorrelation: true
+target_autocorr_layers: 2
+
+# Calendar effects
+use_calendar_effects: true
+calendar_embedding_dim: 104
+
+# Regularization
+reg_loss_weight: 0.0005
+kl_weight: 0.00005
+
+# Production settings
+save_checkpoints: true
+checkpoint_interval: 1
+log_interval: 1  # LOG EVERY BATCH for diagnostics
+gradient_accumulation_steps: 3
+mixed_precision: false
+save_best_only: false
+
+# Diagnostics - ENABLED
+enable_memory_diagnostics: true
+memory_log_interval: 1  # Log every batch
+collect_diagnostics: false
