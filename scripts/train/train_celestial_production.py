@@ -130,7 +130,7 @@ def configure_logging(config: SimpleConfig) -> logging.Logger:
             # Allow: per-batch loss, epoch summaries, and test loss
             if "loss=" in msg:
                 return True
-            if msg.startswith("Epoch ") or ("Epoch " in msg and "production training" in msg):
+            if msg.startswith("Epoch ") and ("complete" in msg or "production training" in msg):
                 return True
             if "test_loss=" in msg:
                 return True

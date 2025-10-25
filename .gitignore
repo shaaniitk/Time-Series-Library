@@ -202,7 +202,6 @@ dmypy.json
 
 # Large directories that slow down VS Code
 checkpoints/
-logs/
 test_results/
 trained/
 tsl-env/
@@ -232,7 +231,6 @@ dmypy.json
 
 # Large directories that slow down VS Code
 checkpoints/
-logs/
 test_results/
 trained/
 tsl-env/
