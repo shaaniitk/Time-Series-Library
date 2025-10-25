@@ -94,6 +94,16 @@ gradient_accumulation_steps: 2  # Accumulate gradients for effective batch size 
 mixed_precision: false   # Disabled for stability (enable if GPU supports it)
 save_best_only: false    # Save all checkpoints for analysis
  
+# 🎲 PROBABILISTIC MDN DECODER - PHASE 1 INTEGRATION
+enable_mdn_decoder: false         # Enable Mixture Density Network decoder for probabilistic forecasting
+mdn_components: 5                 # Number of Gaussian mixture components (K)
+mdn_sigma_min: 0.001              # Minimum standard deviation floor to prevent collapse
+mdn_use_softplus: true            # Use softplus for sigma (vs exp); more stable
+calibration_metrics:
+  coverage_levels: [0.5, 0.9]     # Nominal coverage levels for interval evaluation
+  compute_crps: false             # Compute CRPS (expensive; eval-only recommended)
+  crps_samples: 100               # Number of MC samples for CRPS estimation
+
 # Diagnostics and memory logging
 # Tip: leave these enabled for short debugging runs; disable for long overnight runs to minimize overhead
 enable_memory_diagnostics: true   # Writes detailed snapshots to checkpoints/<run>/memory_diagnostics.log

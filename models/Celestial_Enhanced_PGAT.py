@@ -17,6 +17,7 @@ import torch.nn.functional as F
 from layers.modular.graph.celestial_body_nodes import CelestialBodyNodes, CelestialBody
 from layers.modular.graph.celestial_graph_combiner import CelestialGraphCombiner
 from layers.modular.graph.celestial_petri_net_combiner import CelestialPetriNetCombiner
+from layers.modular.decoder.mdn_decoder import MDNDecoder
 from layers.modular.decoder.mixture_density_decoder import MixtureDensityDecoder
 from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureDensityDecoder
 from layers.modular.embedding.hierarchical_mapper import HierarchicalTemporalSpatialMapper
@@ -88,6 +89,12 @@ class Model(nn.Module):
         self.use_hierarchical_mapping = getattr(configs, 'use_hierarchical_mapping', False)  # Production default: False
         self.collect_diagnostics = bool(getattr(configs, 'collect_diagnostics', True))
         self.use_efficient_covariate_interaction = getattr(configs, 'use_efficient_covariate_interaction', False)
+        
+        # 🎲 NEW: MDN Decoder for probabilistic forecasting (Phase 1)
+        self.enable_mdn_decoder = bool(getattr(configs, 'enable_mdn_decoder', False))
+        self.mdn_components = int(getattr(configs, 'mdn_components', 5))
+        self.mdn_sigma_min = float(getattr(configs, 'mdn_sigma_min', 1e-3))
+        self.mdn_use_softplus = bool(getattr(configs, 'mdn_use_softplus', True))
         
         # 🎯 NEW: Target autocorrelation modeling
         self.use_target_autocorrelation = getattr(configs, 'use_target_autocorrelation', True)
@@ -447,7 +454,24 @@ class Model(nn.Module):
         # Always have a fallback projection layer
         self.projection = nn.Linear(self.d_model, self.c_out)
         
-        # 🎯 Target Autocorrelation Module
+        # � MDN Decoder for Probabilistic Forecasting (Phase 1)
+        self.mdn_decoder: Optional[MDNDecoder] = None
+        if self.enable_mdn_decoder:
+            self.mdn_decoder = MDNDecoder(
+                d_input=self.d_model,
+                n_targets=self.c_out,
+                n_components=self.mdn_components,
+                sigma_min=self.mdn_sigma_min,
+                use_softplus=self.mdn_use_softplus,
+            )
+            self.logger.info(
+                "🎲 MDN Decoder enabled | components=%d sigma_min=%.1e use_softplus=%s",
+                self.mdn_components,
+                self.mdn_sigma_min,
+                self.mdn_use_softplus,
+            )
+        
+        # �🎯 Target Autocorrelation Module
         if self.use_target_autocorrelation:
             self.dual_stream_decoder = DualStreamDecoder(
                 d_model=self.d_model,
@@ -1067,12 +1091,29 @@ class Model(nn.Module):
             decoder_features = self.dual_stream_decoder(decoder_features, graph_features)
             self._log_debug("Target autocorrelation processing complete - shape=%s", decoder_features.shape)
         
-        # 10. Final prediction with Sequential Mixture Decoder
+        # 10. Final prediction with MDN or fallback decoders
         output: torch.Tensor | Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
         predictions: Optional[torch.Tensor] = None
         mdn_components: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None
+        aux_loss: float = 0.0
 
-        if self.use_mixture_decoder:
+        # Priority: MDN decoder (Phase 1) > Sequential mixture > Simple projection
+        if self.enable_mdn_decoder and self.mdn_decoder is not None:
+            # 🎲 MDN Decoder: probabilistic forecasting with Gaussian mixtures
+            prediction_features = decoder_features[:, -self.pred_len:, :]  # [batch, pred_len, d_model]
+            pi, mu, sigma = self.mdn_decoder(prediction_features)  # [B, pred_len, c_out, K]
+            
+            # Compute point prediction as mixture mean for logging/metrics
+            predictions = self.mdn_decoder.mean_prediction(pi, mu)  # [batch, pred_len, c_out]
+            
+            # Store mixture components for loss computation
+            mdn_components = (pi, mu, sigma)
+            
+            self._log_debug(
+                "MDN decoder output | pi=%s mu=%s sigma=%s predictions=%s",
+                pi.shape, mu.shape, sigma.shape, predictions.shape,
+            )
+        elif self.use_mixture_decoder:
             # Sequential mixture density decoder preserves temporal structure
             try:
                 # Extract the prediction portion of decoder features
@@ -1123,16 +1164,22 @@ class Model(nn.Module):
         else:
             final_metadata = None
         
-        # In case of MDN, the raw tuple/dict is returned for the loss function
-        # A point prediction is calculated within the training script for metrics
+        # Return format aligns with _normalize_model_output in training script:
+        # When MDN enabled: (point_pred, aux_loss, (pi, mu, sigma), metadata)
+        # Otherwise: (predictions, metadata) or just predictions
         if mdn_components is not None:
-            output = mdn_components
+            # Return tuple compatible with _normalize_model_output
+            if predictions is not None:
+                # MDN case: (point_pred, aux_loss, mdn_tuple, metadata)
+                return (predictions, aux_loss, mdn_components, final_metadata)
+            else:
+                # Fallback if point prediction failed
+                return (mdn_components, final_metadata)
         elif predictions is not None:
-            output = predictions
+            return (predictions, final_metadata)
         else:
             output = self.projection(decoder_features[:, -self.pred_len:, :])
-        
-        return output, final_metadata
+            return (output, final_metadata)
     
     def get_regularization_loss(self):
         """Get the regularization loss from the stochastic graph learner."""

@@ -69,6 +69,8 @@ from data_provider.data_factory import data_provider
 from models.Celestial_Enhanced_PGAT import Model
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric
+from layers.modular.decoder.mdn_decoder import mdn_nll_loss
+from utils.metrics_calibration import log_calibration_metrics
 import warnings
 import logging
 
@@ -746,27 +748,44 @@ def train_epoch(
                 batch_y[:, -args.pred_len:, :], target_scaler, target_indices, device
             )
 
-            is_seq_mixture = sequential_mixture_loss_cls is not None and isinstance(criterion, sequential_mixture_loss_cls)
-            is_mixture = mixture_loss_cls is not None and isinstance(criterion, mixture_loss_cls)
-            if is_seq_mixture or is_mixture or mdn_outputs is not None:
-                if mdn_outputs is None:
-                    raise ValueError(
-                        "MixtureNLLLoss requires model to return a (means, stds, weights) tuple during training."
-                    )
-                means_t, stds_t, weights_t = mdn_outputs
-                if means_t.size(1) > args.pred_len:
-                    means_t = means_t[:, -args.pred_len:, ...]
-                    stds_t = stds_t[:, -args.pred_len:, ...]
-                    weights_t = weights_t[:, -args.pred_len:, ...]
-                targets_t = (
+            # Priority: MDN decoder > sequential mixture > standard loss
+            enable_mdn = getattr(args, "enable_mdn_decoder", False)
+            if enable_mdn and mdn_outputs is not None:
+                # MDN decoder path: compute NLL loss
+                pi, mu, sigma = mdn_outputs
+                if pi.size(1) > args.pred_len:
+                    pi = pi[:, -args.pred_len:, ...]
+                    mu = mu[:, -args.pred_len:, ...]
+                    sigma = sigma[:, -args.pred_len:, ...]
+                targets_mdn = (
                     y_true_for_loss.squeeze(-1)
                     if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
                     else y_true_for_loss
                 )
-                raw_loss = criterion((means_t, stds_t, weights_t), targets_t)
+                raw_loss = mdn_nll_loss(pi, mu, sigma, targets_mdn, reduce='mean')
             else:
-                y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
-                raw_loss = criterion(y_pred_for_loss, y_true_for_loss)
+                # Fallback to sequential mixture or standard loss
+                is_seq_mixture = sequential_mixture_loss_cls is not None and isinstance(criterion, sequential_mixture_loss_cls)
+                is_mixture = mixture_loss_cls is not None and isinstance(criterion, mixture_loss_cls)
+                if is_seq_mixture or is_mixture:
+                    if mdn_outputs is None:
+                        raise ValueError(
+                            "MixtureNLLLoss requires model to return a (means, stds, weights) tuple during training."
+                        )
+                    means_t, stds_t, weights_t = mdn_outputs
+                    if means_t.size(1) > args.pred_len:
+                        means_t = means_t[:, -args.pred_len:, ...]
+                        stds_t = stds_t[:, -args.pred_len:, ...]
+                        weights_t = weights_t[:, -args.pred_len:, ...]
+                    targets_t = (
+                        y_true_for_loss.squeeze(-1)
+                        if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
+                        else y_true_for_loss
+                    )
+                    raw_loss = criterion((means_t, stds_t, weights_t), targets_t)
+                else:
+                    y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
+                    raw_loss = criterion(y_pred_for_loss, y_true_for_loss)
 
             if aux_loss:
                 raw_loss = raw_loss + aux_loss
@@ -934,29 +953,46 @@ def validate_epoch(
                     batch_y[:, -args.pred_len:, :], target_scaler, target_indices, device
                 )
 
-                use_mixture_loss = False
-                if mixture_loss_cls is not None and isinstance(criterion, mixture_loss_cls):
-                    use_mixture_loss = True
-                elif sequential_mixture_loss_cls is not None and isinstance(criterion, sequential_mixture_loss_cls):
-                    use_mixture_loss = True
-
-                if use_mixture_loss or mdn_outputs is not None:
-                    if mdn_outputs is None:
-                        raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple.")
-                    means_v, stds_v, weights_v = mdn_outputs
-                    if means_v.size(1) > args.pred_len:
-                        means_v = means_v[:, -args.pred_len:, ...]
-                        stds_v = stds_v[:, -args.pred_len:, ...]
-                        weights_v = weights_v[:, -args.pred_len:, ...]
-                    targets_v = (
+                # Priority: MDN decoder > sequential mixture > standard loss
+                enable_mdn = getattr(args, "enable_mdn_decoder", False)
+                if enable_mdn and mdn_outputs is not None:
+                    # MDN decoder path: compute NLL loss
+                    pi, mu, sigma = mdn_outputs
+                    if pi.size(1) > args.pred_len:
+                        pi = pi[:, -args.pred_len:, ...]
+                        mu = mu[:, -args.pred_len:, ...]
+                        sigma = sigma[:, -args.pred_len:, ...]
+                    targets_mdn = (
                         y_true_for_loss.squeeze(-1)
                         if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
                         else y_true_for_loss
                     )
-                    loss = criterion((means_v, stds_v, weights_v), targets_v)
+                    loss = mdn_nll_loss(pi, mu, sigma, targets_mdn, reduce='mean')
                 else:
-                    y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
-                    loss = criterion(y_pred_for_loss, y_true_for_loss)
+                    # Fallback to mixture or standard loss
+                    use_mixture_loss = False
+                    if mixture_loss_cls is not None and isinstance(criterion, mixture_loss_cls):
+                        use_mixture_loss = True
+                    elif sequential_mixture_loss_cls is not None and isinstance(criterion, sequential_mixture_loss_cls):
+                        use_mixture_loss = True
+
+                    if use_mixture_loss:
+                        if mdn_outputs is None:
+                            raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple.")
+                        means_v, stds_v, weights_v = mdn_outputs
+                        if means_v.size(1) > args.pred_len:
+                            means_v = means_v[:, -args.pred_len:, ...]
+                            stds_v = stds_v[:, -args.pred_len:, ...]
+                            weights_v = weights_v[:, -args.pred_len:, ...]
+                        targets_v = (
+                            y_true_for_loss.squeeze(-1)
+                            if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
+                            else y_true_for_loss
+                        )
+                        loss = criterion((means_v, stds_v, weights_v), targets_v)
+                    else:
+                        y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
+                        loss = criterion(y_pred_for_loss, y_true_for_loss)
 
                 if aux_loss:
                     loss = loss + aux_loss
@@ -1034,18 +1070,27 @@ def collect_predictions(
     scenario_name: str = "baseline",
     max_batches: Optional[int] = None,
     input_transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
-) -> Tuple[np.ndarray, np.ndarray, int]:
-    """Collect predictions and targets for evaluation or adversarial diagnostics."""
+) -> Tuple[np.ndarray, np.ndarray, int, Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]]:
+    """Collect predictions, targets, and optional MDN components for evaluation or adversarial diagnostics.
+    
+    Returns:
+        Tuple of (preds, trues, processed_count, mdn_components) where mdn_components is (pi, mu, sigma) if MDN enabled, else None.
+    """
 
     if num_samples <= 0:
         return (
             np.empty((0, args.pred_len, len(target_indices)), dtype=np.float32),
             np.empty((0, args.pred_len, len(target_indices)), dtype=np.float32),
             0,
+            None,
         )
 
+    enable_mdn = getattr(args, "enable_mdn_decoder", False)
     preds = np.zeros((num_samples, args.pred_len, len(target_indices)), dtype=np.float32)
     trues = np.zeros_like(preds)
+    
+    # For MDN: collect pi, mu, sigma
+    mdn_pi_list, mdn_mu_list, mdn_sigma_list = ([] if enable_mdn else None, [] if enable_mdn else None, [] if enable_mdn else None)
     current_index = 0
 
     memory_logging_enabled = getattr(args, "enable_memory_diagnostics", False)
@@ -1090,7 +1135,27 @@ def collect_predictions(
             outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             outputs_tensor, _, mdn_outputs, _ = _normalize_model_output(outputs_raw)
 
-            if mdn_outputs is not None:
+            # Extract point predictions and optionally collect MDN components
+            if enable_mdn and mdn_outputs is not None:
+                pi, mu, sigma = mdn_outputs
+                if pi.size(1) > args.pred_len:
+                    pi = pi[:, -args.pred_len:, ...]
+                    mu = mu[:, -args.pred_len:, ...]
+                    sigma = sigma[:, -args.pred_len:, ...]
+                
+                # Point prediction: mean of mixture
+                if mu.dim() == 4:  # [B, S, T, K]
+                    pi_expanded = pi.unsqueeze(2)  # [B, S, 1, K]
+                    pred_tensor = (pi_expanded * mu).sum(dim=-1)  # [B, S, T]
+                else:
+                    pred_tensor = (pi * mu).sum(dim=-1).unsqueeze(-1)
+                
+                # Collect MDN components for calibration
+                mdn_pi_list.append(pi.detach().cpu().numpy())
+                mdn_mu_list.append(mu.detach().cpu().numpy())
+                mdn_sigma_list.append(sigma.detach().cpu().numpy())
+            elif mdn_outputs is not None:
+                # Legacy mixture format
                 means_te, stds_te, weights_te = mdn_outputs
                 if means_te.size(1) > args.pred_len:
                     means_te = means_te[:, -args.pred_len:, ...]
@@ -1150,6 +1215,15 @@ def collect_predictions(
 
     preds = preds[:current_index]
     trues = trues[:current_index]
+    
+    # Concatenate MDN components if collected
+    mdn_components_tuple = None
+    if enable_mdn and mdn_pi_list:
+        pi_concat = np.concatenate(mdn_pi_list, axis=0)[:current_index]
+        mu_concat = np.concatenate(mdn_mu_list, axis=0)[:current_index]
+        sigma_concat = np.concatenate(mdn_sigma_list, axis=0)[:current_index]
+        mdn_components_tuple = (pi_concat, mu_concat, sigma_concat)
+    
     if memory_logging_enabled:
         _log_memory_snapshot(
             f"collect_predictions_{scenario_name}_end",
@@ -1157,7 +1231,7 @@ def collect_predictions(
             MEMORY_LOGGER if MEMORY_LOGGER.handlers else None,
             {"processed": current_index},
         )
-    return preds, trues, current_index
+    return preds, trues, current_index, mdn_components_tuple
 
 
 def evaluate_model(
@@ -1185,7 +1259,7 @@ def evaluate_model(
             {"num_samples": num_samples},
         )
 
-    preds, trues, processed = collect_predictions(
+    preds, trues, processed, mdn_components = collect_predictions(
         model=model,
         data_loader=test_loader,
         device=device,
@@ -1208,6 +1282,40 @@ def evaluate_model(
             "mape": float(mape),
             "mspe": float(mspe),
         }
+
+        # 🎲 MDN CALIBRATION METRICS - Log to file only
+        enable_mdn = getattr(args, "enable_mdn_decoder", False)
+        if enable_mdn and mdn_components is not None:
+            pi_np, mu_np, sigma_np = mdn_components
+            # Convert to tensors for calibration metrics
+            pi_t = torch.from_numpy(pi_np)
+            mu_t = torch.from_numpy(mu_np)
+            sigma_t = torch.from_numpy(sigma_np)
+            trues_t = torch.from_numpy(trues)
+            
+            calib_config = getattr(args, "calibration_metrics", {})
+            coverage_levels = calib_config.get("coverage_levels", [0.5, 0.9])
+            compute_crps = calib_config.get("compute_crps", False)
+            crps_samples = calib_config.get("crps_samples", 100)
+            
+            calibration_dict = log_calibration_metrics(
+                logger=MEMORY_LOGGER if MEMORY_LOGGER.handlers else logger,
+                predictions=preds,
+                targets=trues,
+                pi=pi_t,
+                mu=mu_t,
+                sigma=sigma_t,
+                coverage_levels=coverage_levels,
+                compute_crps=compute_crps,
+                crps_samples=crps_samples,
+            )
+            
+            # Add test_loss alias for NLL (backward compat with console logging)
+            if calibration_dict and "nll" in calibration_dict:
+                overall["test_loss"] = calibration_dict["nll"]
+        else:
+            # Standard MSE-based test loss
+            overall["test_loss"] = overall["mse"]
 
         if preds.shape[-1] == 4:
             ohlc_names = ["Open", "High", "Low", "Close"]
@@ -1300,7 +1408,7 @@ def run_adversarial_diagnostics(
                 MEMORY_LOGGER if MEMORY_LOGGER.handlers else None,
                 {},
             )
-        preds, trues, processed = collect_predictions(
+        preds, trues, processed, _ = collect_predictions(
             model=model,
             data_loader=test_loader,
             device=device,
@@ -1542,7 +1650,18 @@ def _normalize_model_output(
     output_tensor = raw_output
 
     if isinstance(raw_output, (tuple, list)):
-        if len(raw_output) == 2:
+        if len(raw_output) == 4:
+            # MDN case: (point_pred, aux_loss, (pi, mu, sigma), metadata)
+            point_pred, aux, mdn_components, meta = raw_output
+            if isinstance(point_pred, torch.Tensor):
+                output_tensor = point_pred
+            if isinstance(aux, (int, float)):
+                aux_loss = float(aux)
+            if isinstance(mdn_components, (tuple, list)) and len(mdn_components) == 3:
+                mdn_tuple = (mdn_components[0], mdn_components[1], mdn_components[2])
+            if isinstance(meta, dict):
+                metadata = meta
+        elif len(raw_output) == 2:
             primary, secondary = raw_output
             # Check if secondary is metadata (dict) or auxiliary loss
             if isinstance(secondary, dict):
