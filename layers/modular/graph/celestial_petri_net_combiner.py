@@ -62,7 +62,9 @@ class CelestialPetriNetCombiner(nn.Module):
         dropout: float = 0.1,
         use_temporal_attention: bool = True,
         use_spatial_attention: bool = True,
-        use_gradient_checkpointing: bool = True
+        use_gradient_checkpointing: bool = True,
+        enable_memory_debug: bool = False,
+        memory_debug_prefix: str = "PETRI"
     ):
         super().__init__()
         self.num_nodes = num_nodes
@@ -72,6 +74,8 @@ class CelestialPetriNetCombiner(nn.Module):
         self.use_temporal_attention = use_temporal_attention
         self.use_spatial_attention = use_spatial_attention
         self.use_gradient_checkpointing = use_gradient_checkpointing
+        self.enable_memory_debug = enable_memory_debug
+        self.memory_debug_prefix = memory_debug_prefix
         
         # Edge type embeddings
         self.edge_type_embeddings = nn.Parameter(
@@ -138,6 +142,32 @@ class CelestialPetriNetCombiner(nn.Module):
         
         # Learnable combination weights for 3 edge types
         self.combination_weights = nn.Parameter(torch.ones(3) / 3)
+
+    def _rss_gb(self) -> float:
+        try:
+            import psutil, os
+            process = psutil.Process(os.getpid())
+            return process.memory_info().rss / 1024**3
+        except Exception:
+            return -1.0
+
+    def _dbg(self, stage: str, tensors: Optional[Dict[str, torch.Tensor]] = None) -> None:
+        if not self.enable_memory_debug:
+            return
+        rss = self._rss_gb()
+        msg = f"🔬 {self.memory_debug_prefix} [{stage}] RSS={rss:.2f}GB"
+        if tensors:
+            sizes = []
+            for name, t in tensors.items():
+                try:
+                    numel = t.numel()
+                    bytes_ = numel * (t.element_size() if t.is_floating_point() or t.is_complex() else max(1, t.element_size()))
+                    sizes.append(f"{name}={bytes_/1024**2:.1f}MB")
+                except Exception:
+                    pass
+            if sizes:
+                msg += " | " + ", ".join(sizes)
+        print(msg)
         
     def forward(
         self,
@@ -166,11 +196,13 @@ class CelestialPetriNetCombiner(nn.Module):
         batch_size, seq_len, num_nodes, _ = astronomical_edges.shape
         
         # 1. Stack and transform adjacency matrices to edge feature vectors
+        self._dbg("START")
         # CRITICAL: Don't compress - expand to vectors!
         stacked_adjacencies = torch.stack([
             astronomical_edges, learned_edges, attention_edges
         ], dim=-1)
         # Shape: [batch, seq_len, num_nodes, num_nodes, 3]
+        self._dbg("STACK_ADJ", {"stacked_adj": stacked_adjacencies})
         
         # Transform to rich edge features
         edge_features_flat = stacked_adjacencies.reshape(-1, 3)
@@ -180,6 +212,7 @@ class CelestialPetriNetCombiner(nn.Module):
         )
         # Shape: [batch, seq_len, num_nodes, num_nodes, edge_feature_dim]
         # PRESERVED as vectors, not compressed to scalars!
+        self._dbg("EDGE_FEATURES", {"edge_features": edge_features})
         
         # 2. Incorporate encoder context into edge features
         # Broadcast context to all edges
@@ -187,42 +220,49 @@ class CelestialPetriNetCombiner(nn.Module):
             -1, -1, num_nodes, num_nodes, -1
         )
         # Shape: [batch, seq_len, num_nodes, num_nodes, d_model]
+        # Note: expand does not allocate, but concatenation below will.
         
         # Fuse context with edge features
         context_edge_combined = torch.cat([
             context_broadcast,
             edge_features
         ], dim=-1).reshape(-1, self.d_model + self.edge_feature_dim)
+        self._dbg("CAT_CONTEXT_EDGE", {"ctx_edge_combined": context_edge_combined})
         
         enriched_edge_features = self.context_edge_fusion(context_edge_combined)
         enriched_edge_features = enriched_edge_features.reshape(
             batch_size, seq_len, num_nodes, num_nodes, self.edge_feature_dim
         )
         # Shape: [batch, seq_len, num_nodes, num_nodes, edge_feature_dim]
+        self._dbg("ENRICHED_EDGE_FEATURES", {"enriched_edge_features": enriched_edge_features})
         
         # 3. Initialize node states from encoder output
         # Each node gets the global encoder context as initial state
         node_states = enc_out.unsqueeze(2).expand(-1, -1, num_nodes, -1).contiguous()
         # Shape: [batch, seq_len, num_nodes, d_model]
+        self._dbg("INIT_NODE_STATES", {"node_states": node_states})
         
         # 4. Petri net message passing (token flow through graph)
         message_passing_metadata = []
         
-        for mp_layer in self.message_passing_layers:
+        for i, mp_layer in enumerate(self.message_passing_layers):
             node_states, mp_meta = mp_layer(
                 node_states=node_states,
                 edge_features=enriched_edge_features,
                 edge_mask=None  # All edges valid in complete graph
             )
             message_passing_metadata.append(mp_meta)
+            self._dbg(f"MESSAGE_PASS_{i+1}", {"node_states": node_states})
         
         # 5. Optional temporal attention (delayed effects)
         if self.use_temporal_attention and self.temporal_attention is not None:
             node_states = self.temporal_attention(node_states)
+            self._dbg("TEMPORAL_ATTENTION", {"node_states": node_states})
         
         # 6. Optional spatial attention (graph state evolution)
         if self.use_spatial_attention and self.spatial_attention is not None:
             node_states = self.spatial_attention(node_states)
+            self._dbg("SPATIAL_ATTENTION", {"node_states": node_states})
         
         # 7. Project edge features to scalar adjacency (for compatibility)
         combined_adjacency_flat = self.edge_features_to_adjacency(
@@ -232,6 +272,7 @@ class CelestialPetriNetCombiner(nn.Module):
             batch_size, seq_len, num_nodes, num_nodes
         )
         # Shape: [batch, seq_len, num_nodes, num_nodes]
+        self._dbg("ADJ_PROJECTION", {"combined_adj": combined_adjacency})
         
         # 8. Collect comprehensive metadata
         metadata = {
@@ -250,6 +291,7 @@ class CelestialPetriNetCombiner(nn.Module):
         }
         
         # Return rich edge features if requested
+        self._dbg("END")
         if return_rich_features:
             return combined_adjacency, enriched_edge_features, metadata
         else:

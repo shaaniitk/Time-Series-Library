@@ -75,3 +75,7 @@ log_interval: 5          # Log every 5 batches for debugging
 gradient_accumulation_steps: 1  # No accumulation for debugging
 mixed_precision: false   # Disable mixed precision for debugging clarity
 save_best_only: false    # Save all checkpoints for analysis
+
+# Petri combiner diagnostics
+# Enable fine-grained memory debug prints inside the Petri combiner for this debug config
+petri_memory_debug: true

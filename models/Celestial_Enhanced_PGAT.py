@@ -237,7 +237,9 @@ class Model(nn.Module):
                     dropout=self.dropout,
                     use_temporal_attention=self.use_temporal_attention,
                     use_spatial_attention=self.use_spatial_attention,
-                    use_gradient_checkpointing=True  # Memory optimization
+                    use_gradient_checkpointing=True,  # Memory optimization
+                    enable_memory_debug=bool(getattr(configs, 'petri_memory_debug', False)),
+                    memory_debug_prefix="PETRI"
                 )
                 self.logger.info("✅ Petri Net Combiner initialized - memory efficient with ZERO information loss!")
             else:
