@@ -1,0 +1,258 @@
+{
+  "config": {
+    "data": "custom",
+    "root_path": "data",
+    "data_path": "prepared_financial_data.csv",
+    "target": "log_Open,log_High,log_Low,log_Close",
+    "features": "M",
+    "embed": "timeF",
+    "freq": "d",
+    "scale": true,
+    "scaler": "StandardScaler",
+    "validation_length": 1200,
+    "test_length": 1000,
+    "seq_len": 750,
+    "label_len": 120,
+    "pred_len": 60,
+    "task_name": "long_term_forecast",
+    "train_epochs": 5,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "dropout": 0.2,
+    "early_stop_patience": 5,
+    "patience": 5,
+    "num_workers": 0,
+    "checkpoints": "./checkpoints/",
+    "model_id": "financial_enhanced_pgat_long",
+    "model": "Enhanced_SOTA_PGAT",
+    "d_model": 512,
+    "d_ff": 1024,
+    "e_layers": 2,
+    "d_layers": 1,
+    "n_heads": 8,
+    "activation": "gelu",
+    "enc_in": 118,
+    "dec_in": 118,
+    "c_out": 4,
+    "c_out_evaluation": 4,
+    "num_wave_features": 114,
+    "weight_decay": 0.0001,
+    "clip_grad": 1.0,
+    "gradient_clip_val": 1.0,
+    "use_amp": false,
+    "log_interval": 50,
+    "save_predictions": true,
+    "save_checkpoints": true
+  },
+  "data_info": {
+    "total_samples": 7109,
+    "feature_count": 114,
+    "target_count": 4,
+    "date_range": [
+      "1996-11-05 00:00:00",
+      "2025-06-09 00:00:00"
+    ]
+  },
+  "model_info": {
+    "total_params": 75328508,
+    "trainable_params": 75328508,
+    "model_size_mb": 301.314032
+  },
+  "training_history": {
+    "train_losses": [
+      1.4113094871863723,
+      1.3932190211489797,
+      1.390927460975945,
+      1.3893145751208067,
+      1.3880058294162154
+    ],
+    "val_losses": [
+      1.0933640105383737,
+      1.1211685180664062,
+      1.0959325211388724,
+      1.0779276728630065,
+      1.0928838116782051
+    ],
+    "test_losses": [
+      1.013023170931586,
+      1.038479827601334,
+      1.0147836742729976,
+      1.0011394167768544,
+      1.013201220282193
+    ],
+    "train_metrics": [
+      {
+        "mae": "0.7144988",
+        "mse": "1.0649933",
+        "rmse": "1.0259057",
+        "mape": "1.7768669",
+        "mspe": "361.50684",
+        "directional_accuracy_Open": 0.5052966101694916,
+        "directional_accuracy_High": 0.5007062146892656,
+        "directional_accuracy_Low": 0.4959392655367232,
+        "directional_accuracy_Close": 0.5007062146892655,
+        "volatility_mae": "1.0520712"
+      },
+      {
+        "mae": "0.7282491",
+        "mse": "1.0974865",
+        "rmse": "1.0459188",
+        "mape": "1.2249631",
+        "mspe": "22.525795",
+        "directional_accuracy_Open": 0.4881709039548023,
+        "directional_accuracy_High": 0.5033545197740112,
+        "directional_accuracy_Low": 0.5012358757062146,
+        "directional_accuracy_Close": 0.4971751412429379,
+        "volatility_mae": "1.2124419"
+      },
+      {
+        "mae": "0.74651116",
+        "mse": "1.2058215",
+        "rmse": "1.0931596",
+        "mape": "1.2546953",
+        "mspe": "85.60096",
+        "directional_accuracy_Open": 0.510063559322034,
+        "directional_accuracy_High": 0.5107697740112994,
+        "directional_accuracy_Low": 0.505473163841808,
+        "directional_accuracy_Close": 0.5033545197740114,
+        "volatility_mae": "1.2583154"
+      },
+      {
+        "mae": "0.7891014",
+        "mse": "1.321227",
+        "rmse": "1.1455859",
+        "mape": "1.1336607",
+        "mspe": "7.5482583",
+        "directional_accuracy_Open": 0.49788135593220334,
+        "directional_accuracy_High": 0.49735169491525427,
+        "directional_accuracy_Low": 0.5035310734463277,
+        "directional_accuracy_Close": 0.5017655367231638,
+        "volatility_mae": "1.3286912"
+      },
+      {
+        "mae": "0.7364517",
+        "mse": "1.1986432",
+        "rmse": "1.094604",
+        "mape": "1.1640372",
+        "mspe": "22.019514",
+        "directional_accuracy_Open": 0.5070621468926554,
+        "directional_accuracy_High": 0.4968220338983051,
+        "directional_accuracy_Low": 0.5047669491525424,
+        "directional_accuracy_Close": 0.4853460451977401,
+        "volatility_mae": "1.2813152"
+      }
+    ],
+    "val_metrics": [
+      {
+        "mae": "0.513579",
+        "mse": "0.65504944",
+        "rmse": "0.80133384",
+        "mape": "1.6549248",
+        "mspe": "498.21378",
+        "directional_accuracy_Open": 0.5002269975786925,
+        "directional_accuracy_High": 0.5016041162227602,
+        "directional_accuracy_Low": 0.5003934624697336,
+        "directional_accuracy_Close": 0.5014981840193705,
+        "volatility_mae": "0.8820211"
+      },
+      {
+        "mae": "0.5149009",
+        "mse": "0.66187483",
+        "rmse": "0.80397934",
+        "mape": "1.4915842",
+        "mspe": "258.1259",
+        "directional_accuracy_Open": 0.5001059322033898,
+        "directional_accuracy_High": 0.49400726392251815,
+        "directional_accuracy_Low": 0.5007869249394672,
+        "directional_accuracy_Close": 0.49788135593220334,
+        "volatility_mae": "0.90375906"
+      },
+      {
+        "mae": "0.5122552",
+        "mse": "0.6553368",
+        "rmse": "0.80079335",
+        "mape": "1.4045162",
+        "mspe": "188.2294",
+        "directional_accuracy_Open": 0.497472760290557,
+        "directional_accuracy_High": 0.4979570217917676,
+        "directional_accuracy_Low": 0.5006658595641647,
+        "directional_accuracy_Close": 0.5024818401937046,
+        "volatility_mae": "0.9118847"
+      },
+      {
+        "mae": "0.5112615",
+        "mse": "0.6480978",
+        "rmse": "0.79587805",
+        "mape": "1.470301",
+        "mspe": "270.62985",
+        "directional_accuracy_Open": 0.4983656174334141,
+        "directional_accuracy_High": 0.5018613801452785,
+        "directional_accuracy_Low": 0.49977300242130746,
+        "directional_accuracy_Close": 0.5041010895883777,
+        "volatility_mae": "0.901295"
+      },
+      {
+        "mae": "0.51303315",
+        "mse": "0.6555865",
+        "rmse": "0.80262226",
+        "mape": "1.395091",
+        "mspe": "182.05107",
+        "directional_accuracy_Open": 0.49977300242130757,
+        "directional_accuracy_High": 0.500453995157385,
+        "directional_accuracy_Low": 0.49956113801452784,
+        "directional_accuracy_Close": 0.4975030266343825,
+        "volatility_mae": "0.9106753"
+      }
+    ],
+    "learning_rates": [
+      0.001,
+      0.001,
+      0.001,
+      0.001,
+      0.001
+    ],
+    "epoch_times": [
+      5481.972509622574,
+      9409.502342939377,
+      7374.869771242142,
+      23438.21518111229,
+      34109.74202609062
+    ],
+    "memory_usage": []
+  },
+  "final_results": {
+    "train": 1.3880058294162154,
+    "val": 1.0928838116782051,
+    "test": 1.013201220282193,
+    "train_metrics": {
+      "mae": "0.7364517",
+      "mse": "1.1986432",
+      "rmse": "1.094604",
+      "mape": "1.1640372",
+      "mspe": "22.019514",
+      "directional_accuracy_Open": 0.5070621468926554,
+      "directional_accuracy_High": 0.4968220338983051,
+      "directional_accuracy_Low": 0.5047669491525424,
+      "directional_accuracy_Close": 0.4853460451977401,
+      "volatility_mae": "1.2813152"
+    },
+    "val_metrics": {
+      "mae": "0.51303315",
+      "mse": "0.6555865",
+      "rmse": "0.80262226",
+      "mape": "1.395091",
+      "mspe": "182.05107",
+      "directional_accuracy_Open": 0.49977300242130757,
+      "directional_accuracy_High": 0.500453995157385,
+      "directional_accuracy_Low": 0.49956113801452784,
+      "directional_accuracy_Close": 0.4975030266343825,
+      "volatility_mae": "0.9106753"
+    }
+  },
+  "training_info": {
+    "total_time": 79814.33468317986,
+    "epochs_completed": 5,
+    "avg_epoch_time": 15962.860366201401,
+    "max_memory_gb": 0
+  }
+}

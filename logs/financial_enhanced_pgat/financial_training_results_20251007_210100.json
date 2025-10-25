@@ -1,0 +1,142 @@
+{
+  "config": {
+    "data": "custom",
+    "root_path": "data",
+    "data_path": "prepared_financial_data.csv",
+    "target": "log_Open,log_High,log_Low,log_Close",
+    "features": "M",
+    "embed": "timeF",
+    "freq": "d",
+    "scale": true,
+    "scaler": "StandardScaler",
+    "validation_length": 1200,
+    "test_length": 1000,
+    "seq_len": 750,
+    "label_len": 120,
+    "pred_len": 60,
+    "task_name": "long_term_forecast",
+    "train_epochs": 5,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "dropout": 0.2,
+    "early_stop_patience": 5,
+    "patience": 5,
+    "num_workers": 0,
+    "checkpoints": "./checkpoints/",
+    "model_id": "financial_enhanced_pgat_long",
+    "model": "Enhanced_SOTA_PGAT",
+    "d_model": 512,
+    "d_ff": 1024,
+    "e_layers": 2,
+    "d_layers": 1,
+    "n_heads": 8,
+    "activation": "gelu",
+    "enc_in": 118,
+    "dec_in": 118,
+    "c_out": 4,
+    "c_out_evaluation": 4,
+    "num_wave_features": 114,
+    "weight_decay": 0.0001,
+    "clip_grad": 1.0,
+    "gradient_clip_val": 1.0,
+    "use_amp": false,
+    "log_interval": 50,
+    "save_predictions": true,
+    "save_checkpoints": true
+  },
+  "data_info": {
+    "total_samples": 7109,
+    "feature_count": 114,
+    "target_count": 4,
+    "date_range": [
+      "1996-11-05 00:00:00",
+      "2025-06-09 00:00:00"
+    ]
+  },
+  "model_info": {
+    "total_params": 75328508,
+    "trainable_params": 75328508,
+    "model_size_mb": 301.314032
+  },
+  "training_history": {
+    "train_losses": [
+      1.5491634607315063
+    ],
+    "val_losses": [
+      1.3420567512512207
+    ],
+    "test_losses": [
+      1.0910065174102783
+    ],
+    "train_metrics": [
+      {
+        "mae": "0.79388946",
+        "mse": "1.2366738",
+        "rmse": "1.1120584",
+        "mape": "2.4293718",
+        "mspe": "428.23047",
+        "directional_accuracy_Open": 0.5090042372881356,
+        "directional_accuracy_High": 0.4947033898305085,
+        "directional_accuracy_Low": 0.5058262711864406,
+        "directional_accuracy_Close": 0.4888771186440678,
+        "volatility_mae": "0.88875246"
+      }
+    ],
+    "val_metrics": [
+      {
+        "mae": "0.5750357",
+        "mse": "0.80919117",
+        "rmse": "0.89955056",
+        "mape": "5.1645765",
+        "mspe": "18956.615",
+        "directional_accuracy_Open": 0.4904661016949153,
+        "directional_accuracy_High": 0.4962923728813559,
+        "directional_accuracy_Low": 0.5047669491525424,
+        "directional_accuracy_Close": 0.510593220338983,
+        "volatility_mae": "0.6811253"
+      }
+    ],
+    "learning_rates": [
+      0.001
+    ],
+    "epoch_times": [
+      47.68735933303833
+    ],
+    "memory_usage": []
+  },
+  "final_results": {
+    "train": 1.5491634607315063,
+    "val": 1.3420567512512207,
+    "test": 1.0910065174102783,
+    "train_metrics": {
+      "mae": "0.79388946",
+      "mse": "1.2366738",
+      "rmse": "1.1120584",
+      "mape": "2.4293718",
+      "mspe": "428.23047",
+      "directional_accuracy_Open": 0.5090042372881356,
+      "directional_accuracy_High": 0.4947033898305085,
+      "directional_accuracy_Low": 0.5058262711864406,
+      "directional_accuracy_Close": 0.4888771186440678,
+      "volatility_mae": "0.88875246"
+    },
+    "val_metrics": {
+      "mae": "0.5750357",
+      "mse": "0.80919117",
+      "rmse": "0.89955056",
+      "mape": "5.1645765",
+      "mspe": "18956.615",
+      "directional_accuracy_Open": 0.4904661016949153,
+      "directional_accuracy_High": 0.4962923728813559,
+      "directional_accuracy_Low": 0.5047669491525424,
+      "directional_accuracy_Close": 0.510593220338983,
+      "volatility_mae": "0.6811253"
+    }
+  },
+  "training_info": {
+    "total_time": 47.695760011672974,
+    "epochs_completed": 1,
+    "avg_epoch_time": 47.68735933303833,
+    "max_memory_gb": 0
+  }
+}
