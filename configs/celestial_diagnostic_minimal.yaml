@@ -34,6 +34,14 @@ num_input_waves: 113  # Auto-detected by phase processor
 # Analogous to using "day of week" or "season" in traditional forecasting.
 use_future_celestial_conditioning: true  # Enable optimal deterministic conditioning
 
+# C→T attention enhancements
+use_celestial_target_attention: true
+celestial_target_use_gated_fusion: true
+celestial_target_diagnostics: true
+use_c2t_edge_bias: true          # Inject edge-derived additive biases into C→T attention
+c2t_edge_bias_weight: 0.2        # Small scaling for additive bias (stable)
+c2t_aux_rel_loss_weight: 0.0     # Aux loss off for this minimal run (training script uses aux only in MDN path)
+
 # Wave aggregation and target configuration
 target_wave_indices: [0, 1, 2, 3]  # OHLC indices
 wave_to_celestial_mapping: false

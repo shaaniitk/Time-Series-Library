@@ -53,6 +53,8 @@ class CelestialToTargetAttention(nn.Module):
         enable_diagnostics: bool = True,
         preserve_temporal: bool = True,
         use_full_temporal_context: bool = False,
+        use_edge_bias: bool = False,
+        edge_bias_scale: float = 1.0,
     ):
         super().__init__()
         self.num_celestial = num_celestial
@@ -63,6 +65,8 @@ class CelestialToTargetAttention(nn.Module):
         self.enable_diagnostics = enable_diagnostics
         self.preserve_temporal = preserve_temporal
         self.use_full_temporal_context = use_full_temporal_context
+        self.use_edge_bias = use_edge_bias
+        self.edge_bias_scale = edge_bias_scale
         
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
@@ -125,6 +129,7 @@ class CelestialToTargetAttention(nn.Module):
         self,
         target_features: torch.Tensor,
         celestial_features: torch.Tensor,
+        edge_prior: Optional[torch.Tensor] = None,
         return_diagnostics: bool = False
     ) -> Tuple[torch.Tensor, Optional[Dict[str, torch.Tensor]]]:
         """
@@ -192,6 +197,30 @@ class CelestialToTargetAttention(nn.Module):
                 values_flat = vals_step.reshape(batch_size * pred_len, self.num_celestial, d_model)
                 query_flat = query_i.reshape(batch_size * pred_len, 1, d_model)
 
+                # Optional additive attention bias derived from edges
+                attn_mask = None
+                if self.use_edge_bias and edge_prior is not None:
+                    # edge_prior expected shape: [B, L, C]
+                    try:
+                        if edge_prior.dim() == 2:
+                            # Allow [B, C] broadcast over L
+                            edge_prior_exp = edge_prior.unsqueeze(1).expand(-1, pred_len, -1)
+                        else:
+                            edge_prior_exp = edge_prior
+                        # Standardize per-step for stability (zero-mean)
+                        ep = edge_prior_exp - edge_prior_exp.mean(dim=-1, keepdim=True)
+                        # Scale and flatten to [B*L, 1, C]
+                        ep_flat = (self.edge_bias_scale * ep).reshape(batch_size * pred_len, 1, self.num_celestial)
+
+                        # PyTorch MHA requires attn_mask of shape (N*num_heads, L, S) for 3D
+                        # Here N=B*L, L=1, S=C
+                        ep_flat_heads = ep_flat.repeat_interleave(self.num_heads, dim=0)
+                        attn_mask = ep_flat_heads  # [B*L*num_heads, 1, C]
+                    except Exception as _exc:
+                        # Never fail forward due to bias issues
+                        self.logger.debug("C2T edge_bias construction failed: %s", str(_exc))
+                        attn_mask = None
+
             elif self.preserve_temporal and self.use_full_temporal_context:
                 # Each pred step attends over entire history across all celestial nodes
                 # Collapse temporal+node dims: [B, S, C, D] -> [B, S*C, D]
@@ -207,6 +236,7 @@ class CelestialToTargetAttention(nn.Module):
                     batch_size * pred_len, source_len, d_model
                 )
                 query_flat = query_i.reshape(batch_size * pred_len, 1, d_model)
+                attn_mask = None  # Not supported for full-context in v1 (S=C*S)
 
             else:
                 # Legacy pooled behavior (temporal information compressed)
@@ -219,7 +249,8 @@ class CelestialToTargetAttention(nn.Module):
             
             # Apply multi-head attention
             celestial_influence_flat, attn_weights_flat = self.target_attentions[target_idx](
-                query_flat, keys_flat, values_flat
+                query_flat, keys_flat, values_flat,
+                attn_mask=attn_mask
             )
             # celestial_influence_flat: [batch*pred_len, 1, d_model]
             # attn_weights_flat: [batch*pred_len, 1, source_len]

@@ -133,6 +133,10 @@ class Model(nn.Module):
         self.use_celestial_target_attention = getattr(configs, 'use_celestial_target_attention', True)
         self.celestial_target_use_gated_fusion = getattr(configs, 'celestial_target_use_gated_fusion', True)
         self.celestial_target_diagnostics = getattr(configs, 'celestial_target_diagnostics', True)
+        # C→T edge bias and auxiliary loss settings
+        self.use_c2t_edge_bias: bool = bool(getattr(configs, 'use_c2t_edge_bias', False))
+        self.c2t_edge_bias_weight: float = float(getattr(configs, 'c2t_edge_bias_weight', 0.2))
+        self.c2t_aux_rel_loss_weight: float = float(getattr(configs, 'c2t_aux_rel_loss_weight', 0.0))
         
         # --- FIXED: Dimension Consistency Management ---
         # Calculate celestial_dim to be compatible with n_heads for MultiheadAttention
@@ -538,7 +542,9 @@ class Model(nn.Module):
                 num_heads=self.n_heads,
                 dropout=self.dropout,
                 use_gated_fusion=self.celestial_target_use_gated_fusion,
-                enable_diagnostics=self.celestial_target_diagnostics
+                enable_diagnostics=self.celestial_target_diagnostics,
+                use_edge_bias=self.use_c2t_edge_bias,
+                edge_bias_scale=self.c2t_edge_bias_weight,
             )
             self.logger.info(
                 "🎯 Celestial-to-Target Attention initialized | celestial=%d targets=%d gated=%s",
@@ -1451,12 +1457,82 @@ class Model(nn.Module):
             
             # Apply celestial-to-target attention if we have celestial features
             if celestial_feats is not None:
+                # Optional: derive per-celestial attention prior from graph edges
+                edge_prior = None
+                try:
+                    if self.use_c2t_edge_bias:
+                        # Prefer rich edge features if available; else fall back to combined adjacency
+                        if 'rich_edge_features' in locals() and rich_edge_features is not None:
+                            # rich_edge_features: [B, S, 13, 13, E]
+                            bsz, seql, n1, n2, ed = rich_edge_features.shape
+                            # Align last pred_len steps (repeat last if needed)
+                            if seql >= self.pred_len:
+                                ef_steps = rich_edge_features[:, -self.pred_len:, :, :, :]
+                            else:
+                                ef_last = rich_edge_features[:, -1:, :, :, :].expand(-1, self.pred_len, -1, -1, -1)
+                                ef_steps = ef_last
+                            # Reduce edge feature dim
+                            ef_red = ef_steps.mean(dim=-1)  # [B, L, 13, 13]
+                            # Row/col means to get per-node importance
+                            row_mean = ef_red.mean(dim=3)  # [B, L, 13]
+                            col_mean = ef_red.mean(dim=2)  # [B, L, 13]
+                            edge_prior = 0.5 * (row_mean + col_mean)
+                        elif 'combined_adj' in locals() and combined_adj is not None:
+                            # combined_adj: [B, S, 13, 13]
+                            bsz, seql, n1, n2 = combined_adj.shape
+                            if seql >= self.pred_len:
+                                adj_steps = combined_adj[:, -self.pred_len:, :, :]
+                            else:
+                                adj_last = combined_adj[:, -1:, :, :].expand(-1, self.pred_len, -1, -1)
+                                adj_steps = adj_last
+                            row_mean = adj_steps.mean(dim=3)
+                            col_mean = adj_steps.mean(dim=2)
+                            edge_prior = 0.5 * (row_mean + col_mean)
+                        # Standardize per-step
+                        if edge_prior is not None:
+                            edge_prior = edge_prior - edge_prior.mean(dim=-1, keepdim=True)
+                except Exception as _exc:
+                    self._log_debug("C2T edge_prior derivation failed: %s", str(_exc))
+
                 enhanced_target_features, celestial_target_diagnostics = self.celestial_to_target_attention(
                     target_features=decoder_target_features,
                     celestial_features=celestial_feats,
+                    edge_prior=edge_prior,
                     return_diagnostics=self.celestial_target_diagnostics
                 )
                 # Shape: [batch, pred_len, num_targets, d_model]
+
+                # Optional: lightweight auxiliary relation loss to align attention with edge prior
+                if (
+                    self.c2t_aux_rel_loss_weight > 0.0
+                    and edge_prior is not None
+                    and self.celestial_to_target_attention is not None
+                    and not getattr(self.celestial_to_target_attention, 'use_full_temporal_context', False)
+                    and celestial_target_diagnostics is not None
+                    and isinstance(celestial_target_diagnostics, dict)
+                    and 'attention_weights' in celestial_target_diagnostics
+                ):
+                    try:
+                        attn_dict = celestial_target_diagnostics['attention_weights']
+                        # Stack per-target attention: list of [B,L,C] -> [B,L,T,C]
+                        attn_list = []
+                        for t_idx in range(self.c_out):
+                            key = f'target_{t_idx}_attn'
+                            if key in attn_dict:
+                                attn_list.append(attn_dict[key])
+                        if attn_list:
+                            attn_stack = torch.stack(attn_list, dim=2)  # [B,L,T,C]
+                            attn_mean = attn_stack.mean(dim=2)  # [B,L,C]
+                            # Prior probabilities across celestial nodes per step
+                            prior_probs = torch.softmax(edge_prior, dim=-1)
+                            # Stabilize and compute KL(attn || prior)
+                            attn_clamped = attn_mean.clamp_min(1e-8)
+                            kl = (attn_clamped * (attn_clamped.log() - (prior_probs + 1e-8).log())).sum(dim=-1)
+                            kl_loss = kl.mean()
+                            # Stash for later inclusion into aux_loss near return
+                            self._forward_aux_loss = float(self.c2t_aux_rel_loss_weight) * float(kl_loss.detach().item())
+                    except Exception as _exc:
+                        self._log_debug("C2T aux relation loss computation failed: %s", str(_exc))
                 
                 # Pool target features back to [batch, pred_len, d_model] for projection
                 # Use mean pooling across targets
@@ -1484,6 +1560,18 @@ class Model(nn.Module):
         predictions: Optional[torch.Tensor] = None
         mdn_components: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None
         aux_loss: float = 0.0
+        # Include any auxiliary loss computed earlier in the forward (e.g., C→T relation loss)
+        try:
+            if hasattr(self, "_forward_aux_loss") and self._forward_aux_loss is not None:
+                aux_loss = aux_loss + float(self._forward_aux_loss)
+        except Exception:
+            pass
+        finally:
+            if hasattr(self, "_forward_aux_loss"):
+                try:
+                    delattr(self, "_forward_aux_loss")
+                except Exception:
+                    pass
 
         # Priority: MDN decoder (Phase 1) > Sequential mixture > Simple projection
         if self.enable_mdn_decoder and self.mdn_decoder is not None:

@@ -84,6 +84,11 @@ use_celestial_target_attention: true     # Enable explicit celestial→target at
 celestial_target_use_gated_fusion: true  # Use learned gates to control celestial influence on targets
 celestial_target_diagnostics: true       # Collect and log attention weights for interpretability
 
+# 🎯 C→T ATTENTION ENHANCEMENTS - Edge-bias and relation alignment
+use_c2t_edge_bias: true                  # Enable edge-derived additive attention bias
+c2t_edge_bias_weight: 0.2                # Scale factor for edge bias (standardized before application)
+c2t_aux_rel_loss_weight: 0.0             # Auxiliary KL loss for attention-relation alignment (0=disabled)
+
 # 📅 CALENDAR EFFECTS - NEW ENHANCEMENT
 use_calendar_effects: true              # Enable calendar effects modeling
 calendar_embedding_dim: 104             # Calendar embedding dimension (d_model/4)
