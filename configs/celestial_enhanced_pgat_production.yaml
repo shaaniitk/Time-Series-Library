@@ -30,7 +30,7 @@ train_epochs: 50        # Full overnight training
 batch_size: 12           # Reduced due to aggressive depth
 patience: 999            # Effectively disable early stopping
 lradj: warmup_cosine     # Warmup + Cosine Annealing for robust training
-warmup_epochs: 8         # Longer warmup for deeper model stability
+warmup_epochs: 5         # 5 epochs of linear warmup for faster ramp-up
 min_lr: 1e-6             # Minimum learning rate at the end
 weight_decay: 0.0001
 clip_grad_norm: 1.0

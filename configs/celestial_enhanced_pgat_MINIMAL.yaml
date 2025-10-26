@@ -1,0 +1,85 @@
+# MINIMAL ARCHITECTURE - Gradient Flow Emergency Fix
+# Disable celestial processing to isolate the gradient flow issue
+
+model: Celestial_Enhanced_PGAT
+model_id: celestial_minimal_gradient_test
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: true
+
+# Sequence settings
+seq_len: 250
+label_len: 125
+pred_len: 10
+
+# Data splits
+validation_length: 50
+test_length: 50
+
+# AGGRESSIVE Learning settings to force weight updates
+learning_rate: 0.01           # 10× higher than normal
+train_epochs: 5               # Short test run
+batch_size: 16                # Larger batch
+patience: 999
+lradj: warmup_cosine
+warmup_epochs: 1              # Minimal warmup
+min_lr: 0.001                 # High minimum
+weight_decay: 0.0             # NO regularization
+clip_grad_norm: 10.0          # Very relaxed clipping
+dropout: 0.0                  # NO dropout
+
+# MINIMAL model - reduce depth to ensure gradient flow
+d_model: 416
+n_heads: 8
+e_layers: 2                   # REDUCED from 8
+d_layers: 1                   # REDUCED from 4
+d_ff: 512                     # REDUCED from 1024
+
+# Input/Output
+enc_in: 113
+dec_in: 113
+c_out: 4
+
+# 🚨 DISABLE ALL CELESTIAL PROCESSING - Testing gradient flow
+enable_celestial_waves: false
+enable_celestial_attention: false
+enable_fourier_attention: false
+enable_adaptive_graph: false
+enable_dual_stream: false
+enable_anomaly_encoding: false
+enable_residual_connections: true
+use_celestial_graph: false
+aggregate_waves_to_celestial: false
+
+# Calendar effects - keep enabled (should work)
+enable_calendar_effects: true
+calendar_features: day_of_week,day_of_month,month,quarter,is_month_start,is_month_end,is_quarter_start,is_quarter_end,year
+
+# Training
+mixed_precision: false
+gradient_accumulation_steps: 1  # No accumulation
+num_workers: 0                  # Docker-safe
+
+# Monitoring
+enable_memory_diagnostics: true
+memory_log_interval: 50
+collect_diagnostics: false
+
+# Output
+checkpoints: checkpoints
+save_checkpoints: true
+checkpoint_interval: 1
+
+# Loss
+criterion: MSE
+
+# Device
+use_multi_gpu: false
+devices: 0,1,2,3

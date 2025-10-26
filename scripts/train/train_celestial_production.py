@@ -47,6 +47,27 @@ if torch_amp is not None and hasattr(torch_amp, "autocast"):
     torch_autocast = cast(Callable[..., Any], getattr(torch_amp, "autocast"))
 else:  # pragma: no cover - AMP unavailable
     torch_autocast = None
+
+# AMP dtype resolver
+def _resolve_amp_dtype(args: "SimpleConfig") -> "torch.dtype":
+    """Pick an AMP dtype based on config and hardware.
+
+    Honors args.amp_dtype if provided ("float16"/"fp16" or "bfloat16"/"bf16").
+    Otherwise prefers bfloat16 when supported, else float16.
+    """
+    import torch
+    requested = str(getattr(args, "amp_dtype", "auto")).lower()
+    if requested in {"bf16", "bfloat16"}:
+        return torch.bfloat16
+    if requested in {"fp16", "float16"}:
+        return torch.float16
+    # auto mode
+    try:
+        if torch.cuda.is_available() and hasattr(torch.cuda, "is_bf16_supported") and torch.cuda.is_bf16_supported():
+            return torch.bfloat16
+    except Exception:
+        pass
+    return torch.float16
 import numpy as np
 import pandas as pd
 import yaml
@@ -480,6 +501,24 @@ def _optimize_data_loader(
 
     optimized_loader = DataLoader(dataset, **loader_kwargs)
 
+    # Fallback: if the rebuilt loader yields zero batches, relax constraints
+    try:
+        if len(optimized_loader) == 0:
+            logger.warning(
+                "Optimized %s loader produced zero batches (batch_size=%s, drop_last=%s). "
+                "Rebuilding with drop_last=False and a safer batch_size.",
+                flag,
+                loader_kwargs.get("batch_size"),
+                loader_kwargs.get("drop_last"),
+            )
+            safe_bs = max(1, min(int(loader_kwargs.get("batch_size", 1)), len(dataset))) if hasattr(dataset, "__len__") else 1
+            loader_kwargs["batch_size"] = safe_bs
+            loader_kwargs["drop_last"] = False
+            optimized_loader = DataLoader(dataset, **loader_kwargs)
+    except Exception:
+        # If len() is unsupported by custom loader, skip fallback
+        pass
+
     diagnostics = {
         "batch_size": batch_size,
         "shuffle": shuffle,
@@ -737,7 +776,8 @@ def train_epoch(
                     raise RuntimeError(
                         "AMP training requested but torch.cuda.amp.autocast is unavailable on this platform."
                     )
-                with torch_autocast():
+                amp_dtype = _resolve_amp_dtype(args)
+                with torch_autocast(device_type="cuda", dtype=amp_dtype):
                     outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             else:
                 outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
@@ -1825,6 +1865,23 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
         f"{args.model_name}_production_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
 
+    # Docker shared memory advisory to prevent dataloader stalls
+    try:
+        import os
+        import math
+        shm = os.statvfs('/dev/shm')
+        shm_bytes = shm.f_frsize * shm.f_blocks
+        shm_gb = shm_bytes / (1024 ** 3)
+        pin_memory = bool(getattr(args, 'pin_memory', True)) and torch.cuda.is_available()
+        if shm_gb < 1.0 and (getattr(args, 'num_workers', 0) > 0 or pin_memory):
+            logger.warning(
+                "Low /dev/shm (%.2f GiB) detected. To avoid DataLoader stalls in Docker, either: "
+                "use --shm-size=8g or --ipc=host, or set num_workers=0 and pin_memory=false.",
+                shm_gb,
+            )
+    except Exception:
+        pass
+
     # Wave aggregation settings
     args.aggregate_waves_to_celestial = getattr(args, 'aggregate_waves_to_celestial', True)
     args.wave_to_celestial_mapping = getattr(args, 'wave_to_celestial_mapping', False)
@@ -2171,6 +2228,9 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
     for epoch in range(args.train_epochs):
         epoch_start = time.time()
 
+        # Adjust learning rate BEFORE training this epoch
+        current_lr = adjust_learning_rate_warmup_cosine(optimizer, epoch, args)
+
         avg_train_loss, train_batches = train_epoch(
             model=model,
             train_loader=train_loader,
@@ -2206,8 +2266,6 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
             sequential_mixture_loss_cls=sequential_mixture_loss_cls,
             mixture_loss_cls=mixture_loss_cls,
         )
-
-        current_lr = adjust_learning_rate_warmup_cosine(optimizer, epoch, args)
 
         epoch_time = time.time() - epoch_start
         total_elapsed = time.time() - training_start_time

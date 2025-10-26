@@ -1,0 +1,122 @@
+# Celestial Enhanced PGAT PRODUCTION - MODE COLLAPSE RECOVERY CONFIG
+# This config addresses the severe mode collapse identified in training analysis
+# Prediction variance was 30x lower than target variance - model collapsed to constant outputs
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: celestial_enhanced_pgat_production_recovery
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS          # Multivariate input, univariate output
+target: log_Open,log_High,log_Low,log_Close     # Predict all OHLC values
+embed: timeF
+freq: d               # Daily frequency
+use_gpu: true
+
+# Sequence settings
+seq_len: 250          # Long sequence for better pattern recognition
+label_len: 125        # Half of seq_len
+pred_len: 10          # Shorter prediction horizon for better accuracy
+
+# Data split settings
+validation_length: 50   # Large validation set
+test_length: 50         # Large test set
+
+# RECOVERY Optimization - Higher LR to escape mode collapse
+learning_rate: 0.003     # 🔧 3x INCREASE from 0.001 - help model escape local minimum
+train_epochs: 50        
+batch_size: 12           
+patience: 999            
+lradj: warmup_cosine     
+warmup_epochs: 3         # 🔧 REDUCED from 5 - faster ramp to full LR
+min_lr: 1e-5             # 🔧 10x HIGHER minimum (was 1e-6) - maintain exploration
+weight_decay: 0.00001    # 🔧 10x REDUCTION from 0.0001 - reduce over-regularization
+clip_grad_norm: 5.0      # 🔧 5x INCREASE from 1.0 - allow larger gradient steps
+
+# Model hyperparameters (unchanged - architecture is fine)
+d_model: 416             
+n_heads: 8               
+e_layers: 8              
+d_layers: 4              
+d_ff: 1024               
+dropout: 0.05            # 🔧 REDUCED from 0.1 - less regularization during recovery
+
+# Input/Output dimensions
+enc_in: 118    
+dec_in: 118    
+c_out: 4       
+
+# Celestial System Configuration (unchanged)
+enable_celestial_waves: true
+enable_celestial_attention: true
+enable_fourier_attention: true
+enable_adaptive_graph: true
+enable_dual_stream: true
+enable_anomaly_encoding: true
+enable_residual_connections: true
+
+# Celestial wave parameters
+celestial_hidden_dim: 32
+celestial_kernel_size: 3
+num_planet_waves: 13
+
+# Adaptive parameters
+adaptive_horizon_steps: 10
+adaptive_learning_rate: 0.001
+similarity_threshold: 0.5
+
+# Calendar effects
+enable_calendar_effects: true
+calendar_features: day_of_week,day_of_month,month,quarter,is_month_start,is_month_end,is_quarter_start,is_quarter_end,year
+
+# Graph topology
+use_precomputed_adjacency: true
+adjacency_matrix_path: ./data/celestial_adjacency_matrix.npy
+
+# Edge conditioning
+use_edge_conditioned_attention: true
+edge_dim: 16
+
+# Advanced training features
+mixed_precision: false        
+gradient_accumulation_steps: 3  
+num_workers: 4
+
+# Monitoring and diagnostics
+enable_memory_diagnostics: true
+memory_log_interval: 50
+collect_diagnostics: false
+
+# Output settings
+checkpoints: checkpoints
+save_checkpoints: true
+checkpoint_interval: 5
+
+# Loss function
+criterion: MSE
+
+# Device settings
+use_multi_gpu: false
+devices: 0,1,2,3
+
+# RECOVERY MODE NOTES:
+# ===================
+# 1. Learning rate TRIPLED (0.001 → 0.003) to give model momentum to escape collapsed state
+# 2. Warmup REDUCED (5 → 3 epochs) to reach full LR faster
+# 3. Weight decay REDUCED 10x (0.0001 → 0.00001) to reduce over-regularization
+# 4. Gradient clipping RELAXED 5x (1.0 → 5.0) to allow larger weight updates
+# 5. Dropout REDUCED (0.1 → 0.05) to increase model capacity during recovery
+# 6. Min LR INCREASED 10x (1e-6 → 1e-5) to maintain exploration late in training
+#
+# Expected behavior:
+# - First 3 epochs: Train loss should DROP significantly (1.0 → 0.5 expected)
+# - Prediction std should INCREASE to 0.3+ (currently stuck at 0.02-0.06)
+# - If still stuck after 5 epochs, try disabling dropout entirely (dropout: 0.0)
+#
+# Monitor these metrics:
+# - y_pred_for_loss std should increase from 0.03 → 0.3+ 
+# - train_loss should decrease below 0.5
+# - val_loss should track train_loss more closely (not be 3.6x lower)

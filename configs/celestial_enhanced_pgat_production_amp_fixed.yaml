@@ -74,7 +74,11 @@ checkpoint_interval: 5   # Save every 5 epochs
 log_interval: 10         # Log every 10 batches
 gradient_accumulation_steps: 2  # Accumulate gradients for effective batch size of 32
 mixed_precision: true    # Enable mixed precision for faster training
+# Docker/ROCm stability: disable multiprocessing workers and pinned memory unless shm-size is increased
+num_workers: 0
+pin_memory: false
+persistent_workers: false
 save_best_only: false    # Save all checkpoints for analysis
 # Mixed precision settings
-amp_dtype: float16  # Use float16 for mixed precision
+amp_dtype: bfloat16  # Prefer bfloat16 on ROCm/Ampere+; safer than fp16
 amp_enabled: true   # Enable automatic mixed precision
