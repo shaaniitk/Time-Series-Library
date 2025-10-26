@@ -79,6 +79,11 @@ mdn_multivariate_mode: independent
 use_target_autocorrelation: true        # Enable target autocorrelation modeling
 target_autocorr_layers: 2               # Number of LSTM layers for target processing
 
+# 🌟 CELESTIAL-TO-TARGET ATTENTION - Explicit covariate→target modeling
+use_celestial_target_attention: true     # Enable explicit celestial→target attention bridge
+celestial_target_use_gated_fusion: true  # Use learned gates to control celestial influence on targets
+celestial_target_diagnostics: true       # Collect and log attention weights for interpretability
+
 # 📅 CALENDAR EFFECTS - NEW ENHANCEMENT
 use_calendar_effects: true              # Enable calendar effects modeling
 calendar_embedding_dim: 104             # Calendar embedding dimension (d_model/4)

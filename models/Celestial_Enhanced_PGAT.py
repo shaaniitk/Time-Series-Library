@@ -17,6 +17,7 @@ import torch.nn.functional as F
 from layers.modular.graph.celestial_body_nodes import CelestialBodyNodes, CelestialBody
 from layers.modular.graph.celestial_graph_combiner import CelestialGraphCombiner
 from layers.modular.graph.celestial_petri_net_combiner import CelestialPetriNetCombiner
+from layers.modular.graph.celestial_to_target_attention import CelestialToTargetAttention
 from layers.modular.decoder.mdn_decoder import MDNDecoder
 from layers.modular.decoder.mixture_density_decoder import MixtureDensityDecoder
 from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureDensityDecoder
@@ -127,6 +128,11 @@ class Model(nn.Module):
             enabled=self.enable_fusion_diagnostics,
             log_first_n_batches=getattr(configs, 'fusion_diag_batches', 10)
         )
+        
+        # 🎯 Celestial-to-Target Attention (explicit covariate→target modeling)
+        self.use_celestial_target_attention = getattr(configs, 'use_celestial_target_attention', True)
+        self.celestial_target_use_gated_fusion = getattr(configs, 'celestial_target_use_gated_fusion', True)
+        self.celestial_target_diagnostics = getattr(configs, 'celestial_target_diagnostics', True)
         
         # --- FIXED: Dimension Consistency Management ---
         # Calculate celestial_dim to be compatible with n_heads for MultiheadAttention
@@ -522,6 +528,25 @@ class Model(nn.Module):
             ) for _ in range(self.d_layers)
         ])
         
+        # 🎯 Celestial-to-Target Attention Module
+        self.celestial_to_target_attention: Optional[CelestialToTargetAttention] = None
+        if self.use_celestial_target_attention and self.use_celestial_graph:
+            self.celestial_to_target_attention = CelestialToTargetAttention(
+                num_celestial=self.num_celestial_bodies,  # 13 celestial bodies
+                num_targets=self.c_out,  # 4 target assets
+                d_model=self.d_model,
+                num_heads=self.n_heads,
+                dropout=self.dropout,
+                use_gated_fusion=self.celestial_target_use_gated_fusion,
+                enable_diagnostics=self.celestial_target_diagnostics
+            )
+            self.logger.info(
+                "🎯 Celestial-to-Target Attention initialized | celestial=%d targets=%d gated=%s",
+                self.num_celestial_bodies,
+                self.c_out,
+                self.celestial_target_use_gated_fusion
+            )
+        
         # Output projection
         if self.use_mixture_decoder:
             # Use sequential mixture decoder to preserve temporal structure
@@ -899,6 +924,9 @@ class Model(nn.Module):
                 celestial_metadata = celestial_results['metadata']
                 enc_out = celestial_results['enhanced_enc_out'] # Use enhanced output
                 
+                # Store celestial features in wave_metadata for celestial-to-target attention
+                wave_metadata['celestial_features'] = celestial_features
+                
                 # Learned context-aware fusion of phase, astronomical, and dynamic adjacencies
                 # FIXED: Dynamic fusion weights that adapt per timestep
                 self._print_memory_debug("BEFORE_ADJ_WEIGHT_MLP", f"market_context: {market_context.shape}")
@@ -931,6 +959,9 @@ class Model(nn.Module):
             else:
                 # Fallback to traditional celestial graph processing
                 celestial_results = self._process_celestial_graph(x_enc_processed, enc_out)
+                
+                # Store celestial features in wave_metadata for celestial-to-target attention
+                wave_metadata['celestial_features'] = celestial_features
                 astronomical_adj = celestial_results['astronomical_adj']
                 dynamic_adj = celestial_results['dynamic_adj'] 
                 celestial_features = celestial_results['celestial_features']
@@ -1335,6 +1366,58 @@ class Model(nn.Module):
             decoder_features = self.dual_stream_decoder(decoder_features, graph_features)
             self._log_debug("Target autocorrelation processing complete - shape=%s", decoder_features.shape)
         
+        # 🌟 Apply Celestial-to-Target Attention (explicit covariate→target modeling)
+        celestial_target_diagnostics = None
+        if self.use_celestial_target_attention and self.celestial_to_target_attention is not None:
+            # Reshape decoder features to [batch, pred_len, num_targets, d_model]
+            # Current: decoder_features [batch, label_len+pred_len, d_model]
+            # We want only the prediction window, organized per target
+            pred_start_idx = self.label_len
+            decoder_pred_features = decoder_features[:, pred_start_idx:, :]  # [batch, pred_len, d_model]
+            
+            # Reshape to separate targets (assuming d_model contains concatenated target features)
+            # Alternative: use projection to create per-target embeddings
+            # For now, broadcast same features to all targets (will be refined by attention)
+            batch_size_dec = decoder_pred_features.shape[0]
+            decoder_target_features = decoder_pred_features.unsqueeze(2).expand(
+                -1, -1, self.c_out, -1
+            )  # [batch, pred_len, num_targets, d_model]
+            
+            # Get celestial features from graph processing
+            # These should be stored in metadata from _process_celestial_graph
+            if 'celestial_features' in wave_metadata:
+                celestial_feats = wave_metadata['celestial_features']
+                # Shape: [batch, seq_len, num_celestial, d_model]
+                
+                # Apply celestial-to-target attention
+                enhanced_target_features, celestial_target_diagnostics = self.celestial_to_target_attention(
+                    target_features=decoder_target_features,
+                    celestial_features=celestial_feats,
+                    return_diagnostics=self.celestial_target_diagnostics
+                )
+                # Shape: [batch, pred_len, num_targets, d_model]
+                
+                # Pool target features back to [batch, pred_len, d_model] for projection
+                # Use mean pooling across targets
+                decoder_features_enhanced = enhanced_target_features.mean(dim=2)
+                
+                # Replace prediction window features in decoder_features
+                decoder_features = torch.cat([
+                    decoder_features[:, :pred_start_idx, :],  # label window (unchanged)
+                    decoder_features_enhanced  # prediction window (enhanced with celestial attention)
+                ], dim=1)
+                
+                if self.verbose_logging:
+                    self.logger.info(
+                        "✅ Applied Celestial-to-Target Attention | enhanced shape=%s",
+                        decoder_features.shape
+                    )
+            else:
+                if self.verbose_logging:
+                    self.logger.warning(
+                        "⚠️ Celestial features not found in metadata, skipping celestial-to-target attention"
+                    )
+        
         # 10. Final prediction with MDN or fallback decoders
         output: torch.Tensor | Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
         predictions: Optional[torch.Tensor] = None
@@ -1404,6 +1487,7 @@ class Model(nn.Module):
                 **wave_metadata,
                 'celestial_metadata': self._move_to_cpu(celestial_metadata) if self.use_celestial_graph else {},
                 'fusion_metadata': self._move_to_cpu(fusion_metadata) if self.use_celestial_graph else {},
+                'celestial_target_diagnostics': self._move_to_cpu(celestial_target_diagnostics) if celestial_target_diagnostics else {},
             }
         else:
             final_metadata = None
@@ -1473,6 +1557,13 @@ class Model(nn.Module):
         """Increment the batch counter for fusion diagnostics."""
         if self.enable_fusion_diagnostics:
             self.fusion_diagnostics.increment_batch()
+    
+    def print_celestial_target_diagnostics(self):
+        """Print celestial-to-target attention diagnostics."""
+        if self.use_celestial_target_attention and self.celestial_to_target_attention is not None:
+            self.celestial_to_target_attention.print_diagnostics_summary()
+        else:
+            self.logger.info("Celestial-to-target attention not enabled or not initialized")
     
     def _process_celestial_graph(self, x_enc: torch.Tensor, enc_out: torch.Tensor) -> Dict[str, Any]:
         """Process encoder features through the dynamic celestial body graph system."""
