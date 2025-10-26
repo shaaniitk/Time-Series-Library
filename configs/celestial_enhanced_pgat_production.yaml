@@ -72,6 +72,7 @@ target_wave_indices: [0, 1, 2, 3]  # All OHLC targets
 use_mixture_decoder: false              # Keep deterministic for stability
 use_stochastic_learner: false           # Disable for production stability
 use_hierarchical_mapping: false         # Disable for production stability
+use_hierarchical_fusion: true           # Enable cross-attention based context fusion
 use_efficient_covariate_interaction: true # Use memory-efficient partitioned graph processing
 mdn_multivariate_mode: independent
 

@@ -102,6 +102,9 @@ enable_adversarial_checks: false
 # MDN decoder (disabled for minimal config)
 enable_mdn_decoder: false
 
+# Hierarchical fusion with cross-attention
+use_hierarchical_fusion: true    # Enable cross-attention based context fusion for better temporal integration
+
 # Logging
 log_interval: 1          # Log every batch for diagnostics
 log_file: ./logs/celestial_diagnostic.log

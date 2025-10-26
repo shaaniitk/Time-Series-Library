@@ -53,6 +53,19 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         # Pre-allocate context fusion layer with reasonable max size
         max_fusion_dim = self.d_model * 6  # Reasonable upper bound for fusion
         self.context_fusion_layer = nn.Linear(max_fusion_dim, self.d_model)
+        
+        # Hierarchical cross-attention fusion for better context integration
+        self.use_hierarchical_fusion = getattr(config, 'use_hierarchical_fusion', True)
+        if self.use_hierarchical_fusion:
+            self.fusion_cross_attention = nn.MultiheadAttention(
+                embed_dim=self.d_model,
+                num_heads=4,
+                dropout=0.1,
+                batch_first=True
+            )
+            # Final projection after hierarchical fusion
+            # base_context + node_mean + node_std + refined_temporal = 4 * d_model
+            self.hierarchical_fusion_proj = nn.Linear(self.d_model * 4, self.d_model)
 
         # Determine wave feature count early and use consistently across components
         self.num_wave_features = getattr(config, 'num_wave_features', None)
@@ -297,7 +310,6 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             context = self._create_rich_context(all_node_features, wave_patched_outputs, target_patched_outputs)  # [batch_size, d_model]
             
             # DEBUG: Memory check before graph_combiner
-            import torch
             if torch.cuda.is_available():
                 allocated_before = torch.cuda.memory_allocated() / 1024**3
                 reserved_before = torch.cuda.memory_reserved() / 1024**3
@@ -313,7 +325,8 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             for i, proposal in enumerate(graph_proposals):
                 if isinstance(proposal, tuple) and len(proposal) >= 2:
                     adj, weights = proposal[0], proposal[1]
-                    print(f"   proposal[{i}]: adj={adj.shape}, weights={weights.shape}")
+                    weights_shape = weights.shape if weights is not None else "None"
+                    print(f"   proposal[{i}]: adj={adj.shape}, weights={weights_shape}")
             
             # The improved gated combiner can handle variable number of graphs
             adjacency_matrix, edge_weights = self.graph_combiner(graph_proposals, context)
@@ -568,14 +581,15 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         wave_patch_list = list(wave_patched_outputs.values()) if wave_patched_outputs else []
         target_patch_list = list(target_patched_outputs.values()) if target_patched_outputs else []
         
-        wave_summary = self._aggregate_patch_collection(
+        # Get both aggregated summaries and individual projections
+        wave_summary, wave_projections = self._aggregate_patch_collection(
             wave_patch_list,
             "wave_patch",
             batch_size,
             all_node_features.device,
             all_node_features.dtype,
         )
-        target_summary = self._aggregate_patch_collection(
+        target_summary, target_projections = self._aggregate_patch_collection(
             target_patch_list,
             "target_patch",
             batch_size,
@@ -583,22 +597,68 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             all_node_features.dtype,
         )
 
-        fusion_input = torch.cat([base_context, node_mean, node_std, wave_summary, target_summary], dim=-1)
+        # Use hierarchical cross-attention fusion if enabled
+        if self.use_hierarchical_fusion:
+            # Flatten temporal scale features: [batch, num_scales * seq_len, d_model]
+            # Each projection is [batch, seq_len_i, d_model]
+            all_temporal_list = []
+            for proj in (wave_projections + target_projections):
+                # proj shape: [batch, seq_len, d_model]
+                all_temporal_list.append(proj)
+            
+            # Concatenate along time dimension to get all (scale, timestep) pairs
+            # Shape: [batch, total_timesteps, d_model] where total_timesteps = sum of all seq_lens
+            all_temporal_features = torch.cat(all_temporal_list, dim=1)
+            
+            # Cross-attention: base_context (node state) queries ALL temporal features
+            # query: [batch, 1, d_model]
+            query = base_context.unsqueeze(1)
+            
+            # Perform cross-attention over ALL (scale, timestep) pairs
+            # This allows model to learn: "attend to timestep 7 of scale 1 + timestep 2 of scale 3"
+            refined_temporal, attn_weights = self.fusion_cross_attention(
+                query,
+                all_temporal_features,
+                all_temporal_features,
+                need_weights=True
+            )
+            refined_temporal = refined_temporal.squeeze(1)  # [batch, d_model]
+            
+            # Optional: Store attention weights for diagnostics
+            if getattr(self, 'collect_diagnostics', False):
+                self._last_fusion_attention = attn_weights.detach()
+                # Store scale info for interpretation
+                scale_lengths = [p.size(1) for p in wave_projections + target_projections]
+                self._last_fusion_scale_lengths = scale_lengths
+            
+            # Final hierarchical fusion
+            fusion_input = torch.cat([
+                base_context,
+                node_mean,
+                node_std,
+                refined_temporal
+            ], dim=-1)
+            
+            context_vector = self.hierarchical_fusion_proj(fusion_input)
+        else:
+            # Fallback to original flat fusion
+            fusion_input = torch.cat([base_context, node_mean, node_std, wave_summary, target_summary], dim=-1)
 
-        # CRITICAL FIX: Use pre-allocated fusion layer with padding/truncation
-        fusion_dim = fusion_input.size(-1)
-        max_fusion_dim = self.context_fusion_layer.in_features
+            # CRITICAL FIX: Use pre-allocated fusion layer with padding/truncation
+            fusion_dim = fusion_input.size(-1)
+            max_fusion_dim = self.context_fusion_layer.in_features
+            
+            if fusion_dim > max_fusion_dim:
+                # Truncate if input is too large
+                fusion_input = fusion_input[:, :max_fusion_dim]
+            elif fusion_dim < max_fusion_dim:
+                # Pad if input is too small
+                padding = torch.zeros(batch_size, max_fusion_dim - fusion_dim, 
+                                    device=fusion_input.device, dtype=fusion_input.dtype)
+                fusion_input = torch.cat([fusion_input, padding], dim=-1)
+
+            context_vector = self.context_fusion_layer(fusion_input)
         
-        if fusion_dim > max_fusion_dim:
-            # Truncate if input is too large
-            fusion_input = fusion_input[:, :max_fusion_dim]
-        elif fusion_dim < max_fusion_dim:
-            # Pad if input is too small
-            padding = torch.zeros(batch_size, max_fusion_dim - fusion_dim, 
-                                device=fusion_input.device, dtype=fusion_input.dtype)
-            fusion_input = torch.cat([fusion_input, padding], dim=-1)
-
-        context_vector = self.context_fusion_layer(fusion_input)
         return context_vector
 
     def _aggregate_patch_collection(
@@ -608,28 +668,63 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         batch_size: int,
         device: torch.device,
         dtype: torch.dtype,
-    ) -> torch.Tensor:
-        """Aggregate multi-scale patch outputs into a fixed-size context vector."""
+    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        """Aggregate multi-scale patch outputs into a fixed-size context vector.
+        
+        Returns:
+            Tuple of:
+                - aggregated: [batch_size, d_model] - mean pooled result for backward compatibility
+                - projections: List of [batch_size, d_model] - individual scale projections for cross-attention
+        """
 
         if not patch_outputs:
-            return torch.zeros(batch_size, self.d_model, device=device, dtype=dtype)
+            zero_tensor = torch.zeros(batch_size, self.d_model, device=device, dtype=dtype)
+            # Return aggregated [batch, d_model] and list with single [batch, 1, d_model]
+            zero_temporal = zero_tensor.unsqueeze(1)  # [batch, 1, d_model]
+            return zero_tensor, [zero_temporal]
 
         projections: List[torch.Tensor] = []
         for idx, patch_output in enumerate(patch_outputs):
             if patch_output is None:
                 continue
+            
+            # Preserve temporal structure for hierarchical fusion
+            # patch_output shape: [batch, seq_len, features] or [batch, features]
             summary = patch_output
-            while summary.dim() > 2:
-                summary = summary.mean(dim=1)
-            summary = summary.reshape(batch_size, -1)
-            projector_key = f"{key_prefix}_{idx}_{summary.size(-1)}"
-            projections.append(self._project_context_summary(summary, projector_key, device))
+            
+            # Only flatten spatial dimensions if present, keep temporal
+            if summary.dim() > 3:
+                # [batch, seq, spatial1, spatial2, ...] -> [batch, seq, spatial_flat]
+                batch_dim = summary.size(0)
+                seq_dim = summary.size(1)
+                summary = summary.reshape(batch_dim, seq_dim, -1)
+            elif summary.dim() == 2:
+                # [batch, features] -> [batch, 1, features] for consistency
+                summary = summary.unsqueeze(1)
+            
+            # summary is now [batch, seq_len, features]
+            # Project each timestep to d_model
+            batch_dim, seq_len, feat_dim = summary.shape
+            summary_flat = summary.reshape(batch_dim * seq_len, feat_dim)
+            projector_key = f"{key_prefix}_{idx}_{feat_dim}"
+            projected_flat = self._project_context_summary(summary_flat, projector_key, device)
+            # Reshape back to [batch, seq_len, d_model]
+            projected = projected_flat.reshape(batch_dim, seq_len, self.d_model)
+            projections.append(projected)
 
         if not projections:
-            return torch.zeros(batch_size, self.d_model, device=device, dtype=dtype)
+            zero_tensor = torch.zeros(batch_size, self.d_model, device=device, dtype=dtype)
+            zero_temporal = zero_tensor.unsqueeze(1)  # [batch, 1, d_model]
+            return zero_tensor, [zero_temporal]
+            return aggregated, [zero_tensor]
 
-        stacked = torch.stack(projections, dim=0).mean(dim=0)
-        return stacked
+        # Mean pooling across both scales and time for backward compatibility (fallback path)
+        # Each projection is [batch, seq_len, d_model]
+        # Flatten all to [batch, total_tokens, d_model] then mean pool
+        all_tokens = torch.cat(projections, dim=1)  # [batch, sum(seq_lens), d_model]
+        aggregated = all_tokens.mean(dim=1)  # [batch, d_model]
+        
+        return aggregated, projections
 
     def _project_context_summary(
         self,
