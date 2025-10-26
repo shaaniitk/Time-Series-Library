@@ -1,0 +1,92 @@
+# Minimal Diagnostic Config for Celestial Gate Analysis
+# Fast, small-scale run to capture gate statistics and verify gradient flow
+
+# Model Architecture (minimal but functional)
+model: Celestial_Enhanced_PGAT
+d_model: 256  # Reduced from 416
+n_heads: 4    # Reduced from 8
+e_layers: 2   # Reduced from 6
+d_layers: 1   # Reduced from 3
+d_ff: 512     # Reduced from 1024
+dropout: 0.1
+activation: gelu
+
+# Time series configuration
+seq_len: 96      # Reduced from 336
+label_len: 48    # Reduced from 168
+pred_len: 24     # Reduced from 96
+enc_in: 118      # Full feature set (OHLC + time_delta + celestial)
+dec_in: 118
+c_out: 4         # OHLC targets
+embed: timeF     # Time features encoding
+
+# Celestial-specific settings
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+celestial_dim: 32
+num_celestial_bodies: 13
+num_input_waves: 113  # Auto-detected by phase processor
+
+# Wave aggregation and target configuration
+target_wave_indices: [0, 1, 2, 3]  # OHLC indices
+wave_to_celestial_mapping: false
+celestial_node_features: 13
+
+# Training configuration (minimal for fast diagnostics)
+train_epochs: 2          # Just 2 epochs to capture initial behavior
+batch_size: 8            # Small batch for fast iteration
+learning_rate: 0.001     # Standard LR
+weight_decay: 0.0001     # Standard decay
+min_lr: 0.00001
+
+# Gradient accumulation (disabled for diagnostics)
+gradient_accumulation_steps: 1
+
+# Learning rate schedule
+lradj: warmup_cosine
+warmup_epochs: 1         # Minimal warmup to see gate behavior quickly
+
+# Gradient clipping
+clip_grad_norm: 1.0
+
+# Mixed precision (disabled for cleaner diagnostics)
+mixed_precision: false
+
+# Data configuration
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+target: log_Open,log_High,log_Low,log_Close  # Multi-target OHLC
+freq: h
+features: MS  # Multivariate prediction
+
+# Data loader optimization
+num_workers: 0           # Single-threaded for reproducibility
+pin_memory: false
+persistent_workers: false
+prefetch_factor: 2
+
+# Checkpointing
+patience: 50             # High patience (no early stopping)
+save_best_only: true
+checkpoint_interval: 1
+
+# Reproducibility
+production_seed: 42
+use_gpu: true
+
+# DIAGNOSTIC FLAGS - Enable verbose logging
+enable_memory_diagnostics: false  # Disable memory logs for clarity
+log_level: DEBUG                  # Enable debug logging
+verbose_logging: true             # Enable model debug logs
+collect_diagnostics: true         # Enable gate diagnostics in model
+
+# Adversarial checks (disabled for speed)
+enable_adversarial_checks: false
+
+# MDN decoder (disabled for minimal config)
+enable_mdn_decoder: false
+
+# Logging
+log_interval: 1          # Log every batch for diagnostics
+log_file: ./logs/celestial_diagnostic.log

@@ -37,6 +37,7 @@ from layers.modular.embedding.calendar_aware_embedding import (
     EnhancedTemporalEmbedding,
     CalendarEffectsEncoder
 )
+from utils.fusion_diagnostics import FusionDiagnostics
 
 
 class Model(nn.Module):
@@ -119,6 +120,13 @@ class Model(nn.Module):
         # 📅 NEW: Calendar effects modeling
         self.use_calendar_effects = getattr(configs, 'use_calendar_effects', True)
         self.calendar_embedding_dim = getattr(configs, 'calendar_embedding_dim', self.d_model // 4)
+        
+        # 🔍 Fusion diagnostics
+        self.enable_fusion_diagnostics = getattr(configs, 'enable_fusion_diagnostics', True)
+        self.fusion_diagnostics = FusionDiagnostics(
+            enabled=self.enable_fusion_diagnostics,
+            log_first_n_batches=getattr(configs, 'fusion_diag_batches', 10)
+        )
         
         # --- FIXED: Dimension Consistency Management ---
         # Calculate celestial_dim to be compatible with n_heads for MultiheadAttention
@@ -326,6 +334,11 @@ class Model(nn.Module):
                 nn.Linear(self.d_model, self.d_model),
                 nn.Sigmoid()
             )
+            
+            # FIX: LayerNorms to balance celestial and encoder outputs before fusion
+            # This prevents magnitude imbalance where enc_out >> fused_output
+            self.celestial_norm = nn.LayerNorm(self.d_model)
+            self.encoder_norm = nn.LayerNorm(self.d_model)
         
         # Hierarchical Mapping - adjust for celestial aggregation
         if self.use_hierarchical_mapping:
@@ -811,7 +824,18 @@ class Model(nn.Module):
                 # Fuse calendar effects with encoder output
                 import torch as torch_module  # Explicit import to avoid scoping issues
                 combined_features = torch_module.cat([enc_out, calendar_embeddings], dim=-1)
+                enc_out_before_cal = enc_out
                 enc_out = self.calendar_fusion(combined_features)  # [batch, seq_len, d_model]
+                
+                # Diagnostic: Monitor calendar fusion
+                if self.enable_fusion_diagnostics:
+                    self.fusion_diagnostics.log_fusion_point(
+                        name="encoder_calendar_fusion",
+                        tensor_a=enc_out_before_cal,
+                        tensor_b=calendar_embeddings,
+                        fusion_result=enc_out
+                    )
+                
                 self._log_debug("MODEL_DEBUG: Calendar effects applied - enc_out=%s", enc_out.shape)
             
             self._debug_memory("ENC_EMBEDDING_COMPLETE")
@@ -839,7 +863,18 @@ class Model(nn.Module):
             # Fuse calendar effects with decoder output
             import torch as torch_module  # Explicit import to avoid scoping issues
             dec_combined_features = torch_module.cat([dec_out, dec_calendar_embeddings], dim=-1)
+            dec_out_before_cal = dec_out
             dec_out = self.calendar_fusion(dec_combined_features)  # [batch, label_len+pred_len, d_model]
+            
+            # Diagnostic: Monitor decoder calendar fusion
+            if self.enable_fusion_diagnostics:
+                self.fusion_diagnostics.log_fusion_point(
+                    name="decoder_calendar_fusion",
+                    tensor_a=dec_out_before_cal,
+                    tensor_b=dec_calendar_embeddings,
+                    fusion_result=dec_out
+                )
+            
             self._log_debug("MODEL_DEBUG: Decoder calendar effects applied - dec_out=%s", dec_out.shape)
         
         self._debug_memory("DEC_EMBEDDING_COMPLETE")
@@ -1427,6 +1462,18 @@ class Model(nn.Module):
                 return predictions
         return forward_output  # Output is already a point prediction
     
+    def print_fusion_diagnostics_summary(self):
+        """Print summary of fusion diagnostics."""
+        if self.enable_fusion_diagnostics:
+            self.fusion_diagnostics.print_summary()
+        else:
+            self.logger.info("Fusion diagnostics not enabled")
+    
+    def increment_fusion_diagnostics_batch(self):
+        """Increment the batch counter for fusion diagnostics."""
+        if self.enable_fusion_diagnostics:
+            self.fusion_diagnostics.increment_batch()
+    
     def _process_celestial_graph(self, x_enc: torch.Tensor, enc_out: torch.Tensor) -> Dict[str, Any]:
         """Process encoder features through the dynamic celestial body graph system."""
         astronomical_adj, dynamic_adj, celestial_features, metadata = self.celestial_nodes(enc_out)
@@ -1447,10 +1494,57 @@ class Model(nn.Module):
         fused_output, attention_weights = self.celestial_fusion_attention(query, key, value)
         fused_output = fused_output.reshape(batch_size, seq_len, self.celestial_fusion_dim)
         fused_output = self.celestial_output_projection(fused_output)
-        gate_input = torch.cat([enc_out, fused_output], dim=-1)
-        fusion_gate = self.celestial_fusion_gate(gate_input)
+        
+        # FIX: Normalize both branches to balance magnitudes before gate fusion
+        # Without this, enc_out (norm ~11) dominates fused_output (norm ~0.24)
+        fused_output = self.celestial_norm(fused_output)
+        enc_out_normalized = self.encoder_norm(enc_out)
+        
+        gate_input = torch.cat([enc_out_normalized, fused_output], dim=-1)
+        # Compute pre-sigmoid logits explicitly for diagnostics: Sequential = [Linear, GELU, Linear, Sigmoid]
+        gate_lin1 = self.celestial_fusion_gate[0]
+        gate_act = self.celestial_fusion_gate[1]
+        gate_lin2 = self.celestial_fusion_gate[2]
+        gate_logits = gate_lin2(gate_act(gate_lin1(gate_input)))
+        fusion_gate = torch.sigmoid(gate_logits)
+        # Optional diagnostics to detect early gate saturation and weak celestial signal
+        if self.collect_diagnostics or self.verbose_logging:
+            try:
+                import torch as _torch
+                logits_mean = float(gate_logits.mean().detach().item())
+                logits_std = float(gate_logits.std(unbiased=False).detach().item())
+                logits_min = float(gate_logits.min().detach().item())
+                logits_max = float(gate_logits.max().detach().item())
+                gate_mean = float(fusion_gate.mean().detach().item())
+                gate_std = float(fusion_gate.std(unbiased=False).detach().item())
+                frac_near_zero = float((_torch.lt(fusion_gate, 0.05).float().mean()).detach().item())
+                frac_near_one = float((_torch.gt(fusion_gate, 0.95).float().mean()).detach().item())
+                fused_norm = float(_torch.linalg.vector_norm(fused_output, dim=-1).mean().detach().item())
+                enc_norm = float(_torch.linalg.vector_norm(enc_out, dim=-1).mean().detach().item())
+                self._log_debug(
+                    "MODEL_DEBUG: Celestial gate stats | logits(mean=%.4f std=%.4f min=%.4f max=%.4f) gate(mean=%.4f std=%.4f frac<0.05=%.4f frac>0.95=%.4f) norms(fused=%.4f enc=%.4f)",
+                    logits_mean, logits_std, logits_min, logits_max,
+                    gate_mean, gate_std, frac_near_zero, frac_near_one,
+                    fused_norm, enc_norm,
+                )
+            except Exception as _exc:
+                # Never break forward on diagnostics
+                self._log_debug("MODEL_DEBUG: Celestial gate diagnostics failed: %s", str(_exc))
+        
+        # FIX: Use normalized enc_out for fusion to maintain balanced gradients
         celestial_influence = fusion_gate * fused_output
-        enhanced_enc_out = enc_out + celestial_influence
+        enhanced_enc_out = enc_out_normalized + celestial_influence
+        
+        # Diagnostic: Monitor celestial fusion (CRITICAL fusion point)
+        if self.enable_fusion_diagnostics:
+            self.fusion_diagnostics.log_fusion_point(
+                name="celestial_gate_fusion",
+                tensor_a=enc_out_normalized,
+                tensor_b=fused_output,
+                fusion_result=enhanced_enc_out,
+                gate=fusion_gate
+            )
+        
         if self.collect_diagnostics:
             metadata['celestial_attention_weights'] = (
                 attention_weights.reshape(batch_size, seq_len, num_bodies).detach().cpu()
