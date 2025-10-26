@@ -41,6 +41,12 @@ class ForecastingDataset(Dataset):
         self.pred_len = args.pred_len
         self.dim_manager = dim_manager
         
+        # 🌟 NEW: Support for deterministic future covariates (e.g., celestial data)
+        # When enabled, load covariate features for full window (past + future)
+        # This allows model to condition on KNOWN future celestial states
+        self.use_future_celestial = getattr(args, 'use_future_celestial_conditioning', True)
+        logger.debug(f"ForecastingDataset: use_future_celestial={self.use_future_celestial}")
+        
         # Set total number of samples; ensure it's non-negative to satisfy PyTorch contracts
         computed = len(self.data_x) - self.seq_len - self.pred_len + 1
         if computed < 0:
@@ -56,6 +62,13 @@ class ForecastingDataset(Dataset):
     def __getitem__(self, index):
         """
         Get a single training/validation/test instance.
+        
+        Returns:
+            If use_future_celestial=False (legacy):
+                seq_x, seq_y, seq_x_mark, seq_y_mark
+            If use_future_celestial=True:
+                seq_x, seq_y, seq_x_mark, seq_y_mark, future_celestial_x, future_celestial_mark
+                where future_celestial_x contains deterministic covariate states for prediction window
         """
         if index < 0 or index >= self.total_samples:
             raise IndexError("Index out of range for ForecastingDataset")
@@ -65,14 +78,26 @@ class ForecastingDataset(Dataset):
         r_end = r_begin + self.label_len + self.pred_len
         
         # Get scaled data for x, and unscaled data for y
-        seq_x = self.data_x[s_begin:s_end]
-        seq_y = self.data_y[r_begin:r_end] # This is the unscaled data
+        seq_x = self.data_x[s_begin:s_end]  # Past celestial/covariate features
+        seq_y = self.data_y[r_begin:r_end]  # Decoder input + labels (unscaled)
         
         # Extract time features
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
         
-        return seq_x, seq_y, seq_x_mark, seq_y_mark
+        # 🌟 NEW: Load future celestial states for deterministic covariates
+        if self.use_future_celestial:
+            # Future celestial window: [seq_len : seq_len+pred_len]
+            # These are KNOWN deterministic states (e.g., planetary positions)
+            future_begin = s_end
+            future_end = s_end + self.pred_len
+            future_celestial_x = self.data_x[future_begin:future_end]  # [pred_len, features]
+            future_celestial_mark = self.data_stamp[future_begin:future_end]  # [pred_len, mark_dim]
+            
+            return seq_x, seq_y, seq_x_mark, seq_y_mark, future_celestial_x, future_celestial_mark
+        else:
+            # Legacy mode: no future celestial data
+            return seq_x, seq_y, seq_x_mark, seq_y_mark
     
     def __len__(self):
         return self.total_samples

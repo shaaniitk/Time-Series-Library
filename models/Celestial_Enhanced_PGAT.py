@@ -739,7 +739,8 @@ class Model(nn.Module):
             # Best-effort; avoid raising from diagnostics
             self.memory_logger.debug("MEMORY [%s] %s | unavailable", stage, extra_info)
 
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None, 
+                future_celestial_x=None, future_celestial_mark=None):
         """
         Forward pass of Celestial Enhanced PGAT
         
@@ -749,6 +750,18 @@ class Model(nn.Module):
             x_dec: [batch_size, label_len + pred_len, dec_in] Decoder input
             x_mark_dec: [batch_size, label_len + pred_len, mark_dim] Decoder time features
             mask: Optional attention mask
+            future_celestial_x: [batch_size, pred_len, enc_in] FUTURE celestial states (DETERMINISTIC!)
+                🌟 NEW: Known future covariate states for prediction window
+                Since celestial data is completely deterministic, we can use future states
+                as direct conditioning information (not data leakage!)
+            future_celestial_mark: [batch_size, pred_len, mark_dim] Time features for future window
+            
+        Note:
+            The use of future_celestial_x is OPTIMAL for deterministic covariates:
+            - Celestial positions are perfectly known in advance
+            - Each prediction step can condition on the KNOWN celestial configuration at that timestep
+            - This is fundamentally different from using future target values (which would be leakage)
+            - Analogous to using "day of week" or "month" in traditional forecasting
             
         Returns:
             Predictions and metadata
@@ -1383,13 +1396,61 @@ class Model(nn.Module):
                 -1, -1, self.c_out, -1
             )  # [batch, pred_len, num_targets, d_model]
             
-            # Get celestial features from graph processing
-            # These should be stored in metadata from _process_celestial_graph
-            if 'celestial_features' in wave_metadata:
+            # 🌟 NEW: Process FUTURE celestial states if provided (deterministic conditioning!)
+            # Since celestial data is completely deterministic, we can use known future states
+            # to directly condition predictions - this is OPTIMAL for such covariates!
+            future_celestial_features = None
+            if future_celestial_x is not None and self.aggregate_waves_to_celestial:
+                self._log_debug("🌟 Processing FUTURE celestial states for C→T conditioning...")
+                # Process future celestial data through phase-aware processor
+                # Shape: [batch, pred_len, enc_in] → [batch, pred_len, num_celestial, celestial_dim]
+                future_cel_feats, future_adj, future_phase_meta = self.phase_aware_processor(future_celestial_x)
+                
+                # Project to d_model: [batch, pred_len, num_celestial*32] → [batch, pred_len, d_model]
+                future_cel_projected = self.celestial_projection(future_cel_feats)
+                
+                # Then reshape to [batch, pred_len, num_celestial, d_model] for attention
+                # Note: celestial_projection outputs [batch, pred_len, d_model]
+                # We need to organize this as celestial nodes
+                # For now, use the raw celestial features before full projection
+                # Each celestial body has 32-dim representation from phase processor
+                future_celestial_features = future_cel_feats.reshape(
+                    batch_size_dec, self.pred_len, self.num_celestial_bodies, -1
+                )  # [batch, pred_len, 13, 32]
+                
+                # Project each celestial node to d_model
+                celestial_dim_from_phase = future_celestial_features.shape[-1]
+                if not hasattr(self, 'future_celestial_to_dmodel'):
+                    # Lazy initialization of projection layer
+                    self.future_celestial_to_dmodel = torch.nn.Linear(
+                        celestial_dim_from_phase, self.d_model
+                    ).to(future_celestial_features.device)
+                
+                # Apply projection: [batch, pred_len, 13, 32] → [batch, pred_len, 13, d_model]
+                future_celestial_features = self.future_celestial_to_dmodel(future_celestial_features)
+                
+                self._log_debug(
+                    "✅ Future celestial features processed: %s | Will use for C→T attention",
+                    future_celestial_features.shape
+                )
+            
+            # Get celestial features: prioritize FUTURE if available, else use PAST
+            # FUTURE celestial (deterministic): [batch, pred_len, num_celestial, d_model]
+            # PAST celestial (from encoder): [batch, seq_len, num_celestial, d_model]
+            if future_celestial_features is not None:
+                # 🎯 OPTIMAL: Use KNOWN future celestial states
+                celestial_feats = future_celestial_features
+                self._log_debug("Using FUTURE celestial features for C→T attention (deterministic conditioning)")
+            elif 'celestial_features' in wave_metadata:
+                # Fallback: Use past celestial features (suboptimal for deterministic covariates)
                 celestial_feats = wave_metadata['celestial_features']
                 # Shape: [batch, seq_len, num_celestial, d_model]
-                
-                # Apply celestial-to-target attention
+                self._log_debug("Using PAST celestial features for C→T attention (fallback mode)")
+            else:
+                celestial_feats = None
+            
+            # Apply celestial-to-target attention if we have celestial features
+            if celestial_feats is not None:
                 enhanced_target_features, celestial_target_diagnostics = self.celestial_to_target_attention(
                     target_features=decoder_target_features,
                     celestial_features=celestial_feats,

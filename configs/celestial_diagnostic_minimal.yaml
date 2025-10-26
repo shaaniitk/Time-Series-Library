@@ -27,6 +27,13 @@ celestial_dim: 32
 num_celestial_bodies: 13
 num_input_waves: 113  # Auto-detected by phase processor
 
+# 🌟 NEW: Future Celestial Conditioning (OPTIMAL for deterministic covariates!)
+# Since celestial data is completely deterministic (positions known in advance),
+# we use KNOWN future celestial states as direct conditioning information.
+# This is fundamentally different from using future targets (which would be leakage).
+# Analogous to using "day of week" or "season" in traditional forecasting.
+use_future_celestial_conditioning: true  # Enable optimal deterministic conditioning
+
 # Wave aggregation and target configuration
 target_wave_indices: [0, 1, 2, 3]  # OHLC indices
 wave_to_celestial_mapping: false

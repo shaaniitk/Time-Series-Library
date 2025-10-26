@@ -756,8 +756,21 @@ def train_epoch(
         )
 
     log_interval = max(1, int(getattr(args, "log_interval", 10)))
-    for batch_index, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
+    for batch_index, batch_data in enumerate(train_loader):
         try:
+            # 🌟 NEW: Support both legacy 4-tuple and new 6-tuple (with future celestial)
+            if len(batch_data) == 6:
+                # New format: includes future celestial data for deterministic conditioning
+                batch_x, batch_y, batch_x_mark, batch_y_mark, future_cel_x, future_cel_mark = batch_data
+                future_cel_x = future_cel_x.float().to(device)
+                future_cel_mark = future_cel_mark.float().to(device)
+            elif len(batch_data) == 4:
+                # Legacy format: no future celestial data
+                batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
+                future_cel_x, future_cel_mark = None, None
+            else:
+                raise ValueError(f"Unexpected batch format: {len(batch_data)} elements")
+            
             batch_x = batch_x.float()
             batch_y = batch_y.float()
             batch_x_mark = batch_x_mark.float()
@@ -778,9 +791,21 @@ def train_epoch(
                     )
                 amp_dtype = _resolve_amp_dtype(args)
                 with torch_autocast(device_type="cuda", dtype=amp_dtype):
-                    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    # 🌟 Pass future celestial data if available
+                    if future_cel_x is not None:
+                        outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark, 
+                                          future_celestial_x=future_cel_x, 
+                                          future_celestial_mark=future_cel_mark)
+                    else:
+                        outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             else:
-                outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                # 🌟 Pass future celestial data if available
+                if future_cel_x is not None:
+                    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark,
+                                      future_celestial_x=future_cel_x,
+                                      future_celestial_mark=future_cel_mark)
+                else:
+                    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
             outputs_tensor, aux_loss, mdn_outputs, _ = _normalize_model_output(outputs_raw)
             c_out_evaluation = len(target_indices)
