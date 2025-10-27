@@ -1,0 +1,104 @@
+
+# Copied and adapted from celestial_enhanced_pgat_production.yaml for correct data/model settings
+loss:
+  type: "hybrid_mdn_directional"
+  nll_weight: 0.3
+  direction_weight: 3.0
+  trend_weight: 1.5
+  magnitude_weight: 0.1
+  correlation_type: "pearson"
+
+model: Celestial_Enhanced_PGAT
+model_id: directional_celestial_test_minimal
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: true
+
+# Sequence settings (shortened for test run)
+seq_len: 32
+label_len: 16
+pred_len: 4
+
+# Data split settings
+validation_length: 8
+test_length: 8
+
+# Optimization (short run)
+learning_rate: 0.001
+train_epochs: 2
+batch_size: 2
+patience: 5
+lradj: warmup_cosine
+warmup_epochs: 1
+min_lr: 1e-6
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# Model hyperparameters (smaller for test)
+d_model: 64
+n_heads: 2
+e_layers: 2
+d_layers: 1
+d_ff: 128
+dropout: 0.1
+
+# Input/Output dimensions
+enc_in: 118
+dec_in: 118
+c_out: 4
+
+# Celestial system (minimal for test)
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+celestial_fusion_layers: 1
+use_petri_net_combiner: true
+num_message_passing_steps: 1
+edge_feature_dim: 6
+use_temporal_attention: true
+use_spatial_attention: true
+bypass_spatiotemporal_with_petri: true
+num_input_waves: 113
+target_wave_indices: [0, 1, 2, 3]
+
+# Advanced features (minimal for test)
+use_mixture_decoder: false
+use_stochastic_learner: false
+use_hierarchical_mapping: false
+use_hierarchical_fusion: true
+use_efficient_covariate_interaction: true
+mdn_multivariate_mode: independent
+
+use_target_autocorrelation: true
+target_autocorr_layers: 1
+use_celestial_target_attention: true
+celestial_target_use_gated_fusion: true
+celestial_target_diagnostics: false
+use_c2t_edge_bias: true
+c2t_edge_bias_weight: 0.2
+c2t_aux_rel_loss_weight: 0.0
+use_calendar_effects: true
+calendar_embedding_dim: 16
+reg_loss_weight: 0.0005
+kl_weight: 0.00005
+save_checkpoints: false
+checkpoint_interval: 1
+log_interval: 2
+gradient_accumulation_steps: 1
+mixed_precision: false
+save_best_only: false
+enable_mdn_decoder: false
+mdn_components: 3
+mdn_sigma_min: 0.001
+mdn_use_softplus: true
+calibration_metrics:
+  coverage_levels: [0.5, 0.9]
+  compute_crps: false
+  crps_samples: 10
+enable_memory_diagnostics: false
+memory_log_interval: 10
+collect_diagnostics: false
