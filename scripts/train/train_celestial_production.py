@@ -240,12 +240,25 @@ class TrainingArtifacts:
     best_val_loss: float
     best_epoch: Optional[int]
     best_checkpoint_path: Path
+    directional_accuracies: List[Optional[float]] = None  # type: ignore[assignment]
+    best_directional_accuracy: Optional[float] = None
 
-    def record_epoch(self, epoch: int, train_loss: float, val_loss: float) -> bool:
+    def __post_init__(self):
+        """Initialize directional_accuracies list if not provided."""
+        if self.directional_accuracies is None:
+            self.directional_accuracies = []
+
+    def record_epoch(self, epoch: int, train_loss: float, val_loss: float, dir_accuracy: Optional[float] = None) -> bool:
         """Store epoch metrics and return True when validation loss improves."""
 
         self.train_losses.append(train_loss)
         self.val_losses.append(val_loss)
+        self.directional_accuracies.append(dir_accuracy)
+        
+        if dir_accuracy is not None:
+            if self.best_directional_accuracy is None or dir_accuracy > self.best_directional_accuracy:
+                self.best_directional_accuracy = dir_accuracy
+        
         if val_loss < self.best_val_loss:
             self.best_val_loss = val_loss
             self.best_epoch = epoch
@@ -689,6 +702,10 @@ def persist_training_results(
             float(artifacts.best_val_loss) if math.isfinite(artifacts.best_val_loss) else None
         ),
         "best_epoch": best_epoch_serializable,
+        "directional_accuracies": artifacts.directional_accuracies if artifacts.directional_accuracies else [],
+        "best_directional_accuracy": (
+            float(artifacts.best_directional_accuracy) if artifacts.best_directional_accuracy is not None else None
+        ),
         "config_dict": config_dict,
         "timestamp": datetime.now().isoformat(),
     }
@@ -1047,12 +1064,27 @@ def validate_epoch(
     target_indices: Sequence[int],
     sequential_mixture_loss_cls: Optional[Type[nn.Module]],
     mixture_loss_cls: Optional[Type[nn.Module]],
-) -> Tuple[float, int]:
-    """Run validation phase for a single epoch and return aggregate loss."""
+) -> Tuple[float, int, Optional[float]]:
+    """Run validation phase for a single epoch and return aggregate loss and directional accuracy."""
 
     model.eval()
     val_loss = 0.0
     val_batches = 0
+    
+    # Track directional accuracy if using directional loss
+    compute_dir_accuracy = False
+    total_dir_accuracy = 0.0
+    dir_accuracy_samples = 0
+    
+    try:
+        from layers.modular.losses.directional_trend_loss import (
+            compute_directional_accuracy,
+            DirectionalTrendLoss,
+            HybridMDNDirectionalLoss
+        )
+        compute_dir_accuracy = isinstance(criterion, (DirectionalTrendLoss, HybridMDNDirectionalLoss))
+    except ImportError:
+        pass
 
     memory_logging_enabled = getattr(args, "enable_memory_diagnostics", False)
     memory_log_interval = max(1, int(getattr(args, "memory_log_interval", 25)))
@@ -1129,6 +1161,35 @@ def validate_epoch(
 
                 val_loss += float(loss.item())
                 val_batches += 1
+                
+                # 🎯 DIRECTIONAL ACCURACY: Compute if using directional loss
+                if compute_dir_accuracy:
+                    try:
+                        # Extract predictions for directional accuracy
+                        if mdn_outputs is not None:
+                            # Use MDN mean for directional calculation
+                            means_da, log_stds_da, log_weights_da = mdn_outputs
+                            if means_da.size(1) > args.pred_len:
+                                means_da = means_da[:, -args.pred_len:, ...]
+                                log_stds_da = log_stds_da[:, -args.pred_len:, ...]
+                                log_weights_da = log_weights_da[:, -args.pred_len:, ...]
+                            
+                            # Compute mixture mean
+                            weights_da = torch.softmax(log_weights_da, dim=-1)
+                            if means_da.dim() == 4:
+                                weights_expanded = weights_da.unsqueeze(2)
+                                pred_for_da = torch.sum(weights_expanded * means_da, dim=-1)
+                            else:
+                                pred_for_da = torch.sum(weights_da * means_da, dim=-1)
+                        else:
+                            pred_for_da = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
+                        
+                        # Compute directional accuracy
+                        dir_acc = compute_directional_accuracy(pred_for_da, y_true_for_loss)
+                        total_dir_accuracy += dir_acc
+                        dir_accuracy_samples += 1
+                    except Exception as e:
+                        logger.debug(f"Could not compute directional accuracy: {e}")
 
                 # 🔍 DIAGNOSTIC: Log validation metrics
                 if batch_index < 5 or batch_index % 50 == 0:
@@ -1193,6 +1254,7 @@ def validate_epoch(
                 continue
 
     avg_val_loss = val_loss / max(val_batches, 1)
+    avg_dir_accuracy = (total_dir_accuracy / max(dir_accuracy_samples, 1)) if compute_dir_accuracy else None
     
     # 🔍 DIAGNOSTIC: Log validation summary
     with open('training_diagnostic.log', 'a') as f:
@@ -1202,16 +1264,21 @@ def validate_epoch(
         f.write(f"total_val_loss: {val_loss:.8f}\n")
         f.write(f"val_batches: {val_batches}\n")
         f.write(f"avg_val_loss: {avg_val_loss:.8f}\n")
+        if avg_dir_accuracy is not None:
+            f.write(f"directional_accuracy: {avg_dir_accuracy:.2f}%\n")
         f.write(f"\n")
     
     if memory_logging_enabled:
+        metrics = {"avg_val_loss": avg_val_loss, "val_batches": val_batches}
+        if avg_dir_accuracy is not None:
+            metrics["directional_accuracy"] = avg_dir_accuracy
         _log_memory_snapshot(
             f"validate_epoch_{epoch + 1}_end",
             device,
             MEMORY_LOGGER if MEMORY_LOGGER.handlers else None,
-            {"avg_val_loss": avg_val_loss, "val_batches": val_batches},
+            metrics,
         )
-    return avg_val_loss, val_batches
+    return avg_val_loss, val_batches, avg_dir_accuracy
 
 
 def collect_predictions(
@@ -2152,11 +2219,59 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
         SequentialMixtureNLLLoss = None
         MixtureNLLLoss = None
     
-    # Use proper loss function
-    if getattr(model, 'use_mixture_decoder', False) and SequentialMixtureNLLLoss is not None:
+    try:
+        from layers.modular.losses.directional_trend_loss import (
+            DirectionalTrendLoss,
+            HybridMDNDirectionalLoss
+        )
+    except ImportError:
+        DirectionalTrendLoss = None
+        HybridMDNDirectionalLoss = None
+        logger.warning("DirectionalTrendLoss not available - install from layers.modular.losses")
+    
+    # Use proper loss function based on config
+    loss_config = getattr(args, 'loss', {})
+    loss_type = loss_config.get('type', 'auto') if isinstance(loss_config, dict) else 'auto'
+    
+    if loss_type == 'hybrid_mdn_directional' and HybridMDNDirectionalLoss is not None:
+        # Hybrid MDN + Directional loss for directional/trend-focused forecasting
+        nll_weight = loss_config.get('nll_weight', 0.3)
+        direction_weight = loss_config.get('direction_weight', 3.0)
+        trend_weight = loss_config.get('trend_weight', 1.5)
+        magnitude_weight = loss_config.get('magnitude_weight', 0.1)
+        
+        criterion = HybridMDNDirectionalLoss(
+            nll_weight=nll_weight,
+            direction_weight=direction_weight,
+            trend_weight=trend_weight,
+            magnitude_weight=magnitude_weight
+        )
+        logger.info(
+            "Using Hybrid MDN+Directional Loss | nll_weight=%.2f direction_weight=%.2f trend_weight=%.2f magnitude_weight=%.2f",
+            nll_weight, direction_weight, trend_weight, magnitude_weight
+        )
+    elif loss_type == 'directional_trend' and DirectionalTrendLoss is not None:
+        # Pure directional/trend loss (no MDN uncertainty)
+        direction_weight = loss_config.get('direction_weight', 5.0)
+        trend_weight = loss_config.get('trend_weight', 2.0)
+        magnitude_weight = loss_config.get('magnitude_weight', 0.1)
+        
+        criterion = DirectionalTrendLoss(
+            direction_weight=direction_weight,
+            trend_weight=trend_weight,
+            magnitude_weight=magnitude_weight,
+            use_mdn_mean=getattr(model, 'use_mixture_decoder', False)
+        )
+        logger.info(
+            "Using Directional Trend Loss | direction_weight=%.2f trend_weight=%.2f magnitude_weight=%.2f",
+            direction_weight, trend_weight, magnitude_weight
+        )
+    elif getattr(model, 'use_mixture_decoder', False) and SequentialMixtureNLLLoss is not None:
+        # Auto-select mixture loss for MDN models
         criterion = SequentialMixtureNLLLoss(reduction='mean')
         logger.info("Using Gaussian Mixture NLL Loss for probabilistic predictions")
     else:
+        # Fallback to MSE
         criterion = nn.MSELoss()
         logger.info("Using MSE Loss for deterministic predictions")
     
@@ -2278,7 +2393,7 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
             mixture_loss_cls=mixture_loss_cls,
         )
 
-        avg_val_loss, val_batches = validate_epoch(
+        avg_val_loss, val_batches, avg_dir_accuracy = validate_epoch(
             model=model,
             val_loader=vali_loader,
             criterion=criterion,
@@ -2298,13 +2413,15 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
         estimated_remaining = (total_elapsed / (epoch + 1) * remaining_epochs) if (epoch + 1) else 0.0
 
         warmup_status = f" [WARMUP {epoch+1}/{warmup_epochs}]" if epoch < warmup_epochs else ""
+        dir_acc_str = f" dir_acc={avg_dir_accuracy:.2f}%" if avg_dir_accuracy is not None else ""
         logger.info(
-            "Epoch %s/%s complete%s | train_loss=%0.6f val_loss=%0.6f lr=%0.8f epoch_time=%0.2fs elapsed=%0.2fh remaining=%0.2fh",
+            "Epoch %s/%s complete%s | train_loss=%0.6f val_loss=%0.6f%s lr=%0.8f epoch_time=%0.2fs elapsed=%0.2fh remaining=%0.2fh",
             epoch + 1,
             args.train_epochs,
             warmup_status,
             avg_train_loss,
             avg_val_loss,
+            dir_acc_str,
             current_lr,
             epoch_time,
             total_elapsed / 3600,
@@ -2316,7 +2433,7 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
         if val_batches == 0:
             logger.warning("Epoch %s processed zero validation batches; check data loader configuration.", epoch + 1)
 
-        is_best = artifacts.record_epoch(epoch, avg_train_loss, avg_val_loss)
+        is_best = artifacts.record_epoch(epoch, avg_train_loss, avg_val_loss, avg_dir_accuracy)
         train_celestial_pgat_production.best_val_loss = artifacts.best_val_loss  # type: ignore[attr-defined]
 
         checkpoint_interval = getattr(args, "checkpoint_interval", 5)

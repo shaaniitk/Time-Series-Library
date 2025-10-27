@@ -1,0 +1,111 @@
+# Example configuration for Celestial Enhanced PGAT with Directional Trend Loss
+# This config demonstrates how to use the directional/trend-focused loss function
+# optimized for financial forecasting where direction matters more than exact values
+
+# ============================
+# Loss Configuration
+# ============================
+loss:
+  # Loss type options:
+  # - "hybrid_mdn_directional": Combines MixtureNLLLoss (uncertainty) + DirectionalTrendLoss (direction/trend)
+  # - "directional_trend": Pure directional/trend loss (no MDN uncertainty)
+  # - "auto": Auto-select based on model configuration (default)
+  type: "hybrid_mdn_directional"
+  
+  # Hybrid loss weights (for type: hybrid_mdn_directional)
+  nll_weight: 0.3           # Weight for MixtureNLLLoss (uncertainty quantification)
+  direction_weight: 3.0     # Weight for directional accuracy (sign matching)
+  trend_weight: 1.5         # Weight for trend correlation (momentum alignment)
+  magnitude_weight: 0.1     # Weight for magnitude accuracy (prevents extreme predictions)
+  
+  # Per-target weights (optional, for OHLC data)
+  # Example: Close price more important than Open/High/Low
+  # per_target_weights: [0.5, 0.5, 0.5, 1.0]  # [Open, High, Low, Close]
+  
+  # Correlation type for trend alignment: "pearson" or "spearman"
+  correlation_type: "pearson"
+
+# ============================
+# Model Configuration
+# ============================
+model: "Celestial_Enhanced_PGAT"
+is_training: 1
+model_id: "directional_celestial_test"
+data: "custom"
+features: "MS"  # Multivariate time series
+target: "OT"    # Multiple targets
+freq: "h"       # Hourly data
+checkpoints: "./checkpoints/"
+enable_diagnostics: false  # Disable for production
+
+# ============================
+# Data Configuration
+# ============================
+root_path: "./dataset/financial/"
+data_path: "ohlc_with_celestial.csv"
+seq_len: 96
+label_len: 48
+pred_len: 96
+enc_in: 73  # 4 OHLC + 69 celestial features
+dec_in: 73
+c_out: 4    # Predict 4 targets (OHLC)
+
+# ============================
+# Architecture Configuration
+# ============================
+d_model: 512
+n_heads: 8
+e_layers: 3
+d_layers: 2
+d_ff: 2048
+factor: 5
+dropout: 0.1
+embed: "timeF"
+activation: "gelu"
+
+# Celestial-specific
+num_celestial_bodies: 11
+enable_pgat: true
+enable_pgat_covariate_influence: true
+enable_celestial_edge_fusion: true
+enable_mdn_decoder: true
+enable_hierarchical_fusion: true
+use_mixture_decoder: true
+
+# ============================
+# Training Configuration
+# ============================
+train_epochs: 20
+batch_size: 8
+patience: 10
+learning_rate: 0.0002
+weight_decay: 1e-5
+
+# Mixed precision
+use_amp: true
+amp_scale: "dynamic"
+amp_growth_interval: 2000
+
+# Learning rate schedule
+warmup_epochs: 3
+min_lr: 0.00001
+
+# Gradient accumulation
+gradient_accumulation_steps: 1
+
+# ============================
+# Device Configuration
+# ============================
+use_gpu: true
+gpu: 0
+use_multi_gpu: false
+devices: "0"
+
+# ============================
+# Miscellaneous
+# ============================
+num_workers: 4
+itr: 1
+des: "Directional loss test"
+loss: "mse"  # This will be overridden by loss.type above
+lradj: "cosine"
