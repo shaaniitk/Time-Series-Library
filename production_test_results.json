@@ -1,0 +1,60 @@
+{
+  "Baseline": {
+    "status": "success",
+    "parameters": 3214507,
+    "forward_time": 0.05935311317443848,
+    "loss": 1.7030261754989624,
+    "output_shape": [
+      2,
+      20,
+      4
+    ]
+  },
+  "+ Multi-Scale Patching": {
+    "status": "success",
+    "parameters": 5264171,
+    "forward_time": 0.029368877410888672,
+    "loss": 1.015885591506958,
+    "output_shape": [
+      2,
+      20,
+      4
+    ]
+  },
+  "+ Hierarchical Mapper": {
+    "status": "success",
+    "parameters": 6189355,
+    "forward_time": 0.07071971893310547,
+    "loss": 1.3455784320831299,
+    "output_shape": [
+      2,
+      20,
+      4
+    ]
+  },
+  "+ All Components": {
+    "status": "success",
+    "parameters": 6376389,
+    "forward_time": 0.08971905708312988,
+    "loss": 1.4240550994873047,
+    "output_shape": [
+      [
+        2,
+        20,
+        4,
+        3
+      ],
+      [
+        2,
+        20,
+        4,
+        3
+      ],
+      [
+        2,
+        20,
+        3
+      ]
+    ]
+  }
+}
