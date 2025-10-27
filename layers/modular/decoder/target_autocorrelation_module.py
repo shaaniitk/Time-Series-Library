@@ -145,9 +145,14 @@ class TargetAutocorrelationModule(nn.Module):
         self.log_return_constraint_layer = LogReturnConstraintLayer(self.hidden_dim)
         
         # Multi-scale temporal attention
+        # Choose a number of attention heads compatible with hidden_dim to
+        # avoid PyTorch assertion "embed_dim must be divisible by num_heads".
+        # Prefer up to 8 heads but fall back to the largest divisor of hidden_dim.
+        max_preferred_heads = min(8, self.hidden_dim)
+        attn_heads = next((h for h in range(max_preferred_heads, 0, -1) if self.hidden_dim % h == 0), 1)
         self.temporal_attention = nn.MultiheadAttention(
             embed_dim=self.hidden_dim,
-            num_heads=8,
+            num_heads=attn_heads,
             dropout=dropout,
             batch_first=True
         )
