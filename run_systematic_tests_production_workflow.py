@@ -55,9 +55,9 @@ class AdvancedComponentTester:
             'label_len': 48,
             'pred_len': 24,   # Standard prediction horizon
             
-            # Data split settings - Must be larger than pred_len
-            'validation_length': 50,  # Larger than pred_len=24
-            'test_length': 50,        # Larger than pred_len=24
+            # Data split settings - Optimized for 7109 total samples
+            'validation_length': 500,  # ~7% of data for validation
+            'test_length': 500,        # ~7% of data for testing
             
             # Model configuration - Optimized for advanced component testing
             'd_model': 256,   # Larger model for better component differentiation
@@ -73,8 +73,8 @@ class AdvancedComponentTester:
             'c_out': 4,
             
             # Training configuration - Balanced for component comparison
-            'train_epochs': 8,  # Enough epochs to see component convergence differences
-            'batch_size': 4,    # Larger batch for stable gradient estimates
+            'train_epochs': 3,  # Faster testing while still showing differences
+            'batch_size': 8,    # Larger batch for stable gradient estimates
             'learning_rate': 0.0005,  # Conservative LR for stable training
             'patience': 10,     # Higher patience for advanced components
             'lradj': 'warmup_cosine',
