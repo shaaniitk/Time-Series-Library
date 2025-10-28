@@ -40,31 +40,31 @@ class ProductionWorkflowTester:
             'embed': 'timeF',
             'freq': 'd',
             
-            # Sequence settings - LIGHTWEIGHT for testing
-            'seq_len': 32,    # Much shorter for fast testing
-            'label_len': 16,
-            'pred_len': 4,    # Shorter prediction
+            # Sequence settings - Adjusted for available data
+            'seq_len': 96,    # Shorter sequence for testing
+            'label_len': 48,
+            'pred_len': 24,   # Shorter prediction for testing
             
-            # Data split settings
-            'validation_length': 8,
-            'test_length': 8,
+            # Data split settings - Must be larger than pred_len
+            'validation_length': 50,  # Larger than pred_len=24
+            'test_length': 50,        # Larger than pred_len=24
             
-            # Model configuration - LIGHTWEIGHT for testing
-            'd_model': 104,   # Must be divisible by 13 (celestial bodies): 104 ÷ 13 = 8
-            'n_heads': 4,     # Must allow d_model to be divisible: 104 ÷ 4 = 26
-            'e_layers': 2,
-            'd_layers': 1,
-            'd_ff': 128,
+            # Model configuration - Enhanced for component differentiation
+            'd_model': 128,   # Larger model, power of 2 for better compatibility
+            'n_heads': 8,     # Compatible heads: 128 ÷ 8 = 16
+            'e_layers': 3,    # Deeper for component interactions
+            'd_layers': 2,
+            'd_ff': 256,      # Larger feed-forward
             'dropout': 0.1,
             
-            # Input/Output dimensions
-            'enc_in': 118,
-            'dec_in': 118,
+            # Input/Output dimensions - Fixed for Celestial model
+            'enc_in': 113,    # Celestial model expects 113 features
+            'dec_in': 113,    # Celestial model expects 113 features  
             'c_out': 4,
             
             # Training configuration - FAST for testing
-            'train_epochs': 2,  # Just 2 epochs for component testing
-            'batch_size': 2,    # Very small batch for memory efficiency
+            'train_epochs': 5,  # More epochs to see component differences
+            'batch_size': 2,    # Small batch for long sequences (750 days)
             'learning_rate': 0.001,
             'patience': 5,
             'lradj': 'warmup_cosine',
@@ -225,45 +225,33 @@ class ProductionWorkflowTester:
         print("Using the exact same data handling and training loop as production")
         print("Only the component flags are changed for systematic testing")
         
-        # Progressive configurations - add one component at a time
+        # Progressive configurations - add one component at a time (MultiScalePatching removed)
         progressive_configs = [
             ("01_Baseline", {
-                "use_multi_scale_patching": False,
                 "use_hierarchical_mapper": False,
                 "use_stochastic_learner": False,
                 "use_gated_graph_combiner": False,
                 "use_mixture_decoder": False
             }),
-            ("02_MultiScale_Patching", {
-                "use_multi_scale_patching": True,
-                "use_hierarchical_mapper": False,
-                "use_stochastic_learner": False,
-                "use_gated_graph_combiner": False,
-                "use_mixture_decoder": False
-            }),
-            ("03_Plus_Hierarchical", {
-                "use_multi_scale_patching": True,
+            ("02_Hierarchical_Mapping", {
                 "use_hierarchical_mapper": True,
                 "use_stochastic_learner": False,
                 "use_gated_graph_combiner": False,
                 "use_mixture_decoder": False
             }),
-            ("04_Plus_Stochastic", {
-                "use_multi_scale_patching": True,
+            ("03_Plus_Stochastic", {
                 "use_hierarchical_mapper": True,
                 "use_stochastic_learner": True,
                 "use_gated_graph_combiner": False,
                 "use_mixture_decoder": False
             }),
-            ("05_Plus_GraphCombiner", {
-                "use_multi_scale_patching": True,
+            ("04_Plus_GraphCombiner", {
                 "use_hierarchical_mapper": True,
                 "use_stochastic_learner": True,
                 "use_gated_graph_combiner": True,
                 "use_mixture_decoder": False
             }),
-            ("06_Full_Configuration", {
-                "use_multi_scale_patching": True,
+            ("05_Full_Configuration", {
                 "use_hierarchical_mapper": True,
                 "use_stochastic_learner": True,
                 "use_gated_graph_combiner": True,
@@ -291,36 +279,25 @@ class ProductionWorkflowTester:
         print("=" * 50)
         
         ablation_configs = [
-            ("Ablation_No_MultiScale", {
-                "use_multi_scale_patching": False,
-                "use_hierarchical_mapper": True,
-                "use_stochastic_learner": True,
-                "use_gated_graph_combiner": True,
-                "use_mixture_decoder": True
-            }),
             ("Ablation_No_Hierarchical", {
-                "use_multi_scale_patching": True,
                 "use_hierarchical_mapper": False,
                 "use_stochastic_learner": True,
                 "use_gated_graph_combiner": True,
                 "use_mixture_decoder": True
             }),
             ("Ablation_No_Stochastic", {
-                "use_multi_scale_patching": True,
                 "use_hierarchical_mapper": True,
                 "use_stochastic_learner": False,
                 "use_gated_graph_combiner": True,
                 "use_mixture_decoder": True
             }),
             ("Ablation_No_GraphCombiner", {
-                "use_multi_scale_patching": True,
                 "use_hierarchical_mapper": True,
                 "use_stochastic_learner": True,
                 "use_gated_graph_combiner": False,
                 "use_mixture_decoder": True
             }),
             ("Ablation_No_MixtureDecoder", {
-                "use_multi_scale_patching": True,
                 "use_hierarchical_mapper": True,
                 "use_stochastic_learner": True,
                 "use_gated_graph_combiner": True,
@@ -442,7 +419,7 @@ class ProductionWorkflowTester:
         
         # Save report
         report_path = self.results_dir / 'component_testing_report.md'
-        with open(report_path, 'w') as f:
+        with open(report_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(report_lines))
         
         print(f"📋 Comprehensive report saved to {report_path}")

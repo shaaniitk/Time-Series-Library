@@ -76,6 +76,13 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
         self.transition_nodes = max(1, min(self.wave_nodes, self.target_nodes))
         self.total_nodes = self.wave_nodes + self.target_nodes + self.transition_nodes
         
+        # Expose component flags for production script compatibility
+        self.use_mixture_decoder = getattr(self.config, 'use_mixture_decoder', True)
+        self.use_stochastic_learner = getattr(self.config, 'use_stochastic_learner', True)
+        self.use_hierarchical_mapper = getattr(self.config, 'use_hierarchical_mapper', True)
+        self.use_multi_scale_patching = getattr(self.config, 'use_multi_scale_patching', True)
+        self.use_gated_graph_combiner = getattr(self.config, 'use_gated_graph_combiner', True)
+        
         # Initialize transition features
         transition_init = torch.randn(self.transition_nodes, self.d_model)
         self.transition_features = nn.Parameter(transition_init)
@@ -198,9 +205,32 @@ class Enhanced_SOTA_PGAT(SOTA_Temporal_PGAT):
             self.decoder = nn.Linear(self.d_model, getattr(self.config, 'c_out', 3))
             self.mixture_loss = None
     
-    def forward(self, wave_window: torch.Tensor, target_window: torch.Tensor, 
-                graph: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """Forward pass with modular processing"""
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None, 
+                future_celestial_x=None, future_celestial_mark=None):
+        """
+        Forward pass compatible with production training script.
+        
+        Args:
+            x_enc: Input sequence [batch, seq_len, features]
+            x_mark_enc: Input temporal marks [batch, seq_len, mark_features] 
+            x_dec: Decoder input [batch, pred_len, features]
+            x_mark_dec: Decoder temporal marks [batch, pred_len, mark_features]
+            mask: Optional attention mask (unused)
+            future_celestial_x: Future celestial data (unused)
+            future_celestial_mark: Future celestial marks (unused)
+            
+        Returns:
+            Model predictions
+        """
+        # Convert to the format expected by the original forward method
+        wave_window = x_enc  # Use encoder input as wave window
+        target_window = x_dec  # Use decoder input as target window
+        
+        return self._forward_internal(wave_window, target_window)
+    
+    def _forward_internal(self, wave_window: torch.Tensor, target_window: torch.Tensor, 
+                         graph: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Internal forward pass with modular processing"""
         if wave_window is None or target_window is None:
             raise ValueError(f"Input tensors cannot be None: wave_window={wave_window}, target_window={target_window}")
         

@@ -27,6 +27,8 @@ from layers.modular.encoder.spatiotemporal_encoding import (
     DynamicJointSpatioTemporalEncoding,
 )
 from layers.modular.graph.gated_graph_combiner import GatedGraphCombiner
+
+from layers.modular.graph.stochastic_learner import StochasticGraphLearner
 from layers.Embed import DataEmbedding  # type: ignore[assignment]
 from utils.celestial_wave_aggregator import CelestialWaveAggregator, CelestialDataProcessor
 from layers.modular.aggregation.phase_aware_celestial_processor import PhaseAwareCelestialProcessor
@@ -89,6 +91,11 @@ class Model(nn.Module):
         self.use_mixture_decoder = getattr(configs, 'use_mixture_decoder', False)  # Production default: False
         self.use_stochastic_learner = getattr(configs, 'use_stochastic_learner', False)  # Production default: False
         self.use_hierarchical_mapping = getattr(configs, 'use_hierarchical_mapping', False)  # Production default: False
+        
+        # 🚀 NEW: Add missing modular components for systematic testing
+        self.use_gated_graph_combiner = getattr(configs, 'use_gated_graph_combiner', False)
+        self.use_hierarchical_mapper = getattr(configs, 'use_hierarchical_mapper', False)  # Alias for consistency
+        
         self.collect_diagnostics = bool(getattr(configs, 'collect_diagnostics', True))
         self.use_efficient_covariate_interaction = getattr(configs, 'use_efficient_covariate_interaction', False)
 
@@ -220,7 +227,7 @@ class Model(nn.Module):
             self.rich_feature_to_celestial = nn.Linear(self.celestial_feature_dim, self.num_celestial_bodies)
         
         self._log_configuration_summary()
-        
+
         # Input embeddings - FIXED: Correct dimension flow
         if self.aggregate_waves_to_celestial:
             # Phase-aware processor outputs 13 celestial bodies × 32D = 416D
@@ -257,15 +264,16 @@ class Model(nn.Module):
             embedding_input_dim = self.enc_in
             self.celestial_projection = None
             
+        # Standard embedding configuration
         self.enc_embedding = DataEmbedding(
             embedding_input_dim, self.d_model, configs.embed, configs.freq, self.dropout
         )
-        
-        # Store the expected embedding input dimension for validation
-        self.expected_embedding_input_dim = embedding_input_dim
+        # Use the same input dimension for decoder as encoder when using celestial aggregation
+        decoder_input_dim = embedding_input_dim if self.aggregate_waves_to_celestial else self.dec_in
         self.dec_embedding = DataEmbedding(
-            self.dec_in, self.d_model, configs.embed, configs.freq, self.dropout
+            decoder_input_dim, self.d_model, configs.embed, configs.freq, self.dropout
         )
+        self.expected_embedding_input_dim = embedding_input_dim
 
         # Dedicated memory logger dumps to file (configured by training script)
         import logging as _logging  # local import to avoid polluting module namespace
@@ -484,17 +492,26 @@ class Model(nn.Module):
             nn.Tanh()
         )
         
-        # Stochastic Graph Learner - adjust for celestial aggregation
+        # 🚀 Stochastic Graph Learner - Enhanced modular version
         if self.use_stochastic_learner:
             if self.use_celestial_graph and self.aggregate_waves_to_celestial:
                 # Use celestial body dimensions for adjacency matrix
-                adj_output_dim = self.num_celestial_bodies * self.num_celestial_bodies
+                num_nodes = self.num_celestial_bodies
             else:
                 # Use original input dimensions
-                adj_output_dim = self.enc_in * self.enc_in
+                num_nodes = self.enc_in
                 
-            self.stochastic_mean = nn.Linear(self.d_model, adj_output_dim)
-            self.stochastic_logvar = nn.Linear(self.d_model, adj_output_dim)
+            self.stochastic_learner = StochasticGraphLearner(
+                d_model=self.d_model,
+                num_nodes=num_nodes
+            )
+            
+            self.logger.info(
+                "🚀 Stochastic Graph Learner enabled | num_nodes=%d",
+                num_nodes
+            )
+        else:
+            self.stochastic_learner = None
         
         # Graph attention layers - use edge-conditioned version for Petri net
         if self.use_petri_net_combiner:
