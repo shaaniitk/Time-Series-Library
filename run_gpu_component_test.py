@@ -217,9 +217,9 @@ class GPUComponentTester:
             'd_ff': 512,      # Larger feed-forward
             'dropout': 0.1,
             
-            # FIXED: Input/Output dimensions
-            'enc_in': 118,    # Match actual data
-            'dec_in': 118,    # Match encoder
+            # FIXED: Input/Output dimensions - CRITICAL FIX
+            'enc_in': 118,    # Match actual data (119 CSV columns - 1 date = 118 features)
+            'dec_in': 118,    # Match encoder input
             'c_out': 4,       # OHLC targets
             
             # GPU-optimized training configuration
@@ -249,7 +249,7 @@ class GPUComponentTester:
             'use_temporal_attention': True,
             'use_spatial_attention': True,
             'bypass_spatiotemporal_with_petri': True,
-            'num_input_waves': 118,
+            'num_input_waves': 118,  # CRITICAL: Match actual data dimensions
             'target_wave_indices': [0, 1, 2, 3],
             
             # Advanced component defaults
@@ -730,4 +730,4 @@ def main():
         return None
 
 if __name__ == "__main__":
-    results = main()
+    results = main()0.
