@@ -87,7 +87,8 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
 from data_provider.data_factory import data_provider
-from models.Celestial_Enhanced_PGAT import Model
+# Import the new modular model instead of the monolithic one
+from models.Celestial_Enhanced_PGAT_Modular import Model
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric
 from layers.modular.decoder.mdn_decoder import mdn_nll_loss
