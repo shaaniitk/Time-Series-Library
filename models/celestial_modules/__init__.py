@@ -21,6 +21,7 @@ from .postprocessing import PostProcessingModule
 from .decoder import DecoderModule
 from .utils import ModelUtils
 from .diagnostics import ModelDiagnostics
+from .context_fusion import MultiScaleContextFusion, ContextFusionFactory
 
 __all__ = [
     'CelestialPGATConfig',
@@ -30,5 +31,7 @@ __all__ = [
     'PostProcessingModule',
     'DecoderModule',
     'ModelUtils',
-    'ModelDiagnostics'
+    'ModelDiagnostics',
+    'MultiScaleContextFusion',
+    'ContextFusionFactory'
 ]

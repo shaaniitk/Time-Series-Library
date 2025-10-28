@@ -196,9 +196,8 @@ class EmbeddingModule(nn.Module):
         config.expected_embedding_input_dim = embedding_input_dim
         
         self.enc_embedding = DataEmbedding(embedding_input_dim, config.d_model, config.embed, config.freq, config.dropout)
-        # Use the same input dimension for decoder as encoder when using celestial aggregation
-        decoder_input_dim = embedding_input_dim if config.aggregate_waves_to_celestial else config.dec_in
-        self.dec_embedding = DataEmbedding(decoder_input_dim, config.d_model, config.embed, config.freq, config.dropout)
+        # Decoder always uses dec_in dimensions (targets don't go through celestial aggregation)
+        self.dec_embedding = DataEmbedding(config.dec_in, config.d_model, config.embed, config.freq, config.dropout)
 
         if config.use_calendar_effects:
             self.calendar_effects_encoder = CalendarEffectsEncoder(config.calendar_embedding_dim)

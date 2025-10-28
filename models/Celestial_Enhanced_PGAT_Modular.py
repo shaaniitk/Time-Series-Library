@@ -13,6 +13,7 @@ from .celestial_modules.graph import GraphModule
 from .celestial_modules.encoder import EncoderModule
 from .celestial_modules.postprocessing import PostProcessingModule
 from .celestial_modules.decoder import DecoderModule
+from .celestial_modules.context_fusion import ContextFusionFactory, MultiScaleContextFusion
 from .celestial_modules.utils import ModelUtils
 from .celestial_modules.diagnostics import ModelDiagnostics
 
@@ -33,6 +34,9 @@ class Model(nn.Module):
         # 1. Centralized Configuration
         self.model_config = CelestialPGATConfig.from_original_configs(configs)
         
+        # Validate context fusion configuration
+        ContextFusionFactory.validate_config(self.model_config)
+        
         # 2. Initialize utility and diagnostics systems
         self.utils = ModelUtils(self.model_config, self.logger)
         self.diagnostics = ModelDiagnostics(self.model_config, self.logger)
@@ -42,6 +46,9 @@ class Model(nn.Module):
 
         # 3. Instantiate all modules
         self.embedding_module = EmbeddingModule(self.model_config)
+        
+        # Multi-Scale Context Fusion Module
+        self.context_fusion = ContextFusionFactory.create_context_fusion(self.model_config)
         
         if self.model_config.use_celestial_graph:
             self.graph_module = GraphModule(self.model_config)
@@ -122,33 +129,25 @@ class Model(nn.Module):
         Returns:
             Predictions and metadata
         """
-        self.utils.print_memory_debug("FORWARD_START", f"Input shapes: x_enc={x_enc.shape}, x_dec={x_dec.shape}")
-        self.utils.debug_memory("FORWARD_START")
-        
         batch_size, seq_len, enc_in = x_enc.shape
-        self.utils.log_debug("MODEL_DEBUG: Input shapes - x_enc=%s x_dec=%s", x_enc.shape, x_dec.shape)
         
         # --- Stage 1: Embedding & Phase-Aware Processing ---
-        self.utils.debug_memory("EMBEDDING_START")
         enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
             x_enc, x_mark_enc, x_dec, x_mark_dec
         )
-        self.utils.debug_memory("EMBEDDING_COMPLETE")
         
-        # --- Stage 2: Enhanced Context Stream with Market Context ---
-        self.utils.print_memory_debug("BEFORE_MARKET_CONTEXT")
-        market_context = self.market_context_encoder(enc_out)
-        self.utils.print_memory_debug("AFTER_MARKET_CONTEXT", f"market_context shape: {market_context.shape}")
+        # --- Stage 2: Enhanced Context Fusion ---
+        context_diagnostics = {}
         
-        # Create a low-resolution summary of the entire sequence
-        context_vector = torch.mean(enc_out, dim=1, keepdim=True)  # Shape: [B, 1, D]
-        # Fuse the context into the high-resolution stream by adding it to each time step
-        enc_out_with_context = enc_out + context_vector
+        if self.context_fusion is not None:
+            enc_out_with_context, context_diagnostics = self.context_fusion(enc_out)
+        else:
+            # Fallback to simple context fusion
+            context_vector = torch.mean(enc_out, dim=1, keepdim=True)
+            enc_out_with_context = enc_out + context_vector
         
-        self.utils.log_debug(
-            "Parallel Context Stream applied: context_vector=%s, enhanced_enc_out=%s",
-            context_vector.shape, enc_out_with_context.shape
-        )
+        # Generate market context from the enhanced encoder output
+        market_context = self.market_context_encoder(enc_out_with_context)
         
         # --- Stage 3: Graph Generation & Fusion ---
         enhanced_enc_out = enc_out_with_context
@@ -161,18 +160,9 @@ class Model(nn.Module):
                 enc_out_with_context, market_context, phase_based_adj
             )
             
-            # Store celestial features in wave_metadata for celestial-to-target attention
-            wave_metadata['celestial_features'] = celestial_features
-            
-            # Validate adjacency dimensions if diagnostics enabled
-            if self.model_config.collect_diagnostics and combined_adj is not None:
-                try:
-                    # Create dummy adjacencies for validation
-                    dummy_learned = self.graph_module._learn_data_driven_graph(enc_out)
-                    dummy_dynamic = self.graph_module._learn_simple_dynamic_graph(enc_out)
-                    self.utils.validate_adjacency_dimensions(combined_adj, dummy_learned, dummy_dynamic, enc_out)
-                except Exception as e:
-                    self.utils.log_debug("Adjacency validation failed: %s", str(e))
+            # Store celestial features for downstream processing
+            if celestial_features is not None:
+                wave_metadata['celestial_features'] = celestial_features
         else:
             # Fallback to traditional graph learning
             if hasattr(self, 'traditional_graph_learner'):
@@ -184,14 +174,11 @@ class Model(nn.Module):
                 identity = torch.eye(num_nodes, device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
                 combined_adj = identity.expand(batch_size, seq_len, num_nodes, num_nodes)
 
-        # --- Stage 4: Core Encoding with Efficient Processing ---
+        # --- Stage 4: Core Encoding ---
         if self.model_config.use_efficient_covariate_interaction:
             graph_features = self._efficient_graph_processing(enhanced_enc_out, combined_adj)
-            self.utils.log_debug("Using efficient partitioned graph processing.")
         else:
-            graph_features = self.encoder_module(
-                enhanced_enc_out, combined_adj, rich_edge_features
-            )
+            graph_features = self.encoder_module(enhanced_enc_out, combined_adj, rich_edge_features)
 
         # --- Stage 5: Optional Post-Processing ---
         graph_features = self.postprocessing_module(
@@ -201,21 +188,12 @@ class Model(nn.Module):
         # --- Stage 6: Decoding & Prediction ---
         future_celestial_features = None
         if future_celestial_x is not None and self.embedding_module.phase_aware_processor:
-            self.utils.log_debug("🌟 Processing FUTURE celestial states for C→T conditioning...")
             # Process future deterministic covariates
             future_cel_feats, future_adj, future_phase_meta = self.embedding_module.phase_aware_processor(future_celestial_x)
             
-            # Project to d_model
-            future_cel_projected = self.embedding_module.celestial_projection(future_cel_feats)
-            
-            # Reshape to [batch, pred_len, num_celestial, d_model] for attention
+            # Reshape for attention
             future_celestial_features = future_cel_feats.reshape(
                 batch_size, self.model_config.pred_len, self.model_config.num_celestial_bodies, -1
-            )
-            
-            self.utils.log_debug(
-                "✅ Future celestial features processed: %s | Will use for C→T attention",
-                future_celestial_features.shape
             )
 
         predictions, aux_loss, mdn_components = self.decoder_module(
@@ -227,7 +205,7 @@ class Model(nn.Module):
             wave_metadata=wave_metadata,
             celestial_metadata=self.diagnostics.collect_celestial_metadata({'metadata': {}}),
             fusion_metadata=self.diagnostics.collect_fusion_metadata(fusion_metadata),
-            context_vector_norm=torch.norm(context_vector).item(),
+            context_fusion_diagnostics=context_diagnostics,
             enhanced_enc_out_norm=torch.norm(enhanced_enc_out).item(),
             graph_features_norm=torch.norm(graph_features).item(),
         )
@@ -343,3 +321,21 @@ class Model(nn.Module):
             self.decoder_module.celestial_to_target_attention.print_diagnostics_summary()
         else:
             self.logger.info("Celestial-to-target attention not enabled or not initialized")
+    
+    def print_context_fusion_diagnostics(self):
+        """Print multi-scale context fusion diagnostics."""
+        if self.context_fusion is not None:
+            summary = self.context_fusion.get_diagnostics_summary()
+            self.logger.info(summary)
+        else:
+            self.logger.info("Multi-scale context fusion not enabled")
+    
+    def get_context_fusion_mode(self) -> str:
+        """Get the current context fusion mode."""
+        return self.model_config.context_fusion_mode if self.context_fusion is not None else "disabled"
+    
+    def set_context_fusion_diagnostics(self, enabled: bool):
+        """Enable or disable context fusion diagnostics."""
+        if self.context_fusion is not None:
+            self.context_fusion.enable_diagnostics = enabled
+            self.model_config.enable_context_diagnostics = enabled

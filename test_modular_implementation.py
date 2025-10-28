@@ -112,6 +112,15 @@ def create_test_config():
         # Sequential Mixture Decoder
         use_sequential_mixture_decoder: bool = False
         
+        # Multi-Scale Context Fusion
+        use_multi_scale_context: bool = True
+        context_fusion_mode: str = 'multi_scale'
+        short_term_kernel_size: int = 5
+        medium_term_kernel_size: int = 15
+        long_term_kernel_size: int = 0
+        context_fusion_dropout: float = 0.1
+        enable_context_diagnostics: bool = True
+        
         def __post_init__(self):
             if self.target_wave_indices is None:
                 self.target_wave_indices = [0, 1, 2, 3]
@@ -131,6 +140,7 @@ def test_modular_components():
         from models.celestial_modules.encoder import EncoderModule
         from models.celestial_modules.postprocessing import PostProcessingModule
         from models.celestial_modules.decoder import DecoderModule
+        from models.celestial_modules.context_fusion import MultiScaleContextFusion, ContextFusionFactory
         
         config = CelestialPGATConfig.from_original_configs(create_test_config())
         print("✅ Configuration module loaded successfully")
@@ -156,6 +166,15 @@ def test_modular_components():
         
         decoder = DecoderModule(config)
         print("✅ Decoder module loaded successfully")
+        
+        # Test context fusion module
+        context_fusion = ContextFusionFactory.create_context_fusion(config)
+        if context_fusion is not None:
+            print("✅ Context fusion module loaded successfully")
+            print(f"    Mode: {config.context_fusion_mode}")
+            print(f"    Supported modes: {ContextFusionFactory.get_supported_modes()}")
+        else:
+            print("ℹ️  Context fusion disabled")
         
         return True
         
@@ -222,6 +241,14 @@ def test_modular_model():
         # Test point prediction extraction
         point_pred = model.get_point_prediction(output)
         print(f"✅ Point prediction extraction successful: {point_pred.shape if hasattr(point_pred, 'shape') else type(point_pred)}")
+        
+        # Test context fusion diagnostics
+        if hasattr(model, 'print_context_fusion_diagnostics'):
+            model.print_context_fusion_diagnostics()
+            print("✅ Context fusion diagnostics successful")
+            
+            context_mode = model.get_context_fusion_mode()
+            print(f"✅ Context fusion mode: {context_mode}")
         
         return True
         

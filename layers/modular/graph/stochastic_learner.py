@@ -33,47 +33,81 @@ class StochasticGraphLearner(nn.Module):
     def forward(self, node_features: torch.Tensor, training: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
-            node_features (torch.Tensor): A tensor of node features of shape [batch_size, num_nodes, d_model].
+            node_features (torch.Tensor): A tensor of node features of shape [batch_size * seq_len, d_model] or [batch_size, num_nodes, d_model].
             training (bool): Flag for training or inference mode.
 
         Returns:
-            torch.Tensor: The sampled adjacency matrix of shape [batch_size, num_nodes, num_nodes].
-            torch.Tensor: The edge probabilities (logits) of shape [batch_size, num_nodes, num_nodes].
+            torch.Tensor: The sampled adjacency matrix flattened or reshaped appropriately.
+            torch.Tensor: The KL divergence loss for regularization.
         """
-        batch_size, _, _ = node_features.shape
-
-        # Expand node features to create all possible pairs for edge prediction
-        # [B, N, D] -> [B, N, 1, D] -> [B, N, N, D]
-        f1 = node_features.unsqueeze(2).expand(-1, -1, self.num_nodes, -1)
-        # [B, N, D] -> [B, 1, N, D] -> [B, N, N, D]
-        f2 = node_features.unsqueeze(1).expand(-1, self.num_nodes, -1, -1)
-
-        # Concatenate pairs of node features
-        edge_features = torch.cat([f1, f2], dim=-1) # [B, N, N, 2*D]
-
-        # Predict edge logits
-        # The predictor expects a 2D tensor, so we reshape
-        edge_logits = self.edge_predictor(edge_features.view(-1, self.d_model * 2))
-        edge_logits = edge_logits.view(batch_size, self.num_nodes, self.num_nodes) # [B, N, N]
-
-        # Symmetrize the logits
-        edge_logits = (edge_logits + edge_logits.transpose(1, 2)) / 2
-
-        # Sample adjacency matrix
-        if training:
-            # Use Gumbel-Softmax for differentiable sampling of edges
-            # We treat the binary decision (edge or no edge) as a 2-class classification
-            # We need logits for both classes (edge, no_edge). Let's assume no_edge logit is 0.
-            adj_logits_paired = torch.stack([edge_logits, torch.zeros_like(edge_logits)], dim=-1)
-            adj_matrix_sampled = F.gumbel_softmax(adj_logits_paired, tau=self.temperature, hard=True)[..., 0]
+        # Handle both 2D and 3D input tensors
+        if node_features.dim() == 2:
+            # Input is [batch_size * seq_len, d_model] - reshape to work with nodes
+            batch_seq_len, d_model = node_features.shape
+            # Create a simple adjacency matrix for flattened input
+            adj_logits = self.edge_predictor(
+                torch.cat([node_features, node_features], dim=-1)
+            ).view(batch_seq_len, 1)
+            
+            # Create adjacency matrix of appropriate size
+            adj_matrix = torch.sigmoid(adj_logits).expand(batch_seq_len, self.num_nodes * self.num_nodes)
+            
+            # Compute KL divergence loss (regularization)
+            probs = torch.sigmoid(adj_logits)
+            uniform_prior = torch.ones_like(probs) * 0.5
+            kl_loss = F.kl_div(
+                torch.log(probs + 1e-8), 
+                uniform_prior, 
+                reduction='mean'
+            )
+            
+            return adj_matrix, kl_loss
+            
         else:
-            # During inference, use the most probable edge
-            adj_matrix_sampled = (torch.sigmoid(edge_logits) > 0.5).float()
+            # Input is [batch_size, num_nodes, d_model]
+            batch_size, num_nodes, _ = node_features.shape
 
-        # Zero out diagonal
-        adj_matrix_sampled = adj_matrix_sampled * (1 - torch.eye(self.num_nodes, device=node_features.device))
+            # Expand node features to create all possible pairs for edge prediction
+            # [B, N, D] -> [B, N, 1, D] -> [B, N, N, D]
+            f1 = node_features.unsqueeze(2).expand(-1, -1, self.num_nodes, -1)
+            # [B, N, D] -> [B, 1, N, D] -> [B, N, N, D]
+            f2 = node_features.unsqueeze(1).expand(-1, self.num_nodes, -1, -1)
 
-        return adj_matrix_sampled, edge_logits
+            # Concatenate pairs of node features
+            edge_features = torch.cat([f1, f2], dim=-1) # [B, N, N, 2*D]
+
+            # Predict edge logits
+            # The predictor expects a 2D tensor, so we reshape
+            edge_logits = self.edge_predictor(edge_features.view(-1, self.d_model * 2))
+            edge_logits = edge_logits.view(batch_size, self.num_nodes, self.num_nodes) # [B, N, N]
+
+            # Symmetrize the logits
+            edge_logits = (edge_logits + edge_logits.transpose(1, 2)) / 2
+
+            # Sample adjacency matrix
+            if training:
+                # Use Gumbel-Softmax for differentiable sampling of edges
+                # We treat the binary decision (edge or no edge) as a 2-class classification
+                # We need logits for both classes (edge, no_edge). Let's assume no_edge logit is 0.
+                adj_logits_paired = torch.stack([edge_logits, torch.zeros_like(edge_logits)], dim=-1)
+                adj_matrix_sampled = F.gumbel_softmax(adj_logits_paired, tau=self.temperature, hard=True)[..., 0]
+            else:
+                # During inference, use the most probable edge
+                adj_matrix_sampled = (torch.sigmoid(edge_logits) > 0.5).float()
+
+            # Zero out diagonal
+            adj_matrix_sampled = adj_matrix_sampled * (1 - torch.eye(self.num_nodes, device=node_features.device))
+            
+            # Compute KL divergence loss (regularization)
+            probs = torch.sigmoid(edge_logits)
+            uniform_prior = torch.ones_like(probs) * 0.5
+            kl_loss = F.kl_div(
+                torch.log(probs + 1e-8), 
+                uniform_prior, 
+                reduction='mean'
+            )
+
+            return adj_matrix_sampled.view(batch_size, -1), kl_loss
 
     def regularization_loss(self, edge_logits: torch.Tensor) -> torch.Tensor:
         """

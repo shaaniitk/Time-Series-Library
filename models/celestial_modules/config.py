@@ -105,6 +105,15 @@ class CelestialPGATConfig:
     # Sequential Mixture Decoder
     use_sequential_mixture_decoder: bool = False
 
+    # Multi-Scale Context Fusion
+    use_multi_scale_context: bool = True
+    context_fusion_mode: str = 'multi_scale'  # 'simple', 'gated', 'attention', 'multi_scale'
+    short_term_kernel_size: int = 5
+    medium_term_kernel_size: int = 15
+    long_term_kernel_size: int = 0  # 0 means global average
+    context_fusion_dropout: float = 0.1
+    enable_context_diagnostics: bool = False
+
     # Internal / Derived
     celestial_dim: int = 32
     celestial_feature_dim: int = 416 # 13 * 32
