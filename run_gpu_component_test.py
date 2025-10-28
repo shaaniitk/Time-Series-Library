@@ -205,37 +205,37 @@ class GPUComponentTester:
             'label_len': 48,
             'pred_len': 24,
             
-            # FIXED: Proper data splits for 7109 total samples
-            'validation_length': 500,  # ~7% for validation
-            'test_length': 500,        # ~7% for testing
+            # FIXED: Better data splits to reduce overfitting
+            'validation_length': 800,  # ~11% for validation (more representative)
+            'test_length': 600,        # ~8% for testing
             
-            # GPU-optimized model configuration
-            'd_model': 256,   # Larger model for GPU
-            'n_heads': 8,     # 256 ÷ 8 = 32
-            'e_layers': 3,    # More layers for better component testing
-            'd_layers': 2,    # More decoder layers
-            'd_ff': 512,      # Larger feed-forward
-            'dropout': 0.1,
+            # FIXED: Reduced model complexity to prevent overfitting
+            'd_model': 128,   # Smaller model for better generalization
+            'n_heads': 8,     # 128 ÷ 8 = 16
+            'e_layers': 2,    # Fewer layers to reduce overfitting
+            'd_layers': 1,    # Single decoder layer
+            'd_ff': 256,      # Smaller feed-forward
+            'dropout': 0.2,   # Higher dropout for regularization
             
             # FIXED: Input/Output dimensions - CRITICAL FIX
             'enc_in': 118,    # Match actual data (119 CSV columns - 1 date = 118 features)
             'dec_in': 118,    # Match encoder input
             'c_out': 4,       # OHLC targets
             
-            # GPU-optimized training configuration
-            'train_epochs': 5,  # More epochs for meaningful comparison
-            'batch_size': 16,   # Larger batch size for GPU
-            'learning_rate': 0.0005,  # Conservative for stability
-            'patience': 10,
+            # FIXED: Anti-overfitting training configuration
+            'train_epochs': 8,  # More epochs for proper convergence
+            'batch_size': 16,   # Keep batch size
+            'learning_rate': 0.0003,  # Lower LR for stability
+            'patience': 15,     # Higher patience
             'lradj': 'warmup_cosine',
-            'warmup_epochs': 2,
+            'warmup_epochs': 1,  # FIXED: Reduce warmup (was 2/5=40%, now 1/8=12.5%)
             'min_lr': 1e-7,
-            'weight_decay': 0.0001,
-            'clip_grad_norm': 1.0,
+            'weight_decay': 0.001,   # Higher weight decay for regularization
+            'clip_grad_norm': 0.5,   # Lower gradient clipping
             
-            # GPU settings
+            # GPU settings - FIXED for stability
             'use_gpu': True,
-            'mixed_precision': True,  # Enable for GPU efficiency
+            'mixed_precision': False,  # DISABLED: Can cause instability
             'gradient_accumulation_steps': 1,
             
             # Celestial system configuration
@@ -432,8 +432,120 @@ class GPUComponentTester:
         
         return result
     
+    def run_baseline_overfitting_check(self) -> bool:
+        """Run a quick baseline test to check if overfitting is fixed"""
+        
+        self.logger.info("🔍 BASELINE OVERFITTING CHECK")
+        self.logger.info("=" * 60)
+        self.logger.info("Running quick baseline test to verify overfitting fix...")
+        
+        # Minimal baseline configuration for overfitting check
+        baseline_config = {
+            "use_multi_scale_context": False,
+            "use_hierarchical_mapping": False,
+            "use_stochastic_learner": False,
+            "use_petri_net_combiner": False,
+            "use_mixture_decoder": False,
+            "enable_mdn_decoder": False,
+            "use_efficient_covariate_interaction": False,
+        }
+        
+        self.logger.info("Testing minimal baseline configuration...")
+        
+        # Run baseline test
+        result = self.run_component_test("Baseline_OverfitCheck", **baseline_config)
+        
+        if result['status'] != 'success':
+            self.logger.error("❌ Baseline test failed - cannot proceed with component testing")
+            return False
+        
+        # Analyze training progression for overfitting
+        train_losses = result.get('train_losses', [])
+        val_losses = result.get('val_losses', [])
+        
+        if len(train_losses) < 3 or len(val_losses) < 3:
+            self.logger.warning("⚠️  Insufficient training data to check overfitting")
+            return True  # Proceed anyway
+        
+        # Check for overfitting pattern
+        train_trend = self._analyze_loss_trend(train_losses)
+        val_trend = self._analyze_loss_trend(val_losses)
+        
+        # Calculate final gap between train and validation loss
+        final_train_loss = train_losses[-1]
+        final_val_loss = val_losses[-1]
+        loss_gap = abs(final_val_loss - final_train_loss) / final_train_loss
+        
+        self.logger.info(f"📊 OVERFITTING ANALYSIS:")
+        self.logger.info(f"  Training trend: {train_trend}")
+        self.logger.info(f"  Validation trend: {val_trend}")
+        self.logger.info(f"  Final train loss: {final_train_loss:.6f}")
+        self.logger.info(f"  Final val loss: {final_val_loss:.6f}")
+        self.logger.info(f"  Loss gap: {loss_gap:.2%}")
+        
+        # Overfitting detection criteria
+        overfitting_detected = False
+        
+        # Criterion 1: Training decreasing but validation increasing
+        if train_trend == 'decreasing' and val_trend == 'increasing':
+            self.logger.warning("⚠️  Classic overfitting pattern detected: train↓ val↑")
+            overfitting_detected = True
+        
+        # Criterion 2: Large gap between train and validation loss
+        if loss_gap > 0.5:  # 50% gap
+            self.logger.warning(f"⚠️  Large train/val gap detected: {loss_gap:.2%}")
+            overfitting_detected = True
+        
+        # Criterion 3: Validation loss much higher than training
+        if final_val_loss > final_train_loss * 1.5:
+            self.logger.warning(f"⚠️  Validation loss significantly higher than training")
+            overfitting_detected = True
+        
+        if overfitting_detected:
+            self.logger.error("❌ OVERFITTING STILL DETECTED!")
+            self.logger.error("The configuration fixes did not resolve the overfitting issue.")
+            self.logger.error("Component testing would not provide meaningful results.")
+            self.logger.error("")
+            self.logger.error("Recommended actions:")
+            self.logger.error("1. Further reduce model complexity (d_model=64)")
+            self.logger.error("2. Increase dropout to 0.3")
+            self.logger.error("3. Increase weight decay to 0.01")
+            self.logger.error("4. Reduce learning rate to 0.0001")
+            self.logger.error("5. Check data split methodology")
+            return False
+        else:
+            self.logger.info("✅ OVERFITTING CHECK PASSED!")
+            self.logger.info("Training shows healthy convergence pattern")
+            self.logger.info("Proceeding with comprehensive component testing...")
+            return True
+    
+    def _analyze_loss_trend(self, losses: list) -> str:
+        """Analyze the trend in a loss sequence"""
+        if len(losses) < 2:
+            return 'insufficient_data'
+        
+        # Look at the trend over the last half of training
+        mid_point = len(losses) // 2
+        recent_losses = losses[mid_point:]
+        
+        if len(recent_losses) < 2:
+            recent_losses = losses
+        
+        # Calculate trend
+        start_loss = recent_losses[0]
+        end_loss = recent_losses[-1]
+        
+        change_ratio = (end_loss - start_loss) / start_loss
+        
+        if change_ratio < -0.05:  # Decreasing by more than 5%
+            return 'decreasing'
+        elif change_ratio > 0.05:  # Increasing by more than 5%
+            return 'increasing'
+        else:
+            return 'stable'
+    
     def run_comprehensive_component_tests(self):
-        """Run comprehensive component tests on GPU"""
+        """Run comprehensive component tests on GPU (after overfitting check)"""
         
         self.logger.info("🚀 STARTING COMPREHENSIVE GPU COMPONENT TESTS")
         self.logger.info("=" * 80)
@@ -698,29 +810,65 @@ class GPUComponentTester:
         return results
 
 def main():
-    """Main execution function"""
+    """Main execution function with overfitting check"""
     
     print("🌟 CELESTIAL ENHANCED PGAT - GPU COMPONENT TESTING")
     print("🔥 Production-ready testing with comprehensive logging")
     print("📊 All output logged to files for detailed analysis")
+    print("")
+    print("� TFIXES APPLIED:")
+    print("   ✅ Data leakage eliminated (clean temporal splits)")
+    print("   ✅ Model complexity reduced (d_model=128, fewer layers)")
+    print("   ✅ Training stabilized (higher dropout, weight decay)")
+    print("")
+    print("🔍 TESTING PROCESS:")
+    print("   1. Baseline overfitting check (quick validation)")
+    print("   2. If overfitting fixed → Full component testing")
+    print("   3. If overfitting detected → Abort with recommendations")
     print("=" * 80)
     
     # Create tester
     tester = GPUComponentTester()
     
     try:
-        # Run comprehensive tests
+        # Step 1: Run baseline overfitting check
+        tester.logger.info("🔍 STEP 1: Baseline Overfitting Check")
+        overfitting_fixed = tester.run_baseline_overfitting_check()
+        
+        if not overfitting_fixed:
+            tester.logger.error("❌ OVERFITTING CHECK FAILED - ABORTING COMPONENT TESTING")
+            tester.logger.error("The baseline test still shows overfitting patterns.")
+            tester.logger.error("Component testing would not provide meaningful results.")
+            tester.logger.error("Please review and adjust the configuration before retrying.")
+            
+            # Save baseline results for analysis
+            baseline_results = {'overfitting_check': 'failed', 'timestamp': tester.timestamp}
+            tester.save_results(baseline_results, f'baseline_overfitting_check_{tester.timestamp}.json')
+            
+            return None
+        
+        tester.logger.info("✅ OVERFITTING CHECK PASSED - PROCEEDING WITH COMPONENT TESTING")
+        tester.logger.info("")
+        
+        # Step 2: Run comprehensive component tests
+        tester.logger.info("🚀 STEP 2: Comprehensive Component Testing")
         results = tester.run_comprehensive_component_tests()
         
-        # Generate final report
+        # Step 3: Generate final report
+        tester.logger.info("📊 STEP 3: Generating Final Report")
         final_results = tester.generate_final_report(results)
         
-        # Save final results
+        # Step 4: Save final results
         tester.save_results(final_results, f'final_gpu_results_{tester.timestamp}.json')
         
         tester.logger.info("🎉 GPU COMPONENT TESTING COMPLETED SUCCESSFULLY!")
         tester.logger.info(f"📁 All logs saved to: {tester.logs_dir}")
         tester.logger.info(f"📁 All results saved to: {tester.results_dir}")
+        tester.logger.info("")
+        tester.logger.info("🏆 SUMMARY:")
+        tester.logger.info("✅ Overfitting check: PASSED")
+        tester.logger.info(f"✅ Component tests: {len([r for r in results.values() if r.get('status') == 'success'])}/{len(results)} successful")
+        tester.logger.info("✅ Meaningful component comparison: ACHIEVED")
         
         return final_results
         

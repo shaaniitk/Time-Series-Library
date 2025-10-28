@@ -546,6 +546,57 @@ def _optimize_data_loader(
     return optimized_loader, diagnostics
 
 
+def data_provider_with_scaler(args: SimpleConfig, flag: str, scaler=None, target_scaler=None):
+    """
+    FIXED: Enhanced data_provider that passes fitted scalers to val/test datasets
+    
+    This ensures validation and test datasets use the same scaling as training data,
+    preventing the critical bug where models trained on scaled data receive unscaled
+    validation/test inputs.
+    """
+    from data_provider.data_factory import data_dict
+    
+    Data = data_dict[args.data]
+    timeenc = 0 if args.embed != 'timeF' else 1
+
+    if flag == 'test':
+        shuffle_flag = False
+        drop_last = True
+        batch_size = args.batch_size
+        freq = args.freq
+    else:
+        shuffle_flag = True
+        drop_last = True
+        batch_size = args.batch_size
+        freq = args.freq
+
+    # Create dataset with fitted scalers passed from training
+    data_set = Data(
+        args=args,
+        root_path=args.root_path,
+        data_path=args.data_path,
+        flag=flag,
+        size=[args.seq_len, args.label_len, args.pred_len],
+        features=args.features,
+        target=args.target,
+        timeenc=timeenc,
+        freq=freq,
+        seasonal_patterns=getattr(args, 'seasonal_patterns', 'Monthly'),
+        scaler=scaler,  # FIXED: Pass fitted scaler from training
+        target_scaler=target_scaler  # FIXED: Pass fitted target_scaler from training
+    )
+    
+    data_loader = DataLoader(
+        data_set,
+        batch_size=batch_size,
+        shuffle=shuffle_flag,
+        num_workers=args.num_workers,
+        drop_last=drop_last
+    )
+    
+    return data_set, data_loader
+
+
 def prepare_data_modules(
     args: SimpleConfig,
     logger: logging.Logger,
@@ -556,8 +607,24 @@ def prepare_data_modules(
     args.num_workers = _determine_num_workers(args, logger)
 
     modules: Dict[str, DataModule] = {}
+    train_scaler = None
+    train_target_scaler = None
+    
+    # FIXED: Create datasets in order and pass scalers from training to val/test
     for flag in ("train", "val", "test"):
-        dataset, loader = data_provider(args, flag=flag)
+        if flag == "train":
+            # Create training dataset first to get the fitted scalers
+            dataset, loader = data_provider(args, flag=flag)
+            train_scaler = getattr(dataset, 'scaler', None)
+            train_target_scaler = getattr(dataset, 'target_scaler', None)
+            logger.info(f"Training scalers extracted: main_scaler={train_scaler is not None}, target_scaler={train_target_scaler is not None}")
+        else:
+            # For val/test, pass the fitted scalers from training
+            dataset, loader = data_provider_with_scaler(args, flag=flag, 
+                                                       scaler=train_scaler, 
+                                                       target_scaler=train_target_scaler)
+            logger.info(f"Created {flag} dataset with training scalers")
+            
         if len(loader) == 0:
             raise ValueError(f"{flag} data loader returned zero batches; check dataset configuration.")
 

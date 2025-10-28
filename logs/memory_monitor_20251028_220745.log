@@ -1,0 +1,1 @@
+2025-10-28 22:07:46 | INFO     | MemoryMonitor | {"stage": "Baseline_OverfitCheck_start", "timestamp": "2025-10-28T22:07:46.606013", "cpu_total_gb": 15.86672592163086, "cpu_available_gb": 6.019344329833984, "cpu_used_gb": 9.847381591796875, "cpu_percent": 62.1, "process_rss_gb": 0.3973503112792969, "process_vms_gb": 0.8177947998046875}

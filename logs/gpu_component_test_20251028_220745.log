@@ -1,0 +1,38 @@
+2025-10-28 22:07:45 | INFO     | GPUComponentTester | Logging setup complete:
+2025-10-28 22:07:45 | INFO     | GPUComponentTester |   Main log: logs\gpu_component_test_20251028_220745.log
+2025-10-28 22:07:45 | INFO     | GPUComponentTester |   Memory log: logs\memory_monitor_20251028_220745.log
+2025-10-28 22:07:45 | INFO     | GPUComponentTester |   Performance log: logs\performance_20251028_220745.log
+2025-10-28 22:07:45 | INFO     | GPUComponentTester | 🚀 GPU Component Tester initialized
+2025-10-28 22:07:45 | INFO     | GPUComponentTester | Timestamp: 20251028_220745
+2025-10-28 22:07:45 | INFO     | GPUComponentTester | Logs directory: logs
+2025-10-28 22:07:45 | INFO     | GPUComponentTester | Results directory: results\gpu_component_tests
+2025-10-28 22:07:45 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 22:07:45 | INFO     | GPUComponentTester | SYSTEM INFORMATION
+2025-10-28 22:07:45 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 22:07:45 | INFO     | GPUComponentTester | CPU Count: 8
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | CPU Usage: 22.9%
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Total Memory: 15.87 GB
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Available Memory: 6.02 GB
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Memory Usage: 62.1%
+2025-10-28 22:07:46 | WARNING  | GPUComponentTester | CUDA not available
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Python Version: 3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Working Directory: C:\workspace\Time-Series-Library
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | 🔍 STEP 1: Baseline Overfitting Check
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | 🔍 BASELINE OVERFITTING CHECK
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | ============================================================
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Running quick baseline test to verify overfitting fix...
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Testing minimal baseline configuration...
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Baseline_OverfitCheck
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 22:07:46 | INFO     | GPUComponentTester |   use_multi_scale_context: False
+2025-10-28 22:07:46 | INFO     | GPUComponentTester |   use_hierarchical_mapping: False
+2025-10-28 22:07:46 | INFO     | GPUComponentTester |   use_stochastic_learner: False
+2025-10-28 22:07:46 | INFO     | GPUComponentTester |   use_petri_net_combiner: False
+2025-10-28 22:07:46 | INFO     | GPUComponentTester |   use_mixture_decoder: False
+2025-10-28 22:07:46 | INFO     | GPUComponentTester |   enable_mdn_decoder: False
+2025-10-28 22:07:46 | INFO     | GPUComponentTester |   use_efficient_covariate_interaction: False
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Created config: results\gpu_component_tests\Baseline_OverfitCheck_20251028_220745.yaml
+2025-10-28 22:07:46 | INFO     | GPUComponentTester | Starting training with config: results\gpu_component_tests\Baseline_OverfitCheck_20251028_220745.yaml
