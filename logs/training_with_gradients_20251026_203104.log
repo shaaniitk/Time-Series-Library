@@ -1,0 +1,116 @@
+Could not register with unified registry
+WARNING:root:Could not import TSNormalizer from utils.normalization
+WARNING:root:Wavelet components not available: attempted relative import beyond top-level package
+✅ Input wave count matches CSV: 113
+📊 Analyzing CSV with 119 columns...
+📊 Found 113 celestial columns out of 119 total
+⚠️  2 features could not be assigned to celestial bodies:
+   117: Ascendant_sin
+   118: Ascendant_cos
+⚠️  chiron not found in CSV
+📊 Assigning Ascendant features to Chiron (closest astrological match)
+
+🌌 CELESTIAL FEATURE MAPPING REPORT:
+============================================================
+🪐 sun          (10 features): [0, 1, 2, 3, 4, 5, 6, 80, 87, 88]
+   Features: dyn_Sun_sin, dyn_Sun_cos, dyn_Sun_speed ... Sun_sin, Sun_cos
+🪐 moon         (10 features): [7, 8, 9, 10, 11, 12, 13, 81, 89, 90]
+   Features: dyn_Moon_sin, dyn_Moon_cos, dyn_Moon_speed ... Moon_sin, Moon_cos
+🪐 mercury      (10 features): [21, 22, 23, 24, 25, 26, 27, 83, 93, 94]
+   Features: dyn_Mercury_sin, dyn_Mercury_cos, dyn_Mercury_speed ... Mercury_sin, Mercury_cos
+🪐 venus        (10 features): [35, 36, 37, 38, 39, 40, 41, 85, 97, 98]
+   Features: dyn_Venus_sin, dyn_Venus_cos, dyn_Venus_speed ... Venus_sin, Venus_cos
+🪐 mars         (10 features): [14, 15, 16, 17, 18, 19, 20, 82, 91, 92]
+   Features: dyn_Mars_sin, dyn_Mars_cos, dyn_Mars_speed ... Mars_sin, Mars_cos
+🪐 jupiter      (10 features): [28, 29, 30, 31, 32, 33, 34, 84, 95, 96]
+   Features: dyn_Jupiter_sin, dyn_Jupiter_cos, dyn_Jupiter_speed ... Jupiter_sin, Jupiter_cos
+🪐 saturn       (10 features): [42, 43, 44, 45, 46, 47, 48, 86, 99, 100]
+   Features: dyn_Saturn_sin, dyn_Saturn_cos, dyn_Saturn_speed ... Saturn_sin, Saturn_cos
+🪐 uranus       ( 9 features): [49, 50, 51, 52, 53, 54, 55, 101, 102]
+   Features: dyn_Uranus_sin, dyn_Uranus_cos, dyn_Uranus_speed ... Uranus_sin, Uranus_cos
+🪐 neptune      ( 9 features): [56, 57, 58, 59, 60, 61, 62, 103, 104]
+   Features: dyn_Neptune_sin, dyn_Neptune_cos, dyn_Neptune_speed ... Neptune_sin, Neptune_cos
+🪐 pluto        ( 9 features): [63, 64, 65, 66, 67, 68, 69, 105, 106]
+   Features: dyn_Pluto_sin, dyn_Pluto_cos, dyn_Pluto_speed ... Pluto_sin, Pluto_cos
+🪐 north_node   ( 7 features): [70, 71, 72, 73, 74, 107, 108]
+   Features: dyn_Mean Rahu_sin, dyn_Mean Rahu_cos, dyn_Mean Rahu_speed ... Mean Rahu_sin, Mean Rahu_cos
+🪐 south_node   ( 7 features): [75, 76, 77, 78, 79, 109, 110]
+   Features: dyn_Mean Ketu_sin, dyn_Mean Ketu_cos, dyn_Mean Ketu_speed ... Mean Ketu_sin, Mean Ketu_cos
+🪐 chiron       ( 2 features): [111, 112]
+   Features: Ascendant_sin, Ascendant_cos
+============================================================
+📊 Total celestial features mapped: 113
+📊 Available celestial columns: 113
+📊 Total CSV columns: 119
+📊 Expected input waves: 113
+📊 Max feature index used: 112
+✅ Celestial mapping validation complete.
+
+🌌 Phase-Aware Celestial Processor initialized:
+   - Input waves: 113 (auto-detected)
+   - Celestial bodies: 13
+   - Celestial dimension: 32
+   - Dynamic feature mapping: ENABLED
+   - Assumes phase info already in inputs (sin/cos encoded)
+   - Will compute explicit phase differences for edges
+🌌 Celestial Wave Aggregator initialized:
+   - Input waves: 113
+   - Celestial bodies: 13
+   - moon: 9 waves
+   - mercury: 9 waves
+   - venus: 9 waves
+   - sun: 9 waves
+   - mars: 9 waves
+   - jupiter: 9 waves
+   - saturn: 9 waves
+   - uranus: 9 waves
+   - neptune: 9 waves
+   - pluto: 9 waves
+   - north_node: 12 waves
+   - south_node: 8 waves
+   - chiron: 3 waves
+2025-10-26 20:31:20,944 INFO __main__: Epoch 1/2 - production training
+2025-10-26 20:31:37,119 INFO __main__: Batch 0/848 | loss=1.632576 elapsed=16.2s
+2025-10-26 20:31:46,656 INFO __main__: Batch 1/848 | loss=23.657305 elapsed=25.7s
+2025-10-26 20:31:56,600 INFO __main__: Batch 2/848 | loss=6.797722 elapsed=35.7s
+2025-10-26 20:32:04,647 INFO __main__: Batch 3/848 | loss=4.283716 elapsed=43.7s
+2025-10-26 20:32:13,069 INFO __main__: Batch 4/848 | loss=2.158472 elapsed=52.1s
+2025-10-26 20:32:20,901 INFO __main__: Batch 5/848 | loss=1.956804 elapsed=60.0s
+2025-10-26 20:32:29,293 INFO __main__: Batch 6/848 | loss=1.473464 elapsed=68.4s
+2025-10-26 20:32:38,017 INFO __main__: Batch 7/848 | loss=1.533228 elapsed=77.1s
+2025-10-26 20:32:50,238 INFO __main__: Batch 8/848 | loss=3.383053 elapsed=89.3s
+2025-10-26 20:32:59,831 INFO __main__: Batch 9/848 | loss=1.280219 elapsed=98.9s
+2025-10-26 20:33:09,329 INFO __main__: Batch 10/848 | loss=2.102823 elapsed=108.4s
+2025-10-26 20:33:17,899 INFO __main__: Batch 11/848 | loss=2.847289 elapsed=117.0s
+2025-10-26 20:33:26,078 INFO __main__: Batch 12/848 | loss=2.292081 elapsed=125.1s
+2025-10-26 20:33:37,801 INFO __main__: Batch 13/848 | loss=1.352615 elapsed=136.9s
+2025-10-26 20:33:50,230 INFO __main__: Batch 14/848 | loss=0.710166 elapsed=149.3s
+2025-10-26 20:34:06,486 INFO __main__: Batch 15/848 | loss=1.525972 elapsed=165.5s
+2025-10-26 20:34:16,134 INFO __main__: Batch 16/848 | loss=1.718049 elapsed=175.2s
+2025-10-26 20:34:24,581 INFO __main__: Batch 17/848 | loss=0.689811 elapsed=183.6s
+2025-10-26 20:34:33,651 INFO __main__: Batch 18/848 | loss=1.489186 elapsed=192.7s
+2025-10-26 20:34:42,635 INFO __main__: Batch 19/848 | loss=1.148988 elapsed=201.7s
+2025-10-26 20:34:52,715 INFO __main__: Batch 20/848 | loss=1.358295 elapsed=211.8s
+2025-10-26 20:35:07,395 INFO __main__: Batch 21/848 | loss=0.756119 elapsed=226.5s
+2025-10-26 20:35:19,725 INFO __main__: Batch 22/848 | loss=0.936629 elapsed=238.8s
+2025-10-26 20:35:33,578 INFO __main__: Batch 23/848 | loss=1.327818 elapsed=252.6s
+2025-10-26 20:35:44,046 INFO __main__: Batch 24/848 | loss=1.230478 elapsed=263.1s
+2025-10-26 20:35:55,066 INFO __main__: Batch 25/848 | loss=0.775492 elapsed=274.1s
+2025-10-26 20:36:08,792 INFO __main__: Batch 26/848 | loss=1.228675 elapsed=287.9s
+2025-10-26 20:36:19,362 INFO __main__: Batch 27/848 | loss=0.893253 elapsed=298.4s
+2025-10-26 20:36:28,858 INFO __main__: Batch 28/848 | loss=1.133643 elapsed=307.9s
+2025-10-26 20:36:37,557 INFO __main__: Batch 29/848 | loss=1.003984 elapsed=316.6s
+2025-10-26 20:36:45,186 INFO __main__: Batch 30/848 | loss=1.097018 elapsed=324.2s
+2025-10-26 20:36:54,877 INFO __main__: Batch 31/848 | loss=1.561656 elapsed=333.9s
+2025-10-26 20:37:05,634 INFO __main__: Batch 32/848 | loss=1.199034 elapsed=344.7s
+2025-10-26 20:37:13,918 INFO __main__: Batch 33/848 | loss=0.791072 elapsed=353.0s
+2025-10-26 20:37:24,822 INFO __main__: Batch 34/848 | loss=0.474339 elapsed=363.9s
+2025-10-26 20:37:33,570 INFO __main__: Batch 35/848 | loss=0.630528 elapsed=372.6s
+2025-10-26 20:37:41,060 INFO __main__: Batch 36/848 | loss=1.637817 elapsed=380.1s
+2025-10-26 20:37:50,385 INFO __main__: Batch 37/848 | loss=1.797188 elapsed=389.4s
+2025-10-26 20:37:57,188 INFO __main__: Batch 38/848 | loss=0.453274 elapsed=396.3s
+2025-10-26 20:38:11,478 INFO __main__: Batch 39/848 | loss=2.602235 elapsed=410.5s
+2025-10-26 20:38:21,676 INFO __main__: Batch 40/848 | loss=0.788406 elapsed=420.7s
+2025-10-26 20:38:32,887 INFO __main__: Batch 41/848 | loss=0.670091 elapsed=431.9s
+2025-10-26 20:38:41,246 INFO __main__: Batch 42/848 | loss=0.502078 elapsed=440.3s
+2025-10-26 20:38:49,312 INFO __main__: Batch 43/848 | loss=1.334865 elapsed=448.4s

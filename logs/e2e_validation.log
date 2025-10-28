@@ -1,0 +1,370 @@
+Could not register with unified registry
+WARNING:root:Could not import TSNormalizer from utils.normalization
+WARNING:root:Wavelet components not available: attempted relative import beyond top-level package
+✅ Input wave count matches CSV: 113
+📊 Analyzing CSV with 119 columns...
+📊 Found 113 celestial columns out of 119 total
+⚠️  2 features could not be assigned to celestial bodies:
+   117: Ascendant_sin
+   118: Ascendant_cos
+⚠️  chiron not found in CSV
+📊 Assigning Ascendant features to Chiron (closest astrological match)
+
+🌌 CELESTIAL FEATURE MAPPING REPORT:
+============================================================
+🪐 sun          (10 features): [0, 1, 2, 3, 4, 5, 6, 80, 87, 88]
+   Features: dyn_Sun_sin, dyn_Sun_cos, dyn_Sun_speed ... Sun_sin, Sun_cos
+🪐 moon         (10 features): [7, 8, 9, 10, 11, 12, 13, 81, 89, 90]
+   Features: dyn_Moon_sin, dyn_Moon_cos, dyn_Moon_speed ... Moon_sin, Moon_cos
+🪐 mercury      (10 features): [21, 22, 23, 24, 25, 26, 27, 83, 93, 94]
+   Features: dyn_Mercury_sin, dyn_Mercury_cos, dyn_Mercury_speed ... Mercury_sin, Mercury_cos
+🪐 venus        (10 features): [35, 36, 37, 38, 39, 40, 41, 85, 97, 98]
+   Features: dyn_Venus_sin, dyn_Venus_cos, dyn_Venus_speed ... Venus_sin, Venus_cos
+🪐 mars         (10 features): [14, 15, 16, 17, 18, 19, 20, 82, 91, 92]
+   Features: dyn_Mars_sin, dyn_Mars_cos, dyn_Mars_speed ... Mars_sin, Mars_cos
+🪐 jupiter      (10 features): [28, 29, 30, 31, 32, 33, 34, 84, 95, 96]
+   Features: dyn_Jupiter_sin, dyn_Jupiter_cos, dyn_Jupiter_speed ... Jupiter_sin, Jupiter_cos
+🪐 saturn       (10 features): [42, 43, 44, 45, 46, 47, 48, 86, 99, 100]
+   Features: dyn_Saturn_sin, dyn_Saturn_cos, dyn_Saturn_speed ... Saturn_sin, Saturn_cos
+🪐 uranus       ( 9 features): [49, 50, 51, 52, 53, 54, 55, 101, 102]
+   Features: dyn_Uranus_sin, dyn_Uranus_cos, dyn_Uranus_speed ... Uranus_sin, Uranus_cos
+🪐 neptune      ( 9 features): [56, 57, 58, 59, 60, 61, 62, 103, 104]
+   Features: dyn_Neptune_sin, dyn_Neptune_cos, dyn_Neptune_speed ... Neptune_sin, Neptune_cos
+🪐 pluto        ( 9 features): [63, 64, 65, 66, 67, 68, 69, 105, 106]
+   Features: dyn_Pluto_sin, dyn_Pluto_cos, dyn_Pluto_speed ... Pluto_sin, Pluto_cos
+🪐 north_node   ( 7 features): [70, 71, 72, 73, 74, 107, 108]
+   Features: dyn_Mean Rahu_sin, dyn_Mean Rahu_cos, dyn_Mean Rahu_speed ... Mean Rahu_sin, Mean Rahu_cos
+🪐 south_node   ( 7 features): [75, 76, 77, 78, 79, 109, 110]
+   Features: dyn_Mean Ketu_sin, dyn_Mean Ketu_cos, dyn_Mean Ketu_speed ... Mean Ketu_sin, Mean Ketu_cos
+🪐 chiron       ( 2 features): [111, 112]
+   Features: Ascendant_sin, Ascendant_cos
+============================================================
+📊 Total celestial features mapped: 113
+📊 Available celestial columns: 113
+📊 Total CSV columns: 119
+📊 Expected input waves: 113
+📊 Max feature index used: 112
+✅ Celestial mapping validation complete.
+
+🌌 Phase-Aware Celestial Processor initialized:
+   - Input waves: 113 (auto-detected)
+   - Celestial bodies: 13
+   - Celestial dimension: 32
+   - Dynamic feature mapping: ENABLED
+   - Assumes phase info already in inputs (sin/cos encoded)
+   - Will compute explicit phase differences for edges
+🌌 Celestial Wave Aggregator initialized:
+   - Input waves: 113
+   - Celestial bodies: 13
+   - moon: 9 waves
+   - mercury: 9 waves
+   - venus: 9 waves
+   - sun: 9 waves
+   - mars: 9 waves
+   - jupiter: 9 waves
+   - saturn: 9 waves
+   - uranus: 9 waves
+   - neptune: 9 waves
+   - pluto: 9 waves
+   - north_node: 12 waves
+   - south_node: 8 waves
+   - chiron: 3 waves
+2025-10-26 21:01:07,553 INFO __main__: Epoch 1/2 - production training
+2025-10-26 21:01:20,581 INFO __main__: Batch 0/848 | loss=1.632576 elapsed=13.0s
+2025-10-26 21:01:32,516 INFO __main__: Batch 1/848 | loss=23.657305 elapsed=25.0s
+2025-10-26 21:01:43,092 INFO __main__: Batch 2/848 | loss=6.797722 elapsed=35.5s
+2025-10-26 21:01:57,049 INFO __main__: Batch 3/848 | loss=4.283716 elapsed=49.5s
+2025-10-26 21:02:12,919 INFO __main__: Batch 4/848 | loss=2.158472 elapsed=65.4s
+2025-10-26 21:02:22,979 INFO __main__: Batch 5/848 | loss=1.956804 elapsed=75.4s
+2025-10-26 21:02:32,223 INFO __main__: Batch 6/848 | loss=1.473464 elapsed=84.7s
+2025-10-26 21:02:41,383 INFO __main__: Batch 7/848 | loss=1.533228 elapsed=93.8s
+2025-10-26 21:02:51,848 INFO __main__: Batch 8/848 | loss=3.383053 elapsed=104.3s
+2025-10-26 21:03:01,793 INFO __main__: Batch 9/848 | loss=1.280219 elapsed=114.2s
+2025-10-26 21:03:13,781 INFO __main__: Batch 10/848 | loss=2.102823 elapsed=126.2s
+2025-10-26 21:03:24,188 INFO __main__: Batch 11/848 | loss=2.847289 elapsed=136.6s
+2025-10-26 21:03:39,958 INFO __main__: Batch 12/848 | loss=2.292081 elapsed=152.4s
+2025-10-26 21:03:57,983 INFO __main__: Batch 13/848 | loss=1.352615 elapsed=170.4s
+2025-10-26 21:04:09,829 INFO __main__: Batch 14/848 | loss=0.710166 elapsed=182.3s
+2025-10-26 21:04:27,326 INFO __main__: Batch 15/848 | loss=1.525972 elapsed=199.8s
+2025-10-26 21:04:39,725 INFO __main__: Batch 16/848 | loss=1.718049 elapsed=212.2s
+2025-10-26 21:04:51,702 INFO __main__: Batch 17/848 | loss=0.689811 elapsed=224.2s
+2025-10-26 21:05:01,848 INFO __main__: Batch 18/848 | loss=1.489186 elapsed=234.3s
+2025-10-26 21:05:13,321 INFO __main__: Batch 19/848 | loss=1.148988 elapsed=245.8s
+2025-10-26 21:05:26,085 INFO __main__: Batch 20/848 | loss=1.358295 elapsed=258.5s
+2025-10-26 21:05:37,578 INFO __main__: Batch 21/848 | loss=0.756119 elapsed=270.0s
+2025-10-26 21:05:48,396 INFO __main__: Batch 22/848 | loss=0.936629 elapsed=280.8s
+2025-10-26 21:06:13,492 INFO __main__: Batch 23/848 | loss=1.327818 elapsed=305.9s
+2025-10-26 21:06:31,511 INFO __main__: Batch 24/848 | loss=1.230478 elapsed=324.0s
+2025-10-26 21:06:45,560 INFO __main__: Batch 25/848 | loss=0.775492 elapsed=338.0s
+2025-10-26 21:07:00,390 INFO __main__: Batch 26/848 | loss=1.228675 elapsed=352.8s
+2025-10-26 21:07:14,223 INFO __main__: Batch 27/848 | loss=0.893253 elapsed=366.7s
+2025-10-26 21:07:26,338 INFO __main__: Batch 28/848 | loss=1.133643 elapsed=378.8s
+2025-10-26 21:07:40,616 INFO __main__: Batch 29/848 | loss=1.003984 elapsed=393.1s
+2025-10-26 21:07:56,649 INFO __main__: Batch 30/848 | loss=1.097018 elapsed=409.1s
+2025-10-26 21:08:12,016 INFO __main__: Batch 31/848 | loss=1.561656 elapsed=424.5s
+2025-10-26 21:09:02,043 INFO __main__: Batch 32/848 | loss=1.199034 elapsed=474.5s
+2025-10-26 21:09:20,273 INFO __main__: Batch 33/848 | loss=0.791072 elapsed=492.7s
+2025-10-26 21:09:34,017 INFO __main__: Batch 34/848 | loss=0.474339 elapsed=506.5s
+2025-10-26 21:10:03,843 INFO __main__: Batch 35/848 | loss=0.630528 elapsed=536.3s
+2025-10-26 21:10:24,003 INFO __main__: Batch 36/848 | loss=1.637817 elapsed=556.5s
+2025-10-26 21:10:38,310 INFO __main__: Batch 37/848 | loss=1.797188 elapsed=570.8s
+2025-10-26 21:10:49,666 INFO __main__: Batch 38/848 | loss=0.453274 elapsed=582.1s
+2025-10-26 21:11:13,286 INFO __main__: Batch 39/848 | loss=2.602235 elapsed=605.7s
+2025-10-26 21:11:39,227 INFO __main__: Batch 40/848 | loss=0.788406 elapsed=631.7s
+2025-10-26 21:12:01,973 INFO __main__: Batch 41/848 | loss=0.670091 elapsed=654.4s
+2025-10-26 21:12:16,934 INFO __main__: Batch 42/848 | loss=0.502078 elapsed=669.4s
+2025-10-26 21:12:29,621 INFO __main__: Batch 43/848 | loss=1.334865 elapsed=682.1s
+2025-10-26 21:12:41,042 INFO __main__: Batch 44/848 | loss=0.807493 elapsed=693.5s
+2025-10-26 21:12:56,145 INFO __main__: Batch 45/848 | loss=1.436952 elapsed=708.6s
+2025-10-26 21:13:09,284 INFO __main__: Batch 46/848 | loss=1.073644 elapsed=721.7s
+2025-10-26 21:13:22,423 INFO __main__: Batch 47/848 | loss=0.944097 elapsed=734.9s
+2025-10-26 21:13:39,982 INFO __main__: Batch 48/848 | loss=0.951929 elapsed=752.4s
+2025-10-26 21:14:04,961 INFO __main__: Batch 49/848 | loss=1.549139 elapsed=777.4s
+2025-10-26 21:14:38,033 INFO __main__: Batch 50/848 | loss=0.690735 elapsed=810.5s
+2025-10-26 21:14:59,093 INFO __main__: Batch 51/848 | loss=1.359931 elapsed=831.5s
+2025-10-26 21:15:13,370 INFO __main__: Batch 52/848 | loss=1.383160 elapsed=845.8s
+2025-10-26 21:15:33,290 INFO __main__: Batch 53/848 | loss=0.474453 elapsed=865.7s
+2025-10-26 21:15:46,354 INFO __main__: Batch 54/848 | loss=0.897879 elapsed=878.8s
+2025-10-26 21:16:00,749 INFO __main__: Batch 55/848 | loss=0.863180 elapsed=893.2s
+2025-10-26 21:16:15,294 INFO __main__: Batch 56/848 | loss=0.887101 elapsed=907.7s
+2025-10-26 21:16:29,723 INFO __main__: Batch 57/848 | loss=0.600343 elapsed=922.2s
+2025-10-26 21:16:54,104 INFO __main__: Batch 58/848 | loss=0.526405 elapsed=946.6s
+2025-10-26 21:17:12,086 INFO __main__: Batch 59/848 | loss=0.726060 elapsed=964.5s
+2025-10-26 21:17:24,003 INFO __main__: Batch 60/848 | loss=0.744510 elapsed=976.5s
+2025-10-26 21:17:38,781 INFO __main__: Batch 61/848 | loss=1.097299 elapsed=991.2s
+2025-10-26 21:18:03,082 INFO __main__: Batch 62/848 | loss=0.619846 elapsed=1015.5s
+2025-10-26 21:18:19,067 INFO __main__: Batch 63/848 | loss=1.048452 elapsed=1031.5s
+2025-10-26 21:18:36,540 INFO __main__: Batch 64/848 | loss=0.647622 elapsed=1049.0s
+2025-10-26 21:19:00,915 INFO __main__: Batch 65/848 | loss=0.602256 elapsed=1073.4s
+2025-10-26 21:19:17,038 INFO __main__: Batch 66/848 | loss=0.924871 elapsed=1089.5s
+2025-10-26 21:19:41,580 INFO __main__: Batch 67/848 | loss=2.427860 elapsed=1114.0s
+2025-10-26 21:20:00,843 INFO __main__: Batch 68/848 | loss=0.981921 elapsed=1133.3s
+2025-10-26 21:20:14,111 INFO __main__: Batch 69/848 | loss=1.312281 elapsed=1146.6s
+2025-10-26 21:20:36,452 INFO __main__: Batch 70/848 | loss=0.511561 elapsed=1168.9s
+2025-10-26 21:21:04,269 INFO __main__: Batch 71/848 | loss=0.943633 elapsed=1196.7s
+2025-10-26 21:21:19,713 INFO __main__: Batch 72/848 | loss=1.230303 elapsed=1212.2s
+2025-10-26 21:21:32,885 INFO __main__: Batch 73/848 | loss=1.090402 elapsed=1225.3s
+2025-10-26 21:21:46,904 INFO __main__: Batch 74/848 | loss=1.033529 elapsed=1239.4s
+2025-10-26 21:22:04,760 INFO __main__: Batch 75/848 | loss=1.388790 elapsed=1257.2s
+2025-10-26 21:22:17,269 INFO __main__: Batch 76/848 | loss=1.341753 elapsed=1269.7s
+2025-10-26 21:22:27,972 INFO __main__: Batch 77/848 | loss=0.522199 elapsed=1280.4s
+2025-10-26 21:22:35,698 INFO __main__: Batch 78/848 | loss=0.904698 elapsed=1288.1s
+2025-10-26 21:22:43,451 INFO __main__: Batch 79/848 | loss=0.601558 elapsed=1295.9s
+2025-10-26 21:22:51,971 INFO __main__: Batch 80/848 | loss=0.646648 elapsed=1304.4s
+2025-10-26 21:23:02,332 INFO __main__: Batch 81/848 | loss=0.803435 elapsed=1314.8s
+2025-10-26 21:23:09,284 INFO __main__: Batch 82/848 | loss=1.291085 elapsed=1321.7s
+2025-10-26 21:23:17,732 INFO __main__: Batch 83/848 | loss=1.213081 elapsed=1330.2s
+2025-10-26 21:23:24,823 INFO __main__: Batch 84/848 | loss=0.909906 elapsed=1337.3s
+2025-10-26 21:23:33,185 INFO __main__: Batch 85/848 | loss=0.819276 elapsed=1345.6s
+2025-10-26 21:23:40,836 INFO __main__: Batch 86/848 | loss=0.913519 elapsed=1353.3s
+2025-10-26 21:23:48,484 INFO __main__: Batch 87/848 | loss=0.502928 elapsed=1360.9s
+2025-10-26 21:23:56,063 INFO __main__: Batch 88/848 | loss=0.703487 elapsed=1368.5s
+2025-10-26 21:24:06,100 INFO __main__: Batch 89/848 | loss=1.237823 elapsed=1378.6s
+2025-10-26 21:24:15,517 INFO __main__: Batch 90/848 | loss=1.024875 elapsed=1388.0s
+2025-10-26 21:24:25,443 INFO __main__: Batch 91/848 | loss=0.826004 elapsed=1397.9s
+2025-10-26 21:24:34,683 INFO __main__: Batch 92/848 | loss=1.307835 elapsed=1407.1s
+2025-10-26 21:24:44,343 INFO __main__: Batch 93/848 | loss=1.378776 elapsed=1416.8s
+2025-10-26 21:24:53,901 INFO __main__: Batch 94/848 | loss=1.560602 elapsed=1426.4s
+2025-10-26 21:25:04,955 INFO __main__: Batch 95/848 | loss=0.861811 elapsed=1437.4s
+2025-10-26 21:25:13,613 INFO __main__: Batch 96/848 | loss=1.062339 elapsed=1446.1s
+2025-10-26 21:25:22,845 INFO __main__: Batch 97/848 | loss=0.830755 elapsed=1455.3s
+2025-10-26 21:25:30,557 INFO __main__: Batch 98/848 | loss=2.267028 elapsed=1463.0s
+2025-10-26 21:25:37,392 INFO __main__: Batch 99/848 | loss=1.298766 elapsed=1469.8s
+2025-10-26 21:25:45,042 INFO __main__: Batch 100/848 | loss=1.390880 elapsed=1477.5s
+2025-10-26 21:25:52,931 INFO __main__: Batch 101/848 | loss=1.001001 elapsed=1485.4s
+2025-10-26 21:26:02,050 INFO __main__: Batch 102/848 | loss=0.906038 elapsed=1494.5s
+2025-10-26 21:26:09,664 INFO __main__: Batch 103/848 | loss=0.928368 elapsed=1502.1s
+2025-10-26 21:26:16,421 INFO __main__: Batch 104/848 | loss=0.597967 elapsed=1508.9s
+2025-10-26 21:26:23,374 INFO __main__: Batch 105/848 | loss=0.994039 elapsed=1515.8s
+2025-10-26 21:26:30,179 INFO __main__: Batch 106/848 | loss=2.319100 elapsed=1522.6s
+2025-10-26 21:26:37,764 INFO __main__: Batch 107/848 | loss=2.187001 elapsed=1530.2s
+2025-10-26 21:26:45,427 INFO __main__: Batch 108/848 | loss=1.362289 elapsed=1537.9s
+2025-10-26 21:26:56,530 INFO __main__: Batch 109/848 | loss=1.058262 elapsed=1549.0s
+2025-10-26 21:27:08,527 INFO __main__: Batch 110/848 | loss=0.498467 elapsed=1561.0s
+2025-10-26 21:27:15,992 INFO __main__: Batch 111/848 | loss=1.087046 elapsed=1568.4s
+2025-10-26 21:27:26,316 INFO __main__: Batch 112/848 | loss=0.784141 elapsed=1578.8s
+2025-10-26 21:27:34,982 INFO __main__: Batch 113/848 | loss=0.825522 elapsed=1587.4s
+2025-10-26 21:27:45,056 INFO __main__: Batch 114/848 | loss=0.945770 elapsed=1597.5s
+2025-10-26 21:27:51,878 INFO __main__: Batch 115/848 | loss=1.036947 elapsed=1604.3s
+2025-10-26 21:28:01,017 INFO __main__: Batch 116/848 | loss=1.100115 elapsed=1613.5s
+2025-10-26 21:28:08,091 INFO __main__: Batch 117/848 | loss=1.330793 elapsed=1620.5s
+2025-10-26 21:28:15,785 INFO __main__: Batch 118/848 | loss=0.938919 elapsed=1628.2s
+2025-10-26 21:28:23,680 INFO __main__: Batch 119/848 | loss=0.762746 elapsed=1636.1s
+2025-10-26 21:28:30,624 INFO __main__: Batch 120/848 | loss=1.164637 elapsed=1643.1s
+2025-10-26 21:28:38,424 INFO __main__: Batch 121/848 | loss=0.913210 elapsed=1650.9s
+2025-10-26 21:28:45,379 INFO __main__: Batch 122/848 | loss=0.824065 elapsed=1657.8s
+2025-10-26 21:28:53,061 INFO __main__: Batch 123/848 | loss=1.035345 elapsed=1665.5s
+2025-10-26 21:29:02,268 INFO __main__: Batch 124/848 | loss=1.090279 elapsed=1674.7s
+2025-10-26 21:29:09,777 INFO __main__: Batch 125/848 | loss=0.991561 elapsed=1682.2s
+2025-10-26 21:29:16,806 INFO __main__: Batch 126/848 | loss=1.159436 elapsed=1689.3s
+2025-10-26 21:29:23,653 INFO __main__: Batch 127/848 | loss=1.052613 elapsed=1696.1s
+2025-10-26 21:29:30,542 INFO __main__: Batch 128/848 | loss=1.222890 elapsed=1703.0s
+2025-10-26 21:29:37,367 INFO __main__: Batch 129/848 | loss=1.209824 elapsed=1709.8s
+2025-10-26 21:29:44,422 INFO __main__: Batch 130/848 | loss=1.413544 elapsed=1716.9s
+2025-10-26 21:29:53,360 INFO __main__: Batch 131/848 | loss=0.620936 elapsed=1725.8s
+2025-10-26 21:30:01,612 INFO __main__: Batch 132/848 | loss=1.232127 elapsed=1734.1s
+2025-10-26 21:30:08,539 INFO __main__: Batch 133/848 | loss=0.859677 elapsed=1741.0s
+2025-10-26 21:30:16,272 INFO __main__: Batch 134/848 | loss=0.696393 elapsed=1748.7s
+2025-10-26 21:30:25,201 INFO __main__: Batch 135/848 | loss=0.598252 elapsed=1757.7s
+2025-10-26 21:30:33,897 INFO __main__: Batch 136/848 | loss=0.759197 elapsed=1766.3s
+2025-10-26 21:30:40,662 INFO __main__: Batch 137/848 | loss=0.918269 elapsed=1773.1s
+2025-10-26 21:30:48,848 INFO __main__: Batch 138/848 | loss=0.737959 elapsed=1781.3s
+2025-10-26 21:30:56,241 INFO __main__: Batch 139/848 | loss=0.490554 elapsed=1788.7s
+2025-10-26 21:31:05,694 INFO __main__: Batch 140/848 | loss=0.487018 elapsed=1798.1s
+2025-10-26 21:31:12,441 INFO __main__: Batch 141/848 | loss=0.587703 elapsed=1804.9s
+2025-10-26 21:31:20,063 INFO __main__: Batch 142/848 | loss=0.858064 elapsed=1812.5s
+2025-10-26 21:31:27,423 INFO __main__: Batch 143/848 | loss=0.890851 elapsed=1819.9s
+2025-10-26 21:31:34,236 INFO __main__: Batch 144/848 | loss=0.662920 elapsed=1826.7s
+2025-10-26 21:31:40,674 INFO __main__: Batch 145/848 | loss=0.365649 elapsed=1833.1s
+2025-10-26 21:31:47,252 INFO __main__: Batch 146/848 | loss=1.241984 elapsed=1839.7s
+2025-10-26 21:31:53,815 INFO __main__: Batch 147/848 | loss=0.627914 elapsed=1846.3s
+2025-10-26 21:32:01,982 INFO __main__: Batch 148/848 | loss=0.848617 elapsed=1854.4s
+2025-10-26 21:32:09,553 INFO __main__: Batch 149/848 | loss=0.753435 elapsed=1862.0s
+2025-10-26 21:32:16,129 INFO __main__: Batch 150/848 | loss=1.901370 elapsed=1868.6s
+2025-10-26 21:32:22,890 INFO __main__: Batch 151/848 | loss=0.393896 elapsed=1875.3s
+2025-10-26 21:32:30,287 INFO __main__: Batch 152/848 | loss=0.715317 elapsed=1882.7s
+2025-10-26 21:32:36,917 INFO __main__: Batch 153/848 | loss=0.961256 elapsed=1889.4s
+2025-10-26 21:32:43,589 INFO __main__: Batch 154/848 | loss=0.585933 elapsed=1896.0s
+2025-10-26 21:32:50,206 INFO __main__: Batch 155/848 | loss=1.082708 elapsed=1902.7s
+2025-10-26 21:32:56,852 INFO __main__: Batch 156/848 | loss=0.865963 elapsed=1909.3s
+2025-10-26 21:33:04,827 INFO __main__: Batch 157/848 | loss=0.525429 elapsed=1917.3s
+2025-10-26 21:33:11,375 INFO __main__: Batch 158/848 | loss=0.445199 elapsed=1923.8s
+2025-10-26 21:33:18,095 INFO __main__: Batch 159/848 | loss=0.754359 elapsed=1930.5s
+2025-10-26 21:33:24,735 INFO __main__: Batch 160/848 | loss=0.756315 elapsed=1937.2s
+2025-10-26 21:33:31,359 INFO __main__: Batch 161/848 | loss=0.585000 elapsed=1943.8s
+2025-10-26 21:33:38,753 INFO __main__: Batch 162/848 | loss=0.521539 elapsed=1951.2s
+2025-10-26 21:33:45,236 INFO __main__: Batch 163/848 | loss=1.490324 elapsed=1957.7s
+2025-10-26 21:33:51,828 INFO __main__: Batch 164/848 | loss=1.421518 elapsed=1964.3s
+2025-10-26 21:33:59,728 INFO __main__: Batch 165/848 | loss=0.638314 elapsed=1972.2s
+2025-10-26 21:34:06,429 INFO __main__: Batch 166/848 | loss=0.712460 elapsed=1978.9s
+2025-10-26 21:34:13,035 INFO __main__: Batch 167/848 | loss=0.929658 elapsed=1985.5s
+2025-10-26 21:34:26,372 INFO __main__: Batch 168/848 | loss=0.662329 elapsed=1998.8s
+2025-10-26 21:34:35,290 INFO __main__: Batch 169/848 | loss=0.718481 elapsed=2007.7s
+2025-10-26 21:34:43,971 INFO __main__: Batch 170/848 | loss=0.864778 elapsed=2016.4s
+2025-10-26 21:34:52,236 INFO __main__: Batch 171/848 | loss=0.723425 elapsed=2024.7s
+2025-10-26 21:35:05,369 INFO __main__: Batch 172/848 | loss=0.927759 elapsed=2037.8s
+2025-10-26 21:35:14,459 INFO __main__: Batch 173/848 | loss=1.411196 elapsed=2046.9s
+2025-10-26 21:35:25,251 INFO __main__: Batch 174/848 | loss=0.974595 elapsed=2057.7s
+2025-10-26 21:35:40,779 INFO __main__: Batch 175/848 | loss=1.584574 elapsed=2073.2s
+2025-10-26 21:35:50,475 INFO __main__: Batch 176/848 | loss=1.175560 elapsed=2082.9s
+2025-10-26 21:35:57,333 INFO __main__: Batch 177/848 | loss=0.540019 elapsed=2089.8s
+2025-10-26 21:36:05,455 INFO __main__: Batch 178/848 | loss=1.767449 elapsed=2097.9s
+2025-10-26 21:36:12,189 INFO __main__: Batch 179/848 | loss=1.180931 elapsed=2104.6s
+2025-10-26 21:36:18,998 INFO __main__: Batch 180/848 | loss=0.672541 elapsed=2111.4s
+2025-10-26 21:36:25,682 INFO __main__: Batch 181/848 | loss=0.808883 elapsed=2118.1s
+2025-10-26 21:36:32,483 INFO __main__: Batch 182/848 | loss=0.586916 elapsed=2124.9s
+2025-10-26 21:36:39,927 INFO __main__: Batch 183/848 | loss=1.130271 elapsed=2132.4s
+2025-10-26 21:36:47,375 INFO __main__: Batch 184/848 | loss=1.310751 elapsed=2139.8s
+2025-10-26 21:36:54,752 INFO __main__: Batch 185/848 | loss=0.591998 elapsed=2147.2s
+2025-10-26 21:37:03,752 INFO __main__: Batch 186/848 | loss=0.518275 elapsed=2156.2s
+2025-10-26 21:37:10,368 INFO __main__: Batch 187/848 | loss=1.006344 elapsed=2162.8s
+2025-10-26 21:37:17,015 INFO __main__: Batch 188/848 | loss=0.700203 elapsed=2169.5s
+2025-10-26 21:37:24,536 INFO __main__: Batch 189/848 | loss=1.433566 elapsed=2177.0s
+2025-10-26 21:37:32,587 INFO __main__: Batch 190/848 | loss=0.756297 elapsed=2185.0s
+2025-10-26 21:37:39,995 INFO __main__: Batch 191/848 | loss=1.153011 elapsed=2192.4s
+2025-10-26 21:37:46,562 INFO __main__: Batch 192/848 | loss=1.377113 elapsed=2199.0s
+2025-10-26 21:37:53,142 INFO __main__: Batch 193/848 | loss=0.311677 elapsed=2205.6s
+2025-10-26 21:38:01,403 INFO __main__: Batch 194/848 | loss=0.659965 elapsed=2213.9s
+2025-10-26 21:38:08,599 INFO __main__: Batch 195/848 | loss=1.285183 elapsed=2221.0s
+2025-10-26 21:38:15,924 INFO __main__: Batch 196/848 | loss=0.780107 elapsed=2228.4s
+2025-10-26 21:38:22,552 INFO __main__: Batch 197/848 | loss=1.380713 elapsed=2235.0s
+2025-10-26 21:38:29,183 INFO __main__: Batch 198/848 | loss=0.516273 elapsed=2241.6s
+2025-10-26 21:38:35,763 INFO __main__: Batch 199/848 | loss=0.785163 elapsed=2248.2s
+2025-10-26 21:38:43,628 INFO __main__: Batch 200/848 | loss=2.543997 elapsed=2256.1s
+2025-10-26 21:38:50,320 INFO __main__: Batch 201/848 | loss=2.117453 elapsed=2262.8s
+2025-10-26 21:38:57,732 INFO __main__: Batch 202/848 | loss=2.270147 elapsed=2270.2s
+2025-10-26 21:39:07,238 INFO __main__: Batch 203/848 | loss=0.500301 elapsed=2279.7s
+2025-10-26 21:39:15,103 INFO __main__: Batch 204/848 | loss=0.808649 elapsed=2287.6s
+2025-10-26 21:39:23,937 INFO __main__: Batch 205/848 | loss=0.419705 elapsed=2296.4s
+2025-10-26 21:39:32,221 INFO __main__: Batch 206/848 | loss=0.624119 elapsed=2304.7s
+2025-10-26 21:39:40,168 INFO __main__: Batch 207/848 | loss=1.018171 elapsed=2312.6s
+2025-10-26 21:39:47,399 INFO __main__: Batch 208/848 | loss=0.756574 elapsed=2319.8s
+2025-10-26 21:39:57,363 INFO __main__: Batch 209/848 | loss=0.428648 elapsed=2329.8s
+2025-10-26 21:40:06,749 INFO __main__: Batch 210/848 | loss=1.254855 elapsed=2339.2s
+2025-10-26 21:40:13,424 INFO __main__: Batch 211/848 | loss=0.586731 elapsed=2345.9s
+2025-10-26 21:40:20,014 INFO __main__: Batch 212/848 | loss=2.589607 elapsed=2352.5s
+2025-10-26 21:40:27,329 INFO __main__: Batch 213/848 | loss=1.287596 elapsed=2359.8s
+2025-10-26 21:40:34,777 INFO __main__: Batch 214/848 | loss=0.754605 elapsed=2367.2s
+2025-10-26 21:40:41,320 INFO __main__: Batch 215/848 | loss=0.667835 elapsed=2373.8s
+2025-10-26 21:40:47,946 INFO __main__: Batch 216/848 | loss=1.909153 elapsed=2380.4s
+2025-10-26 21:40:55,868 INFO __main__: Batch 217/848 | loss=1.695993 elapsed=2388.3s
+2025-10-26 21:41:04,632 INFO __main__: Batch 218/848 | loss=1.066525 elapsed=2397.1s
+2025-10-26 21:41:12,362 INFO __main__: Batch 219/848 | loss=0.759999 elapsed=2404.8s
+2025-10-26 21:41:19,687 INFO __main__: Batch 220/848 | loss=2.336601 elapsed=2412.1s
+2025-10-26 21:41:26,646 INFO __main__: Batch 221/848 | loss=0.619991 elapsed=2419.1s
+2025-10-26 21:41:33,396 INFO __main__: Batch 222/848 | loss=1.433628 elapsed=2425.8s
+2025-10-26 21:41:39,893 INFO __main__: Batch 223/848 | loss=0.616552 elapsed=2432.3s
+2025-10-26 21:41:46,488 INFO __main__: Batch 224/848 | loss=1.414010 elapsed=2438.9s
+2025-10-26 21:41:53,199 INFO __main__: Batch 225/848 | loss=0.611888 elapsed=2445.6s
+2025-10-26 21:42:01,455 INFO __main__: Batch 226/848 | loss=0.645671 elapsed=2453.9s
+2025-10-26 21:42:08,251 INFO __main__: Batch 227/848 | loss=1.131722 elapsed=2460.7s
+2025-10-26 21:42:19,014 INFO __main__: Batch 228/848 | loss=0.563738 elapsed=2471.5s
+2025-10-26 21:42:26,545 INFO __main__: Batch 229/848 | loss=1.494787 elapsed=2479.0s
+2025-10-26 21:42:36,718 INFO __main__: Batch 230/848 | loss=0.703668 elapsed=2489.2s
+2025-10-26 21:42:46,411 INFO __main__: Batch 231/848 | loss=2.187424 elapsed=2498.9s
+2025-10-26 21:42:59,946 INFO __main__: Batch 232/848 | loss=0.718947 elapsed=2512.4s
+2025-10-26 21:43:07,865 INFO __main__: Batch 233/848 | loss=0.715582 elapsed=2520.3s
+2025-10-26 21:43:16,516 INFO __main__: Batch 234/848 | loss=0.734352 elapsed=2529.0s
+2025-10-26 21:43:25,928 INFO __main__: Batch 235/848 | loss=0.831684 elapsed=2538.4s
+2025-10-26 21:43:36,777 INFO __main__: Batch 236/848 | loss=0.771111 elapsed=2549.2s
+2025-10-26 21:43:47,519 INFO __main__: Batch 237/848 | loss=0.794586 elapsed=2560.0s
+2025-10-26 21:43:56,430 INFO __main__: Batch 238/848 | loss=0.855615 elapsed=2568.9s
+2025-10-26 21:44:08,454 INFO __main__: Batch 239/848 | loss=1.366550 elapsed=2580.9s
+2025-10-26 21:44:33,971 INFO __main__: Batch 240/848 | loss=0.928209 elapsed=2606.4s
+2025-10-26 21:44:50,920 INFO __main__: Batch 241/848 | loss=0.639395 elapsed=2623.4s
+2025-10-26 21:45:06,576 INFO __main__: Batch 242/848 | loss=2.057426 elapsed=2639.0s
+2025-10-26 21:45:15,843 INFO __main__: Batch 243/848 | loss=0.931046 elapsed=2648.3s
+2025-10-26 21:45:26,844 INFO __main__: Batch 244/848 | loss=0.411182 elapsed=2659.3s
+2025-10-26 21:45:36,153 INFO __main__: Batch 245/848 | loss=0.850159 elapsed=2668.6s
+2025-10-26 21:45:47,655 INFO __main__: Batch 246/848 | loss=0.915309 elapsed=2680.1s
+2025-10-26 21:46:05,174 INFO __main__: Batch 247/848 | loss=1.167195 elapsed=2697.6s
+2025-10-26 21:46:19,258 INFO __main__: Batch 248/848 | loss=0.658857 elapsed=2711.7s
+2025-10-26 21:46:32,766 INFO __main__: Batch 249/848 | loss=1.365643 elapsed=2725.2s
+2025-10-26 21:46:44,610 INFO __main__: Batch 250/848 | loss=0.774716 elapsed=2737.1s
+2025-10-26 21:47:05,283 INFO __main__: Batch 251/848 | loss=1.032390 elapsed=2757.7s
+2025-10-26 21:47:18,318 INFO __main__: Batch 252/848 | loss=0.463783 elapsed=2770.8s
+2025-10-26 21:47:32,436 INFO __main__: Batch 253/848 | loss=1.452289 elapsed=2784.9s
+2025-10-26 21:47:42,770 INFO __main__: Batch 254/848 | loss=1.100013 elapsed=2795.2s
+2025-10-26 21:47:50,589 INFO __main__: Batch 255/848 | loss=1.176820 elapsed=2803.0s
+2025-10-26 21:47:58,699 INFO __main__: Batch 256/848 | loss=0.472479 elapsed=2811.1s
+2025-10-26 21:48:10,185 INFO __main__: Batch 257/848 | loss=0.613868 elapsed=2822.6s
+2025-10-26 21:48:24,747 INFO __main__: Batch 258/848 | loss=0.841227 elapsed=2837.2s
+2025-10-26 21:48:40,065 INFO __main__: Batch 259/848 | loss=0.390040 elapsed=2852.5s
+2025-10-26 21:48:52,455 INFO __main__: Batch 260/848 | loss=1.071739 elapsed=2864.9s
+2025-10-26 21:49:07,634 INFO __main__: Batch 261/848 | loss=0.949629 elapsed=2880.1s
+2025-10-26 21:49:17,032 INFO __main__: Batch 262/848 | loss=0.836400 elapsed=2889.5s
+2025-10-26 21:49:30,419 INFO __main__: Batch 263/848 | loss=1.122256 elapsed=2902.9s
+2025-10-26 21:49:43,107 INFO __main__: Batch 264/848 | loss=1.874011 elapsed=2915.6s
+2025-10-26 21:49:53,275 INFO __main__: Batch 265/848 | loss=0.417208 elapsed=2925.7s
+2025-10-26 21:50:07,405 INFO __main__: Batch 266/848 | loss=0.869714 elapsed=2939.9s
+2025-10-26 21:50:17,038 INFO __main__: Batch 267/848 | loss=1.436415 elapsed=2949.5s
+2025-10-26 21:50:28,914 INFO __main__: Batch 268/848 | loss=0.560079 elapsed=2961.4s
+2025-10-26 21:50:36,626 INFO __main__: Batch 269/848 | loss=1.070639 elapsed=2969.1s
+2025-10-26 21:50:44,774 INFO __main__: Batch 270/848 | loss=0.619386 elapsed=2977.2s
+2025-10-26 21:50:52,880 INFO __main__: Batch 271/848 | loss=0.802669 elapsed=2985.3s
+2025-10-26 21:51:01,406 INFO __main__: Batch 272/848 | loss=1.193025 elapsed=2993.9s
+2025-10-26 21:51:09,038 INFO __main__: Batch 273/848 | loss=1.279865 elapsed=3001.5s
+2025-10-26 21:51:16,541 INFO __main__: Batch 274/848 | loss=0.748871 elapsed=3009.0s
+2025-10-26 21:51:24,005 INFO __main__: Batch 275/848 | loss=0.841303 elapsed=3016.5s
+2025-10-26 21:51:32,575 INFO __main__: Batch 276/848 | loss=0.785185 elapsed=3025.0s
+2025-10-26 21:51:39,877 INFO __main__: Batch 277/848 | loss=0.891558 elapsed=3032.3s
+2025-10-26 21:51:49,016 INFO __main__: Batch 278/848 | loss=0.626777 elapsed=3041.5s
+2025-10-26 21:51:56,354 INFO __main__: Batch 279/848 | loss=1.579551 elapsed=3048.8s
+2025-10-26 21:52:09,892 INFO __main__: Batch 280/848 | loss=1.284953 elapsed=3062.3s
+2025-10-26 21:52:18,363 INFO __main__: Batch 281/848 | loss=0.791163 elapsed=3070.8s
+2025-10-26 21:52:26,651 INFO __main__: Batch 282/848 | loss=0.769180 elapsed=3079.1s
+2025-10-26 21:52:34,670 INFO __main__: Batch 283/848 | loss=0.448058 elapsed=3087.1s
+2025-10-26 21:52:41,717 INFO __main__: Batch 284/848 | loss=2.318619 elapsed=3094.2s
+2025-10-26 21:52:50,129 INFO __main__: Batch 285/848 | loss=0.269535 elapsed=3102.6s
+2025-10-26 21:52:57,392 INFO __main__: Batch 286/848 | loss=1.325576 elapsed=3109.8s
+2025-10-26 21:53:05,922 INFO __main__: Batch 287/848 | loss=0.788028 elapsed=3118.4s
+2025-10-26 21:53:13,529 INFO __main__: Batch 288/848 | loss=0.602763 elapsed=3126.0s
+2025-10-26 21:53:20,925 INFO __main__: Batch 289/848 | loss=0.568483 elapsed=3133.4s
+2025-10-26 21:53:28,164 INFO __main__: Batch 290/848 | loss=0.486034 elapsed=3140.6s
+2025-10-26 21:53:35,219 INFO __main__: Batch 291/848 | loss=0.985032 elapsed=3147.7s
+2025-10-26 21:53:42,285 INFO __main__: Batch 292/848 | loss=0.495445 elapsed=3154.7s
+2025-10-26 21:53:49,327 INFO __main__: Batch 293/848 | loss=0.811426 elapsed=3161.8s
+2025-10-26 21:53:56,214 INFO __main__: Batch 294/848 | loss=0.634272 elapsed=3168.7s
+2025-10-26 21:54:09,398 INFO __main__: Batch 295/848 | loss=0.586355 elapsed=3181.8s
+2025-10-26 21:54:20,105 INFO __main__: Batch 296/848 | loss=0.646615 elapsed=3192.6s
+2025-10-26 21:54:30,235 INFO __main__: Batch 297/848 | loss=1.296391 elapsed=3202.7s

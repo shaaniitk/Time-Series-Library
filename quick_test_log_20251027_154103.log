@@ -1,0 +1,34 @@
+🔥 Quick Component Test with Logging
+==================================================
+📝 Log file: quick_test_log_20251027_154103.log
+🕐 Start: 2025-10-27 15:41:03.014304
+==================================================
+✅ Created minimal config: quick_test_config.yaml
+🔧 Configuration:
+   • seq_len: 16
+   • pred_len: 2
+   • d_model: 52 (÷13 = 4)
+   • n_heads: 4 (÷4 = 13)
+   • batch_size: 8
+   • train_epochs: 1
+
+🚀 Testing minimal configuration...
+Could not register with unified registry
+WARNING:root:Could not import TSNormalizer from utils.normalization
+WARNING:root:Wavelet components not available: attempted relative import beyond top-level package
+
+💥 EXCEPTION: val data loader returned zero batches; check dataset configuration.
+🔍 Exception type: ValueError
+
+📋 Full traceback:
+Traceback (most recent call last):
+  File "C:\workspace\Time-Series-Library\quick_component_test_logged.py", line 147, in <module>
+    success = train_celestial_pgat_production(config_path)
+  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 2066, in train_celestial_pgat_production
+    data_modules = prepare_data_modules(args, logger, device)
+  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 561, in prepare_data_modules
+    raise ValueError(f"{flag} data loader returned zero batches; check dataset configuration.")
+ValueError: val data loader returned zero batches; check dataset configuration.
+
+🕐 End: 2025-10-27 15:41:14.044727
+📝 Complete log: quick_test_log_20251027_154103.log
