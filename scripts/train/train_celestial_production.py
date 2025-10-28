@@ -830,6 +830,48 @@ def train_epoch(
             y_true_for_loss = scale_targets_for_loss(
                 batch_y[:, -args.pred_len:, :], target_scaler, target_indices, device
             )
+            # --- DEBUG: dump shapes and small numeric summaries to diagnostic log ---
+            try:
+                with open('training_diagnostic.log', 'a') as _diag_f:
+                    _diag_f.write('\n--- MODEL OUTPUT DIAGNOSTICS ---\n')
+                    _diag_f.write(f"outputs_tensor.shape: {tuple(outputs_tensor.shape)}\n")
+                    _diag_f.write(f"outputs_tensor.mean/std: {float(outputs_tensor.mean()):.6f} / {float(outputs_tensor.std()):.6f}\n")
+                    _diag_f.write(f"y_true_for_loss.shape: {tuple(y_true_for_loss.shape)}\n")
+                    _diag_f.write(f"y_true_for_loss.mean/std: {float(y_true_for_loss.mean()):.6f} / {float(y_true_for_loss.std()):.6f}\n")
+                    _diag_f.write(f"c_out_evaluation: {c_out_evaluation}\n")
+                    enable_mdn = getattr(args, 'enable_mdn_decoder', False)
+                    _diag_f.write(f"enable_mdn flag: {enable_mdn}\n")
+                    if mdn_outputs is not None:
+                        try:
+                            pi_d, mu_d, sigma_d = mdn_outputs
+                            _diag_f.write(f"mdn.pi.shape: {tuple(pi_d.shape)}\n")
+                            _diag_f.write(f"mdn.mu.shape: {tuple(mu_d.shape)}\n")
+                            _diag_f.write(f"mdn.sigma.shape: {tuple(sigma_d.shape)}\n")
+                            # mixture mean summary
+                            try:
+                                w = torch.softmax(pi_d, dim=-1)
+                                if mu_d.dim() == 4:
+                                    w_exp = w.unsqueeze(2)
+                                    mix_mean = torch.sum(w_exp * mu_d, dim=-1)
+                                else:
+                                    mix_mean = torch.sum(w * mu_d, dim=-1).unsqueeze(-1)
+                                _diag_f.write(f"mdn.mixture_mean.shape: {tuple(mix_mean.shape)}\n")
+                                _diag_f.write(f"mdn.mixture_mean.mean/std: {float(mix_mean.mean()):.6f} / {float(mix_mean.std()):.6f}\n")
+                            except Exception as _e:
+                                _diag_f.write(f"failed to compute mdn mixture mean: {_e}\n")
+                        except Exception:
+                            _diag_f.write("mdn_outputs present but unpacking failed\n")
+                    # Also write a small slice of the outputs for visual inspection
+                    try:
+                        sample_pred = outputs_tensor.detach().cpu()
+                        flat = sample_pred.reshape(-1)
+                        sample_vals = flat[:min(8, flat.numel())].tolist()
+                        _diag_f.write(f"outputs_tensor sample (first up to 8 values): {sample_vals}\n")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # --- end debug ---
 
             # Priority: MDN decoder > sequential mixture > standard loss
             enable_mdn = getattr(args, "enable_mdn_decoder", False)

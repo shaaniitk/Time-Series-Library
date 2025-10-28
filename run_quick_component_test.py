@@ -52,10 +52,10 @@ def create_quick_test_config(config_name: str, **component_overrides) -> str:
         'd_ff': 256,      # Smaller feed-forward
         'dropout': 0.1,
         
-        # Input/Output dimensions
-        'enc_in': 113,
-        'dec_in': 113,
-        'c_out': 4,
+        # Input/Output dimensions - FIXED to match actual data
+        'enc_in': 118,    # Actual data has 118 features (119 columns - 1 date column)
+        'dec_in': 118,    # Decoder input should match encoder input
+        'c_out': 4,       # Output targets (OHLC)
         
         # Training configuration - FAST
         'train_epochs': 2,  # Just 2 epochs for quick comparison
@@ -83,7 +83,7 @@ def create_quick_test_config(config_name: str, **component_overrides) -> str:
         'use_temporal_attention': True,
         'use_spatial_attention': True,
         'bypass_spatiotemporal_with_petri': True,
-        'num_input_waves': 113,
+        'num_input_waves': 118,  # Match actual data dimensions
         'target_wave_indices': [0, 1, 2, 3],
         
         # Advanced component defaults
