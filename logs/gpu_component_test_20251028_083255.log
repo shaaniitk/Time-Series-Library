@@ -1,0 +1,241 @@
+2025-10-28 08:32:55 | INFO     | GPUComponentTester | Logging setup complete:
+2025-10-28 08:32:55 | INFO     | GPUComponentTester |   Main log: logs/gpu_component_test_20251028_083255.log
+2025-10-28 08:32:55 | INFO     | GPUComponentTester |   Memory log: logs/memory_monitor_20251028_083255.log
+2025-10-28 08:32:55 | INFO     | GPUComponentTester |   Performance log: logs/performance_20251028_083255.log
+2025-10-28 08:32:55 | INFO     | GPUComponentTester | 🚀 GPU Component Tester initialized
+2025-10-28 08:32:55 | INFO     | GPUComponentTester | Timestamp: 20251028_083255
+2025-10-28 08:32:55 | INFO     | GPUComponentTester | Logs directory: logs
+2025-10-28 08:32:55 | INFO     | GPUComponentTester | Results directory: results/gpu_component_tests
+2025-10-28 08:32:55 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:32:55 | INFO     | GPUComponentTester | SYSTEM INFORMATION
+2025-10-28 08:32:55 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:32:55 | INFO     | GPUComponentTester | CPU Count: 32
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | CPU Usage: 5.7%
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | Total Memory: 61.43 GB
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | Available Memory: 53.28 GB
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | Memory Usage: 13.3%
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | GPU Count: 1
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | GPU 0: AMD Radeon Graphics (64.00 GB)
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | Python Version: 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | Working Directory: /app/Time-Series-Library
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | 🚀 STARTING COMPREHENSIVE GPU COMPONENT TESTS
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | 📋 Test 1/17: Baseline_Minimal
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Baseline_Minimal
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 08:32:56 | INFO     | GPUComponentTester |   use_multi_scale_context: False
+2025-10-28 08:32:56 | INFO     | GPUComponentTester |   use_hierarchical_mapping: False
+2025-10-28 08:32:56 | INFO     | GPUComponentTester |   use_stochastic_learner: False
+2025-10-28 08:32:56 | INFO     | GPUComponentTester |   use_petri_net_combiner: False
+2025-10-28 08:32:56 | INFO     | GPUComponentTester |   use_mixture_decoder: False
+2025-10-28 08:32:56 | INFO     | GPUComponentTester |   enable_mdn_decoder: False
+2025-10-28 08:32:56 | INFO     | GPUComponentTester |   use_efficient_covariate_interaction: False
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | Created config: results/gpu_component_tests/Baseline_Minimal_20251028_083255.yaml
+2025-10-28 08:32:56 | INFO     | GPUComponentTester | Starting training with config: results/gpu_component_tests/Baseline_Minimal_20251028_083255.yaml
+2025-10-28 08:36:02 | INFO     | GPUComponentTester | ✅ Training completed successfully in 186.22s
+2025-10-28 08:36:02 | INFO     | GPUComponentTester | 📊 RESULTS for Baseline_Minimal:
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |   Final Val Loss: 1.172511
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |   Final RMSE: 0.863760
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |   Total Parameters: 17,147,365
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |   Training Time: 186.22s
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |   Memory Delta: -0.16GB
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |   Training Progression:
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |     Epoch 1: Train=0.000000, Val=1.172511
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |     Epoch 2: Train=0.000000, Val=1.172511
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |     Epoch 3: Train=0.000000, Val=1.172511
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |     Epoch 4: Train=0.000000, Val=1.172511
+2025-10-28 08:36:02 | INFO     | GPUComponentTester |     Epoch 5: Train=0.000000, Val=1.172511
+2025-10-28 08:36:02 | INFO     | GPUComponentTester | 💾 Results saved to results/gpu_component_tests/intermediate_results_20251028_083255.json
+2025-10-28 08:36:02 | INFO     | GPUComponentTester | ⏸️  Pausing 5 seconds before next test...
+2025-10-28 08:36:07 | INFO     | GPUComponentTester | 📋 Test 2/17: Context_Simple
+2025-10-28 08:36:07 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:36:07 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Context_Simple
+2025-10-28 08:36:07 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:36:07 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 08:36:07 | INFO     | GPUComponentTester |   use_multi_scale_context: True
+2025-10-28 08:36:07 | INFO     | GPUComponentTester |   context_fusion_mode: simple
+2025-10-28 08:36:07 | INFO     | GPUComponentTester | Created config: results/gpu_component_tests/Context_Simple_20251028_083255.yaml
+2025-10-28 08:36:07 | INFO     | GPUComponentTester | Starting training with config: results/gpu_component_tests/Context_Simple_20251028_083255.yaml
+2025-10-28 08:37:07 | INFO     | GPUComponentTester | ✅ Training completed successfully in 59.38s
+2025-10-28 08:37:07 | INFO     | GPUComponentTester | 📊 RESULTS for Context_Simple:
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |   Final Val Loss: 1.540712
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |   Final RMSE: 1.081348
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |   Total Parameters: 17,160,823
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |   Training Time: 59.38s
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |   Memory Delta: -0.02GB
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |   Training Progression:
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |     Epoch 1: Train=0.000000, Val=1.540712
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |     Epoch 2: Train=0.000000, Val=1.540712
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |     Epoch 3: Train=0.000000, Val=1.540712
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |     Epoch 4: Train=0.000000, Val=1.540712
+2025-10-28 08:37:07 | INFO     | GPUComponentTester |     Epoch 5: Train=0.000000, Val=1.540712
+2025-10-28 08:37:07 | INFO     | GPUComponentTester | 💾 Results saved to results/gpu_component_tests/intermediate_results_20251028_083255.json
+2025-10-28 08:37:07 | INFO     | GPUComponentTester | ⏸️  Pausing 5 seconds before next test...
+2025-10-28 08:37:12 | INFO     | GPUComponentTester | 📋 Test 3/17: Context_Gated
+2025-10-28 08:37:12 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:37:12 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Context_Gated
+2025-10-28 08:37:12 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:37:12 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 08:37:12 | INFO     | GPUComponentTester |   use_multi_scale_context: True
+2025-10-28 08:37:12 | INFO     | GPUComponentTester |   context_fusion_mode: gated
+2025-10-28 08:37:12 | INFO     | GPUComponentTester |   context_fusion_dropout: 0.1
+2025-10-28 08:37:12 | INFO     | GPUComponentTester | Created config: results/gpu_component_tests/Context_Gated_20251028_083255.yaml
+2025-10-28 08:37:12 | INFO     | GPUComponentTester | Starting training with config: results/gpu_component_tests/Context_Gated_20251028_083255.yaml
+2025-10-28 08:38:12 | INFO     | GPUComponentTester | ✅ Training completed successfully in 60.04s
+2025-10-28 08:38:12 | INFO     | GPUComponentTester | 📊 RESULTS for Context_Gated:
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |   Final Val Loss: 1.129862
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |   Final RMSE: 0.965170
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |   Total Parameters: 17,357,943
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |   Training Time: 60.04s
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |   Memory Delta: 0.01GB
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |   Training Progression:
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |     Epoch 1: Train=0.000000, Val=1.129862
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |     Epoch 2: Train=0.000000, Val=1.129862
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |     Epoch 3: Train=0.000000, Val=1.129862
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |     Epoch 4: Train=0.000000, Val=1.129862
+2025-10-28 08:38:12 | INFO     | GPUComponentTester |     Epoch 5: Train=0.000000, Val=1.129862
+2025-10-28 08:38:12 | INFO     | GPUComponentTester | 💾 Results saved to results/gpu_component_tests/intermediate_results_20251028_083255.json
+2025-10-28 08:38:12 | INFO     | GPUComponentTester | ⏸️  Pausing 5 seconds before next test...
+2025-10-28 08:38:17 | INFO     | GPUComponentTester | 📋 Test 4/17: Context_Attention
+2025-10-28 08:38:17 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:38:17 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Context_Attention
+2025-10-28 08:38:17 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:38:17 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 08:38:17 | INFO     | GPUComponentTester |   use_multi_scale_context: True
+2025-10-28 08:38:17 | INFO     | GPUComponentTester |   context_fusion_mode: attention
+2025-10-28 08:38:17 | INFO     | GPUComponentTester |   context_fusion_dropout: 0.1
+2025-10-28 08:38:17 | INFO     | GPUComponentTester | Created config: results/gpu_component_tests/Context_Attention_20251028_083255.yaml
+2025-10-28 08:38:17 | INFO     | GPUComponentTester | Starting training with config: results/gpu_component_tests/Context_Attention_20251028_083255.yaml
+2025-10-28 08:39:17 | INFO     | GPUComponentTester | ✅ Training completed successfully in 59.76s
+2025-10-28 08:39:17 | INFO     | GPUComponentTester | 📊 RESULTS for Context_Attention:
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |   Final Val Loss: 1.698274
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |   Final RMSE: 1.173390
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |   Total Parameters: 17,424,503
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |   Training Time: 59.76s
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |   Memory Delta: -0.01GB
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |   Training Progression:
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |     Epoch 1: Train=0.000000, Val=1.698274
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |     Epoch 2: Train=0.000000, Val=1.698274
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |     Epoch 3: Train=0.000000, Val=1.698274
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |     Epoch 4: Train=0.000000, Val=1.698274
+2025-10-28 08:39:17 | INFO     | GPUComponentTester |     Epoch 5: Train=0.000000, Val=1.698274
+2025-10-28 08:39:17 | INFO     | GPUComponentTester | 💾 Results saved to results/gpu_component_tests/intermediate_results_20251028_083255.json
+2025-10-28 08:39:17 | INFO     | GPUComponentTester | ⏸️  Pausing 5 seconds before next test...
+2025-10-28 08:39:22 | INFO     | GPUComponentTester | 📋 Test 5/17: Context_MultiScale
+2025-10-28 08:39:22 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:39:22 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Context_MultiScale
+2025-10-28 08:39:22 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:39:22 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 08:39:22 | INFO     | GPUComponentTester |   use_multi_scale_context: True
+2025-10-28 08:39:22 | INFO     | GPUComponentTester |   context_fusion_mode: multi_scale
+2025-10-28 08:39:22 | INFO     | GPUComponentTester |   short_term_kernel_size: 3
+2025-10-28 08:39:22 | INFO     | GPUComponentTester |   medium_term_kernel_size: 15
+2025-10-28 08:39:22 | INFO     | GPUComponentTester |   long_term_kernel_size: 0
+2025-10-28 08:39:22 | INFO     | GPUComponentTester |   context_fusion_dropout: 0.1
+2025-10-28 08:39:22 | INFO     | GPUComponentTester | Created config: results/gpu_component_tests/Context_MultiScale_20251028_083255.yaml
+2025-10-28 08:39:22 | INFO     | GPUComponentTester | Starting training with config: results/gpu_component_tests/Context_MultiScale_20251028_083255.yaml
+2025-10-28 08:40:21 | INFO     | GPUComponentTester | ✅ Training completed successfully in 59.54s
+2025-10-28 08:40:21 | INFO     | GPUComponentTester | 📊 RESULTS for Context_MultiScale:
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |   Final Val Loss: 2.293870
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |   Final RMSE: 1.392813
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |   Total Parameters: 17,817,467
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |   Training Time: 59.54s
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |   Memory Delta: -0.04GB
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |   Training Progression:
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |     Epoch 1: Train=0.000000, Val=2.293870
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |     Epoch 2: Train=0.000000, Val=2.293870
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |     Epoch 3: Train=0.000000, Val=2.293870
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |     Epoch 4: Train=0.000000, Val=2.293870
+2025-10-28 08:40:21 | INFO     | GPUComponentTester |     Epoch 5: Train=0.000000, Val=2.293870
+2025-10-28 08:40:21 | INFO     | GPUComponentTester | 💾 Results saved to results/gpu_component_tests/intermediate_results_20251028_083255.json
+2025-10-28 08:40:21 | INFO     | GPUComponentTester | ⏸️  Pausing 5 seconds before next test...
+2025-10-28 08:40:26 | INFO     | GPUComponentTester | 📋 Test 6/17: Stochastic_Learner
+2025-10-28 08:40:26 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:40:26 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Stochastic_Learner
+2025-10-28 08:40:26 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:40:26 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 08:40:26 | INFO     | GPUComponentTester |   use_stochastic_learner: True
+2025-10-28 08:40:26 | INFO     | GPUComponentTester |   use_stochastic_control: False
+2025-10-28 08:40:26 | INFO     | GPUComponentTester | Created config: results/gpu_component_tests/Stochastic_Learner_20251028_083255.yaml
+2025-10-28 08:40:26 | INFO     | GPUComponentTester | Starting training with config: results/gpu_component_tests/Stochastic_Learner_20251028_083255.yaml
+2025-10-28 08:41:26 | INFO     | GPUComponentTester | ✅ Training completed successfully in 59.62s
+2025-10-28 08:41:26 | INFO     | GPUComponentTester | 📊 RESULTS for Stochastic_Learner:
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |   Final Val Loss: 0.934778
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |   Final RMSE: 0.827979
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |   Total Parameters: 17,292,408
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |   Training Time: 59.62s
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |   Memory Delta: -0.03GB
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |   Training Progression:
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |     Epoch 1: Train=0.000000, Val=0.934778
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |     Epoch 2: Train=0.000000, Val=0.934778
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |     Epoch 3: Train=0.000000, Val=0.934778
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |     Epoch 4: Train=0.000000, Val=0.934778
+2025-10-28 08:41:26 | INFO     | GPUComponentTester |     Epoch 5: Train=0.000000, Val=0.934778
+2025-10-28 08:41:26 | INFO     | GPUComponentTester | 💾 Results saved to results/gpu_component_tests/intermediate_results_20251028_083255.json
+2025-10-28 08:41:26 | INFO     | GPUComponentTester | ⏸️  Pausing 5 seconds before next test...
+2025-10-28 08:41:31 | INFO     | GPUComponentTester | 📋 Test 7/17: Stochastic_Control
+2025-10-28 08:41:31 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:41:31 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Stochastic_Control
+2025-10-28 08:41:31 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:41:31 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 08:41:31 | INFO     | GPUComponentTester |   use_stochastic_learner: False
+2025-10-28 08:41:31 | INFO     | GPUComponentTester |   use_stochastic_control: True
+2025-10-28 08:41:31 | INFO     | GPUComponentTester |   stochastic_temperature_start: 1.0
+2025-10-28 08:41:31 | INFO     | GPUComponentTester |   stochastic_temperature_end: 0.1
+2025-10-28 08:41:31 | INFO     | GPUComponentTester |   stochastic_decay_steps: 1000
+2025-10-28 08:41:31 | INFO     | GPUComponentTester | Created config: results/gpu_component_tests/Stochastic_Control_20251028_083255.yaml
+2025-10-28 08:41:31 | INFO     | GPUComponentTester | Starting training with config: results/gpu_component_tests/Stochastic_Control_20251028_083255.yaml
+2025-10-28 08:42:35 | INFO     | GPUComponentTester | ✅ Training completed successfully in 63.89s
+2025-10-28 08:42:35 | INFO     | GPUComponentTester | 📊 RESULTS for Stochastic_Control:
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |   Final Val Loss: 1.540712
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |   Final RMSE: 1.081348
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |   Total Parameters: 17,160,823
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |   Training Time: 63.89s
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |   Memory Delta: 3.92GB
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |   Training Progression:
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |     Epoch 1: Train=0.000000, Val=1.540712
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |     Epoch 2: Train=0.000000, Val=1.540712
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |     Epoch 3: Train=0.000000, Val=1.540712
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |     Epoch 4: Train=0.000000, Val=1.540712
+2025-10-28 08:42:35 | INFO     | GPUComponentTester |     Epoch 5: Train=0.000000, Val=1.540712
+2025-10-28 08:42:35 | INFO     | GPUComponentTester | 💾 Results saved to results/gpu_component_tests/intermediate_results_20251028_083255.json
+2025-10-28 08:42:35 | INFO     | GPUComponentTester | ⏸️  Pausing 5 seconds before next test...
+2025-10-28 08:42:40 | INFO     | GPUComponentTester | 📋 Test 8/17: Stochastic_Both
+2025-10-28 08:42:40 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:42:40 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Stochastic_Both
+2025-10-28 08:42:40 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:42:40 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 08:42:40 | INFO     | GPUComponentTester |   use_stochastic_learner: True
+2025-10-28 08:42:40 | INFO     | GPUComponentTester |   use_stochastic_control: True
+2025-10-28 08:42:40 | INFO     | GPUComponentTester |   stochastic_temperature_start: 1.0
+2025-10-28 08:42:40 | INFO     | GPUComponentTester |   stochastic_temperature_end: 0.1
+2025-10-28 08:42:40 | INFO     | GPUComponentTester |   stochastic_decay_steps: 1000
+2025-10-28 08:42:40 | INFO     | GPUComponentTester | Created config: results/gpu_component_tests/Stochastic_Both_20251028_083255.yaml
+2025-10-28 08:42:40 | INFO     | GPUComponentTester | Starting training with config: results/gpu_component_tests/Stochastic_Both_20251028_083255.yaml
+2025-10-28 08:43:42 | INFO     | GPUComponentTester | ✅ Training completed successfully in 62.32s
+2025-10-28 08:43:42 | INFO     | GPUComponentTester | 📊 RESULTS for Stochastic_Both:
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |   Final Val Loss: 0.934778
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |   Final RMSE: 0.827979
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |   Total Parameters: 17,292,408
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |   Training Time: 62.32s
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |   Memory Delta: -0.19GB
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |   Training Progression:
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |     Epoch 1: Train=0.000000, Val=0.934778
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |     Epoch 2: Train=0.000000, Val=0.934778
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |     Epoch 3: Train=0.000000, Val=0.934778
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |     Epoch 4: Train=0.000000, Val=0.934778
+2025-10-28 08:43:42 | INFO     | GPUComponentTester |     Epoch 5: Train=0.000000, Val=0.934778
+2025-10-28 08:43:42 | INFO     | GPUComponentTester | 💾 Results saved to results/gpu_component_tests/intermediate_results_20251028_083255.json
+2025-10-28 08:43:42 | INFO     | GPUComponentTester | ⏸️  Pausing 5 seconds before next test...
+2025-10-28 08:43:47 | INFO     | GPUComponentTester | 📋 Test 9/17: Graph_Standard
+2025-10-28 08:43:47 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:43:47 | INFO     | GPUComponentTester | 🧪 TESTING COMPONENT: Graph_Standard
+2025-10-28 08:43:47 | INFO     | GPUComponentTester | ================================================================================
+2025-10-28 08:43:47 | INFO     | GPUComponentTester | Component Configuration:
+2025-10-28 08:43:47 | INFO     | GPUComponentTester |   use_petri_net_combiner: False
+2025-10-28 08:43:47 | INFO     | GPUComponentTester |   use_gated_graph_combiner: False
+2025-10-28 08:43:47 | INFO     | GPUComponentTester | Created config: results/gpu_component_tests/Graph_Standard_20251028_083255.yaml
+2025-10-28 08:43:47 | INFO     | GPUComponentTester | Starting training with config: results/gpu_component_tests/Graph_Standard_20251028_083255.yaml

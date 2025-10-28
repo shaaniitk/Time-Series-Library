@@ -1,0 +1,8 @@
+2025-10-28 08:36:02 | INFO     | Performance | Baseline_Minimal | training_time: 186.22s | memory_delta: -0.16GB
+2025-10-28 08:37:07 | INFO     | Performance | Context_Simple | training_time: 59.38s | memory_delta: -0.02GB
+2025-10-28 08:38:12 | INFO     | Performance | Context_Gated | training_time: 60.04s | memory_delta: 0.01GB
+2025-10-28 08:39:17 | INFO     | Performance | Context_Attention | training_time: 59.76s | memory_delta: -0.01GB
+2025-10-28 08:40:21 | INFO     | Performance | Context_MultiScale | training_time: 59.54s | memory_delta: -0.04GB
+2025-10-28 08:41:26 | INFO     | Performance | Stochastic_Learner | training_time: 59.62s | memory_delta: -0.03GB
+2025-10-28 08:42:35 | INFO     | Performance | Stochastic_Control | training_time: 63.89s | memory_delta: 3.92GB
+2025-10-28 08:43:42 | INFO     | Performance | Stochastic_Both | training_time: 62.32s | memory_delta: -0.19GB
