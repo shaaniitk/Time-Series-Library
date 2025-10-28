@@ -3,6 +3,7 @@
 import logging
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Any, Dict, Optional, Tuple
 
 # Import the new modular components
@@ -12,6 +13,8 @@ from .celestial_modules.graph import GraphModule
 from .celestial_modules.encoder import EncoderModule
 from .celestial_modules.postprocessing import PostProcessingModule
 from .celestial_modules.decoder import DecoderModule
+from .celestial_modules.utils import ModelUtils
+from .celestial_modules.diagnostics import ModelDiagnostics
 
 class Model(nn.Module):
     """
@@ -29,8 +32,15 @@ class Model(nn.Module):
         
         # 1. Centralized Configuration
         self.model_config = CelestialPGATConfig.from_original_configs(configs)
+        
+        # 2. Initialize utility and diagnostics systems
+        self.utils = ModelUtils(self.model_config, self.logger)
+        self.diagnostics = ModelDiagnostics(self.model_config, self.logger)
+        
+        # Log configuration summary
+        self.utils.log_configuration_summary()
 
-        # 2. Instantiate all modules
+        # 3. Instantiate all modules
         self.embedding_module = EmbeddingModule(self.model_config)
         
         if self.model_config.use_celestial_graph:
@@ -42,17 +52,63 @@ class Model(nn.Module):
         self.postprocessing_module = PostProcessingModule(self.model_config)
         self.decoder_module = DecoderModule(self.model_config)
 
-        # Other components from original model
+        # Enhanced components from original model
         self.market_context_encoder = nn.Sequential(
-            nn.Linear(self.model_config.d_model, self.model_config.d_model), nn.GELU(),
-            nn.Linear(self.model_config.d_model, self.model_config.d_model), nn.LayerNorm(self.model_config.d_model)
+            nn.Linear(self.model_config.d_model, self.model_config.d_model),
+            nn.GELU(),
+            nn.Linear(self.model_config.d_model, self.model_config.d_model),
+            nn.LayerNorm(self.model_config.d_model)
         )
+        
+        # Efficient covariate interaction (if enabled)
+        if self.model_config.use_efficient_covariate_interaction:
+            self._setup_efficient_covariate_interaction()
+        
         self._external_global_step = None
+        
+        # Initialize parameters
+        self._initialize_parameters()
+    
+    def _initialize_parameters(self):
+        """Initialize model parameters"""
+        for name, param in self.named_parameters():
+            if 'weight' in name and param.dim() > 1:
+                nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+    
+    def _setup_efficient_covariate_interaction(self):
+        """Setup efficient covariate interaction components."""
+        if self.model_config.d_model % self.model_config.num_graph_nodes != 0:
+            raise ValueError(
+                f"d_model ({self.model_config.d_model}) must be divisible by "
+                f"num_graph_nodes ({self.model_config.num_graph_nodes}) for efficient processing."
+            )
+        
+        node_dim = self.model_config.d_model // self.model_config.num_graph_nodes
+        
+        self.covariate_interaction_layer = nn.Linear(node_dim, node_dim)
+        self.target_fusion_layer = nn.Sequential(
+            nn.Linear(node_dim * 2, node_dim),
+            nn.GELU(),
+            nn.Linear(node_dim, node_dim)
+        )
+        
+        if self.model_config.enable_target_covariate_attention:
+            attn_heads = self.model_config.n_heads if (node_dim % self.model_config.n_heads) == 0 else 1
+            self.covariate_attention = nn.MultiheadAttention(
+                embed_dim=node_dim,
+                num_heads=attn_heads,
+                dropout=self.model_config.dropout,
+                batch_first=True,
+            )
+        else:
+            self.covariate_attention = None
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None, 
                 future_celestial_x=None, future_celestial_mark=None):
         """
-        Forward pass with modular architecture and parallel context stream.
+        Forward pass with modular architecture and comprehensive functionality.
         
         Args:
             x_enc: [batch_size, seq_len, enc_in] Encoder input
@@ -66,37 +122,76 @@ class Model(nn.Module):
         Returns:
             Predictions and metadata
         """
+        self.utils.print_memory_debug("FORWARD_START", f"Input shapes: x_enc={x_enc.shape}, x_dec={x_dec.shape}")
+        self.utils.debug_memory("FORWARD_START")
+        
+        batch_size, seq_len, enc_in = x_enc.shape
+        self.utils.log_debug("MODEL_DEBUG: Input shapes - x_enc=%s x_dec=%s", x_enc.shape, x_dec.shape)
         
         # --- Stage 1: Embedding & Phase-Aware Processing ---
-        enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed = self.embedding_module(
+        self.utils.debug_memory("EMBEDDING_START")
+        enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
             x_enc, x_mark_enc, x_dec, x_mark_dec
         )
+        self.utils.debug_memory("EMBEDDING_COMPLETE")
         
-        # --- Stage 2: NEW Parallel Context Stream ---
+        # --- Stage 2: Enhanced Context Stream with Market Context ---
+        self.utils.print_memory_debug("BEFORE_MARKET_CONTEXT")
+        market_context = self.market_context_encoder(enc_out)
+        self.utils.print_memory_debug("AFTER_MARKET_CONTEXT", f"market_context shape: {market_context.shape}")
+        
         # Create a low-resolution summary of the entire sequence
         context_vector = torch.mean(enc_out, dim=1, keepdim=True)  # Shape: [B, 1, D]
         # Fuse the context into the high-resolution stream by adding it to each time step
         enc_out_with_context = enc_out + context_vector
         
-        self.logger.debug(
+        self.utils.log_debug(
             "Parallel Context Stream applied: context_vector=%s, enhanced_enc_out=%s",
             context_vector.shape, enc_out_with_context.shape
         )
         
         # --- Stage 3: Graph Generation & Fusion ---
-        market_context = self.market_context_encoder(enc_out_with_context)
         enhanced_enc_out = enc_out_with_context
         combined_adj, rich_edge_features = None, None
+        fusion_metadata = {}
+        celestial_features = None
         
         if self.graph_module is not None:
-            enhanced_enc_out, combined_adj, rich_edge_features = self.graph_module(
+            enhanced_enc_out, combined_adj, rich_edge_features, fusion_metadata, celestial_features = self.graph_module(
                 enc_out_with_context, market_context, phase_based_adj
             )
+            
+            # Store celestial features in wave_metadata for celestial-to-target attention
+            wave_metadata['celestial_features'] = celestial_features
+            
+            # Validate adjacency dimensions if diagnostics enabled
+            if self.model_config.collect_diagnostics and combined_adj is not None:
+                try:
+                    # Create dummy adjacencies for validation
+                    dummy_learned = self.graph_module._learn_data_driven_graph(enc_out)
+                    dummy_dynamic = self.graph_module._learn_simple_dynamic_graph(enc_out)
+                    self.utils.validate_adjacency_dimensions(combined_adj, dummy_learned, dummy_dynamic, enc_out)
+                except Exception as e:
+                    self.utils.log_debug("Adjacency validation failed: %s", str(e))
+        else:
+            # Fallback to traditional graph learning
+            if hasattr(self, 'traditional_graph_learner'):
+                combined_adj = self._learn_traditional_graph(enc_out)
+            else:
+                # Simple identity adjacency
+                num_nodes = self.model_config.num_graph_nodes
+                device = enc_out.device
+                identity = torch.eye(num_nodes, device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+                combined_adj = identity.expand(batch_size, seq_len, num_nodes, num_nodes)
 
-        # --- Stage 4: Core Encoding ---
-        graph_features = self.encoder_module(
-            enhanced_enc_out, combined_adj, rich_edge_features
-        )
+        # --- Stage 4: Core Encoding with Efficient Processing ---
+        if self.model_config.use_efficient_covariate_interaction:
+            graph_features = self._efficient_graph_processing(enhanced_enc_out, combined_adj)
+            self.utils.log_debug("Using efficient partitioned graph processing.")
+        else:
+            graph_features = self.encoder_module(
+                enhanced_enc_out, combined_adj, rich_edge_features
+            )
 
         # --- Stage 5: Optional Post-Processing ---
         graph_features = self.postprocessing_module(
@@ -106,24 +201,112 @@ class Model(nn.Module):
         # --- Stage 6: Decoding & Prediction ---
         future_celestial_features = None
         if future_celestial_x is not None and self.embedding_module.phase_aware_processor:
+            self.utils.log_debug("🌟 Processing FUTURE celestial states for C→T conditioning...")
             # Process future deterministic covariates
-            future_celestial_features, _, _ = self.embedding_module.phase_aware_processor(future_celestial_x)
+            future_cel_feats, future_adj, future_phase_meta = self.embedding_module.phase_aware_processor(future_celestial_x)
+            
+            # Project to d_model
+            future_cel_projected = self.embedding_module.celestial_projection(future_cel_feats)
+            
+            # Reshape to [batch, pred_len, num_celestial, d_model] for attention
+            future_celestial_features = future_cel_feats.reshape(
+                batch_size, self.model_config.pred_len, self.model_config.num_celestial_bodies, -1
+            )
+            
+            self.utils.log_debug(
+                "✅ Future celestial features processed: %s | Will use for C→T attention",
+                future_celestial_features.shape
+            )
 
         predictions, aux_loss, mdn_components = self.decoder_module(
             dec_out, graph_features, past_celestial_features, future_celestial_features
         )
         
-        # The metadata dictionary can be reconstructed here if needed for diagnostics
-        final_metadata = {
-            'context_vector_norm': torch.norm(context_vector).item(),
-            'enhanced_enc_out_norm': torch.norm(enhanced_enc_out).item(),
-            'graph_features_norm': torch.norm(graph_features).item(),
-        }
+        # Prepare comprehensive metadata for diagnostics
+        final_metadata = self.diagnostics.prepare_final_metadata(
+            wave_metadata=wave_metadata,
+            celestial_metadata=self.diagnostics.collect_celestial_metadata({'metadata': {}}),
+            fusion_metadata=self.diagnostics.collect_fusion_metadata(fusion_metadata),
+            context_vector_norm=torch.norm(context_vector).item(),
+            enhanced_enc_out_norm=torch.norm(enhanced_enc_out).item(),
+            graph_features_norm=torch.norm(graph_features).item(),
+        )
         
+        # Return format aligns with original model
         if mdn_components is not None:
             return (predictions, aux_loss, mdn_components, final_metadata)
-        else:
+        elif predictions is not None:
             return (predictions, final_metadata)
+        else:
+            # Fallback projection
+            output = nn.Linear(self.model_config.d_model, self.model_config.c_out).to(graph_features.device)(
+                graph_features[:, -self.model_config.pred_len:, :]
+            )
+            return (output, final_metadata)
+
+    def _efficient_graph_processing(self, encoded_features, combined_adj):
+        """
+        Performs partitioned graph processing.
+        1. Computes a context vector from the independent covariate graph.
+        2. Updates target node features based on their interactions and influence from the covariate context.
+        """
+        batch_size, seq_len, _ = encoded_features.shape
+        num_nodes = self.model_config.num_graph_nodes
+        
+        if self.model_config.d_model % num_nodes != 0:
+            raise ValueError(f"d_model ({self.model_config.d_model}) must be divisible by num_graph_nodes ({num_nodes}) for efficient processing.")
+        node_dim = self.model_config.d_model // num_nodes
+        
+        features_per_node = encoded_features.view(batch_size, seq_len, num_nodes, node_dim)
+        
+        # Partition features and adjacency matrix
+        num_covariates = num_nodes - self.model_config.c_out
+        covariate_features = features_per_node[:, :, :num_covariates, :]
+        target_features = features_per_node[:, :, num_covariates:, :]
+        
+        adj_cov_cov = combined_adj[:, :, :num_covariates, :num_covariates]
+        adj_tar_cov = combined_adj[:, :, num_covariates:, :num_covariates]
+        adj_tar_tar = combined_adj[:, :, num_covariates:, num_covariates:]
+        
+        # 1. Process Covariates
+        cov_interaction = torch.einsum('bsnm,bsmd->bsnd', adj_cov_cov, covariate_features)
+        processed_covariates = self.covariate_interaction_layer(cov_interaction)
+        
+        if not self.model_config.enable_target_covariate_attention or self.covariate_attention is None:
+            covariate_context = processed_covariates.mean(dim=2)
+        
+        # 2. Update Target Features
+        influence_from_cov = torch.einsum('bsnm,bsmd->bsnd', adj_tar_cov, covariate_features)
+        influence_from_self = torch.einsum('bsnm,bsmd->bsnd', adj_tar_tar, target_features)
+        updated_target_features = target_features + influence_from_cov + influence_from_self
+        
+        # 3. Fuse targets with covariate context
+        if self.model_config.enable_target_covariate_attention and self.covariate_attention is not None:
+            query = updated_target_features.reshape(batch_size * seq_len, self.model_config.c_out, node_dim)
+            key = processed_covariates.reshape(batch_size * seq_len, num_covariates, node_dim)
+            value = key
+            attn_output, _ = self.covariate_attention(query, key, value)
+            attention_context = attn_output.reshape(batch_size, seq_len, self.model_config.c_out, node_dim)
+            fusion_input = torch.cat([updated_target_features, attention_context], dim=-1)
+        else:
+            expanded_context = covariate_context.unsqueeze(2).expand(-1, -1, self.model_config.c_out, -1)
+            fusion_input = torch.cat([updated_target_features, expanded_context], dim=-1)
+        
+        fused_target_features = self.target_fusion_layer(fusion_input)
+        
+        # 4. Reconstruct the full feature tensor
+        final_features_per_node = torch.cat([covariate_features, fused_target_features], dim=2)
+        return final_features_per_node.view(batch_size, seq_len, self.model_config.d_model)
+
+    def _learn_traditional_graph(self, enc_out):
+        """Learn a traditional graph adjacency matrix."""
+        batch_size, seq_len, d_model = enc_out.shape
+        num_nodes = self.model_config.num_graph_nodes
+        
+        # Simple identity matrix as fallback
+        device = enc_out.device
+        identity = torch.eye(num_nodes, device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+        return identity.expand(batch_size, seq_len, num_nodes, num_nodes)
 
     def set_global_step(self, step: int):
         """Set global step for stochastic control in post-processing."""
@@ -135,7 +318,28 @@ class Model(nn.Module):
         
     def get_regularization_loss(self) -> torch.Tensor:
         """Get regularization loss from stochastic components if enabled."""
-        if hasattr(self.graph_module, 'config') and self.graph_module.config.use_stochastic_learner:
-            # Implement KL divergence regularization for stochastic graph learner
-            return torch.tensor(0.0, device=next(self.parameters()).device)
-        return torch.tensor(0.0, device=next(self.parameters()).device)
+        loss = 0.0
+        if (self.graph_module is not None and 
+            hasattr(self.graph_module, 'latest_stochastic_loss')):
+            loss += self.graph_module.latest_stochastic_loss
+        return torch.tensor(loss, device=next(self.parameters()).device)
+    
+    def get_point_prediction(self, forward_output):
+        """Extracts a single point prediction from the model's output, handling the probabilistic case."""
+        return self.utils.get_point_prediction(forward_output)
+    
+    def print_fusion_diagnostics_summary(self):
+        """Print summary of fusion diagnostics."""
+        self.diagnostics.print_fusion_diagnostics_summary()
+    
+    def increment_fusion_diagnostics_batch(self):
+        """Increment the batch counter for fusion diagnostics."""
+        self.diagnostics.increment_fusion_diagnostics_batch()
+    
+    def print_celestial_target_diagnostics(self):
+        """Print celestial-to-target attention diagnostics."""
+        if (self.model_config.use_celestial_target_attention and 
+            self.decoder_module.celestial_to_target_attention is not None):
+            self.decoder_module.celestial_to_target_attention.print_diagnostics_summary()
+        else:
+            self.logger.info("Celestial-to-target attention not enabled or not initialized")

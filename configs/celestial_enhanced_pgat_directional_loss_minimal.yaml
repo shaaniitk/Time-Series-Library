@@ -40,9 +40,7 @@ weight_decay: 0.0001
 clip_grad_norm: 1.0
 
 # Model hyperparameters (smaller for test)
-# Adjusted to be divisible by the number of celestial nodes (13)
-# to avoid Model initialization ValueError (d_model must be divisible by num_graph_nodes)
-d_model: 52
+d_model: 64
 n_heads: 2
 e_layers: 2
 d_layers: 1
@@ -104,8 +102,3 @@ calibration_metrics:
 enable_memory_diagnostics: false
 memory_log_interval: 10
 collect_diagnostics: false
-
-# DataLoader and system safety
-# Use single-threaded loading and avoid pinned memory to reduce hangs in constrained environments
-num_workers: 0
-pin_memory: false

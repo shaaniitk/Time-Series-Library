@@ -43,6 +43,8 @@ class CelestialPGATConfig:
     use_mixture_decoder: bool = False
     use_stochastic_learner: bool = False
     use_hierarchical_mapping: bool = False
+    use_gated_graph_combiner: bool = False
+    use_hierarchical_mapper: bool = False  # Alias for consistency
     use_efficient_covariate_interaction: bool = False
 
     # Adaptive TopK Pooling
@@ -57,6 +59,7 @@ class CelestialPGATConfig:
     stochastic_temperature_end: float = 0.1
     stochastic_decay_steps: int = 1000
     stochastic_noise_std: float = 1.0
+    stochastic_use_external_step: bool = False
 
     # MDN Decoder
     enable_mdn_decoder: bool = False
@@ -75,6 +78,7 @@ class CelestialPGATConfig:
     # Celestial-to-Target Attention
     use_celestial_target_attention: bool = True
     celestial_target_use_gated_fusion: bool = True
+    celestial_target_diagnostics: bool = True
     use_c2t_edge_bias: bool = False
     c2t_edge_bias_weight: float = 0.2
     c2t_aux_rel_loss_weight: float = 0.0
@@ -87,10 +91,25 @@ class CelestialPGATConfig:
     # Dynamic Spatiotemporal Encoder
     use_dynamic_spatiotemporal_encoder: bool = True
 
+    # Logging and Diagnostics
+    verbose_logging: bool = False
+    enable_memory_debug: bool = False
+    enable_memory_diagnostics: bool = False
+    collect_diagnostics: bool = True
+    enable_fusion_diagnostics: bool = True
+    fusion_diag_batches: int = 10
+
+    # Covariate Interaction
+    enable_target_covariate_attention: bool = False
+
+    # Sequential Mixture Decoder
+    use_sequential_mixture_decoder: bool = False
+
     # Internal / Derived
     celestial_dim: int = 32
     celestial_feature_dim: int = 416 # 13 * 32
     num_graph_nodes: int = 13
+    expected_embedding_input_dim: int = 118
 
     @classmethod
     def from_original_configs(cls, configs):

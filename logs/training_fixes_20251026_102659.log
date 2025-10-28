@@ -1,0 +1,131 @@
+Could not register with unified registry
+WARNING:root:Could not import TSNormalizer from utils.normalization
+WARNING:root:Wavelet components not available: attempted relative import beyond top-level package
+🔧 AUTO-CORRECTING INPUT WAVE COUNT:
+   Configured: 118
+   Detected from CSV: 113
+   Using detected value: 113
+📊 Analyzing CSV with 119 columns...
+📊 Found 113 celestial columns out of 119 total
+⚠️  2 features could not be assigned to celestial bodies:
+   117: Ascendant_sin
+   118: Ascendant_cos
+⚠️  chiron not found in CSV
+📊 Assigning Ascendant features to Chiron (closest astrological match)
+
+🌌 CELESTIAL FEATURE MAPPING REPORT:
+============================================================
+🪐 sun          (10 features): [0, 1, 2, 3, 4, 5, 6, 80, 87, 88]
+   Features: dyn_Sun_sin, dyn_Sun_cos, dyn_Sun_speed ... Sun_sin, Sun_cos
+🪐 moon         (10 features): [7, 8, 9, 10, 11, 12, 13, 81, 89, 90]
+   Features: dyn_Moon_sin, dyn_Moon_cos, dyn_Moon_speed ... Moon_sin, Moon_cos
+🪐 mercury      (10 features): [21, 22, 23, 24, 25, 26, 27, 83, 93, 94]
+   Features: dyn_Mercury_sin, dyn_Mercury_cos, dyn_Mercury_speed ... Mercury_sin, Mercury_cos
+🪐 venus        (10 features): [35, 36, 37, 38, 39, 40, 41, 85, 97, 98]
+   Features: dyn_Venus_sin, dyn_Venus_cos, dyn_Venus_speed ... Venus_sin, Venus_cos
+🪐 mars         (10 features): [14, 15, 16, 17, 18, 19, 20, 82, 91, 92]
+   Features: dyn_Mars_sin, dyn_Mars_cos, dyn_Mars_speed ... Mars_sin, Mars_cos
+🪐 jupiter      (10 features): [28, 29, 30, 31, 32, 33, 34, 84, 95, 96]
+   Features: dyn_Jupiter_sin, dyn_Jupiter_cos, dyn_Jupiter_speed ... Jupiter_sin, Jupiter_cos
+🪐 saturn       (10 features): [42, 43, 44, 45, 46, 47, 48, 86, 99, 100]
+   Features: dyn_Saturn_sin, dyn_Saturn_cos, dyn_Saturn_speed ... Saturn_sin, Saturn_cos
+🪐 uranus       ( 9 features): [49, 50, 51, 52, 53, 54, 55, 101, 102]
+   Features: dyn_Uranus_sin, dyn_Uranus_cos, dyn_Uranus_speed ... Uranus_sin, Uranus_cos
+🪐 neptune      ( 9 features): [56, 57, 58, 59, 60, 61, 62, 103, 104]
+   Features: dyn_Neptune_sin, dyn_Neptune_cos, dyn_Neptune_speed ... Neptune_sin, Neptune_cos
+🪐 pluto        ( 9 features): [63, 64, 65, 66, 67, 68, 69, 105, 106]
+   Features: dyn_Pluto_sin, dyn_Pluto_cos, dyn_Pluto_speed ... Pluto_sin, Pluto_cos
+🪐 north_node   ( 7 features): [70, 71, 72, 73, 74, 107, 108]
+   Features: dyn_Mean Rahu_sin, dyn_Mean Rahu_cos, dyn_Mean Rahu_speed ... Mean Rahu_sin, Mean Rahu_cos
+🪐 south_node   ( 7 features): [75, 76, 77, 78, 79, 109, 110]
+   Features: dyn_Mean Ketu_sin, dyn_Mean Ketu_cos, dyn_Mean Ketu_speed ... Mean Ketu_sin, Mean Ketu_cos
+🪐 chiron       ( 2 features): [111, 112]
+   Features: Ascendant_sin, Ascendant_cos
+============================================================
+📊 Total celestial features mapped: 113
+📊 Available celestial columns: 113
+📊 Total CSV columns: 119
+📊 Expected input waves: 113
+📊 Max feature index used: 112
+✅ Celestial mapping validation complete.
+
+🌌 Phase-Aware Celestial Processor initialized:
+   - Input waves: 113 (auto-detected)
+   - Celestial bodies: 13
+   - Celestial dimension: 32
+   - Dynamic feature mapping: ENABLED
+   - Assumes phase info already in inputs (sin/cos encoded)
+   - Will compute explicit phase differences for edges
+🌌 Celestial Wave Aggregator initialized:
+   - Input waves: 113
+   - Celestial bodies: 13
+   - moon: 9 waves
+   - mercury: 9 waves
+   - venus: 9 waves
+   - sun: 9 waves
+   - mars: 9 waves
+   - jupiter: 9 waves
+   - saturn: 9 waves
+   - uranus: 9 waves
+   - neptune: 9 waves
+   - pluto: 9 waves
+   - north_node: 12 waves
+   - south_node: 8 waves
+   - chiron: 3 waves
+2025-10-26 10:27:03,033 INFO __main__: Epoch 1/3 - production training
+2025-10-26 10:27:15,444 INFO __main__: Batch 0/520 | loss=1.060983 elapsed=12.4s
+2025-10-26 10:29:15,053 INFO __main__: Batch 10/520 | loss=15.060561 elapsed=132.0s
+2025-10-26 10:31:15,631 INFO __main__: Batch 20/520 | loss=4.451699 elapsed=252.6s
+2025-10-26 10:33:15,697 INFO __main__: Batch 30/520 | loss=1.731660 elapsed=372.7s
+2025-10-26 10:35:13,315 INFO __main__: Batch 40/520 | loss=1.796029 elapsed=490.3s
+2025-10-26 10:37:10,796 INFO __main__: Batch 50/520 | loss=1.245314 elapsed=607.8s
+2025-10-26 10:39:08,442 INFO __main__: Batch 60/520 | loss=1.065513 elapsed=725.4s
+2025-10-26 10:41:05,923 INFO __main__: Batch 70/520 | loss=1.694058 elapsed=842.9s
+2025-10-26 10:43:03,679 INFO __main__: Batch 80/520 | loss=0.715936 elapsed=960.6s
+2025-10-26 10:45:01,818 INFO __main__: Batch 90/520 | loss=1.463024 elapsed=1078.8s
+2025-10-26 10:47:00,422 INFO __main__: Batch 100/520 | loss=2.086077 elapsed=1197.4s
+2025-10-26 10:48:59,850 INFO __main__: Batch 110/520 | loss=0.670433 elapsed=1316.8s
+2025-10-26 10:50:58,127 INFO __main__: Batch 120/520 | loss=0.963675 elapsed=1435.1s
+2025-10-26 10:52:55,788 INFO __main__: Batch 130/520 | loss=1.255628 elapsed=1552.8s
+2025-10-26 10:54:54,027 INFO __main__: Batch 140/520 | loss=0.708000 elapsed=1671.0s
+2025-10-26 10:56:52,208 INFO __main__: Batch 150/520 | loss=0.917410 elapsed=1789.2s
+2025-10-26 10:58:50,144 INFO __main__: Batch 160/520 | loss=0.556126 elapsed=1907.1s
+2025-10-26 11:00:48,997 INFO __main__: Batch 170/520 | loss=1.825796 elapsed=2026.0s
+2025-10-26 11:02:48,152 INFO __main__: Batch 180/520 | loss=0.758628 elapsed=2145.1s
+2025-10-26 11:04:46,507 INFO __main__: Batch 190/520 | loss=1.617125 elapsed=2263.5s
+2025-10-26 11:06:45,364 INFO __main__: Batch 200/520 | loss=0.868279 elapsed=2382.3s
+2025-10-26 11:08:44,721 INFO __main__: Batch 210/520 | loss=0.892127 elapsed=2501.7s
+2025-10-26 11:10:43,697 INFO __main__: Batch 220/520 | loss=0.636569 elapsed=2620.7s
+2025-10-26 11:12:42,054 INFO __main__: Batch 230/520 | loss=1.513929 elapsed=2739.0s
+2025-10-26 11:14:40,411 INFO __main__: Batch 240/520 | loss=1.393623 elapsed=2857.4s
+2025-10-26 11:16:38,644 INFO __main__: Batch 250/520 | loss=0.380987 elapsed=2975.6s
+2025-10-26 11:18:38,264 INFO __main__: Batch 260/520 | loss=0.869200 elapsed=3095.2s
+2025-10-26 11:20:36,446 INFO __main__: Batch 270/520 | loss=0.590637 elapsed=3213.4s
+2025-10-26 11:22:34,962 INFO __main__: Batch 280/520 | loss=0.423415 elapsed=3331.9s
+2025-10-26 11:24:33,793 INFO __main__: Batch 290/520 | loss=0.710823 elapsed=3450.8s
+2025-10-26 11:26:32,891 INFO __main__: Batch 300/520 | loss=1.143653 elapsed=3569.9s
+2025-10-26 11:28:31,389 INFO __main__: Batch 310/520 | loss=1.212520 elapsed=3688.4s
+2025-10-26 11:30:29,791 INFO __main__: Batch 320/520 | loss=0.776721 elapsed=3806.8s
+2025-10-26 11:32:28,700 INFO __main__: Batch 330/520 | loss=0.686137 elapsed=3925.7s
+2025-10-26 11:34:27,415 INFO __main__: Batch 340/520 | loss=2.562441 elapsed=4044.4s
+2025-10-26 11:36:25,914 INFO __main__: Batch 350/520 | loss=1.046408 elapsed=4162.9s
+2025-10-26 11:38:24,463 INFO __main__: Batch 360/520 | loss=0.572822 elapsed=4281.4s
+2025-10-26 11:40:22,712 INFO __main__: Batch 370/520 | loss=0.994885 elapsed=4399.7s
+2025-10-26 11:42:22,037 INFO __main__: Batch 380/520 | loss=0.661038 elapsed=4519.0s
+2025-10-26 11:44:20,945 INFO __main__: Batch 390/520 | loss=0.800875 elapsed=4637.9s
+2025-10-26 11:46:20,355 INFO __main__: Batch 400/520 | loss=0.646222 elapsed=4757.3s
+2025-10-26 11:48:23,161 INFO __main__: Batch 410/520 | loss=0.480292 elapsed=4880.1s
+2025-10-26 11:50:25,894 INFO __main__: Batch 420/520 | loss=1.352002 elapsed=5002.9s
+2025-10-26 11:52:28,024 INFO __main__: Batch 430/520 | loss=0.941161 elapsed=5125.0s
+2025-10-26 11:54:29,408 INFO __main__: Batch 440/520 | loss=0.405113 elapsed=5246.4s
+2025-10-26 11:56:34,116 INFO __main__: Batch 450/520 | loss=0.586394 elapsed=5371.1s
+2025-10-26 11:58:35,740 INFO __main__: Batch 460/520 | loss=0.566045 elapsed=5492.7s
+2025-10-26 12:00:36,294 INFO __main__: Batch 470/520 | loss=0.481990 elapsed=5613.3s
+2025-10-26 12:02:37,303 INFO __main__: Batch 480/520 | loss=1.054198 elapsed=5734.3s
+2025-10-26 12:04:37,534 INFO __main__: Batch 490/520 | loss=1.103771 elapsed=5854.5s
+2025-10-26 12:06:36,624 INFO __main__: Batch 500/520 | loss=0.710706 elapsed=5973.6s
+2025-10-26 12:08:36,165 INFO __main__: Batch 510/520 | loss=1.178487 elapsed=6093.1s
+2025-10-26 12:12:31,469 INFO __main__: Epoch 1/3 complete [WARMUP 1/3] | train_loss=1.414947 val_loss=0.195179 lr=0.00100000 epoch_time=6328.44s elapsed=1.76h remaining=3.52h
+2025-10-26 12:12:31,692 INFO __main__: New best model saved at checkpoints/celestial_enhanced_pgat_production_recovery_kalki/best_model.pth | val_loss=0.195179
+Validation loss decreased (inf --> 0.195179).  Saving model ...
+2025-10-26 12:12:31,822 INFO __main__: Epoch 2/3 - production training

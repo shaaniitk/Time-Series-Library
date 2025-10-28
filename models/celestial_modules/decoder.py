@@ -12,6 +12,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from layers.modular.decoder.target_autocorrelation_module import DualStreamDecoder
 from layers.modular.graph.celestial_to_target_attention import CelestialToTargetAttention
 from layers.modular.decoder.mdn_decoder import MDNDecoder
+from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureDensityDecoder
 
 # Import DecoderLayer from the original model - we'll need to extract this
 class DecoderLayer(nn.Module):
@@ -65,10 +66,28 @@ class DecoderModule(nn.Module):
         if config.use_celestial_target_attention:
             self.celestial_to_target_attention = CelestialToTargetAttention(
                 num_celestial=config.num_celestial_bodies, num_targets=config.c_out, d_model=config.d_model,
-                num_heads=config.n_heads, dropout=config.dropout, use_gated_fusion=config.celestial_target_use_gated_fusion
+                num_heads=config.n_heads, dropout=config.dropout, 
+                use_gated_fusion=config.celestial_target_use_gated_fusion,
+                enable_diagnostics=config.celestial_target_diagnostics,
+                use_edge_bias=config.use_c2t_edge_bias,
+                edge_bias_scale=config.c2t_edge_bias_weight,
             )
         else:
             self.celestial_to_target_attention = None
+            
+        # Enhanced decoder options
+        if config.use_mixture_decoder or config.use_sequential_mixture_decoder:
+            self.mixture_decoder = SequentialMixtureDensityDecoder(
+                d_model=config.d_model,
+                pred_len=config.pred_len,
+                num_components=3,
+                num_targets=config.c_out,
+                num_decoder_layers=2,
+                num_heads=config.n_heads,
+                dropout=config.dropout
+            )
+        else:
+            self.mixture_decoder = None
             
         if config.enable_mdn_decoder:
             self.mdn_decoder = MDNDecoder(
@@ -78,6 +97,7 @@ class DecoderModule(nn.Module):
         else:
             self.mdn_decoder = None
             
+        # Always have a fallback projection layer
         self.projection = nn.Linear(config.d_model, config.c_out)
 
     def forward(self, dec_out, graph_features, past_celestial_features, future_celestial_features):
@@ -91,47 +111,120 @@ class DecoderModule(nn.Module):
             decoder_features = self.dual_stream_decoder(decoder_features, graph_features)
             
         # 3. Celestial-to-Target Attention
+        celestial_target_diagnostics = None
+        aux_loss = 0.0
+        
         if self.config.use_celestial_target_attention and self.celestial_to_target_attention is not None:
             pred_start_idx = self.config.label_len
             decoder_pred_features = decoder_features[:, pred_start_idx:, :]
-            decoder_target_features = decoder_pred_features.unsqueeze(2).expand(-1, -1, self.config.c_out, -1)
+            batch_size_dec = decoder_pred_features.shape[0]
+            decoder_target_features = decoder_pred_features.unsqueeze(2).expand(
+                -1, -1, self.config.c_out, -1
+            )
             
-            # Prioritize known future celestial states
-            celestial_feats = future_celestial_features if future_celestial_features is not None else past_celestial_features
-            
-            if celestial_feats is not None:
-                # Ensure celestial_feats is 4D: [batch, seq_len, num_celestial, d_model]
+            # Process FUTURE celestial states if provided (deterministic conditioning!)
+            celestial_feats = None
+            if future_celestial_features is not None:
+                # Future celestial features should be properly shaped
+                celestial_feats = future_celestial_features
                 if celestial_feats.dim() == 3:
-                    # Reshape from [batch, seq_len, celestial_feature_dim] to [batch, seq_len, num_celestial, celestial_dim]
+                    # Reshape and project if needed
                     batch_size, seq_len, celestial_feature_dim = celestial_feats.shape
                     celestial_dim = celestial_feature_dim // self.config.num_celestial_bodies
                     celestial_feats = celestial_feats.view(batch_size, seq_len, self.config.num_celestial_bodies, celestial_dim)
                     
-                    # Project celestial features to d_model dimension if needed
+                    if celestial_dim != self.config.d_model:
+                        if not hasattr(self, 'future_celestial_to_dmodel'):
+                            self.future_celestial_to_dmodel = nn.Linear(
+                                celestial_dim, self.config.d_model
+                            ).to(celestial_feats.device)
+                        
+                        batch_size, seq_len, num_celestial, celestial_dim = celestial_feats.shape
+                        celestial_feats_flat = celestial_feats.view(-1, celestial_dim)
+                        celestial_feats_projected = self.future_celestial_to_dmodel(celestial_feats_flat)
+                        celestial_feats = celestial_feats_projected.view(batch_size, seq_len, num_celestial, self.config.d_model)
+            elif past_celestial_features is not None:
+                # Fallback to past celestial features
+                celestial_feats = past_celestial_features
+                if celestial_feats.dim() == 3:
+                    batch_size, seq_len, celestial_feature_dim = celestial_feats.shape
+                    celestial_dim = celestial_feature_dim // self.config.num_celestial_bodies
+                    celestial_feats = celestial_feats.view(batch_size, seq_len, self.config.num_celestial_bodies, celestial_dim)
+                    
                     if celestial_dim != self.config.d_model:
                         if not hasattr(self, 'celestial_projection'):
                             self.celestial_projection = nn.Linear(celestial_dim, self.config.d_model).to(celestial_feats.device)
-                        # Reshape for projection: [batch*seq*num_celestial, celestial_dim]
+                        
                         batch_size, seq_len, num_celestial, celestial_dim = celestial_feats.shape
                         celestial_feats_flat = celestial_feats.view(-1, celestial_dim)
                         celestial_feats_projected = self.celestial_projection(celestial_feats_flat)
                         celestial_feats = celestial_feats_projected.view(batch_size, seq_len, num_celestial, self.config.d_model)
-                
-                enhanced_target_features, _ = self.celestial_to_target_attention(
-                    target_features=decoder_target_features, celestial_features=celestial_feats
+            
+            # Apply celestial-to-target attention if we have celestial features
+            if celestial_feats is not None:
+                enhanced_target_features, celestial_target_diagnostics = self.celestial_to_target_attention(
+                    target_features=decoder_target_features,
+                    celestial_features=celestial_feats,
+                    return_diagnostics=self.config.celestial_target_diagnostics
                 )
+                
+                # Optional: auxiliary relation loss
+                if (self.config.c2t_aux_rel_loss_weight > 0.0 and 
+                    celestial_target_diagnostics is not None and 
+                    isinstance(celestial_target_diagnostics, dict) and 
+                    'attention_weights' in celestial_target_diagnostics):
+                    try:
+                        attn_dict = celestial_target_diagnostics['attention_weights']
+                        attn_list = []
+                        for t_idx in range(self.config.c_out):
+                            key = f'target_{t_idx}_attn'
+                            if key in attn_dict:
+                                attn_list.append(attn_dict[key])
+                        if attn_list:
+                            attn_stack = torch.stack(attn_list, dim=2)
+                            attn_mean = attn_stack.mean(dim=2)
+                            # Simple uniform prior for auxiliary loss
+                            uniform_prior = torch.ones_like(attn_mean) / attn_mean.size(-1)
+                            attn_clamped = attn_mean.clamp_min(1e-8)
+                            kl = (attn_clamped * (attn_clamped.log() - (uniform_prior + 1e-8).log())).sum(dim=-1)
+                            aux_loss += float(self.config.c2t_aux_rel_loss_weight) * float(kl.mean().item())
+                    except Exception:
+                        pass  # Ignore auxiliary loss computation errors
+                
+                # Pool target features back to [batch, pred_len, d_model] for projection
                 decoder_features_enhanced = enhanced_target_features.mean(dim=2)
+                
+                # Replace prediction window features in decoder_features
                 decoder_features = torch.cat([
                     decoder_features[:, :pred_start_idx, :],
                     decoder_features_enhanced
                 ], dim=1)
 
-        # 4. Final Prediction
+        # 4. Final prediction with enhanced decoder options
         prediction_features = decoder_features[:, -self.config.pred_len:, :]
+        predictions = None
+        mdn_components = None
+        
+        # Priority: MDN decoder > Sequential mixture > Simple projection
         if self.config.enable_mdn_decoder and self.mdn_decoder is not None:
             pi, mu, sigma = self.mdn_decoder(prediction_features)
-            point_prediction = self.mdn_decoder.mean_prediction(pi, mu)
-            return point_prediction, 0.0, (pi, mu, sigma) # aux_loss, mdn_components
+            predictions = self.mdn_decoder.mean_prediction(pi, mu)
+            mdn_components = (pi, mu, sigma)
+        elif (self.config.use_mixture_decoder or self.config.use_sequential_mixture_decoder) and self.mixture_decoder is not None:
+            try:
+                means, log_stds, log_weights = self.mixture_decoder(
+                    encoder_output=graph_features,
+                    decoder_input=prediction_features
+                )
+                predictions = self.mixture_decoder.get_point_prediction((means, log_stds, log_weights))
+                
+                if predictions.size(-1) != self.config.c_out:
+                    predictions = self.projection(prediction_features)
+                
+                mdn_components = (means, log_stds, log_weights)
+            except Exception:
+                predictions = self.projection(prediction_features)
         else:
             predictions = self.projection(prediction_features)
-            return predictions, 0.0, None # aux_loss, mdn_components
+        
+        return predictions, aux_loss, mdn_components
