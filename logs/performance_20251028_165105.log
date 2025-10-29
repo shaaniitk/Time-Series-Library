@@ -1,0 +1,16 @@
+2025-10-28 18:29:06 | INFO     | Performance | Baseline_OverfitCheck | training_time: 5880.06s | memory_delta: 2.07GB
+2025-10-28 20:07:25 | INFO     | Performance | Baseline_Minimal | training_time: 5898.97s | memory_delta: 0.03GB
+2025-10-28 20:46:33 | INFO     | Performance | Context_Simple | training_time: 2342.74s | memory_delta: -0.01GB
+2025-10-28 21:25:51 | INFO     | Performance | Context_Gated | training_time: 2352.78s | memory_delta: 0.01GB
+2025-10-28 22:05:14 | INFO     | Performance | Context_Attention | training_time: 2358.13s | memory_delta: -0.02GB
+2025-10-28 22:44:46 | INFO     | Performance | Context_MultiScale | training_time: 2367.55s | memory_delta: -0.05GB
+2025-10-28 23:24:18 | INFO     | Performance | Stochastic_Learner | training_time: 2366.51s | memory_delta: -0.03GB
+2025-10-29 00:03:54 | INFO     | Performance | Stochastic_Control | training_time: 2370.86s | memory_delta: -0.03GB
+2025-10-29 00:43:30 | INFO     | Performance | Stochastic_Both | training_time: 2371.62s | memory_delta: -0.03GB
+2025-10-29 02:23:13 | INFO     | Performance | Graph_Standard | training_time: 5977.63s | memory_delta: 0.12GB
+2025-10-29 02:23:18 | INFO     | Performance | Graph_Gated | training_time: 0.20s | memory_delta: -0.02GB
+2025-10-29 03:02:58 | INFO     | Performance | Graph_PetriNet | training_time: 2375.08s | memory_delta: 1.56GB
+2025-10-29 03:42:54 | INFO     | Performance | Decoder_Mixture | training_time: 2390.55s | memory_delta: 0.23GB
+2025-10-29 05:41:54 | INFO     | Performance | Hierarchical_Mapping | training_time: 2390.05s | memory_delta: -0.03GB
+2025-10-29 05:41:59 | INFO     | Performance | Efficient_Covariate | training_time: 0.21s | memory_delta: -0.04GB
+2025-10-29 05:42:04 | INFO     | Performance | Full_Advanced | training_time: 0.22s | memory_delta: 0.04GB
