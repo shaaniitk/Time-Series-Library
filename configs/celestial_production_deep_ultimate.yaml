@@ -19,8 +19,8 @@ dropout: 0.1              # Moderate dropout for regularization
 activation: 'gelu'        # GELU activation for better gradients
 
 # Input/Output Dimensions
-enc_in: 118               # Input features (auto-detected from data)
-dec_in: 118               # Decoder input features
+enc_in: 113               # Input features (auto-detected from data)
+dec_in: 113               # Decoder input features
 c_out: 4                  # OHLC output targets
 factor: 1                 # Attention factor
 
@@ -50,7 +50,7 @@ edge_feature_dim: 32              # Rich edge features
 use_temporal_attention: true
 use_spatial_attention: true
 bypass_spatiotemporal_with_petri: true
-num_input_waves: 118
+num_input_waves: 113
 target_wave_indices: [0, 1, 2, 3]
 
 # Multi-Scale Context Fusion - OPTIMIZED (Based on Test Results)
@@ -155,18 +155,18 @@ loss:
   volatility_penalty: 0.02        # Additional volatility penalty
 
 # ============================================================================
-# OPTIMIZATION & HARDWARE - MAXIMUM UTILIZATION
+# OPTIMIZATION & HARDWARE - CPU FALLBACK COMPATIBLE
 # ============================================================================
-use_gpu: true
+use_gpu: true                     # Try GPU first, fallback to CPU if needed
 gpu: 0
 use_multi_gpu: false
 devices: '0'
 
-# Memory Management - Optimized for Deep Model
-num_workers: 6                    # More parallel data loading
-pin_memory: true
-persistent_workers: true
-prefetch_factor: 6
+# Memory Management - Single-threaded (Avoid multiprocessing issues)
+num_workers: 0                    # Single-threaded data loading (avoid recursion issues)
+pin_memory: false                 # Disable for CPU training
+persistent_workers: false
+prefetch_factor: 2
 max_memory_usage: 0.9             # Use 90% of available memory
 
 # ============================================================================
@@ -332,6 +332,9 @@ use_knowledge_distillation: false # ❌ DISABLED - Experimental feature
 #   * d_model: 780 = 13 * 60 (60 dims per celestial body)
 #   * celestial_dim: 130 = 13 * 10 (10 dims per celestial body)
 #   * calendar_embedding_dim: 260 = 13 * 20 (20 dims per celestial body)
+# - Multiprocessing Fix: Added proper pickle support to SimpleConfig class
+# - Data Loading: Single-threaded operation to avoid recursion issues
+# - Input Features: Corrected to 113 features (auto-detected from data)
 #
 # Expected training time: 24-48 hours on high-end GPU
 # Expected memory usage: 12-24 GB GPU memory

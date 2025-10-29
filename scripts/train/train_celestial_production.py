@@ -114,6 +114,9 @@ class SimpleConfig:
         super().__setattr__("_data", dict(config_dict))
 
     def __getattr__(self, name: str) -> Any:
+        # Prevent infinite recursion during pickling
+        if name == '_data':
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         try:
             return self._data[name]
         except KeyError as exc:  # pragma: no cover - diagnostic aid only
@@ -131,6 +134,14 @@ class SimpleConfig:
         """Iterate over stored configuration keys and values."""
 
         return self._data.items()
+    
+    def __getstate__(self):
+        """Support for pickling (needed for multiprocessing)"""
+        return {'_data': self._data}
+    
+    def __setstate__(self, state):
+        """Support for unpickling (needed for multiprocessing)"""
+        super().__setattr__("_data", state['_data'])
 
 
 def configure_logging(config: SimpleConfig) -> logging.Logger:
