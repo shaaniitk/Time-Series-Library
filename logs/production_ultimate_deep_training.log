@@ -1,0 +1,79 @@
+2025-10-29 12:49:23,701 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-29 12:49:23,701 | INFO     | __main__ | Heavy-duty overnight configuration enabled
+2025-10-29 12:49:23,701 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-10-29 12:49:23,701 | INFO     | __main__ | ================================================================================
+2025-10-29 12:49:23,703 | INFO     | __main__ | Memory diagnostics enabled; detailed logs stored at checkpoints\celestial_ultimate_deep_500x20\memory_diagnostics.log
+2025-10-29 12:49:23,703 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=768 n_heads=24 e_layers=12 d_layers=6 train_epochs=75
+2025-10-29 12:49:23,703 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-10-29 12:49:23,703 | INFO     | __main__ | Using device: cpu (CPU fallback)
+2025-10-29 12:49:23,818 | INFO     | __main__ | Reproducibility seed configured to 42
+2025-10-29 12:49:23,819 | INFO     | __main__ | Loading production data modules
+2025-10-29 12:49:24,136 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
+2025-10-29 12:49:24,136 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 12:49:24,345 | INFO     | __main__ | Created val dataset with training scalers
+2025-10-29 12:49:24,345 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 12:49:24,601 | INFO     | __main__ | Created test dataset with training scalers
+2025-10-29 12:49:24,601 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 12:49:24,601 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
+2025-10-29 12:49:24,603 | INFO     | __main__ | Preparing scaling utilities for loss computation
+2025-10-29 12:49:24,603 | INFO     | __main__ | Main scaler detected with 118 features
+2025-10-29 12:49:24,603 | INFO     | __main__ | Target scaler detected with 4 features
+2025-10-29 12:49:24,603 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-29 12:49:24,604 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
+2025-10-29 12:49:24,604 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Initializing Celestial Enhanced PGAT | seq_len=500 pred_len=20 d_model=768 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
+2025-10-29 12:49:24,604 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Phase-aware aggregation configured | input_waves=118 target_wave_indices=[0, 1, 2, 3]
+2025-10-29 12:49:24,766 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=768
+2025-10-29 12:49:24,766 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
+2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-10-29 12:49:26,896 | ERROR    | __main__ | Model initialization failed: d_model (768) must be divisible by num_graph_nodes (13) for efficient processing.
+Traceback (most recent call last):
+  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 2326, in train_celestial_pgat_production
+    model = Model(args).to(device)
+            ~~~~~^^^^^^
+  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 72, in __init__
+    self._setup_efficient_covariate_interaction()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 90, in _setup_efficient_covariate_interaction
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: d_model (768) must be divisible by num_graph_nodes (13) for efficient processing.
+2025-10-29 12:52:01,342 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-29 12:52:01,342 | INFO     | __main__ | Heavy-duty overnight configuration enabled
+2025-10-29 12:52:01,343 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-10-29 12:52:01,343 | INFO     | __main__ | ================================================================================
+2025-10-29 12:52:01,344 | INFO     | __main__ | Memory diagnostics enabled; detailed logs stored at checkpoints\celestial_ultimate_deep_500x20\memory_diagnostics.log
+2025-10-29 12:52:01,344 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=780 n_heads=20 e_layers=12 d_layers=6 train_epochs=75
+2025-10-29 12:52:01,344 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-10-29 12:52:01,344 | INFO     | __main__ | Using device: cpu (CPU fallback)
+2025-10-29 12:52:01,350 | INFO     | __main__ | Reproducibility seed configured to 42
+2025-10-29 12:52:01,350 | INFO     | __main__ | Loading production data modules
+2025-10-29 12:52:01,845 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
+2025-10-29 12:52:01,845 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 12:52:02,273 | INFO     | __main__ | Created val dataset with training scalers
+2025-10-29 12:52:02,273 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 12:52:02,790 | INFO     | __main__ | Created test dataset with training scalers
+2025-10-29 12:52:02,791 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 12:52:02,791 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
+2025-10-29 12:52:02,792 | INFO     | __main__ | Preparing scaling utilities for loss computation
+2025-10-29 12:52:02,792 | INFO     | __main__ | Main scaler detected with 118 features
+2025-10-29 12:52:02,792 | INFO     | __main__ | Target scaler detected with 4 features
+2025-10-29 12:52:02,792 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-29 12:52:02,792 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
+2025-10-29 12:52:02,793 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Initializing Celestial Enhanced PGAT | seq_len=500 pred_len=20 d_model=780 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
+2025-10-29 12:52:02,793 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Phase-aware aggregation configured | input_waves=118 target_wave_indices=[0, 1, 2, 3]
+2025-10-29 12:52:03,057 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-10-29 12:52:03,057 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
+2025-10-29 12:52:03,139 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-10-29 12:52:03,139 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-10-29 12:52:03,139 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-10-29 12:52:03,140 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-10-29 12:52:03,140 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-10-29 12:52:03,140 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-10-29 12:52:03,140 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized

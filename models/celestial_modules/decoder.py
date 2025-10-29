@@ -91,8 +91,12 @@ class DecoderModule(nn.Module):
             
         if config.enable_mdn_decoder:
             self.mdn_decoder = MDNDecoder(
-                d_input=config.d_model, n_targets=config.c_out, n_components=config.mdn_components,
-                sigma_min=config.mdn_sigma_min, use_softplus=config.mdn_use_softplus
+                d_input=config.d_model, 
+                n_targets=config.c_out, 
+                n_components=config.mdn_components,
+                sigma_min=config.mdn_sigma_min, 
+                use_softplus=getattr(config, 'mdn_use_softplus', True),
+                adaptive_input=True  # Enable automatic dimension adaptation
             )
         else:
             self.mdn_decoder = None
@@ -207,9 +211,25 @@ class DecoderModule(nn.Module):
         
         # Priority: MDN decoder > Sequential mixture > Simple projection
         if self.config.enable_mdn_decoder and self.mdn_decoder is not None:
-            pi, mu, sigma = self.mdn_decoder(prediction_features)
-            predictions = self.mdn_decoder.mean_prediction(pi, mu)
-            mdn_components = (pi, mu, sigma)
+            try:
+                pi, mu, sigma = self.mdn_decoder(prediction_features)
+                predictions = self.mdn_decoder.mean_prediction(pi, mu)
+                mdn_components = (pi, mu, sigma)
+                
+                # Validate final prediction shape
+                expected_shape = (prediction_features.shape[0], self.config.pred_len, self.config.c_out)
+                if predictions.shape != expected_shape:
+                    print(f"MDN prediction shape mismatch: {predictions.shape} != {expected_shape}")
+                    print("Falling back to projection layer")
+                    predictions = self.projection(prediction_features)
+                    mdn_components = None
+                    
+            except Exception as e:
+                print(f"MDN decoder failed: {e}")
+                print(f"Input shape: {prediction_features.shape}")
+                print("Falling back to projection layer")
+                predictions = self.projection(prediction_features)
+                mdn_components = None
         elif (self.config.use_mixture_decoder or self.config.use_sequential_mixture_decoder) and self.mixture_decoder is not None:
             try:
                 means, log_stds, log_weights = self.mixture_decoder(

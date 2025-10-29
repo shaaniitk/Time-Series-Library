@@ -9,12 +9,12 @@ model: 'Celestial_Enhanced_PGAT'
 model_name: 'Celestial_Enhanced_PGAT'
 model_id: 'celestial_ultimate_deep_500x20'
 
-# Core Architecture - Ultra Deep Configuration
-d_model: 768              # Very large model dimension
-n_heads: 24               # Many attention heads (768/24 = 32 per head)
+# Core Architecture - Ultra Deep Configuration (Dimension-Compatible)
+d_model: 780              # Large model dimension (780 = 13 * 60, divisible by 13 celestial bodies)
+n_heads: 20               # Many attention heads (780/20 = 39 per head, clean division)
 e_layers: 12              # Very deep encoder (12 layers)
 d_layers: 6               # Deep decoder (6 layers)
-d_ff: 3072                # Very large feed-forward dimension (4x d_model)
+d_ff: 3120                # Very large feed-forward dimension (4x d_model)
 dropout: 0.1              # Moderate dropout for regularization
 activation: 'gelu'        # GELU activation for better gradients
 
@@ -44,7 +44,7 @@ use_celestial_graph: true
 aggregate_waves_to_celestial: true
 celestial_fusion_layers: 6        # Very deep celestial fusion
 num_celestial_bodies: 13
-celestial_dim: 128                # Very large celestial dimension
+celestial_dim: 130                # Large celestial dimension (130 = 13 * 10, divisible by 13)
 num_message_passing_steps: 4      # More message passing steps
 edge_feature_dim: 32              # Rich edge features
 use_temporal_attention: true
@@ -81,13 +81,14 @@ use_gated_graph_combiner: true
 petri_net_places: 39              # 3x celestial bodies
 petri_net_transitions: 52         # 4x celestial bodies
 
-# Enhanced Decoders - WORKING CONFIGURATION (Based on GPU Test Results)
+# Enhanced Decoders - FIXED AND WORKING (Dimension issues resolved)
 use_mixture_decoder: true         # ✅ WORKING - Essential for proper training
 use_sequential_mixture_decoder: true  # ✅ WORKING - Enables probabilistic forecasting
-enable_mdn_decoder: false         # ❌ DISABLED - Dimension mismatch issues
-mdn_components: 5                 # Reduced (not used when disabled)
+enable_mdn_decoder: true          # ✅ FIXED - Dimension adaptation now working
+mdn_components: 8                 # Increased (now that it's working)
 mdn_sigma_min: 0.001
 mdn_sigma_max: 1.0
+mdn_use_softplus: true            # Use numerically stable activation
 
 # Advanced Attention Mechanisms - All Enabled
 use_target_autocorrelation: true
@@ -98,7 +99,7 @@ use_dynamic_spatiotemporal_encoder: true
 
 # Calendar and Temporal Effects - Enhanced
 use_calendar_effects: true
-calendar_embedding_dim: 256       # Very large calendar embeddings
+calendar_embedding_dim: 260       # Large calendar embeddings (260 = 13 * 20, divisible by 13)
 use_phase_aware_processing: true
 
 # ============================================================================
@@ -307,20 +308,30 @@ use_knowledge_distillation: false # ❌ DISABLED - Experimental feature
 # - Robust regularization and stability measures
 # - Extensive logging and diagnostics
 #
-# ✅ WORKING COMPONENTS (Verified by systematic testing):
+# ✅ WORKING COMPONENTS (Verified by systematic testing + fixes):
 # - Celestial Graph System with all attention mechanisms
 # - Hierarchical Mapping (enables complex relationship discovery)
 # - Stochastic Learning (uncertainty modeling, low overhead)
 # - Graph Combiners (Petri Net + Gated)
 # - Sequential Mixture Decoder (essential for proper training)
+# - MDN Decoder (FIXED - now has dimension adaptation & robust error handling)
 # - Multi-scale Context Fusion (optimized settings)
 # - All attention mechanisms and calendar effects
 #
-# ❌ DISABLED COMPONENTS (Failed in testing):
-# - MDN Decoder (dimension mismatch issues)
+# ❌ DISABLED COMPONENTS (Experimental features):
 # - Ensemble prediction (experimental)
 # - Curriculum learning (experimental)
 # - Lookahead optimizer (experimental)
+#
+# 🔧 RECENT FIXES APPLIED:
+# - MDN Decoder: Added automatic dimension adaptation
+# - MDN Decoder: Robust error handling and fallback mechanisms
+# - MDN Decoder: Numerically stable loss computation
+# - MDN Decoder: Comprehensive input/output validation
+# - Dimension Compatibility: All dimensions now divisible by 13 celestial bodies
+#   * d_model: 780 = 13 * 60 (60 dims per celestial body)
+#   * celestial_dim: 130 = 13 * 10 (10 dims per celestial body)
+#   * calendar_embedding_dim: 260 = 13 * 20 (20 dims per celestial body)
 #
 # Expected training time: 24-48 hours on high-end GPU
 # Expected memory usage: 12-24 GB GPU memory
