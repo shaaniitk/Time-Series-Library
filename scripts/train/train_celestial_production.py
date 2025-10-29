@@ -826,6 +826,11 @@ def train_epoch(
     model.train()
     train_loss = 0.0
     train_batches = 0
+    
+    # For precise loss aggregation
+    total_train_loss = 0.0
+    total_train_samples = 0
+    
     optimizer.zero_grad(set_to_none=True)
 
     logger.info("Epoch %s/%s - production training", epoch + 1, args.train_epochs)
@@ -1051,6 +1056,11 @@ def train_epoch(
             # But for reporting, we want the unscaled mean loss across batches
             train_loss += raw_loss.detach().item()
             train_batches += 1
+            
+            # FIXED: Sample-weighted loss aggregation for more precise training metrics
+            batch_size = batch_x.size(0)
+            total_train_loss += raw_loss.detach().item() * batch_size
+            total_train_samples += batch_size
 
             # 🔍 DIAGNOSTIC: Log detailed training metrics
             if batch_index < 5 or batch_index % 50 == 0:
@@ -1133,7 +1143,9 @@ def train_epoch(
             optimizer.zero_grad(set_to_none=True)
             continue
 
-    avg_train_loss = train_loss / max(train_batches, 1)
+    # FIXED: Use sample-weighted average for more precise training loss
+    avg_train_loss_precise = total_train_loss / max(total_train_samples, 1)
+    avg_train_loss_legacy = train_loss / max(train_batches, 1)  # Keep for comparison
     
     # 🔍 DIAGNOSTIC: Log epoch summary
     with open('training_diagnostic.log', 'a') as f:
@@ -1142,7 +1154,10 @@ def train_epoch(
         f.write(f"{'#'*80}\n")
         f.write(f"total_train_loss: {train_loss:.8f}\n")
         f.write(f"train_batches: {train_batches}\n")
-        f.write(f"avg_train_loss: {avg_train_loss:.8f}\n")
+        f.write(f"total_train_samples: {total_train_samples}\n")
+        f.write(f"avg_train_loss (legacy - batch avg): {avg_train_loss_legacy:.8f}\n")
+        f.write(f"avg_train_loss (precise - sample weighted): {avg_train_loss_precise:.8f}\n")
+        f.write(f"difference: {abs(avg_train_loss_precise - avg_train_loss_legacy):.8f}\n")
         f.write(f"gradient_accumulation_steps: {gradient_accumulation_steps}\n")
         f.write(f"\n")
     
@@ -1151,7 +1166,12 @@ def train_epoch(
             f"train_epoch_{epoch + 1}_end",
             device,
             MEMORY_LOGGER if MEMORY_LOGGER.handlers else None,
-            {"avg_train_loss": avg_train_loss, "train_batches": train_batches},
+            {
+                "avg_train_loss_precise": avg_train_loss_precise,
+                "avg_train_loss_legacy": avg_train_loss_legacy, 
+                "train_batches": train_batches,
+                "total_train_samples": total_train_samples
+            },
         )
         if getattr(args, "dump_cuda_memory_summary", False):
             _maybe_dump_cuda_summary(
@@ -1159,7 +1179,8 @@ def train_epoch(
                 MEMORY_LOGGER if MEMORY_LOGGER.handlers else None,
                 f"train_epoch_{epoch + 1}_end",
             )
-    return avg_train_loss, train_batches
+    # Return the more precise sample-weighted average
+    return avg_train_loss_precise, train_batches
 
 
 def validate_epoch(
@@ -1206,18 +1227,41 @@ def validate_epoch(
             {},
         )
 
+    # For precise loss aggregation
+    total_loss = 0.0
+    total_samples = 0
+    
     with torch.no_grad():
-        for batch_index, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(val_loader):
+        for batch_index, batch_data in enumerate(val_loader):
             try:
+                # FIXED: Handle both 4-tuple and 6-tuple data formats (same as training)
+                if len(batch_data) == 6:
+                    # New format: includes future celestial data for deterministic conditioning
+                    batch_x, batch_y, batch_x_mark, batch_y_mark, future_cel_x, future_cel_mark = batch_data
+                    future_cel_x = future_cel_x.float().to(device)
+                    future_cel_mark = future_cel_mark.float().to(device)
+                elif len(batch_data) == 4:
+                    # Legacy format: no future celestial data
+                    batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
+                    future_cel_x, future_cel_mark = None, None
+                else:
+                    raise ValueError(f"Unexpected batch format: {len(batch_data)} elements")
+                
                 batch_x = batch_x.float().to(device)
                 batch_y = batch_y.float().to(device)
                 batch_x_mark = batch_x_mark.float().to(device)
                 batch_y_mark = batch_y_mark.float().to(device)
 
-                # 🚀 ENHANCED: Use future celestial data for validation
+                # 🚀 ENHANCED: Use future celestial data for validation (same as training)
                 dec_inp = _create_enhanced_decoder_input(batch_y, args, logger).float().to(device)
 
-                outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                # FIXED: Pass future celestial data if available (consistent with training)
+                if future_cel_x is not None:
+                    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark,
+                                      future_celestial_x=future_cel_x,
+                                      future_celestial_mark=future_cel_mark)
+                else:
+                    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 outputs_tensor, aux_loss, mdn_outputs, _ = _normalize_model_output(outputs_raw)
 
                 c_out_evaluation = len(target_indices)
@@ -1269,6 +1313,12 @@ def validate_epoch(
                 if aux_loss:
                     loss = loss + aux_loss
 
+                # FIXED: Sample-weighted loss aggregation for more precise validation metrics
+                batch_size = batch_x.size(0)
+                total_loss += float(loss.item()) * batch_size
+                total_samples += batch_size
+                
+                # Keep old method for backward compatibility logging
                 val_loss += float(loss.item())
                 val_batches += 1
                 
@@ -1363,23 +1413,33 @@ def validate_epoch(
                     )
                 continue
 
-    avg_val_loss = val_loss / max(val_batches, 1)
+    # FIXED: Use sample-weighted average for more precise validation loss
+    avg_val_loss_precise = total_loss / max(total_samples, 1)
+    avg_val_loss_legacy = val_loss / max(val_batches, 1)  # Keep for comparison
     avg_dir_accuracy = (total_dir_accuracy / max(dir_accuracy_samples, 1)) if compute_dir_accuracy else None
     
-    # 🔍 DIAGNOSTIC: Log validation summary
+    # 🔍 DIAGNOSTIC: Log validation summary with both methods
     with open('training_diagnostic.log', 'a') as f:
         f.write(f"\n{'#'*80}\n")
         f.write(f"EPOCH {epoch+1} VALIDATION SUMMARY\n")
         f.write(f"{'#'*80}\n")
         f.write(f"total_val_loss: {val_loss:.8f}\n")
         f.write(f"val_batches: {val_batches}\n")
-        f.write(f"avg_val_loss: {avg_val_loss:.8f}\n")
+        f.write(f"total_samples: {total_samples}\n")
+        f.write(f"avg_val_loss (legacy - batch avg): {avg_val_loss_legacy:.8f}\n")
+        f.write(f"avg_val_loss (precise - sample weighted): {avg_val_loss_precise:.8f}\n")
+        f.write(f"difference: {abs(avg_val_loss_precise - avg_val_loss_legacy):.8f}\n")
         if avg_dir_accuracy is not None:
             f.write(f"directional_accuracy: {avg_dir_accuracy:.2f}%\n")
         f.write(f"\n")
     
     if memory_logging_enabled:
-        metrics = {"avg_val_loss": avg_val_loss, "val_batches": val_batches}
+        metrics = {
+            "avg_val_loss_precise": avg_val_loss_precise,
+            "avg_val_loss_legacy": avg_val_loss_legacy, 
+            "val_batches": val_batches,
+            "total_samples": total_samples
+        }
         if avg_dir_accuracy is not None:
             metrics["directional_accuracy"] = avg_dir_accuracy
         _log_memory_snapshot(
@@ -1388,7 +1448,9 @@ def validate_epoch(
             MEMORY_LOGGER if MEMORY_LOGGER.handlers else None,
             metrics,
         )
-    return avg_val_loss, val_batches, avg_dir_accuracy
+    
+    # Return the more precise sample-weighted average
+    return avg_val_loss_precise, val_batches, avg_dir_accuracy
 
 
 def collect_predictions(
@@ -1402,6 +1464,7 @@ def collect_predictions(
     scenario_name: str = "baseline",
     max_batches: Optional[int] = None,
     input_transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+    target_scaler: Optional[Any] = None,
 ) -> Tuple[np.ndarray, np.ndarray, int, Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]]:
     """Collect predictions, targets, and optional MDN components for evaluation or adversarial diagnostics.
     
@@ -1440,9 +1503,22 @@ def collect_predictions(
 
     model.eval()
     with torch.no_grad():
-        for batch_index, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(data_loader):
+        for batch_index, batch_data in enumerate(data_loader):
             if max_batches is not None and batch_index >= max_batches:
                 break
+
+            # FIXED: Handle both 4-tuple and 6-tuple data formats (consistent with training/validation)
+            if len(batch_data) == 6:
+                # New format: includes future celestial data for deterministic conditioning
+                batch_x, batch_y, batch_x_mark, batch_y_mark, future_cel_x, future_cel_mark = batch_data
+                future_cel_x = future_cel_x.float().to(device)
+                future_cel_mark = future_cel_mark.float().to(device)
+            elif len(batch_data) == 4:
+                # Legacy format: no future celestial data
+                batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
+                future_cel_x, future_cel_mark = None, None
+            else:
+                raise ValueError(f"Unexpected batch format: {len(batch_data)} elements")
 
             batch_x = batch_x.float()
             batch_y = batch_y.float()
@@ -1461,10 +1537,16 @@ def collect_predictions(
             batch_x_mark = batch_x_mark.to(device)
             batch_y_mark = batch_y_mark.to(device)
 
-            # 🚀 ENHANCED: Use future celestial data for testing
+            # 🚀 ENHANCED: Use future celestial data for testing (consistent with training/validation)
             dec_inp = _create_enhanced_decoder_input(batch_y, args, logger).float().to(device)
 
-            outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+            # FIXED: Pass future celestial data if available (consistent with training/validation)
+            if future_cel_x is not None:
+                outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark,
+                                  future_celestial_x=future_cel_x,
+                                  future_celestial_mark=future_cel_mark)
+            else:
+                outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
             outputs_tensor, _, mdn_outputs, _ = _normalize_model_output(outputs_raw)
 
             # Extract point predictions and optionally collect MDN components
@@ -1501,13 +1583,22 @@ def collect_predictions(
             else:
                 pred_tensor = outputs_tensor
 
-            true_tensor = batch_y[:, -args.pred_len:, :]
+            # FIXED: Use scaled targets for consistent evaluation (same as training/validation)
+            if target_scaler is not None:
+                true_tensor = scale_targets_for_loss(
+                    batch_y[:, -args.pred_len:, :], target_scaler, target_indices, device
+                )
+            else:
+                # Fallback to unscaled targets if no scaler provided
+                true_tensor = batch_y[:, -args.pred_len:, :]
+                if target_indices:
+                    true_tensor = true_tensor[:, :, target_indices]
 
             pred_aligned = pred_tensor[:, -args.pred_len:, :]
-            true_aligned = true_tensor[:, -args.pred_len:, :]
-            if target_indices:
+            true_aligned = true_tensor
+            if target_indices and target_scaler is None:
+                # Only slice predictions if we didn't already slice targets via scaler
                 pred_aligned = pred_aligned[:, :, target_indices]
-                true_aligned = true_aligned[:, :, target_indices]
 
             if torch.isnan(pred_aligned).any() or torch.isinf(pred_aligned).any():
                 logger.warning(
@@ -1574,6 +1665,7 @@ def evaluate_model(
     args: SimpleConfig,
     logger: logging.Logger,
     target_indices: Sequence[int],
+    target_scaler: Optional[Any] = None,
 ) -> EvaluationResult:
     """Evaluate the trained model on production test data."""
 
@@ -1600,6 +1692,7 @@ def evaluate_model(
         num_samples=num_samples,
         logger=logger,
         scenario_name="baseline",
+        target_scaler=target_scaler,
     )
 
     overall: Dict[str, float] = {}
@@ -1751,6 +1844,7 @@ def run_adversarial_diagnostics(
             scenario_name=name,
             max_batches=max_batches,
             input_transform=transform,
+            target_scaler=target_scaler,
         )
 
         if processed == 0:
@@ -2616,6 +2710,7 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
         args=args,
         logger=logger,
         target_indices=target_indices,
+        target_scaler=target_scaler,
     )
 
     if not evaluation_result.success:
