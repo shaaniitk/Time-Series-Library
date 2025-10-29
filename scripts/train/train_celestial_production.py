@@ -342,6 +342,137 @@ def _gather_memory_stats(device: torch.device) -> Dict[str, Union[float, str]]:
     return stats
 
 
+def _compute_detailed_batch_metrics(
+    raw_loss: torch.Tensor,
+    outputs_tensor: torch.Tensor,
+    y_true_for_loss: torch.Tensor,
+    mdn_outputs: Optional[Tuple],
+    args
+) -> dict:
+    """Compute detailed batch metrics including loss components and directional accuracy."""
+    metrics = {
+        'total_loss': float(raw_loss.detach().item()),
+        'mse_component': 0.0,
+        'directional_component': 0.0,
+        'mdn_component': 0.0,
+        'directional_accuracy': None,
+        'trend_accuracy': None,
+        'sign_accuracy': None,
+    }
+    
+    try:
+        # Import loss functions for component analysis
+        from layers.modular.losses.directional_trend_loss import (
+            compute_directional_accuracy,
+            DirectionalTrendLoss,
+            HybridMDNDirectionalLoss
+        )
+        
+        # Compute directional accuracy
+        if outputs_tensor is not None and y_true_for_loss is not None:
+            # Use MDN mean if available, otherwise use direct outputs
+            pred_for_accuracy = outputs_tensor
+            if mdn_outputs is not None:
+                try:
+                    # Extract mean from MDN outputs
+                    pi, mu, sigma = mdn_outputs
+                    pred_for_accuracy = (pi * mu).sum(dim=-1)  # Weighted mean
+                except Exception:
+                    pass  # Use direct outputs as fallback
+            
+            # Compute directional accuracy
+            dir_acc = compute_directional_accuracy(pred_for_accuracy, y_true_for_loss)
+            metrics['directional_accuracy'] = float(dir_acc)
+            
+            # Compute additional accuracy metrics
+            metrics.update(_compute_additional_accuracy_metrics(pred_for_accuracy, y_true_for_loss))
+        
+        # Decompose loss components if using hybrid loss
+        loss_config = getattr(args, 'loss', {})
+        if isinstance(loss_config, dict) and loss_config.get('type') == 'hybrid_mdn_directional':
+            metrics.update(_decompose_hybrid_loss_components(
+                outputs_tensor, y_true_for_loss, mdn_outputs, loss_config
+            ))
+    
+    except Exception as e:
+        # Graceful fallback if detailed metrics computation fails
+        pass
+    
+    return metrics
+
+
+def _compute_additional_accuracy_metrics(pred: torch.Tensor, target: torch.Tensor) -> dict:
+    """Compute additional accuracy metrics like trend and sign accuracy."""
+    metrics = {}
+    
+    try:
+        # Sign accuracy (percentage of correct signs)
+        pred_signs = torch.sign(pred)
+        target_signs = torch.sign(target)
+        sign_matches = (pred_signs == target_signs).float()
+        metrics['sign_accuracy'] = float(sign_matches.mean() * 100)
+        
+        # Trend accuracy (correlation between predicted and actual changes)
+        if pred.shape[1] > 1:  # Need at least 2 timesteps for trend
+            pred_diff = pred[:, 1:] - pred[:, :-1]
+            target_diff = target[:, 1:] - target[:, :-1]
+            
+            # Compute correlation
+            pred_flat = pred_diff.flatten()
+            target_flat = target_diff.flatten()
+            
+            if len(pred_flat) > 1:
+                correlation = torch.corrcoef(torch.stack([pred_flat, target_flat]))[0, 1]
+                if not torch.isnan(correlation):
+                    metrics['trend_accuracy'] = float(correlation * 100)
+    
+    except Exception:
+        pass
+    
+    return metrics
+
+
+def _decompose_hybrid_loss_components(
+    outputs: torch.Tensor,
+    targets: torch.Tensor,
+    mdn_outputs: Optional[Tuple],
+    loss_config: dict
+) -> dict:
+    """Decompose hybrid loss into its components."""
+    components = {}
+    
+    try:
+        # MSE component
+        mse_loss = torch.nn.functional.mse_loss(outputs, targets)
+        components['mse_component'] = float(mse_loss.item()) * loss_config.get('mse_weight', 0.6)
+        
+        # Directional component (approximate)
+        if outputs.shape[1] > 1:
+            pred_diff = outputs[:, 1:] - outputs[:, :-1]
+            target_diff = targets[:, 1:] - targets[:, :-1]
+            
+            # Simple directional loss approximation
+            pred_signs = torch.sign(pred_diff)
+            target_signs = torch.sign(target_diff)
+            directional_loss = torch.nn.functional.mse_loss(pred_signs, target_signs)
+            components['directional_component'] = float(directional_loss.item()) * loss_config.get('directional_weight', 0.25)
+        
+        # MDN component (if available)
+        if mdn_outputs is not None:
+            try:
+                from layers.modular.decoder.mdn_decoder import mdn_nll_loss
+                pi, mu, sigma = mdn_outputs
+                mdn_loss = mdn_nll_loss(pi, mu, sigma, targets)
+                components['mdn_component'] = float(mdn_loss.item()) * loss_config.get('mdn_weight', 0.15)
+            except Exception:
+                pass
+    
+    except Exception:
+        pass
+    
+    return components
+
+
 def _log_memory_snapshot(
     stage: str,
     device: torch.device,
@@ -1111,13 +1242,36 @@ def train_epoch(
 
             if batch_index % log_interval == 0:
                 elapsed = time.time() - epoch_start
+                
+                # Enhanced batch logging with detailed metrics
+                batch_metrics = _compute_detailed_batch_metrics(
+                    raw_loss, outputs_tensor, y_true_for_loss, mdn_outputs, args
+                )
+                
+                # Log comprehensive batch information
                 logger.info(
-                    "Batch %s/%s | loss=%0.6f elapsed=%0.1fs",
-                    batch_index,
+                    "🔥 BATCH %s/%s | Epoch %s/%s | ⏱️  %0.1fs",
+                    batch_index + 1,
                     len(train_loader),
-                    raw_loss.detach().item(),
+                    epoch + 1,
+                    args.train_epochs,
                     elapsed,
                 )
+                logger.info(
+                    "📊 LOSS: Total=%0.6f | MSE=%0.6f | Dir=%0.6f | MDN=%0.6f",
+                    batch_metrics['total_loss'],
+                    batch_metrics.get('mse_component', 0.0),
+                    batch_metrics.get('directional_component', 0.0),
+                    batch_metrics.get('mdn_component', 0.0),
+                )
+                if batch_metrics.get('directional_accuracy') is not None:
+                    logger.info(
+                        "🎯 ACCURACY: Directional=%0.2f%% | Trend=%0.2f%% | Sign=%0.2f%%",
+                        batch_metrics['directional_accuracy'],
+                        batch_metrics.get('trend_accuracy', 0.0),
+                        batch_metrics.get('sign_accuracy', 0.0),
+                    )
+                logger.info("─" * 80)
                 if epoch == 0 and batch_index == 0:
                     logger.debug("Production train - first batch scaling check")
                     logger.debug(
@@ -2629,19 +2783,40 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
 
         warmup_status = f" [WARMUP {epoch+1}/{warmup_epochs}]" if epoch < warmup_epochs else ""
         dir_acc_str = f" dir_acc={avg_dir_accuracy:.2f}%" if avg_dir_accuracy is not None else ""
+        
+        # Enhanced epoch summary logging
+        logger.info("=" * 100)
         logger.info(
-            "Epoch %s/%s complete%s | train_loss=%0.6f val_loss=%0.6f%s lr=%0.8f epoch_time=%0.2fs elapsed=%0.2fh remaining=%0.2fh",
+            "🎯 EPOCH %s/%s COMPLETE%s | ⏱️  %0.2fs | 🔥 %0.2fh elapsed | ⏳ %0.2fh remaining",
             epoch + 1,
             args.train_epochs,
             warmup_status,
-            avg_train_loss,
-            avg_val_loss,
-            dir_acc_str,
-            current_lr,
             epoch_time,
             total_elapsed / 3600,
             estimated_remaining / 3600 if estimated_remaining else 0.0,
         )
+        logger.info(
+            "📊 LOSSES: Train=%0.6f | Val=%0.6f | Δ=%+0.6f | LR=%0.8f",
+            avg_train_loss,
+            avg_val_loss,
+            avg_val_loss - avg_train_loss,
+            current_lr,
+        )
+        if avg_dir_accuracy is not None:
+            logger.info(
+                "🎯 DIRECTIONAL ACCURACY: %0.2f%% | Trend Quality: %s",
+                avg_dir_accuracy,
+                "Excellent" if avg_dir_accuracy > 60 else "Good" if avg_dir_accuracy > 50 else "Improving"
+            )
+        
+        # Performance indicators
+        if epoch > 0:
+            prev_val_loss = artifacts.val_losses[-1] if artifacts.val_losses else float('inf')
+            improvement = prev_val_loss - avg_val_loss
+            trend = "📈 Improving" if improvement > 0.001 else "📉 Declining" if improvement < -0.001 else "➡️  Stable"
+            logger.info(f"📈 TREND: {trend} | Improvement: {improvement:+0.6f}")
+        
+        logger.info("=" * 100)
 
         if train_batches == 0:
             logger.warning("Epoch %s processed zero training batches; check data loader configuration.", epoch + 1)

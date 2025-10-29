@@ -1,631 +1,104 @@
-2025-10-29 12:49:23,701 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
-2025-10-29 12:49:23,701 | INFO     | __main__ | Heavy-duty overnight configuration enabled
-2025-10-29 12:49:23,701 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
-2025-10-29 12:49:23,701 | INFO     | __main__ | ================================================================================
-2025-10-29 12:49:23,703 | INFO     | __main__ | Memory diagnostics enabled; detailed logs stored at checkpoints\celestial_ultimate_deep_500x20\memory_diagnostics.log
-2025-10-29 12:49:23,703 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=768 n_heads=24 e_layers=12 d_layers=6 train_epochs=75
-2025-10-29 12:49:23,703 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
-2025-10-29 12:49:23,703 | INFO     | __main__ | Using device: cpu (CPU fallback)
-2025-10-29 12:49:23,818 | INFO     | __main__ | Reproducibility seed configured to 42
-2025-10-29 12:49:23,819 | INFO     | __main__ | Loading production data modules
-2025-10-29 12:49:24,136 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
-2025-10-29 12:49:24,136 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=6 persistent_workers=True
-2025-10-29 12:49:24,345 | INFO     | __main__ | Created val dataset with training scalers
-2025-10-29 12:49:24,345 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
-2025-10-29 12:49:24,601 | INFO     | __main__ | Created test dataset with training scalers
-2025-10-29 12:49:24,601 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
-2025-10-29 12:49:24,601 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
-2025-10-29 12:49:24,603 | INFO     | __main__ | Preparing scaling utilities for loss computation
-2025-10-29 12:49:24,603 | INFO     | __main__ | Main scaler detected with 118 features
-2025-10-29 12:49:24,603 | INFO     | __main__ | Target scaler detected with 4 features
-2025-10-29 12:49:24,603 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
-2025-10-29 12:49:24,604 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
-2025-10-29 12:49:24,604 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Initializing Celestial Enhanced PGAT | seq_len=500 pred_len=20 d_model=768 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
-2025-10-29 12:49:24,604 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Phase-aware aggregation configured | input_waves=118 target_wave_indices=[0, 1, 2, 3]
-2025-10-29 12:49:24,766 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=768
-2025-10-29 12:49:24,766 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
-2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
-2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
-2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
-2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
-2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
-2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
-2025-10-29 12:49:24,806 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
-2025-10-29 12:49:26,896 | ERROR    | __main__ | Model initialization failed: d_model (768) must be divisible by num_graph_nodes (13) for efficient processing.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 2326, in train_celestial_pgat_production
-    model = Model(args).to(device)
-            ~~~~~^^^^^^
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 72, in __init__
-    self._setup_efficient_covariate_interaction()
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 90, in _setup_efficient_covariate_interaction
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: d_model (768) must be divisible by num_graph_nodes (13) for efficient processing.
-2025-10-29 12:52:01,342 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
-2025-10-29 12:52:01,342 | INFO     | __main__ | Heavy-duty overnight configuration enabled
-2025-10-29 12:52:01,343 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
-2025-10-29 12:52:01,343 | INFO     | __main__ | ================================================================================
-2025-10-29 12:52:01,344 | INFO     | __main__ | Memory diagnostics enabled; detailed logs stored at checkpoints\celestial_ultimate_deep_500x20\memory_diagnostics.log
-2025-10-29 12:52:01,344 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=780 n_heads=20 e_layers=12 d_layers=6 train_epochs=75
-2025-10-29 12:52:01,344 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
-2025-10-29 12:52:01,344 | INFO     | __main__ | Using device: cpu (CPU fallback)
-2025-10-29 12:52:01,350 | INFO     | __main__ | Reproducibility seed configured to 42
-2025-10-29 12:52:01,350 | INFO     | __main__ | Loading production data modules
-2025-10-29 12:52:01,845 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
-2025-10-29 12:52:01,845 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=6 persistent_workers=True
-2025-10-29 12:52:02,273 | INFO     | __main__ | Created val dataset with training scalers
-2025-10-29 12:52:02,273 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
-2025-10-29 12:52:02,790 | INFO     | __main__ | Created test dataset with training scalers
-2025-10-29 12:52:02,791 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
-2025-10-29 12:52:02,791 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
-2025-10-29 12:52:02,792 | INFO     | __main__ | Preparing scaling utilities for loss computation
-2025-10-29 12:52:02,792 | INFO     | __main__ | Main scaler detected with 118 features
-2025-10-29 12:52:02,792 | INFO     | __main__ | Target scaler detected with 4 features
-2025-10-29 12:52:02,792 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
-2025-10-29 12:52:02,792 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
-2025-10-29 12:52:02,793 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Initializing Celestial Enhanced PGAT | seq_len=500 pred_len=20 d_model=780 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
-2025-10-29 12:52:02,793 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Phase-aware aggregation configured | input_waves=118 target_wave_indices=[0, 1, 2, 3]
-2025-10-29 12:52:03,057 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
-2025-10-29 12:52:03,057 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
-2025-10-29 12:52:03,139 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
-2025-10-29 12:52:03,139 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
-2025-10-29 12:52:03,139 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
-2025-10-29 12:52:03,140 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
-2025-10-29 12:52:03,140 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
-2025-10-29 12:52:03,140 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
-2025-10-29 12:52:03,140 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
-2025-10-29 12:52:09,970 | INFO     | __main__ | Model initialized successfully
-2025-10-29 12:52:09,994 | INFO     | __main__ | Parameter statistics | total=307,283,346 trainable=307,283,346 approx_size_mb=1172.2
-2025-10-29 12:52:10,007 | INFO     | __main__ | Standard precision training
-2025-10-29 12:52:10,007 | INFO     | __main__ | Gradient accumulation configured | steps=3 effective_batch_size=18
-2025-10-29 12:52:10,008 | INFO     | __main__ | Learning rate schedule preview | warmup_epochs=8 base_lr=0.000080 min_lr=0.000000 remaining_epochs=67
-2025-10-29 12:52:10,008 | INFO     | __main__ | Sample learning rates: E1:0.000010, E8:0.000080, E9:0.000080, E38:0.000048, E75:0.000000
-2025-10-29 12:52:10,013 | INFO     | __main__ | Using Hybrid MDN+Directional Loss | nll_weight=0.30 direction_weight=3.00 trend_weight=1.50 magnitude_weight=0.10
-2025-10-29 12:52:10,013 | INFO     | __main__ | Early stopping patience configured to 25 (effectively disabled)
-2025-10-29 12:52:10,013 | INFO     | __main__ | Checkpoints will be saved to checkpoints\celestial_ultimate_deep_500x20
-2025-10-29 12:52:10,013 | INFO     | __main__ | Inspecting data file at ./data\prepared_financial_data.csv for target resolution
-2025-10-29 12:52:10,027 | INFO     | __main__ | Feature summary | total_columns=119 feature_columns=118
-2025-10-29 12:52:10,080 | INFO     | __main__ | Estimated CSV row count: 7109
-2025-10-29 12:52:10,080 | INFO     | __main__ | Auto-set enc_in/dec_in to 118 based on feature count
-2025-10-29 12:52:10,080 | INFO     | __main__ | Resolved target indices: [0, 1, 2, 3]
-2025-10-29 12:52:10,080 | INFO     | __main__ | Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
-2025-10-29 12:52:10,081 | INFO     | __main__ | Starting production training loop
-2025-10-29 12:52:10,081 | INFO     | __main__ | Configured for 75 training epochs
-2025-10-29 12:52:10,081 | INFO     | __main__ | Warmup phase | epoch=1/8 lr=0.00001000
-2025-10-29 12:52:10,096 | INFO     | __main__ | Epoch 1/75 - production training
-2025-10-29 12:54:03,242 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
-2025-10-29 12:54:03,242 | INFO     | __main__ | Heavy-duty overnight configuration enabled
-2025-10-29 12:54:03,242 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
-2025-10-29 12:54:03,242 | INFO     | __main__ | ================================================================================
-2025-10-29 12:54:03,244 | INFO     | __main__ | Memory diagnostics enabled; detailed logs stored at checkpoints\celestial_ultimate_deep_500x20\memory_diagnostics.log
-2025-10-29 12:54:03,244 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=780 n_heads=20 e_layers=12 d_layers=6 train_epochs=75
-2025-10-29 12:54:03,244 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
-2025-10-29 12:54:03,244 | INFO     | __main__ | Using device: cpu (CPU fallback)
-2025-10-29 12:54:03,248 | INFO     | __main__ | Reproducibility seed configured to 42
-2025-10-29 12:54:03,248 | INFO     | __main__ | Loading production data modules
-2025-10-29 12:54:03,482 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
-2025-10-29 12:54:03,482 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=6 persistent_workers=True
-2025-10-29 12:54:03,720 | INFO     | __main__ | Created val dataset with training scalers
-2025-10-29 12:54:03,721 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
-2025-10-29 12:54:03,943 | INFO     | __main__ | Created test dataset with training scalers
-2025-10-29 12:54:03,943 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
-2025-10-29 12:54:03,943 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
-2025-10-29 12:54:03,944 | INFO     | __main__ | Preparing scaling utilities for loss computation
-2025-10-29 12:54:03,944 | INFO     | __main__ | Main scaler detected with 118 features
-2025-10-29 12:54:03,944 | INFO     | __main__ | Target scaler detected with 4 features
-2025-10-29 12:54:03,944 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
-2025-10-29 12:54:03,945 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
-2025-10-29 12:54:03,945 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Initializing Celestial Enhanced PGAT | seq_len=500 pred_len=20 d_model=780 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
-2025-10-29 12:54:03,945 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Phase-aware aggregation configured | input_waves=118 target_wave_indices=[0, 1, 2, 3]
-2025-10-29 12:54:04,115 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
-2025-10-29 12:54:04,115 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
-2025-10-29 12:54:04,152 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
-2025-10-29 12:54:04,152 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
-2025-10-29 12:54:04,153 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
-2025-10-29 12:54:04,153 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
-2025-10-29 12:54:04,153 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
-2025-10-29 12:54:04,153 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
-2025-10-29 12:54:04,153 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
-2025-10-29 12:54:08,530 | INFO     | __main__ | Model initialized successfully
-2025-10-29 12:54:08,541 | INFO     | __main__ | Parameter statistics | total=307,283,346 trainable=307,283,346 approx_size_mb=1172.2
-2025-10-29 12:54:08,548 | INFO     | __main__ | Standard precision training
-2025-10-29 12:54:08,548 | INFO     | __main__ | Gradient accumulation configured | steps=3 effective_batch_size=18
-2025-10-29 12:54:08,548 | INFO     | __main__ | Learning rate schedule preview | warmup_epochs=8 base_lr=0.000080 min_lr=0.000000 remaining_epochs=67
-2025-10-29 12:54:08,548 | INFO     | __main__ | Sample learning rates: E1:0.000010, E8:0.000080, E9:0.000080, E38:0.000048, E75:0.000000
-2025-10-29 12:54:08,552 | INFO     | __main__ | Using Hybrid MDN+Directional Loss | nll_weight=0.30 direction_weight=3.00 trend_weight=1.50 magnitude_weight=0.10
-2025-10-29 12:54:08,552 | INFO     | __main__ | Early stopping patience configured to 25 (effectively disabled)
-2025-10-29 12:54:08,552 | INFO     | __main__ | Checkpoints will be saved to checkpoints\celestial_ultimate_deep_500x20
-2025-10-29 12:54:08,552 | INFO     | __main__ | Inspecting data file at ./data\prepared_financial_data.csv for target resolution
-2025-10-29 12:54:08,560 | INFO     | __main__ | Feature summary | total_columns=119 feature_columns=118
-2025-10-29 12:54:08,591 | INFO     | __main__ | Estimated CSV row count: 7109
-2025-10-29 12:54:08,591 | INFO     | __main__ | Auto-set enc_in/dec_in to 118 based on feature count
-2025-10-29 12:54:08,591 | INFO     | __main__ | Resolved target indices: [0, 1, 2, 3]
-2025-10-29 12:54:08,591 | INFO     | __main__ | Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
-2025-10-29 12:54:08,591 | INFO     | __main__ | Starting production training loop
-2025-10-29 12:54:08,592 | INFO     | __main__ | Configured for 75 training epochs
-2025-10-29 12:54:08,592 | INFO     | __main__ | Warmup phase | epoch=1/8 lr=0.00001000
-2025-10-29 12:54:08,599 | INFO     | __main__ | Epoch 1/75 - production training
-2025-10-29 13:05:12,210 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
-2025-10-29 13:05:12,210 | INFO     | __main__ | Heavy-duty overnight configuration enabled
-2025-10-29 13:05:12,210 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
-2025-10-29 13:05:12,210 | INFO     | __main__ | ================================================================================
-2025-10-29 13:05:12,211 | INFO     | __main__ | Memory diagnostics enabled; detailed logs stored at checkpoints\celestial_ultimate_deep_500x20\memory_diagnostics.log
-2025-10-29 13:05:12,211 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=780 n_heads=20 e_layers=12 d_layers=6 train_epochs=75
-2025-10-29 13:05:12,211 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
-2025-10-29 13:05:12,211 | INFO     | __main__ | Using device: cpu (CPU fallback)
-2025-10-29 13:05:12,215 | INFO     | __main__ | Reproducibility seed configured to 42
-2025-10-29 13:05:12,215 | INFO     | __main__ | Loading production data modules
-2025-10-29 13:05:12,433 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
-2025-10-29 13:05:12,433 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=n/a persistent_workers=False
-2025-10-29 13:05:12,633 | INFO     | __main__ | Created val dataset with training scalers
-2025-10-29 13:05:12,633 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
-2025-10-29 13:05:12,843 | INFO     | __main__ | Created test dataset with training scalers
-2025-10-29 13:05:12,844 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
-2025-10-29 13:05:12,844 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
-2025-10-29 13:05:12,844 | INFO     | __main__ | Preparing scaling utilities for loss computation
-2025-10-29 13:05:12,844 | INFO     | __main__ | Main scaler detected with 118 features
-2025-10-29 13:05:12,844 | INFO     | __main__ | Target scaler detected with 4 features
-2025-10-29 13:05:12,844 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
-2025-10-29 13:05:12,845 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
-2025-10-29 13:05:12,845 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Initializing Celestial Enhanced PGAT | seq_len=500 pred_len=20 d_model=780 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
-2025-10-29 13:05:12,845 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Phase-aware aggregation configured | input_waves=113 target_wave_indices=[0, 1, 2, 3]
-2025-10-29 13:05:13,022 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
-2025-10-29 13:05:13,022 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
-2025-10-29 13:05:13,072 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
-2025-10-29 13:05:13,072 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
-2025-10-29 13:05:13,072 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
-2025-10-29 13:05:13,072 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
-2025-10-29 13:05:13,073 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
-2025-10-29 13:05:13,073 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
-2025-10-29 13:05:13,073 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
-2025-10-29 13:05:17,137 | INFO     | __main__ | Model initialized successfully
-2025-10-29 13:05:17,150 | INFO     | __main__ | Parameter statistics | total=307,271,646 trainable=307,271,646 approx_size_mb=1172.1
-2025-10-29 13:05:17,157 | INFO     | __main__ | Standard precision training
-2025-10-29 13:05:17,157 | INFO     | __main__ | Gradient accumulation configured | steps=3 effective_batch_size=18
-2025-10-29 13:05:17,158 | INFO     | __main__ | Learning rate schedule preview | warmup_epochs=8 base_lr=0.000080 min_lr=0.000000 remaining_epochs=67
-2025-10-29 13:05:17,158 | INFO     | __main__ | Sample learning rates: E1:0.000010, E8:0.000080, E9:0.000080, E38:0.000048, E75:0.000000
-2025-10-29 13:05:17,161 | INFO     | __main__ | Using Hybrid MDN+Directional Loss | nll_weight=0.30 direction_weight=3.00 trend_weight=1.50 magnitude_weight=0.10
-2025-10-29 13:05:17,161 | INFO     | __main__ | Early stopping patience configured to 25 (effectively disabled)
-2025-10-29 13:05:17,161 | INFO     | __main__ | Checkpoints will be saved to checkpoints\celestial_ultimate_deep_500x20
-2025-10-29 13:05:17,161 | INFO     | __main__ | Inspecting data file at ./data\prepared_financial_data.csv for target resolution
-2025-10-29 13:05:17,171 | INFO     | __main__ | Feature summary | total_columns=119 feature_columns=118
-2025-10-29 13:05:17,204 | INFO     | __main__ | Estimated CSV row count: 7109
-2025-10-29 13:05:17,204 | INFO     | __main__ | Auto-set enc_in/dec_in to 118 based on feature count
-2025-10-29 13:05:17,204 | INFO     | __main__ | Resolved target indices: [0, 1, 2, 3]
-2025-10-29 13:05:17,204 | INFO     | __main__ | Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
-2025-10-29 13:05:17,204 | INFO     | __main__ | Starting production training loop
-2025-10-29 13:05:17,204 | INFO     | __main__ | Configured for 75 training epochs
-2025-10-29 13:05:17,205 | INFO     | __main__ | Warmup phase | epoch=1/8 lr=0.00001000
-2025-10-29 13:05:17,214 | INFO     | __main__ | Epoch 1/75 - production training
-2025-10-29 13:05:19,167 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:21,142 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:22,938 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:24,736 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:26,400 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:28,064 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:29,881 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:31,546 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:33,239 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:34,954 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:36,630 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:38,380 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-2025-10-29 13:05:40,283 | ERROR    | __main__ | Training step failed: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
-Traceback (most recent call last):
-  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 909, in train_epoch
-    outputs_raw = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 135, in forward
-    enc_out, dec_out, past_celestial_features, phase_based_adj, x_enc_processed, wave_metadata = self.embedding_module(
-                                                                                                 ~~~~~~~~~~~~~~~~~~~~~^
-        x_enc, x_mark_enc, x_dec, x_mark_dec
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 279, in forward
-    dec_out = self.dec_embedding(x_dec, x_mark_dec)
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1773, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "C:\Users\mishr\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1784, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "C:\workspace\Time-Series-Library\models\celestial_modules\embedding.py", line 32, in forward
-    raise ValueError(
-    ...<2 lines>...
-    )
-ValueError: DataEmbedding input_dim (118) does not match expected c_in (113). Ensure encoder/embedding configuration is consistent.
+2025-10-29 14:05:47,870 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-29 14:05:47,871 | INFO     | __main__ | Heavy-duty overnight configuration enabled
+2025-10-29 14:05:47,871 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-10-29 14:05:47,871 | INFO     | __main__ | ================================================================================
+2025-10-29 14:05:47,872 | INFO     | __main__ | Memory diagnostics enabled; detailed logs stored at checkpoints\celestial_ultimate_deep_500x20\memory_diagnostics.log
+2025-10-29 14:05:47,872 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=780 n_heads=20 e_layers=12 d_layers=6 train_epochs=75
+2025-10-29 14:05:47,872 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-10-29 14:05:47,872 | INFO     | __main__ | Using device: cpu (CPU fallback)
+2025-10-29 14:05:47,876 | INFO     | __main__ | Reproducibility seed configured to 42
+2025-10-29 14:05:47,876 | INFO     | __main__ | Loading production data modules
+2025-10-29 14:05:48,081 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
+2025-10-29 14:05:48,081 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 14:05:48,260 | INFO     | __main__ | Created val dataset with training scalers
+2025-10-29 14:05:48,261 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 14:05:48,438 | INFO     | __main__ | Created test dataset with training scalers
+2025-10-29 14:05:48,438 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 14:05:48,438 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
+2025-10-29 14:05:48,438 | INFO     | __main__ | Preparing scaling utilities for loss computation
+2025-10-29 14:05:48,438 | INFO     | __main__ | Main scaler detected with 118 features
+2025-10-29 14:05:48,439 | INFO     | __main__ | Target scaler detected with 4 features
+2025-10-29 14:05:48,439 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-29 14:05:48,439 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
+2025-10-29 14:05:48,439 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Initializing Celestial Enhanced PGAT | seq_len=500 pred_len=20 d_model=780 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
+2025-10-29 14:05:48,439 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Phase-aware aggregation configured | input_waves=118 target_wave_indices=[0, 1, 2, 3]
+2025-10-29 14:05:48,571 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-10-29 14:05:48,571 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
+2025-10-29 14:05:48,624 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-10-29 14:05:48,624 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-10-29 14:05:48,624 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-10-29 14:05:48,624 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-10-29 14:05:48,624 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-10-29 14:05:48,624 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-10-29 14:05:48,624 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-10-29 14:05:52,817 | INFO     | __main__ | Model initialized successfully
+2025-10-29 14:05:52,827 | INFO     | __main__ | Parameter statistics | total=307,283,346 trainable=307,283,346 approx_size_mb=1172.2
+2025-10-29 14:05:52,835 | INFO     | __main__ | Standard precision training
+2025-10-29 14:05:52,835 | INFO     | __main__ | Gradient accumulation configured | steps=3 effective_batch_size=18
+2025-10-29 14:05:52,835 | INFO     | __main__ | Learning rate schedule preview | warmup_epochs=8 base_lr=0.000080 min_lr=0.000000 remaining_epochs=67
+2025-10-29 14:05:52,836 | INFO     | __main__ | Sample learning rates: E1:0.000010, E8:0.000080, E9:0.000080, E38:0.000048, E75:0.000000
+2025-10-29 14:05:52,839 | INFO     | __main__ | Using Hybrid MDN+Directional Loss | nll_weight=0.30 direction_weight=3.00 trend_weight=1.50 magnitude_weight=0.10
+2025-10-29 14:05:52,839 | INFO     | __main__ | Early stopping patience configured to 25 (effectively disabled)
+2025-10-29 14:05:52,839 | INFO     | __main__ | Checkpoints will be saved to checkpoints\celestial_ultimate_deep_500x20
+2025-10-29 14:05:52,839 | INFO     | __main__ | Inspecting data file at ./data\prepared_financial_data.csv for target resolution
+2025-10-29 14:05:52,847 | INFO     | __main__ | Feature summary | total_columns=119 feature_columns=118
+2025-10-29 14:05:52,877 | INFO     | __main__ | Estimated CSV row count: 7109
+2025-10-29 14:05:52,878 | INFO     | __main__ | Auto-set enc_in/dec_in to 118 based on feature count
+2025-10-29 14:05:52,878 | INFO     | __main__ | Resolved target indices: [0, 1, 2, 3]
+2025-10-29 14:05:52,878 | INFO     | __main__ | Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-10-29 14:05:52,878 | INFO     | __main__ | Starting production training loop
+2025-10-29 14:05:52,878 | INFO     | __main__ | Configured for 75 training epochs
+2025-10-29 14:05:52,879 | INFO     | __main__ | Warmup phase | epoch=1/8 lr=0.00001000
+2025-10-29 14:05:52,889 | INFO     | __main__ | Epoch 1/75 - production training
+2025-10-29 14:27:53,009 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-29 14:27:53,010 | INFO     | __main__ | Heavy-duty overnight configuration enabled
+2025-10-29 14:27:53,010 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-10-29 14:27:53,010 | INFO     | __main__ | ================================================================================
+2025-10-29 14:27:53,012 | INFO     | __main__ | Memory diagnostics enabled; detailed logs stored at checkpoints\celestial_ultimate_deep_500x20\memory_diagnostics.log
+2025-10-29 14:27:53,012 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=780 n_heads=20 e_layers=12 d_layers=6 train_epochs=75
+2025-10-29 14:27:53,012 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-10-29 14:27:53,012 | INFO     | __main__ | Using device: cpu (CPU fallback)
+2025-10-29 14:27:53,017 | INFO     | __main__ | Reproducibility seed configured to 42
+2025-10-29 14:27:53,018 | INFO     | __main__ | Loading production data modules
+2025-10-29 14:27:53,233 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
+2025-10-29 14:27:53,233 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 14:27:53,405 | INFO     | __main__ | Created val dataset with training scalers
+2025-10-29 14:27:53,405 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 14:27:53,580 | INFO     | __main__ | Created test dataset with training scalers
+2025-10-29 14:27:53,581 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=6 persistent_workers=True
+2025-10-29 14:27:53,581 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
+2025-10-29 14:27:53,581 | INFO     | __main__ | Preparing scaling utilities for loss computation
+2025-10-29 14:27:53,581 | INFO     | __main__ | Main scaler detected with 118 features
+2025-10-29 14:27:53,581 | INFO     | __main__ | Target scaler detected with 4 features
+2025-10-29 14:27:53,582 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-29 14:27:53,582 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
+2025-10-29 14:27:53,582 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Initializing Celestial Enhanced PGAT | seq_len=500 pred_len=20 d_model=780 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
+2025-10-29 14:27:53,582 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Phase-aware aggregation configured | input_waves=118 target_wave_indices=[0, 1, 2, 3]
+2025-10-29 14:27:53,724 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-10-29 14:27:53,724 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
+2025-10-29 14:27:53,764 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-10-29 14:27:53,764 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-10-29 14:27:53,765 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-10-29 14:27:53,765 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-10-29 14:27:53,765 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-10-29 14:27:53,765 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-10-29 14:27:53,765 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-10-29 14:27:57,804 | INFO     | __main__ | Model initialized successfully
+2025-10-29 14:27:57,815 | INFO     | __main__ | Parameter statistics | total=307,283,346 trainable=307,283,346 approx_size_mb=1172.2
+2025-10-29 14:27:57,822 | INFO     | __main__ | Standard precision training
+2025-10-29 14:27:57,822 | INFO     | __main__ | Gradient accumulation configured | steps=3 effective_batch_size=18
+2025-10-29 14:27:57,822 | INFO     | __main__ | Learning rate schedule preview | warmup_epochs=8 base_lr=0.000080 min_lr=0.000000 remaining_epochs=67
+2025-10-29 14:27:57,822 | INFO     | __main__ | Sample learning rates: E1:0.000010, E8:0.000080, E9:0.000080, E38:0.000048, E75:0.000000
+2025-10-29 14:27:57,826 | INFO     | __main__ | Using Hybrid MDN+Directional Loss | nll_weight=0.25 direction_weight=4.00 trend_weight=2.00 magnitude_weight=0.15
+2025-10-29 14:27:57,826 | INFO     | __main__ | Early stopping patience configured to 25 (effectively disabled)
+2025-10-29 14:27:57,826 | INFO     | __main__ | Checkpoints will be saved to checkpoints\celestial_ultimate_deep_500x20
+2025-10-29 14:27:57,826 | INFO     | __main__ | Inspecting data file at ./data\prepared_financial_data.csv for target resolution
+2025-10-29 14:27:57,833 | INFO     | __main__ | Feature summary | total_columns=119 feature_columns=118
+2025-10-29 14:27:57,862 | INFO     | __main__ | Estimated CSV row count: 7109
+2025-10-29 14:27:57,862 | INFO     | __main__ | Auto-set enc_in/dec_in to 118 based on feature count
+2025-10-29 14:27:57,862 | INFO     | __main__ | Resolved target indices: [0, 1, 2, 3]
+2025-10-29 14:27:57,862 | INFO     | __main__ | Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-10-29 14:27:57,862 | INFO     | __main__ | Starting production training loop
+2025-10-29 14:27:57,862 | INFO     | __main__ | Configured for 75 training epochs
+2025-10-29 14:27:57,863 | INFO     | __main__ | Warmup phase | epoch=1/8 lr=0.00001000
+2025-10-29 14:27:57,877 | INFO     | __main__ | Epoch 1/75 - production training
