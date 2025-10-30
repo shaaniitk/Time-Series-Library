@@ -1,0 +1,115 @@
+# CELESTIAL ENHANCED PGAT - SIMPLE WORKING PRODUCTION CONFIGURATION
+# Based on tested celestial_enhanced_pgat_production_no_amp.yaml
+# Simplified to ensure it works reliably
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: celestial_production_simple_500x20
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS          # Multivariate input, univariate output
+target: log_Open,log_High,log_Low,log_Close     # Predict all OHLC values
+embed: timeF
+freq: d               # Daily frequency
+use_gpu: false        # CPU for testing
+
+# PRODUCTION Sequence settings - YOUR SPECIFICATIONS
+seq_len: 500          # Long sequence (500 days) - AS REQUESTED
+label_len: 250        # Half of seq_len
+pred_len: 20          # Prediction horizon (20 days) - AS REQUESTED
+
+# Data split settings - YOUR SPECIFICATIONS
+validation_length: 100   # Validation = 100 - AS REQUESTED
+test_length: 100         # Test = 100 - AS REQUESTED
+
+# PRODUCTION Optimization
+learning_rate: 0.001     # Base learning rate after warmup
+train_epochs: 50        # Production training
+batch_size: 8           # Moderate batch size
+patience: 25            # High patience
+lradj: warmup_cosine    # Warmup + Cosine Annealing
+warmup_epochs: 5        # 5 epochs of linear warmup
+min_lr: 1e-6            # Minimum learning rate
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# MODEL hyperparameters - TESTED DIMENSIONS
+d_model: 416             # Match celestial feature dimension (13 × 32)
+n_heads: 8               # Tested attention heads
+e_layers: 6              # Deeper encoder for production
+d_layers: 3              # Deeper decoder for production
+d_ff: 1024               # Large feed-forward dimension
+dropout: 0.1
+
+# Input/Output dimensions - AUTO-DETECTED
+enc_in: 113    # Number of celestial wave features (auto-detected from CSV)
+dec_in: 113    # Same as encoder input  
+c_out: 4       # Four target outputs (OHLC)
+
+# Celestial configuration - WORKING SUBSET
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+num_celestial_bodies: 13
+celestial_dim: 104                # Divisible by 13 (13 * 8)
+num_input_waves: 113
+target_wave_indices: [0, 1, 2, 3]
+
+# Multi-scale context - BASIC
+use_multi_scale_context: true
+context_fusion_mode: 'multi_scale'
+short_term_kernel_size: 5
+medium_term_kernel_size: 25
+long_term_kernel_size: 125
+
+# Enhanced decoders - WORKING
+use_mixture_decoder: true
+use_sequential_mixture_decoder: true
+enable_mdn_decoder: true
+mdn_components: 5
+mdn_sigma_min: 0.001
+mdn_use_softplus: true
+
+# Advanced features - BASIC WORKING SET
+use_hierarchical_mapping: true
+use_stochastic_learner: true
+use_petri_net_combiner: true
+use_target_autocorrelation: true
+use_celestial_target_attention: true
+use_calendar_effects: true
+calendar_embedding_dim: 104       # Divisible by 13
+
+# Loss configuration - WORKING
+loss:
+  type: 'hybrid_mdn_directional'
+  nll_weight: 0.3
+  direction_weight: 3.0
+  trend_weight: 1.5
+  magnitude_weight: 0.1
+
+# Hardware - CPU TESTING
+num_workers: 0
+pin_memory: false
+persistent_workers: false
+
+# Logging - SIMPLE
+log_interval: 10
+verbose_logging: true
+enable_memory_diagnostics: false
+
+# Checkpointing
+checkpoints: './checkpoints/'
+save_checkpoints: true
+checkpoint_interval: 5
+
+# Reproducibility
+seed: 42
+random_seed: 42
+
+# Task metadata
+task_name: 'production_forecast'
+inverse: false
+itr: 1
+train_only: false

@@ -125,8 +125,8 @@ reg_loss_weight: 0.002            # Higher regularization weight
 label_smoothing: 0.05             # Label smoothing
 
 # Advanced Training Techniques
-use_amp: false                    # Disable AMP for stability with ultra-deep model
-mixed_precision: false
+use_amp: false                    # Keep AMP disabled for stability as requested
+mixed_precision: false            # Keep mixed precision disabled
 gradient_accumulation_steps: 3    # More accumulation for effective batch size of 18
 ema_decay: 0.9999                 # Exponential moving average
 
@@ -154,23 +154,21 @@ loss:
   trend_weight: 2.0               # Trend correlation (momentum alignment)
   magnitude_weight: 0.15          # Magnitude accuracy (prevent extreme predictions)
   correlation_type: 'pearson'     # Correlation type for trend alignment
-  # Per-target weights for OHLC (Close price most important)
-  per_target_weights: [0.7, 0.8, 0.8, 1.0]  # [Open, High, Low, Close]
 
 # ============================================================================
-# OPTIMIZATION & HARDWARE - MAXIMUM UTILIZATION
+# OPTIMIZATION & HARDWARE - GPU ENABLED WITH CPU FALLBACK
 # ============================================================================
-use_gpu: true
+use_gpu: true                     # Enable GPU if available, fallback to CPU
 gpu: 0
 use_multi_gpu: false
 devices: '0'
 
-# Memory Management - Optimized for Deep Model
-num_workers: 6                    # More parallel data loading
-pin_memory: true
-persistent_workers: true
-prefetch_factor: 6
-max_memory_usage: 0.9             # Use 90% of available memory
+# Memory Management - Conservative settings for stability
+num_workers: 0                    # Single-threaded data loading (avoid multiprocessing issues)
+pin_memory: true                  # Enable for GPU training
+persistent_workers: false         # Disable to avoid worker issues
+prefetch_factor: 2                # Conservative prefetch
+max_memory_usage: 0.85            # Use 85% of available GPU memory
 
 # ============================================================================
 # CHECKPOINTING & LOGGING - COMPREHENSIVE

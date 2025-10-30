@@ -196,8 +196,17 @@ class EmbeddingModule(nn.Module):
         config.expected_embedding_input_dim = embedding_input_dim
         
         self.enc_embedding = DataEmbedding(embedding_input_dim, config.d_model, config.embed, config.freq, config.dropout)
-        # Decoder always uses dec_in dimensions (targets don't go through celestial aggregation)
-        self.dec_embedding = DataEmbedding(config.dec_in, config.d_model, config.embed, config.freq, config.dropout)
+        
+        # FIXED: Decoder should also use celestial processing for rich information flow
+        # Both encoder and decoder go through: Raw → Celestial → Rich Features → Embedding → d_model
+        if config.aggregate_waves_to_celestial:
+            # Decoder uses same celestial processing as encoder
+            decoder_embedding_input_dim = config.d_model  # After celestial projection
+        else:
+            # Fallback to raw dimensions
+            decoder_embedding_input_dim = config.dec_in
+            
+        self.dec_embedding = DataEmbedding(decoder_embedding_input_dim, config.d_model, config.embed, config.freq, config.dropout)
 
         if config.use_calendar_effects:
             self.calendar_effects_encoder = CalendarEffectsEncoder(config.calendar_embedding_dim)
@@ -212,6 +221,12 @@ class EmbeddingModule(nn.Module):
             self.calendar_fusion = None
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        # DTYPE FIX: Ensure all inputs are float32
+        x_enc = x_enc.float()
+        x_mark_enc = x_mark_enc.float()
+        x_dec = x_dec.float()
+        x_mark_dec = x_mark_dec.float()
+        
         batch_size, seq_len, enc_in = x_enc.shape
         
         # 1. Enhanced Phase-Aware Wave Processing
@@ -275,8 +290,23 @@ class EmbeddingModule(nn.Module):
                 f"embedding_c_in={self.enc_embedding.c_in}"
             ) from exc
 
-        # 3. Decoder Embedding
-        dec_out = self.dec_embedding(x_dec, x_mark_dec)
+        # 3. Decoder Embedding - RESTORED: Apply celestial processing for rich information flow
+        batch_size_dec, seq_len_dec, dec_in = x_dec.shape
+        
+        if self.config.aggregate_waves_to_celestial and dec_in >= self.config.num_input_waves:
+            # Apply celestial processing to decoder input for rich feature representation
+            try:
+                celestial_features_dec, _, _ = self.phase_aware_processor(x_dec)
+                x_dec_processed = self.celestial_projection(celestial_features_dec)
+                print(f"Decoder: Applied celestial processing {x_dec.shape} → {celestial_features_dec.shape} → {x_dec_processed.shape}")
+            except Exception as e:
+                # Fallback: use raw decoder input if celestial processing fails
+                print(f"Warning: Decoder celestial processing failed: {e}")
+                x_dec_processed = x_dec
+        else:
+            x_dec_processed = x_dec
+            
+        dec_out = self.dec_embedding(x_dec_processed, x_mark_dec)
         
         # Apply Calendar Effects to Decoder
         if self.config.use_calendar_effects and self.calendar_effects_encoder is not None:

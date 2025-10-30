@@ -1,0 +1,124 @@
+# CELESTIAL ENHANCED PGAT - MEMORY OPTIMIZED PRODUCTION CONFIGURATION
+# Optimized for reliable training without memory issues
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: celestial_production_memory_optimized
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: false        # CPU for testing
+
+# MEMORY-OPTIMIZED Sequence settings
+seq_len: 250          # Reduced from 500 to save memory
+label_len: 125        # Half of seq_len
+pred_len: 20          # Keep prediction horizon as requested
+
+# Data split settings
+validation_length: 100
+test_length: 100
+
+# MEMORY-OPTIMIZED Training
+learning_rate: 0.001
+train_epochs: 10      # Reduced for testing
+batch_size: 4         # Reduced from 8 to save memory
+patience: 25
+lradj: warmup_cosine
+warmup_epochs: 2      # Reduced warmup
+min_lr: 1e-6
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# MEMORY-OPTIMIZED Model - Smaller but still capable
+d_model: 208          # Reduced from 416 (still divisible by 13: 13 × 16)
+n_heads: 4            # Reduced from 8
+e_layers: 3           # Reduced from 6
+d_layers: 2           # Reduced from 3
+d_ff: 512             # Reduced from 1024
+dropout: 0.1
+
+# Input/Output dimensions
+enc_in: 113
+dec_in: 113
+c_out: 4
+
+# SIMPLIFIED Celestial configuration
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+num_celestial_bodies: 13
+celestial_dim: 52                 # Divisible by 13 (13 × 4)
+num_input_waves: 113
+target_wave_indices: [0, 1, 2, 3]
+
+# BASIC Multi-scale context
+use_multi_scale_context: true
+context_fusion_mode: 'multi_scale'
+short_term_kernel_size: 3         # Reduced
+medium_term_kernel_size: 15       # Reduced
+long_term_kernel_size: 75         # Reduced
+
+# SIMPLIFIED Enhanced decoders
+use_mixture_decoder: true
+use_sequential_mixture_decoder: false  # Disabled to save memory
+enable_mdn_decoder: false              # Disabled to save memory
+mdn_components: 3
+mdn_sigma_min: 0.001
+
+# BASIC Advanced features
+use_hierarchical_mapping: false        # Disabled to save memory
+use_stochastic_learner: false          # Disabled to save memory
+use_petri_net_combiner: false          # Disabled to save memory
+use_target_autocorrelation: true       # Keep basic ones
+use_celestial_target_attention: true
+use_calendar_effects: true
+calendar_embedding_dim: 52             # Divisible by 13
+
+# SIMPLIFIED Loss configuration
+loss:
+  type: 'hybrid_mdn_directional'
+  nll_weight: 0.3
+  direction_weight: 3.0
+  trend_weight: 1.5
+  magnitude_weight: 0.1
+
+# MEMORY-OPTIMIZED Hardware settings
+num_workers: 0                    # Single-threaded
+pin_memory: false
+persistent_workers: false
+prefetch_factor: 1                # Reduced
+
+# SIMPLIFIED Logging
+log_interval: 5                   # More frequent for testing
+verbose_logging: true
+enable_memory_diagnostics: false  # Disabled to save memory
+
+# Checkpointing
+checkpoints: './checkpoints/'
+save_checkpoints: true
+checkpoint_interval: 2            # More frequent saves
+
+# Reproducibility
+seed: 42
+random_seed: 42
+
+# Task metadata
+task_name: 'memory_optimized_forecast'
+inverse: false
+itr: 1
+train_only: false
+
+# Memory optimization flags
+gradient_accumulation_steps: 1     # No accumulation to save memory
+use_amp: false
+mixed_precision: false
+
+# Additional memory optimizations
+output_attention: false
+distil: false                      # Disabled to save memory
+mix: false                         # Disabled to save memory

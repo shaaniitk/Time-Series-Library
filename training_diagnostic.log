@@ -1,6 +1,38 @@
 CELESTIAL ENHANCED PGAT - TRAINING DIAGNOSTICS
 ================================================================================
-Config: .\configs\celestial_production_deep_ultimate.yaml
-Start time: 2025-10-29 14:27:53
+Config: configs/celestial_production_fixed.yaml
+Start time: 2025-10-30 14:53:44
 ================================================================================
+
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (4, 20, 4)
+outputs_tensor.mean/std: -0.443101 / 1.486080
+y_true_for_loss.shape: (4, 20, 4)
+y_true_for_loss.mean/std: -0.003633 / 0.600172
+c_out_evaluation: 4
+enable_mdn flag: False
+outputs_tensor sample (first up to 8 values): [1.1708312034606934, 2.1751322746276855, -2.4397127628326416, -0.9860996603965759, 1.195550799369812, 1.110987901687622, -1.938063144683838, -1.1130305528640747]
+
+################################################################################
+EPOCH 3 TRAINING SUMMARY
+################################################################################
+total_train_loss: 0.00000000
+train_batches: 0
+total_train_samples: 0
+avg_train_loss (legacy - batch avg): 0.00000000
+avg_train_loss (precise - sample weighted): 0.00000000
+difference: 0.00000000
+gradient_accumulation_steps: 1
+
+
+################################################################################
+EPOCH 3 VALIDATION SUMMARY
+################################################################################
+total_val_loss: 0.00000000
+val_batches: 0
+total_samples: 0
+avg_val_loss (legacy - batch avg): 0.00000000
+avg_val_loss (precise - sample weighted): 0.00000000
+difference: 0.00000000
 

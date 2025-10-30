@@ -396,6 +396,7 @@ def _compute_detailed_batch_metrics(
     
     except Exception as e:
         # Graceful fallback if detailed metrics computation fails
+        print(f"Warning: Detailed metrics computation failed: {e}")
         pass
     
     return metrics
@@ -1041,8 +1042,17 @@ def train_epoch(
 
             outputs_tensor, aux_loss, mdn_outputs, _ = _normalize_model_output(outputs_raw)
             c_out_evaluation = len(target_indices)
+            # FIXED: Extract only target features for loss computation
+            batch_y_targets = batch_y[:, -args.pred_len:, :]
+            if hasattr(args, 'target_wave_indices') and args.target_wave_indices:
+                # Extract only the target columns
+                batch_y_targets = batch_y_targets[:, :, args.target_wave_indices]
+            elif hasattr(args, 'c_out') and args.c_out < batch_y_targets.shape[-1]:
+                # Extract first c_out columns as targets
+                batch_y_targets = batch_y_targets[:, :, :args.c_out]
+            
             y_true_for_loss = scale_targets_for_loss(
-                batch_y[:, -args.pred_len:, :], target_scaler, target_indices, device
+                batch_y_targets, target_scaler, target_indices, device
             )
             # --- DEBUG: dump shapes and small numeric summaries to diagnostic log ---
             try:
@@ -1243,35 +1253,16 @@ def train_epoch(
             if batch_index % log_interval == 0:
                 elapsed = time.time() - epoch_start
                 
-                # Enhanced batch logging with detailed metrics
-                batch_metrics = _compute_detailed_batch_metrics(
-                    raw_loss, outputs_tensor, y_true_for_loss, mdn_outputs, args
-                )
-                
-                # Log comprehensive batch information
+                # Simple batch logging (enhanced logging temporarily disabled for debugging)
                 logger.info(
-                    "🔥 BATCH %s/%s | Epoch %s/%s | ⏱️  %0.1fs",
+                    "BATCH %s/%s | Epoch %s/%s | Loss=%0.6f | Time=%0.1fs",
                     batch_index + 1,
                     len(train_loader),
                     epoch + 1,
                     args.train_epochs,
+                    raw_loss.detach().item(),
                     elapsed,
                 )
-                logger.info(
-                    "📊 LOSS: Total=%0.6f | MSE=%0.6f | Dir=%0.6f | MDN=%0.6f",
-                    batch_metrics['total_loss'],
-                    batch_metrics.get('mse_component', 0.0),
-                    batch_metrics.get('directional_component', 0.0),
-                    batch_metrics.get('mdn_component', 0.0),
-                )
-                if batch_metrics.get('directional_accuracy') is not None:
-                    logger.info(
-                        "🎯 ACCURACY: Directional=%0.2f%% | Trend=%0.2f%% | Sign=%0.2f%%",
-                        batch_metrics['directional_accuracy'],
-                        batch_metrics.get('trend_accuracy', 0.0),
-                        batch_metrics.get('sign_accuracy', 0.0),
-                    )
-                logger.info("─" * 80)
                 if epoch == 0 and batch_index == 0:
                     logger.debug("Production train - first batch scaling check")
                     logger.debug(
@@ -1430,8 +1421,17 @@ def validate_epoch(
                 outputs_tensor, aux_loss, mdn_outputs, _ = _normalize_model_output(outputs_raw)
 
                 c_out_evaluation = len(target_indices)
+                # FIXED: Extract only target features for validation loss
+                batch_y_targets = batch_y[:, -args.pred_len:, :]
+                if hasattr(args, 'target_wave_indices') and args.target_wave_indices:
+                    # Extract only the target columns
+                    batch_y_targets = batch_y_targets[:, :, args.target_wave_indices]
+                elif hasattr(args, 'c_out') and args.c_out < batch_y_targets.shape[-1]:
+                    # Extract first c_out columns as targets
+                    batch_y_targets = batch_y_targets[:, :, :args.c_out]
+                
                 y_true_for_loss = scale_targets_for_loss(
-                    batch_y[:, -args.pred_len:, :], target_scaler, target_indices, device
+                    batch_y_targets, target_scaler, target_indices, device
                 )
 
                 # Priority: MDN decoder > sequential mixture > standard loss

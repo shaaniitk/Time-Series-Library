@@ -1,0 +1,114 @@
+# CELESTIAL ENHANCED PGAT - DIMENSION-FIXED PRODUCTION CONFIGURATION
+# Fixed to handle the 118 vs 113 feature dimension mismatch
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: celestial_production_fixed
+
+# Data settings
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: false        # CPU for testing
+
+# Sequence settings - YOUR SPECIFICATIONS
+seq_len: 500          # Long sequence (500 days) - AS REQUESTED
+label_len: 250        # Half of seq_len
+pred_len: 20          # Prediction horizon (20 days) - AS REQUESTED
+
+# Data split settings - YOUR SPECIFICATIONS
+validation_length: 100   # Validation = 100 - AS REQUESTED
+test_length: 100         # Test = 100 - AS REQUESTED
+
+# Training configuration
+learning_rate: 0.001
+train_epochs: 10      # Reduced for testing
+batch_size: 4         # Small batch for memory efficiency
+patience: 25
+lradj: warmup_cosine
+warmup_epochs: 2
+min_lr: 1e-6
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# Model hyperparameters - DIMENSION COMPATIBLE
+d_model: 354          # Divisible by 118 features (118 × 3)
+n_heads: 6            # Divisible into d_model
+e_layers: 3           # Moderate depth
+d_layers: 2           # Moderate depth
+d_ff: 708             # 2x d_model
+dropout: 0.1
+
+# CORRECTED Input/Output dimensions - MATCH ENHANCED DECODER INPUT
+enc_in: 118           # ALL features from data (encoder processes everything)
+dec_in: 118           # Enhanced decoder input also has 118 features (OHLC + celestial)  
+c_out: 4              # Four target outputs (OHLC)
+
+# FIXED Celestial configuration - PROPER FEATURE MAPPING
+use_celestial_graph: true           # Re-enable celestial processing
+aggregate_waves_to_celestial: true  # Re-enable celestial aggregation  
+num_celestial_bodies: 13
+celestial_dim: 52                   # Divisible by 13
+num_input_waves: 118                # ALL input features (celestial system will map 113 relevant ones)
+target_wave_indices: [0, 1, 2, 3]
+
+# BASIC Multi-scale context - SIMPLIFIED
+use_multi_scale_context: false      # Disable to avoid complexity
+context_fusion_mode: 'simple'
+
+# BASIC Enhanced decoders - SIMPLIFIED
+use_mixture_decoder: false          # Disable to avoid complexity
+use_sequential_mixture_decoder: false
+enable_mdn_decoder: false
+mdn_components: 3
+
+# BASIC Advanced features - MINIMAL SET
+use_hierarchical_mapping: false
+use_stochastic_learner: false
+use_petri_net_combiner: false
+use_target_autocorrelation: false
+use_celestial_target_attention: false
+use_calendar_effects: false
+use_efficient_covariate_interaction: false
+
+# SIMPLE Loss configuration
+loss:
+  type: 'mse'           # Simple MSE loss to avoid complexity
+
+# Hardware settings
+num_workers: 0
+pin_memory: false
+persistent_workers: false
+prefetch_factor: 1
+
+# Logging
+log_interval: 5
+verbose_logging: true
+enable_memory_diagnostics: false
+
+# Checkpointing
+checkpoints: './checkpoints/'
+save_checkpoints: true
+checkpoint_interval: 2
+
+# Reproducibility
+seed: 42
+random_seed: 42
+
+# Task metadata
+task_name: 'dimension_fixed_forecast'
+inverse: false
+itr: 1
+train_only: false
+
+# Memory optimization
+gradient_accumulation_steps: 1
+use_amp: false
+mixed_precision: false
+output_attention: false
+distil: false
+mix: false
