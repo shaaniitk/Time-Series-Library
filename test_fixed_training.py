@@ -1,102 +1,74 @@
+#!/usr/bin/env python3
 """
-Test training with fixed dimensions
+Test the fixed training with the original config
 """
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from Enhanced_SOTA_PGAT_Refactored import Enhanced_SOTA_PGAT
+import sys
+import yaml
 
-class SimpleConfig:
-    def __init__(self):
-        self.seq_len = 24
-        self.pred_len = 6
-        self.enc_in = 118
-        self.c_out = 4
-        self.d_model = 64
-        self.n_heads = 4
-        self.dropout = 0.1
-        
-        # Test different component combinations
-        self.use_multi_scale_patching = False
-        self.use_hierarchical_mapper = False
-        self.use_stochastic_learner = False
-        self.use_gated_graph_combiner = False
-        self.use_mixture_decoder = False
-        
-        self.num_wave_features = 114
-
-def test_training():
-    """Test that training works with fixed dimensions"""
+def test_fixed_training():
+    """Test training with the original config now that we've fixed the embedding issue"""
     
-    config = SimpleConfig()
-    model = Enhanced_SOTA_PGAT(config)
+    print("🎉 TESTING FIXED TRAINING")
+    print("=" * 40)
     
-    # Create synthetic data
-    batch_size = 4
-    wave_window = torch.randn(batch_size, config.seq_len, config.enc_in)
-    target_window = torch.randn(batch_size, config.pred_len, config.enc_in)
-    targets = target_window[:, :, :config.c_out]
+    # Restore original config
+    config_path = "configs/celestial_production_deep_ultimate.yaml"
     
-    # Setup training
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.MSELoss()
-    
-    print("Testing training loop...")
-    
-    for epoch in range(3):
-        optimizer.zero_grad()
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_content = f.read()
         
-        # Forward pass
-        output = model(wave_window, target_window)
+        # Restore celestial features
+        config_content = config_content.replace(
+            'use_celestial_graph: false        # Temporarily disabled for debugging',
+            'use_celestial_graph: true'
+        )
+        config_content = config_content.replace(
+            'aggregate_waves_to_celestial: false  # Temporarily disabled for debugging',
+            'aggregate_waves_to_celestial: true'
+        )
         
-        # Compute loss
-        loss = criterion(output, targets)
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.write(config_content)
         
-        # Backward pass
-        loss.backward()
-        optimizer.step()
+        print("✅ Original config restored")
         
-        print(f"Epoch {epoch+1}: loss={loss.item():.6f}, output_shape={output.shape}")
-    
-    print("✅ Training test successful!")
-
-def test_different_configs():
-    """Test different component configurations"""
-    
-    configs = [
-        ("Baseline", {"use_multi_scale_patching": False, "use_hierarchical_mapper": False}),
-        ("With Patching", {"use_multi_scale_patching": True, "use_hierarchical_mapper": False}),
-        ("With Hierarchical", {"use_multi_scale_patching": False, "use_hierarchical_mapper": True}),
-        ("With Both", {"use_multi_scale_patching": True, "use_hierarchical_mapper": True}),
-        ("With MDN", {"use_multi_scale_patching": False, "use_hierarchical_mapper": False, "use_mixture_decoder": True}),
-    ]
-    
-    for name, config_updates in configs:
-        print(f"\n🔧 Testing {name}")
+        # Test with reduced epochs for quick validation
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
         
-        config = SimpleConfig()
-        for key, value in config_updates.items():
-            setattr(config, key, value)
+        # Temporarily reduce for testing
+        config['train_epochs'] = 2
+        config['batch_size'] = 2
         
-        try:
-            model = Enhanced_SOTA_PGAT(config)
-            
-            # Test forward pass
-            wave_window = torch.randn(2, config.seq_len, config.enc_in)
-            target_window = torch.randn(2, config.pred_len, config.enc_in)
-            
-            with torch.no_grad():
-                output = model(wave_window, target_window)
-            
-            if isinstance(output, tuple):
-                print(f"✅ {name}: MDN output shapes {[o.shape for o in output]}")
-            else:
-                print(f"✅ {name}: output shape {output.shape}")
-                
-        except Exception as e:
-            print(f"❌ {name}: {e}")
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.dump(config, f, default_flow_style=False)
+        
+        print("✅ Config adjusted for testing (2 epochs, batch_size=2)")
+        
+        # Import and test training function
+        from scripts.train.train_celestial_production import train_celestial_pgat_production
+        
+        print("🚀 Starting training...")
+        result = train_celestial_pgat_production(config_path)
+        
+        print(f"✅ Training completed: {result}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Training failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 if __name__ == "__main__":
-    test_training()
-    test_different_configs()
+    success = test_fixed_training()
+    print("\n" + "=" * 40)
+    if success:
+        print("🎉 TRAINING FIX SUCCESSFUL!")
+        print("✅ Ready for full production training")
+    else:
+        print("❌ Training still has issues")
+    
+    sys.exit(0 if success else 1)

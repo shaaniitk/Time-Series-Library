@@ -414,3 +414,171 @@
 2025-10-29 16:19:15,514 | INFO     | scripts.train.train_celestial_production | Configured for 75 training epochs
 2025-10-29 16:19:15,514 | INFO     | scripts.train.train_celestial_production | Warmup phase | epoch=1/8 lr=0.00001000
 2025-10-29 16:19:15,537 | INFO     | scripts.train.train_celestial_production | Epoch 1/75 - production training
+2025-10-31 21:04:01,382 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-31 21:04:01,383 | INFO     | __main__ | Heavy-duty overnight configuration enabled
+2025-10-31 21:04:01,383 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-10-31 21:04:01,383 | INFO     | __main__ | ================================================================================
+2025-10-31 21:04:01,384 | INFO     | __main__ | Memory diagnostics enabled; detailed logs stored at checkpoints\celestial_ultimate_deep_500x20\memory_diagnostics.log
+2025-10-31 21:04:01,384 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=780 n_heads=20 e_layers=12 d_layers=6 train_epochs=75
+2025-10-31 21:04:01,384 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-10-31 21:04:01,384 | INFO     | __main__ | Using device: cpu (CPU fallback)
+2025-10-31 21:04:01,466 | INFO     | __main__ | Reproducibility seed configured to 42
+2025-10-31 21:04:01,467 | INFO     | __main__ | Loading production data modules
+2025-10-31 21:04:01,812 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
+2025-10-31 21:04:01,812 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 21:04:02,046 | INFO     | __main__ | Created val dataset with training scalers
+2025-10-31 21:04:02,047 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 21:04:02,271 | INFO     | __main__ | Created test dataset with training scalers
+2025-10-31 21:04:02,271 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 21:04:02,271 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
+2025-10-31 21:04:02,272 | INFO     | __main__ | Preparing scaling utilities for loss computation
+2025-10-31 21:04:02,272 | INFO     | __main__ | Main scaler detected with 118 features
+2025-10-31 21:04:02,272 | INFO     | __main__ | Target scaler detected with 4 features
+2025-10-31 21:04:02,273 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-31 21:04:02,273 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
+2025-10-31 21:04:02,274 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Initializing Celestial Enhanced PGAT | seq_len=500 pred_len=20 d_model=780 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
+2025-10-31 21:04:02,274 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | Phase-aware aggregation configured | input_waves=118 target_wave_indices=[0, 1, 2, 3]
+2025-10-31 21:04:02,572 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-10-31 21:04:02,572 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
+2025-10-31 21:04:02,629 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-10-31 21:04:02,629 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-10-31 21:04:02,629 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-10-31 21:04:02,629 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-10-31 21:04:02,629 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-10-31 21:04:02,629 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-10-31 21:04:02,629 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-10-31 21:04:08,072 | INFO     | __main__ | Model initialized successfully
+2025-10-31 21:04:08,081 | INFO     | __main__ | Parameter statistics | total=308,832,426 trainable=308,832,426 approx_size_mb=1178.1
+2025-10-31 21:04:08,089 | INFO     | __main__ | Standard precision training
+2025-10-31 21:04:08,089 | INFO     | __main__ | Gradient accumulation configured | steps=3 effective_batch_size=18
+2025-10-31 21:04:08,089 | INFO     | __main__ | Learning rate schedule preview | warmup_epochs=8 base_lr=0.000080 min_lr=0.000000 remaining_epochs=67
+2025-10-31 21:04:08,089 | INFO     | __main__ | Sample learning rates: E1:0.000010, E8:0.000080, E9:0.000080, E38:0.000048, E75:0.000000
+2025-10-31 21:04:08,093 | INFO     | __main__ | Using Hybrid MDN+Directional Loss | nll_weight=0.25 direction_weight=4.00 trend_weight=2.00 magnitude_weight=0.15
+2025-10-31 21:04:08,094 | INFO     | __main__ | Early stopping patience configured to 25 (effectively disabled)
+2025-10-31 21:04:08,094 | INFO     | __main__ | Checkpoints will be saved to checkpoints\celestial_ultimate_deep_500x20
+2025-10-31 21:04:08,094 | INFO     | __main__ | Inspecting data file at ./data\prepared_financial_data.csv for target resolution
+2025-10-31 21:04:08,101 | INFO     | __main__ | Feature summary | total_columns=119 feature_columns=118
+2025-10-31 21:04:08,132 | INFO     | __main__ | Estimated CSV row count: 7109
+2025-10-31 21:04:08,132 | INFO     | __main__ | Auto-set enc_in/dec_in to 118 based on feature count
+2025-10-31 21:04:08,132 | INFO     | __main__ | Resolved target indices: [0, 1, 2, 3]
+2025-10-31 21:04:08,132 | INFO     | __main__ | Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-10-31 21:04:08,132 | INFO     | __main__ | Starting production training loop
+2025-10-31 21:04:08,132 | INFO     | __main__ | Configured for 75 training epochs
+2025-10-31 21:04:08,133 | INFO     | __main__ | Warmup phase | epoch=1/8 lr=0.00001000
+2025-10-31 21:04:08,141 | INFO     | __main__ | Epoch 1/75 - production training
+2025-10-31 21:22:40,963 | INFO     | __main__ | Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-31 21:22:40,963 | INFO     | __main__ | Heavy-duty overnight configuration enabled
+2025-10-31 21:22:40,964 | INFO     | __main__ | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-10-31 21:22:40,964 | INFO     | __main__ | ================================================================================
+2025-10-31 21:22:40,965 | INFO     | __main__ | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=780 n_heads=20 e_layers=12 d_layers=6 train_epochs=75
+2025-10-31 21:22:40,965 | INFO     | __main__ | Optimization summary | batch_size=6 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=False
+2025-10-31 21:22:40,965 | INFO     | __main__ | Using device: cpu (CPU fallback)
+2025-10-31 21:22:41,058 | INFO     | __main__ | Reproducibility seed configured to 42
+2025-10-31 21:22:41,059 | INFO     | __main__ | Loading production data modules
+2025-10-31 21:22:41,340 | INFO     | __main__ | Training scalers extracted: main_scaler=True, target_scaler=True
+2025-10-31 21:22:41,340 | INFO     | __main__ | Loaded train data module | samples=6390 batches=1065 batch_size=6 drop_last=True shuffle=True pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 21:22:41,704 | INFO     | __main__ | Created val dataset with training scalers
+2025-10-31 21:22:41,704 | INFO     | __main__ | Loaded val data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 21:22:41,916 | INFO     | __main__ | Created test dataset with training scalers
+2025-10-31 21:22:41,916 | INFO     | __main__ | Loaded test data module | samples=81 batches=14 batch_size=6 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 21:22:41,916 | INFO     | __main__ | Data loader sizes | train=1065 val=14 test=14
+2025-10-31 21:22:41,916 | INFO     | __main__ | Preparing scaling utilities for loss computation
+2025-10-31 21:22:41,916 | INFO     | __main__ | Main scaler detected with 118 features
+2025-10-31 21:22:41,916 | INFO     | __main__ | Target scaler detected with 4 features
+2025-10-31 21:22:41,916 | INFO     | __main__ | Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-31 21:22:41,916 | INFO     | __main__ | Initializing production Celestial Enhanced PGAT model
+2025-10-31 21:22:41,978 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-10-31 21:22:41,978 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
+2025-10-31 21:22:42,017 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-10-31 21:22:42,017 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-10-31 21:22:42,017 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-10-31 21:22:42,017 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-10-31 21:22:42,017 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-10-31 21:22:42,017 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-10-31 21:22:42,017 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-10-31 21:22:45,179 | ERROR    | __main__ | Model initialization failed: d_model (780) must be divisible by num_graph_nodes (118) for efficient processing.
+Traceback (most recent call last):
+  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 2491, in train_celestial_pgat_production
+    model = Model(args).to(device)
+            ~~~~~^^^^^^
+  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 72, in __init__
+    self._setup_efficient_covariate_interaction()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\workspace\Time-Series-Library\models\Celestial_Enhanced_PGAT_Modular.py", line 90, in _setup_efficient_covariate_interaction
+    raise ValueError(
+    ...<2 lines>...
+    )
+ValueError: d_model (780) must be divisible by num_graph_nodes (118) for efficient processing.
+2025-10-31 21:37:19,975 | INFO     | scripts.train.train_celestial_production | Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-31 21:37:19,975 | INFO     | scripts.train.train_celestial_production | Heavy-duty overnight configuration enabled
+2025-10-31 21:37:19,975 | INFO     | scripts.train.train_celestial_production | 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-10-31 21:37:19,975 | INFO     | scripts.train.train_celestial_production | ================================================================================
+2025-10-31 21:37:19,976 | INFO     | scripts.train.train_celestial_production | Configuration summary | model=Celestial_Enhanced_PGAT seq_len=500 pred_len=20 d_model=780 n_heads=20 e_layers=12 d_layers=6 train_epochs=2
+2025-10-31 21:37:19,976 | INFO     | scripts.train.train_celestial_production | Optimization summary | batch_size=2 learning_rate=8e-05 patience=25 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-10-31 21:37:19,976 | INFO     | scripts.train.train_celestial_production | Using device: cpu (CPU fallback)
+2025-10-31 21:37:19,980 | INFO     | scripts.train.train_celestial_production | Reproducibility seed configured to 42
+2025-10-31 21:37:19,980 | INFO     | scripts.train.train_celestial_production | Loading production data modules
+2025-10-31 21:37:20,235 | INFO     | scripts.train.train_celestial_production | Training scalers extracted: main_scaler=True, target_scaler=True
+2025-10-31 21:37:20,235 | INFO     | scripts.train.train_celestial_production | Loaded train data module | samples=6390 batches=3195 batch_size=2 drop_last=True shuffle=True pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 21:37:20,449 | INFO     | scripts.train.train_celestial_production | Created val dataset with training scalers
+2025-10-31 21:37:20,449 | INFO     | scripts.train.train_celestial_production | Loaded val data module | samples=81 batches=41 batch_size=2 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 21:37:20,681 | INFO     | scripts.train.train_celestial_production | Created test dataset with training scalers
+2025-10-31 21:37:20,681 | INFO     | scripts.train.train_celestial_production | Loaded test data module | samples=81 batches=41 batch_size=2 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 21:37:20,681 | INFO     | scripts.train.train_celestial_production | Data loader sizes | train=3195 val=41 test=41
+2025-10-31 21:37:20,681 | INFO     | scripts.train.train_celestial_production | Preparing scaling utilities for loss computation
+2025-10-31 21:37:20,681 | INFO     | scripts.train.train_celestial_production | Main scaler detected with 118 features
+2025-10-31 21:37:20,681 | INFO     | scripts.train.train_celestial_production | Target scaler detected with 4 features
+2025-10-31 21:37:20,681 | INFO     | scripts.train.train_celestial_production | Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-31 21:37:20,681 | INFO     | scripts.train.train_celestial_production | Initializing production Celestial Enhanced PGAT model
+2025-10-31 21:37:20,858 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-10-31 21:37:20,859 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=5 medium=25 long=125 dropout=0.100
+2025-10-31 21:37:20,893 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-10-31 21:37:20,894 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-10-31 21:37:20,894 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-10-31 21:37:20,894 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-10-31 21:37:20,894 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-10-31 21:37:20,894 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-10-31 21:37:20,894 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-10-31 21:37:25,011 | INFO     | scripts.train.train_celestial_production | Model initialized successfully
+2025-10-31 21:37:25,023 | INFO     | scripts.train.train_celestial_production | Parameter statistics | total=308,832,426 trainable=308,832,426 approx_size_mb=1178.1
+2025-10-31 21:37:25,029 | INFO     | scripts.train.train_celestial_production | Standard precision training
+2025-10-31 21:37:25,029 | INFO     | scripts.train.train_celestial_production | Gradient accumulation configured | steps=3 effective_batch_size=6
+2025-10-31 21:37:25,030 | INFO     | scripts.train.train_celestial_production | Learning rate schedule preview | warmup_epochs=8 base_lr=0.000080 min_lr=0.000000 remaining_epochs=-6
+2025-10-31 21:37:25,030 | INFO     | scripts.train.train_celestial_production | Sample learning rates: E1:0.000010, E2:0.000020, E2:0.000020
+2025-10-31 21:37:25,033 | INFO     | scripts.train.train_celestial_production | Using Hybrid MDN+Directional Loss | nll_weight=0.25 direction_weight=4.00 trend_weight=2.00 magnitude_weight=0.15
+2025-10-31 21:37:25,033 | INFO     | scripts.train.train_celestial_production | Early stopping patience configured to 25 (effectively disabled)
+2025-10-31 21:37:25,033 | INFO     | scripts.train.train_celestial_production | Checkpoints will be saved to checkpoints\celestial_ultimate_deep_500x20
+2025-10-31 21:37:25,034 | INFO     | scripts.train.train_celestial_production | Inspecting data file at ./data\prepared_financial_data.csv for target resolution
+2025-10-31 21:37:25,042 | INFO     | scripts.train.train_celestial_production | Feature summary | total_columns=119 feature_columns=118
+2025-10-31 21:37:25,071 | INFO     | scripts.train.train_celestial_production | Estimated CSV row count: 7109
+2025-10-31 21:37:25,072 | INFO     | scripts.train.train_celestial_production | Auto-set enc_in/dec_in to 118 based on feature count
+2025-10-31 21:37:25,072 | INFO     | scripts.train.train_celestial_production | Resolved target indices: [0, 1, 2, 3]
+2025-10-31 21:37:25,072 | INFO     | scripts.train.train_celestial_production | Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-10-31 21:37:25,072 | INFO     | scripts.train.train_celestial_production | Starting production training loop
+2025-10-31 21:37:25,072 | INFO     | scripts.train.train_celestial_production | Configured for 2 training epochs
+2025-10-31 21:37:25,073 | INFO     | scripts.train.train_celestial_production | Warmup phase | epoch=1/8 lr=0.00001000
+2025-10-31 21:37:25,080 | INFO     | scripts.train.train_celestial_production | Epoch 1/2 - production training
+2025-10-31 21:39:10,100 | ERROR    | scripts.train.train_celestial_production | Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-10-31 21:41:39,210 | ERROR    | scripts.train.train_celestial_production | Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-10-31 21:44:28,418 | ERROR    | scripts.train.train_celestial_production | Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-10-31 21:47:01,558 | ERROR    | scripts.train.train_celestial_production | Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "C:\workspace\Time-Series-Library\scripts\train\train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value

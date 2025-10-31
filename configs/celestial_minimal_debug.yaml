@@ -1,0 +1,184 @@
+# MINIMAL CELESTIAL CONFIGURATION FOR DEBUGGING
+# Simplified version to isolate training issues
+
+# ============================================================================
+# MODEL ARCHITECTURE - MINIMAL
+# ============================================================================
+model: 'Celestial_Enhanced_PGAT'
+model_name: 'Celestial_Enhanced_PGAT'
+model_id: 'celestial_minimal_debug'
+
+# Core Architecture - Minimal
+d_model: 128              # Small model dimension
+n_heads: 8                # Few attention heads
+e_layers: 2               # Shallow encoder
+d_layers: 1               # Shallow decoder
+d_ff: 512                 # Small feed-forward
+dropout: 0.1
+activation: 'gelu'
+
+# Input/Output Dimensions
+enc_in: 118
+dec_in: 118
+c_out: 4
+factor: 1
+
+# ============================================================================
+# SEQUENCE CONFIGURATION
+# ============================================================================
+seq_len: 500
+label_len: 250
+pred_len: 20
+
+# Data Splits
+validation_length: 100
+test_length: 100
+
+# ============================================================================
+# CELESTIAL COMPONENTS - ALL DISABLED FOR DEBUGGING
+# ============================================================================
+use_celestial_graph: false
+aggregate_waves_to_celestial: false
+celestial_fusion_layers: 1
+num_celestial_bodies: 13
+celestial_dim: 32
+num_message_passing_steps: 1
+edge_feature_dim: 8
+use_temporal_attention: false
+use_spatial_attention: false
+bypass_spatiotemporal_with_petri: false
+num_input_waves: 118
+target_wave_indices: [0, 1, 2, 3]
+
+# Multi-Scale Context Fusion - DISABLED
+use_multi_scale_context: false
+context_fusion_mode: 'simple'
+
+# Hierarchical Mapping - DISABLED
+use_hierarchical_mapping: false
+
+# Stochastic Learning - DISABLED
+use_stochastic_learner: false
+
+# Graph Combiners - DISABLED
+use_petri_net_combiner: false
+use_gated_graph_combiner: false
+
+# Enhanced Decoders - DISABLED
+use_mixture_decoder: false
+use_sequential_mixture_decoder: false
+enable_mdn_decoder: false
+
+# Advanced Attention - DISABLED
+use_target_autocorrelation: false
+use_celestial_target_attention: false
+use_efficient_covariate_interaction: false
+enable_target_covariate_attention: false
+use_dynamic_spatiotemporal_encoder: false
+
+# Calendar Effects - DISABLED
+use_calendar_effects: false
+
+# ============================================================================
+# TRAINING CONFIGURATION - MINIMAL
+# ============================================================================
+train_epochs: 3           # Just 3 epochs for testing
+batch_size: 2             # Small batch
+learning_rate: 0.001
+patience: 10
+
+# Learning Rate Schedule - Simple
+lradj: 'type1'
+
+# Regularization - Minimal
+weight_decay: 0.01
+clip_grad_norm: 1.0
+
+# Training Techniques - DISABLED
+use_amp: false
+mixed_precision: false
+gradient_accumulation_steps: 1
+
+# ============================================================================
+# DATA CONFIGURATION
+# ============================================================================
+data: 'custom'
+root_path: './data'
+data_path: 'prepared_financial_data.csv'
+features: 'MS'
+target: 'log_Open,log_High,log_Low,log_Close'
+embed: 'timeF'
+freq: 'd'
+seasonal_patterns: 'Monthly'
+scale: true
+
+# ============================================================================
+# LOSS CONFIGURATION - SIMPLE
+# ============================================================================
+loss:
+  type: 'mse'  # Simple MSE loss
+
+# ============================================================================
+# HARDWARE - CPU FOR DEBUGGING
+# ============================================================================
+use_gpu: false
+gpu: 0
+use_multi_gpu: false
+devices: '0'
+
+# Memory Management
+num_workers: 0
+pin_memory: false
+persistent_workers: false
+prefetch_factor: 2
+
+# ============================================================================
+# LOGGING - MINIMAL
+# ============================================================================
+checkpoints: './checkpoints/'
+save_checkpoints: true
+save_best_only: false
+checkpoint_interval: 1
+
+# Logging - Clean
+log_interval: 10
+verbose_logging: false
+enable_memory_diagnostics: false
+collect_diagnostics: false
+debug_mode: false
+
+# ============================================================================
+# EVALUATION - DISABLED
+# ============================================================================
+enable_adversarial_checks: false
+
+# ============================================================================
+# REPRODUCIBILITY
+# ============================================================================
+seed: 42
+production_seed: 42
+random_seed: 42
+deterministic: true
+
+# ============================================================================
+# TASK METADATA
+# ============================================================================
+task_name: 'long_term_forecast'
+data_name: 'custom'
+inverse: false
+cols: null
+itr: 1
+train_only: false
+do_predict: false
+
+# Output Attention
+output_attention: false
+distil: true
+mix: true
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+log_level: 'INFO'
+log_format: '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
+log_file: 'logs/minimal_debug_training.log'

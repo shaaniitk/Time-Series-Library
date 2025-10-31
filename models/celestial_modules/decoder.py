@@ -159,15 +159,17 @@ class DecoderModule(nn.Module):
         decoder_features = dec_out
         
         # Validate and log dimensions
-        print(f"DECODER DEBUG:")
-        print(f"  dec_out shape: {dec_out.shape}")
-        print(f"  graph_features shape: {graph_features.shape}")
+        if getattr(self.config, 'debug_mode', False):
+            print(f"DECODER DEBUG:")
+            print(f"  dec_out shape: {dec_out.shape}")
+            print(f"  graph_features shape: {graph_features.shape}")
         
         # Apply decoder layers with error handling
         for i, layer in enumerate(self.decoder_layers):
             try:
                 decoder_features = layer(decoder_features, graph_features)
-                print(f"  Layer {i} output shape: {decoder_features.shape}")
+                if getattr(self.config, 'debug_mode', False):
+                    print(f"  Layer {i} output shape: {decoder_features.shape}")
             except Exception as e:
                 print(f"  Layer {i} failed: {e}")
                 print(f"  Skipping layer {i}")

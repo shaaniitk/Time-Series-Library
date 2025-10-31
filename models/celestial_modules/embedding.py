@@ -197,15 +197,9 @@ class EmbeddingModule(nn.Module):
         
         self.enc_embedding = DataEmbedding(embedding_input_dim, config.d_model, config.embed, config.freq, config.dropout)
         
-        # FIXED: Decoder should also use celestial processing for rich information flow
-        # Both encoder and decoder go through: Raw → Celestial → Rich Features → Embedding → d_model
-        if config.aggregate_waves_to_celestial:
-            # Decoder uses same celestial processing as encoder
-            decoder_embedding_input_dim = config.d_model  # After celestial projection
-        else:
-            # Fallback to raw dimensions
-            decoder_embedding_input_dim = config.dec_in
-            
+        # FIXED: Decoder embedding should always expect d_model dimensions
+        # This is because we always project decoder input to d_model (either via celestial processing or raw projection)
+        decoder_embedding_input_dim = config.d_model
         self.dec_embedding = DataEmbedding(decoder_embedding_input_dim, config.d_model, config.embed, config.freq, config.dropout)
 
         if config.use_calendar_effects:
@@ -298,13 +292,23 @@ class EmbeddingModule(nn.Module):
             try:
                 celestial_features_dec, _, _ = self.phase_aware_processor(x_dec)
                 x_dec_processed = self.celestial_projection(celestial_features_dec)
-                print(f"Decoder: Applied celestial processing {x_dec.shape} → {celestial_features_dec.shape} → {x_dec_processed.shape}")
+                if getattr(self.config, 'debug_mode', False):
+                    print(f"Decoder: Applied celestial processing {x_dec.shape} → {celestial_features_dec.shape} → {x_dec_processed.shape}")
             except Exception as e:
-                # Fallback: use raw decoder input if celestial processing fails
+                # CRITICAL: If celestial processing fails, we need to project raw input to match decoder embedding expectations
                 print(f"Warning: Decoder celestial processing failed: {e}")
-                x_dec_processed = x_dec
+                print(f"Projecting raw decoder input {x_dec.shape} to match decoder embedding dimension")
+                
+                # Project raw input to match expected decoder embedding dimension
+                if not hasattr(self, 'raw_dec_projection'):
+                    self.raw_dec_projection = nn.Linear(dec_in, self.config.d_model).to(x_dec.device)
+                
+                x_dec_processed = self.raw_dec_projection(x_dec)
         else:
-            x_dec_processed = x_dec
+            # If not using celestial processing, project raw input to d_model
+            if not hasattr(self, 'raw_dec_projection'):
+                self.raw_dec_projection = nn.Linear(dec_in, self.config.d_model).to(x_dec.device)
+            x_dec_processed = self.raw_dec_projection(x_dec)
             
         dec_out = self.dec_embedding(x_dec_processed, x_mark_dec)
         

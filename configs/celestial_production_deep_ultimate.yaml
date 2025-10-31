@@ -1,341 +1,189 @@
-# CELESTIAL ENHANCED PGAT - ULTIMATE DEEP PRODUCTION CONFIGURATION
-# Maximum depth and complexity for production overnight training
-# Optimized for seq_len=500, pred_len=20, with ultra-deep architecture
-
-# ============================================================================
-# MODEL ARCHITECTURE - ULTRA DEEP & MAXIMUM CAPACITY
-# ============================================================================
-model: 'Celestial_Enhanced_PGAT'
-model_name: 'Celestial_Enhanced_PGAT'
-model_id: 'celestial_ultimate_deep_500x20'
-
-# Core Architecture - Ultra Deep Configuration (Dimension-Compatible)
-d_model: 780              # Large model dimension (780 = 13 * 60, divisible by 13 celestial bodies)
-n_heads: 20               # Many attention heads (780/20 = 39 per head, clean division)
-e_layers: 12              # Very deep encoder (12 layers)
-d_layers: 6               # Deep decoder (6 layers)
-d_ff: 3120                # Very large feed-forward dimension (4x d_model)
-dropout: 0.1              # Moderate dropout for regularization
-activation: 'gelu'        # GELU activation for better gradients
-
-# Input/Output Dimensions
-enc_in: 118               # Input features (auto-detected from data)
-dec_in: 118               # Decoder input features
-c_out: 4                  # OHLC output targets
-factor: 1                 # Attention factor
-
-# ============================================================================
-# SEQUENCE CONFIGURATION - EXACT SPECIFICATIONS
-# ============================================================================
-seq_len: 500              # Long input sequence (500 days) - AS REQUESTED
-label_len: 250            # Half of seq_len for decoder
-pred_len: 20              # Prediction horizon (20 days) - AS REQUESTED
-
-# Data Splits - Exact specifications
-validation_length: 100    # Validation length = 100 - AS REQUESTED
-test_length: 100          # Test length = 100 - AS REQUESTED
-
-# ============================================================================
-# ADVANCED CELESTIAL COMPONENTS - ALL MAXIMUM SETTINGS
-# ============================================================================
-
-# Celestial Graph System - Enhanced
-use_celestial_graph: true
-aggregate_waves_to_celestial: true
-celestial_fusion_layers: 6        # Very deep celestial fusion
-num_celestial_bodies: 13
-celestial_dim: 130                # Large celestial dimension (130 = 13 * 10, divisible by 13)
-num_message_passing_steps: 4      # More message passing steps
-edge_feature_dim: 32              # Rich edge features
-use_temporal_attention: true
-use_spatial_attention: true
-bypass_spatiotemporal_with_petri: true
-num_input_waves: 118
-target_wave_indices: [0, 1, 2, 3]
-
-# Multi-Scale Context Fusion - OPTIMIZED (Based on Test Results)
-use_multi_scale_context: true
-context_fusion_mode: 'multi_scale'  # Advanced fusion
-short_term_kernel_size: 5
-medium_term_kernel_size: 25
-long_term_kernel_size: 125          # Long-term patterns
-context_fusion_dropout: 0.1
-context_fusion_layers: 3            # Balanced complexity
-
-# Hierarchical Mapping - Enhanced
-use_hierarchical_mapping: true
-hierarchical_levels: 5              # More levels
-hierarchical_reduction_factor: 2
-
-# Stochastic Learning Components - Advanced
-use_stochastic_learner: true
-use_stochastic_control: true
-stochastic_temperature_start: 3.0   # Higher starting temperature
-stochastic_temperature_end: 0.05    # Lower ending temperature
-stochastic_decay_steps: 3000        # More decay steps
-stochastic_layers: 4                # More stochastic layers
-
-# Advanced Graph Combiners - Enhanced
-use_petri_net_combiner: true
-use_gated_graph_combiner: true
-petri_net_places: 39              # 3x celestial bodies
-petri_net_transitions: 52         # 4x celestial bodies
-
-# Enhanced Decoders - FIXED AND WORKING (Dimension issues resolved)
-use_mixture_decoder: true         # ✅ WORKING - Essential for proper training
-use_sequential_mixture_decoder: true  # ✅ WORKING - Enables probabilistic forecasting
-enable_mdn_decoder: true          # ✅ FIXED - Dimension adaptation now working
-mdn_components: 8                 # Increased (now that it's working)
-mdn_sigma_min: 0.001
-mdn_sigma_max: 1.0
-mdn_use_softplus: true            # Use numerically stable activation
-
-# Advanced Attention Mechanisms - All Enabled
-use_target_autocorrelation: true
-use_celestial_target_attention: true
-use_efficient_covariate_interaction: true
-enable_target_covariate_attention: true
-use_dynamic_spatiotemporal_encoder: true
-
-# Calendar and Temporal Effects - Enhanced
-use_calendar_effects: true
-calendar_embedding_dim: 260       # Large calendar embeddings (260 = 13 * 20, divisible by 13)
-use_phase_aware_processing: true
-
-# ============================================================================
-# TRAINING CONFIGURATION - PRODUCTION GRADE DEEP TRAINING
-# ============================================================================
-
-# Training Schedule - Extended for Deep Model
-train_epochs: 75                  # Longer training for deep model
-batch_size: 6                     # Smaller batch for very long sequences
-learning_rate: 0.00008            # More conservative for deep model
-patience: 25                      # Higher patience for deep training
-
-# Learning Rate Schedule - Advanced
-lradj: 'warmup_cosine'
-warmup_epochs: 8                  # Longer warmup for deep model
-min_lr: 5e-9                      # Very low minimum LR
-cosine_restarts: 2                # Cosine restarts
-
-# Regularization - Enhanced for Deep Model
-weight_decay: 0.015               # Stronger weight decay
-clip_grad_norm: 0.8               # Tighter gradient clipping
-reg_loss_weight: 0.002            # Higher regularization weight
-label_smoothing: 0.05             # Label smoothing
-
-# Advanced Training Techniques
-use_amp: false                    # Keep AMP disabled for stability as requested
-mixed_precision: false            # Keep mixed precision disabled
-gradient_accumulation_steps: 3    # More accumulation for effective batch size of 18
-ema_decay: 0.9999                 # Exponential moving average
-
-# ============================================================================
-# DATA CONFIGURATION
-# ============================================================================
-data: 'custom'
-root_path: './data'
-data_path: 'prepared_financial_data.csv'
-features: 'MS'                    # Multivariate forecasting
-target: 'log_Open,log_High,log_Low,log_Close'
-embed: 'timeF'
-freq: 'd'
-seasonal_patterns: 'Monthly'
-scale: true                       # Enable scaling
-
-# ============================================================================
-# LOSS CONFIGURATION - OPTIMIZED FOR FINANCIAL FORECASTING
-# ============================================================================
-loss:
-  type: 'hybrid_mdn_directional'  # Advanced hybrid loss function
-  # Optimized weights for financial forecasting (direction > uncertainty > magnitude)
-  nll_weight: 0.25                # MDN uncertainty quantification
-  direction_weight: 4.0           # Directional accuracy (most important for trading)
-  trend_weight: 2.0               # Trend correlation (momentum alignment)
-  magnitude_weight: 0.15          # Magnitude accuracy (prevent extreme predictions)
-  correlation_type: 'pearson'     # Correlation type for trend alignment
-
-# ============================================================================
-# OPTIMIZATION & HARDWARE - GPU ENABLED WITH CPU FALLBACK
-# ============================================================================
-use_gpu: true                     # Enable GPU if available, fallback to CPU
-gpu: 0
-use_multi_gpu: false
-devices: '0'
-
-# Memory Management - Conservative settings for stability
-num_workers: 0                    # Single-threaded data loading (avoid multiprocessing issues)
-pin_memory: true                  # Enable for GPU training
-persistent_workers: false         # Disable to avoid worker issues
-prefetch_factor: 2                # Conservative prefetch
-max_memory_usage: 0.85            # Use 85% of available GPU memory
-
-# ============================================================================
-# CHECKPOINTING & LOGGING - COMPREHENSIVE
-# ============================================================================
-checkpoints: './checkpoints/'
-save_checkpoints: true
-save_best_only: false             # Save all checkpoints
-checkpoint_interval: 3            # Save every 3 epochs (more frequent)
-
-# Logging Configuration - Detailed
-log_interval: 3                   # Log every 3 batches (very frequent for detailed monitoring)
-verbose_logging: true
-enable_memory_diagnostics: true
-memory_log_interval: 15
-dump_cuda_memory_summary: true
-collect_diagnostics: true
-log_gradient_norms: true          # Track gradient norms
-log_weight_norms: true            # Track weight norms
-
-# ============================================================================
-# EVALUATION & TESTING - COMPREHENSIVE
-# ============================================================================
-
-# Adversarial Testing - Enhanced
-enable_adversarial_checks: true
+activation: gelu
+adversarial_dropout_ratio: 0.12
 adversarial_max_batches: 12
 adversarial_noise_std: 0.08
 adversarial_scale_factor: 0.25
-adversarial_dropout_ratio: 0.12
-
-# Calibration Metrics - Comprehensive
+aggregate_waves_to_celestial: true
+batch_size: 2
+bypass_spatiotemporal_with_petri: true
+c_out: 4
+calendar_embedding_dim: 260
 calibration_metrics:
-  coverage_levels: [0.5, 0.68, 0.8, 0.9, 0.95, 0.99]
   compute_crps: true
-  crps_samples: 300
   compute_energy_score: true
   compute_variogram_score: true
-
-# ============================================================================
-# REPRODUCIBILITY
-# ============================================================================
-seed: 42
+  coverage_levels:
+  - 0.5
+  - 0.68
+  - 0.8
+  - 0.9
+  - 0.95
+  - 0.99
+  crps_samples: 300
+celestial_dim: 130
+celestial_fusion_layers: 6
+checkpoint_interval: 3
+checkpoints: ./checkpoints/
+clip_grad_norm: 0.8
+collect_diagnostics: false
+cols: null
+context_fusion_dropout: 0.1
+context_fusion_layers: 3
+context_fusion_mode: multi_scale
+cosine_restarts: 2
+curriculum_end_seq_len: 500
+curriculum_start_seq_len: 100
+curriculum_steps: 10
+d_ff: 3120
+d_layers: 6
+d_model: 780
+data: custom
+data_name: custom
+data_path: prepared_financial_data.csv
+debug_log_file: logs/debug_training.log
+debug_mode: true
+dec_in: 118
+deterministic: true
+devices: '0'
+distil: true
+do_predict: false
+dropout: 0.1
+dropout_schedule_end: 0.05
+dropout_schedule_start: 0.15
+dump_cuda_memory_summary: false
+e_layers: 12
+early_stopping_min_delta: 1e-6
+early_stopping_patience: 30
+early_stopping_restore_best_weights: true
+edge_feature_dim: 32
+ema_decay: 0.9999
+embed: timeF
+enable_adversarial_checks: true
+enable_mdn_decoder: true
+enable_memory_diagnostics: false
+enable_memory_snapshots: true
+enable_target_covariate_attention: true
+enc_in: 118
+ensemble_method: weighted_average
+ensemble_size: 3
+factor: 1
+features: MS
+freq: d
+gpu: 0
+gradient_accumulation_steps: 3
+hierarchical_levels: 5
+hierarchical_reduction_factor: 2
+inverse: false
+itr: 1
+label_len: 250
+label_smoothing: 0.05
+learning_rate: 8.0e-05
+log_file: logs/production_ultimate_deep_training.log
+log_format: '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
+log_gradient_norms: false
+log_interval: 50
+log_level: INFO
+log_weight_norms: false
+long_term_kernel_size: 125
+lookahead_alpha: 0.5
+lookahead_k: 5
+loss:
+  correlation_type: pearson
+  direction_weight: 4.0
+  magnitude_weight: 0.15
+  nll_weight: 0.25
+  trend_weight: 2.0
+  type: hybrid_mdn_directional
+lradj: warmup_cosine
+max_memory_usage: 0.85
+mdn_components: 8
+mdn_sigma_max: 1.0
+mdn_sigma_min: 0.001
+mdn_use_softplus: true
+medium_term_kernel_size: 25
+memory_log_interval: 100
+memory_snapshot_interval: 100
+memory_summary_on_exception: true
+min_lr: 5e-9
+mix: true
+mixed_precision: false
+model: Celestial_Enhanced_PGAT
+model_id: celestial_ultimate_deep_500x20
+model_name: Celestial_Enhanced_PGAT
+n_heads: 20
+num_celestial_bodies: 13
+num_input_waves: 118
+num_message_passing_steps: 4
+num_workers: 0
+output_attention: false
+patience: 25
+persistent_workers: false
+petri_net_places: 39
+petri_net_transitions: 52
+pin_memory: true
+pred_len: 20
+prefetch_factor: 2
 production_seed: 42
 random_seed: 42
-deterministic: true               # Ensure reproducibility
-
-# ============================================================================
-# TASK METADATA
-# ============================================================================
-task_name: 'ultra_long_term_forecast'
-data_name: 'custom'
-inverse: false
-cols: null
-itr: 1
-train_only: false
-do_predict: false
-
-# ============================================================================
-# ADVANCED FEATURES - ALL ENABLED
-# ============================================================================
-
-# Future Celestial Conditioning
-use_future_celestial_conditioning: false  # Set to true if 6-tuple data available
-
-# Output Attention
-output_attention: false
-distil: true
-mix: true
-
-# Advanced Regularization - Enhanced
-use_spectral_norm: true           # Enable for extra stability
-use_layer_norm: true
-use_batch_norm: false
-use_dropout_schedule: true        # Scheduled dropout
-dropout_schedule_start: 0.15
-dropout_schedule_end: 0.05
-
-# Ensemble Components - DISABLED (Experimental)
-use_ensemble_prediction: false    # ❌ DISABLED - Experimental feature
-ensemble_size: 3
-ensemble_method: 'weighted_average'
-
-# Advanced Optimization - DISABLED (Experimental)
-use_lookahead_optimizer: false    # ❌ DISABLED - Experimental feature
-lookahead_k: 5
-lookahead_alpha: 0.5
-
-# ============================================================================
-# PRODUCTION MONITORING - COMPREHENSIVE
-# ============================================================================
-log_level: 'INFO'
-log_format: '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
-log_file: 'logs/production_ultimate_deep_training.log'
-
-# Memory monitoring - Enhanced
-memory_summary_on_exception: true
-enable_memory_snapshots: true
-memory_snapshot_interval: 100
-
-# Performance tracking - Comprehensive
-track_training_time: true
-track_memory_usage: true
+reg_loss_weight: 0.002
+root_path: ./data
+save_best_only: false
+save_checkpoints: true
+scale: true
+seasonal_patterns: Monthly
+seed: 42
+seq_len: 500
+short_term_kernel_size: 5
+stochastic_decay_steps: 3000
+stochastic_layers: 4
+stochastic_temperature_end: 0.05
+stochastic_temperature_start: 3.0
+target: log_Open,log_High,log_Low,log_Close
+target_wave_indices:
+- 0
+- 1
+- 2
+- 3
+task_name: ultra_long_term_forecast
+test_length: 100
 track_gpu_utilization: true
 track_learning_rate: true
 track_loss_components: true
-
-# Early stopping - Conservative for deep model
-early_stopping_patience: 30
-early_stopping_min_delta: 1e-6
-early_stopping_restore_best_weights: true
-
-# ============================================================================
-# ADVANCED TRAINING STRATEGIES
-# ============================================================================
-
-# Curriculum Learning - DISABLED (Experimental)
-use_curriculum_learning: false    # ❌ DISABLED - Experimental feature
-curriculum_start_seq_len: 100
-curriculum_end_seq_len: 500
-curriculum_steps: 10
-
-# Progressive Growing - DISABLED (Experimental)
-use_progressive_growing: false    # ❌ DISABLED - Experimental feature
-
-# Knowledge Distillation - DISABLED (Experimental)
-use_knowledge_distillation: false # ❌ DISABLED - Experimental feature
-
-# ============================================================================
-# NOTES - BASED ON SYSTEMATIC GPU TESTING RESULTS
-# ============================================================================
-# This configuration is designed for:
-# - Ultra-deep architecture (12 encoder + 6 decoder layers)
-# - Maximum model capacity (~150-300M parameters)
-# - Long sequence modeling (500 -> 20) - EXACT SPECIFICATIONS
-# - Validation/Test length = 100 each - EXACT SPECIFICATIONS
-# - Production-grade training with comprehensive monitoring
-# - TESTED COMPONENTS ONLY - Based on successful GPU test results
-# - Robust regularization and stability measures
-# - Extensive logging and diagnostics
-#
-# ✅ WORKING COMPONENTS (Verified by systematic testing + fixes):
-# - Celestial Graph System with all attention mechanisms
-# - Hierarchical Mapping (enables complex relationship discovery)
-# - Stochastic Learning (uncertainty modeling, low overhead)
-# - Graph Combiners (Petri Net + Gated)
-# - Sequential Mixture Decoder (essential for proper training)
-# - MDN Decoder (FIXED - now has dimension adaptation & robust error handling)
-# - Multi-scale Context Fusion (optimized settings)
-# - All attention mechanisms and calendar effects
-#
-# ❌ DISABLED COMPONENTS (Experimental features):
-# - Ensemble prediction (experimental)
-# - Curriculum learning (experimental)
-# - Lookahead optimizer (experimental)
-#
-# 🔧 RECENT FIXES APPLIED:
-# - MDN Decoder: Added automatic dimension adaptation
-# - MDN Decoder: Robust error handling and fallback mechanisms
-# - MDN Decoder: Numerically stable loss computation
-# - MDN Decoder: Comprehensive input/output validation
-# - Dimension Compatibility: All dimensions now divisible by 13 celestial bodies
-#   * d_model: 780 = 13 * 60 (60 dims per celestial body)
-#   * celestial_dim: 130 = 13 * 10 (10 dims per celestial body)
-#   * calendar_embedding_dim: 260 = 13 * 20 (20 dims per celestial body)
-#
-# Expected training time: 24-48 hours on high-end GPU
-# Expected memory usage: 12-24 GB GPU memory
-# Expected model parameters: ~150-300M parameters
-# This configuration uses ONLY tested and working components
-# ============================================================================
+track_memory_usage: true
+track_training_time: true
+train_epochs: 2
+train_only: false
+use_amp: false
+use_batch_norm: false
+use_calendar_effects: true
+use_celestial_graph: true
+use_celestial_target_attention: true
+use_curriculum_learning: false
+use_dropout_schedule: true
+use_dynamic_spatiotemporal_encoder: true
+use_efficient_covariate_interaction: true
+use_ensemble_prediction: false
+use_future_celestial_conditioning: false
+use_gated_graph_combiner: true
+use_gpu: true
+use_hierarchical_mapping: true
+use_knowledge_distillation: false
+use_layer_norm: true
+use_lookahead_optimizer: false
+use_mixture_decoder: true
+use_multi_gpu: false
+use_multi_scale_context: true
+use_petri_net_combiner: true
+use_phase_aware_processing: true
+use_progressive_growing: false
+use_sequential_mixture_decoder: true
+use_spatial_attention: true
+use_spectral_norm: true
+use_stochastic_control: true
+use_stochastic_learner: true
+use_target_autocorrelation: true
+use_temporal_attention: true
+validation_length: 100
+verbose_logging: false
+warmup_epochs: 8
+weight_decay: 0.015
