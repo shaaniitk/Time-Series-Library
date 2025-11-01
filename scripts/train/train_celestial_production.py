@@ -993,8 +993,7 @@ def train_epoch(
     full_cycles: int,
     remainder_batches: int,
     epoch_start: float,
-    sequential_mixture_loss_cls: Optional[Type[nn.Module]],
-    mixture_loss_cls: Optional[Type[nn.Module]],
+    loss_handler: Any,  # Modular loss handler
 ) -> Tuple[float, int]:
     """Execute the training phase for a single epoch and return loss statistics."""
 
@@ -1132,55 +1131,36 @@ def train_epoch(
                 pass
             # --- end debug ---
 
-            # Priority: Hybrid MDN Directional > MDN decoder > sequential mixture > standard loss
-            enable_mdn = getattr(args, "enable_mdn_decoder", False)
-            if enable_mdn and mdn_outputs is not None:
-                pi, mu, sigma = mdn_outputs
-                if pi.size(1) > args.pred_len:
-                    pi = pi[:, -args.pred_len:, ...]
-                    mu = mu[:, -args.pred_len:, ...]
-                    sigma = sigma[:, -args.pred_len:, ...]
-                targets_mdn = (
+            # Clean modular loss computation - use pre-created handler
+            try:
+                # Prepare model outputs and targets
+                if mdn_outputs is not None:
+                    pi, mu, sigma = mdn_outputs
+                    if pi.size(1) > args.pred_len:
+                        pi = pi[:, -args.pred_len:, ...]
+                        mu = mu[:, -args.pred_len:, ...]
+                        sigma = sigma[:, -args.pred_len:, ...]
+                    model_outputs_for_loss = (pi, mu, sigma)
+                else:
+                    model_outputs_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
+                
+                targets_for_loss = (
                     y_true_for_loss.squeeze(-1)
                     if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
                     else y_true_for_loss
                 )
                 
-                # Check if using hybrid directional loss
-                from layers.modular.losses.directional_trend_loss import HybridMDNDirectionalLoss
-                if isinstance(criterion, HybridMDNDirectionalLoss):
-                    # Convert MDN outputs to format expected by hybrid loss
-                    # (pi, mu, sigma) -> (mu, log_sigma, log_pi)
-                    log_stds = torch.log(sigma.clamp(min=1e-6))
-                    log_weights = torch.log(pi.clamp(min=1e-8))
-                    mdn_params_hybrid = (mu, log_stds, log_weights)
-                    raw_loss = criterion(mdn_params_hybrid, targets_mdn)
-                else:
-                    # Use direct MDN NLL loss
-                    raw_loss = mdn_nll_loss(pi, mu, sigma, targets_mdn, reduce='mean')
-            else:
-                # Fallback to sequential mixture or standard loss
-                is_seq_mixture = sequential_mixture_loss_cls is not None and isinstance(criterion, sequential_mixture_loss_cls)
-                is_mixture = mixture_loss_cls is not None and isinstance(criterion, mixture_loss_cls)
-                if is_seq_mixture or is_mixture:
-                    if mdn_outputs is None:
-                        raise ValueError(
-                            "MixtureNLLLoss requires model to return a (means, stds, weights) tuple during training."
-                        )
-                    means_t, stds_t, weights_t = mdn_outputs
-                    if means_t.size(1) > args.pred_len:
-                        means_t = means_t[:, -args.pred_len:, ...]
-                        stds_t = stds_t[:, -args.pred_len:, ...]
-                        weights_t = weights_t[:, -args.pred_len:, ...]
-                    targets_t = (
-                        y_true_for_loss.squeeze(-1)
-                        if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
-                        else y_true_for_loss
-                    )
-                    raw_loss = criterion((means_t, stds_t, weights_t), targets_t)
-                else:
-                    y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
-                    raw_loss = criterion(y_pred_for_loss, y_true_for_loss)
+                # Compute loss using pre-created handler (efficient!)
+                raw_loss = loss_handler.compute_loss(model_outputs_for_loss, targets_for_loss)
+                
+            except Exception as loss_error:
+                # If modular loss fails, provide clear error message
+                logger.error(f"Loss computation failed: {loss_error}")
+                logger.error("Check loss configuration compatibility with model settings")
+                raise ValueError(
+                    f"Loss computation error: {loss_error}. "
+                    f"Verify that loss type is compatible with current model configuration."
+                ) from loss_error
 
             if aux_loss:
                 raw_loss = raw_loss + aux_loss
@@ -1414,8 +1394,7 @@ def validate_epoch(
     logger: logging.Logger,
     target_scaler: Any,
     target_indices: Sequence[int],
-    sequential_mixture_loss_cls: Optional[Type[nn.Module]],
-    mixture_loss_cls: Optional[Type[nn.Module]],
+    loss_handler: Any,  # Modular loss handler
 ) -> Tuple[float, int, Optional[float]]:
     """Run validation phase for a single epoch and return aggregate loss and directional accuracy."""
 
@@ -1502,56 +1481,35 @@ def validate_epoch(
                     batch_y_targets, target_scaler, target_indices, device
                 )
 
-                # Priority: Hybrid MDN Directional > MDN decoder > sequential mixture > standard loss
-                enable_mdn = getattr(args, "enable_mdn_decoder", False)
-                if enable_mdn and mdn_outputs is not None:
-                    pi, mu, sigma = mdn_outputs
-                    if pi.size(1) > args.pred_len:
-                        pi = pi[:, -args.pred_len:, ...]
-                        mu = mu[:, -args.pred_len:, ...]
-                        sigma = sigma[:, -args.pred_len:, ...]
-                    targets_mdn = (
+                # Clean modular loss computation - use same handler as training
+                try:
+                    # Prepare model outputs and targets
+                    if mdn_outputs is not None:
+                        pi, mu, sigma = mdn_outputs
+                        if pi.size(1) > args.pred_len:
+                            pi = pi[:, -args.pred_len:, ...]
+                            mu = mu[:, -args.pred_len:, ...]
+                            sigma = sigma[:, -args.pred_len:, ...]
+                        model_outputs_for_loss = (pi, mu, sigma)
+                    else:
+                        model_outputs_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
+                    
+                    targets_for_loss = (
                         y_true_for_loss.squeeze(-1)
                         if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
                         else y_true_for_loss
                     )
                     
-                    # Check if using hybrid directional loss
-                    from layers.modular.losses.directional_trend_loss import HybridMDNDirectionalLoss
-                    if isinstance(criterion, HybridMDNDirectionalLoss):
-                        # Convert MDN outputs to format expected by hybrid loss
-                        log_stds = torch.log(sigma.clamp(min=1e-6))
-                        log_weights = torch.log(pi.clamp(min=1e-8))
-                        mdn_params_hybrid = (mu, log_stds, log_weights)
-                        loss = criterion(mdn_params_hybrid, targets_mdn)
-                    else:
-                        # Use direct MDN NLL loss
-                        loss = mdn_nll_loss(pi, mu, sigma, targets_mdn, reduce='mean')
-                else:
-                    # Fallback to mixture or standard loss
-                    use_mixture_loss = False
-                    if mixture_loss_cls is not None and isinstance(criterion, mixture_loss_cls):
-                        use_mixture_loss = True
-                    elif sequential_mixture_loss_cls is not None and isinstance(criterion, sequential_mixture_loss_cls):
-                        use_mixture_loss = True
-
-                    if use_mixture_loss:
-                        if mdn_outputs is None:
-                            raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple.")
-                        means_v, stds_v, weights_v = mdn_outputs
-                        if means_v.size(1) > args.pred_len:
-                            means_v = means_v[:, -args.pred_len:, ...]
-                            stds_v = stds_v[:, -args.pred_len:, ...]
-                            weights_v = weights_v[:, -args.pred_len:, ...]
-                        targets_v = (
-                            y_true_for_loss.squeeze(-1)
-                            if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
-                            else y_true_for_loss
-                        )
-                        loss = criterion((means_v, stds_v, weights_v), targets_v)
-                    else:
-                        y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
-                        loss = criterion(y_pred_for_loss, y_true_for_loss)
+                    # Compute loss using same handler as training (consistent!)
+                    loss = loss_handler.compute_loss(model_outputs_for_loss, targets_for_loss)
+                    
+                except Exception as loss_error:
+                    # If modular loss fails, provide clear error message
+                    logger.warning(f"Validation loss computation failed: {loss_error}")
+                    # Use MSE as emergency fallback for validation only
+                    y_pred_for_loss = outputs_tensor[:, -args.pred_len:, :c_out_evaluation]
+                    loss = nn.functional.mse_loss(y_pred_for_loss, y_true_for_loss)
+                    logger.warning("Using MSE fallback for validation loss")
 
                 if aux_loss:
                     loss = loss + aux_loss
@@ -2691,70 +2649,37 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
         if samples:
             logger.info("Sample learning rates: %s", ", ".join(samples))
     
-    # Import loss functions at function scope to avoid UnboundLocalError
+    # Clean modular loss setup - no complex fallbacks
     try:
-        from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureNLLLoss
-        from layers.modular.decoder.mixture_density_decoder import MixtureNLLLoss
-    except ImportError:
-        # Fallback if mixture losses are not available
-        SequentialMixtureNLLLoss = None
-        MixtureNLLLoss = None
-    
-    try:
-        from layers.modular.losses.directional_trend_loss import (
-            DirectionalTrendLoss,
-            HybridMDNDirectionalLoss
-        )
-    except ImportError:
-        DirectionalTrendLoss = None
-        HybridMDNDirectionalLoss = None
-        logger.warning("DirectionalTrendLoss not available - install from layers.modular.losses")
-    
-    # Use proper loss function based on config
-    loss_config = getattr(args, 'loss', {})
-    loss_type = loss_config.get('type', 'auto') if isinstance(loss_config, dict) else 'auto'
-    
-    if loss_type == 'hybrid_mdn_directional' and HybridMDNDirectionalLoss is not None:
-        # Hybrid MDN + Directional loss for directional/trend-focused forecasting
-        nll_weight = loss_config.get('nll_weight', 0.3)
-        direction_weight = loss_config.get('direction_weight', 3.0)
-        trend_weight = loss_config.get('trend_weight', 1.5)
-        magnitude_weight = loss_config.get('magnitude_weight', 0.1)
+        from layers.modular.loss.loss_handler import create_loss_handler
         
-        criterion = HybridMDNDirectionalLoss(
-            nll_weight=nll_weight,
-            direction_weight=direction_weight,
-            trend_weight=trend_weight,
-            magnitude_weight=magnitude_weight
-        )
-        logger.info(
-            "Using Hybrid MDN+Directional Loss | nll_weight=%.2f direction_weight=%.2f trend_weight=%.2f magnitude_weight=%.2f",
-            nll_weight, direction_weight, trend_weight, magnitude_weight
-        )
-    elif loss_type == 'directional_trend' and DirectionalTrendLoss is not None:
-        # Pure directional/trend loss (no MDN uncertainty)
-        direction_weight = loss_config.get('direction_weight', 5.0)
-        trend_weight = loss_config.get('trend_weight', 2.0)
-        magnitude_weight = loss_config.get('magnitude_weight', 0.1)
+        # Get loss configuration
+        loss_config = getattr(args, 'loss', {})
+        model_config = {
+            'enable_mdn_decoder': getattr(args, 'enable_mdn_decoder', False),
+            'use_mixture_decoder': getattr(args, 'use_mixture_decoder', False),
+            'use_sequential_mixture_decoder': getattr(args, 'use_sequential_mixture_decoder', False)
+        }
         
-        criterion = DirectionalTrendLoss(
-            direction_weight=direction_weight,
-            trend_weight=trend_weight,
-            magnitude_weight=magnitude_weight,
-            use_mdn_mean=getattr(model, 'use_mixture_decoder', False)
-        )
+        # Create and validate loss handler ONCE for the entire training
+        loss_handler = create_loss_handler(loss_config, model_config)
+        
+        # The criterion is now just a placeholder - actual loss computation happens in handlers
+        criterion = loss_handler.loss_fn if loss_handler.loss_fn is not None else nn.MSELoss()
+        
         logger.info(
-            "Using Directional Trend Loss | direction_weight=%.2f trend_weight=%.2f magnitude_weight=%.2f",
-            direction_weight, trend_weight, magnitude_weight
+            "Using modular loss handler | type=%s | config=%s",
+            loss_config.get('type', 'auto'),
+            {k: v for k, v in loss_config.items() if k != 'type'}
         )
-    elif getattr(model, 'use_mixture_decoder', False) and SequentialMixtureNLLLoss is not None:
-        # Auto-select mixture loss for MDN models
-        criterion = SequentialMixtureNLLLoss(reduction='mean')
-        logger.info("Using Gaussian Mixture NLL Loss for probabilistic predictions")
-    else:
-        # Fallback to MSE
-        criterion = nn.MSELoss()
-        logger.info("Using MSE Loss for deterministic predictions")
+        
+    except Exception as loss_setup_error:
+        logger.error(f"Loss setup failed: {loss_setup_error}")
+        logger.error("Available loss types: hybrid_mdn_directional, directional_trend, mdn_nll, mixture_nll, mse")
+        raise ValueError(
+            f"Loss configuration error: {loss_setup_error}. "
+            f"Check that loss type '{loss_config.get('type', 'auto')}' is compatible with model settings."
+        ) from loss_setup_error
     
     # NO EARLY STOPPING for production
     early_stopping = EarlyStopping(patience=args.patience, verbose=True)
@@ -2817,12 +2742,7 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
     if detected_target_indices is not None:
         target_indices = detected_target_indices
 
-    sequential_mixture_loss_cls: Optional[Type[nn.Module]] = None
-    mixture_loss_cls: Optional[Type[nn.Module]] = None
-    if SequentialMixtureNLLLoss is not None:
-        sequential_mixture_loss_cls = SequentialMixtureNLLLoss
-    if MixtureNLLLoss is not None:
-        mixture_loss_cls = MixtureNLLLoss
+    # Loss computation now handled by modular handlers - no class references needed
 
     # PRODUCTION Training loop
     logger.info("Starting production training loop")
@@ -2876,8 +2796,7 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
             full_cycles=full_cycles,
             remainder_batches=remainder_batches,
             epoch_start=epoch_start,
-            sequential_mixture_loss_cls=sequential_mixture_loss_cls,
-            mixture_loss_cls=mixture_loss_cls,
+            loss_handler=loss_handler,  # Pass the modular loss handler
         )
 
         avg_val_loss, val_batches, avg_dir_accuracy = validate_epoch(
@@ -2890,8 +2809,7 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
             logger=logger,
             target_scaler=target_scaler,
             target_indices=target_indices,
-            sequential_mixture_loss_cls=sequential_mixture_loss_cls,
-            mixture_loss_cls=mixture_loss_cls,
+            loss_handler=loss_handler,  # Pass the modular loss handler
         )
 
         epoch_time = time.time() - epoch_start
