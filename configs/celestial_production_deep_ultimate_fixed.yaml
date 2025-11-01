@@ -42,13 +42,13 @@ learning_rate: 0.00008          # Conservative learning rate
 weight_decay: 0.015             # Regularization
 gradient_accumulation_steps: 3  # Effective batch size = 6
 
-# ENHANCED: Mixture NLL Directional Loss (ACTIVATED)
+# ENHANCED: Mixture NLL Directional Loss (REBALANCED)
 loss:
   type: hybrid_mdn_directional  # Hybrid MDN + Directional loss
-  nll_weight: 0.25              # MDN NLL component weight
-  direction_weight: 4.0         # Directional accuracy weight
-  trend_weight: 2.0             # Trend consistency weight
-  magnitude_weight: 0.15        # Magnitude accuracy weight
+  nll_weight: 0.15              # REDUCED: MDN NLL component weight
+  direction_weight: 8.0         # INCREASED: Directional accuracy weight (primary focus)
+  trend_weight: 0.5             # REDUCED: Trend consistency weight (was dominating)
+  magnitude_weight: 0.1         # REDUCED: Magnitude accuracy weight
   correlation_type: pearson     # Correlation type for trend
 
 # MDN Configuration (ACTIVATED)
