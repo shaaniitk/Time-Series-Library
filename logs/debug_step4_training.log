@@ -1,0 +1,97 @@
+2025-10-31 23:55:31,386 INFO __main__: Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-31 23:55:31,387 INFO __main__: Heavy-duty overnight configuration enabled
+2025-10-31 23:55:31,387 INFO __main__: 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-10-31 23:55:31,389 INFO __main__: ================================================================================
+2025-10-31 23:55:31,391 INFO __main__: Configuration summary | model=Celestial_Enhanced_PGAT seq_len=48 pred_len=6 d_model=64 n_heads=4 e_layers=2 d_layers=1 train_epochs=1
+2025-10-31 23:55:31,391 INFO __main__: Optimization summary | batch_size=1 learning_rate=0.001 patience=5 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-10-31 23:55:31,392 INFO __main__: Using device: cpu (CPU fallback)
+2025-10-31 23:55:31,399 INFO __main__: Reproducibility seed configured to 42
+2025-10-31 23:55:31,399 INFO __main__: Loading production data modules
+2025-10-31 23:55:31,911 INFO __main__: Training scalers extracted: main_scaler=True, target_scaler=True
+2025-10-31 23:55:31,911 INFO __main__: Loaded train data module | samples=6856 batches=6856 batch_size=1 drop_last=True shuffle=True pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 23:55:32,314 INFO __main__: Created val dataset with training scalers
+2025-10-31 23:55:32,314 INFO __main__: Loaded val data module | samples=145 batches=145 batch_size=1 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 23:55:32,733 INFO __main__: Created test dataset with training scalers
+2025-10-31 23:55:32,734 INFO __main__: Loaded test data module | samples=45 batches=45 batch_size=1 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 23:55:32,734 INFO __main__: Data loader sizes | train=6856 val=145 test=45
+2025-10-31 23:55:32,734 INFO __main__: Preparing scaling utilities for loss computation
+2025-10-31 23:55:32,734 INFO __main__: Main scaler detected with 118 features
+2025-10-31 23:55:32,734 INFO __main__: Target scaler detected with 4 features
+2025-10-31 23:55:32,734 INFO __main__: Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-31 23:55:32,734 INFO __main__: Initializing production Celestial Enhanced PGAT model
+2025-10-31 23:55:32,735 INFO models.Celestial_Enhanced_PGAT_Modular.Model: Initializing Celestial Enhanced PGAT | seq_len=48 pred_len=6 d_model=64 celestial_bodies=13 wave_aggregation=True mixture_decoder=False stochastic_learner=False hierarchical_mapping=False
+2025-10-31 23:55:32,735 INFO models.Celestial_Enhanced_PGAT_Modular.Model: Phase-aware aggregation configured | input_waves=113 target_wave_indices=[0, 1, 2, 3]
+2025-10-31 23:55:33,019 INFO models.celestial_modules.context_fusion: 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=64
+2025-10-31 23:55:33,020 INFO models.celestial_modules.context_fusion: 📊 Multi-scale configuration | short=5 medium=15 long=global dropout=0.100
+2025-10-31 23:55:33,021 INFO models.celestial_modules.context_fusion: ✅ Multi-scale fusion layer initialized
+2025-10-31 23:55:33,022 INFO models.celestial_modules.context_fusion: ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-10-31 23:55:33,022 INFO models.celestial_modules.context_fusion: 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-10-31 23:55:33,022 INFO models.celestial_modules.context_fusion: 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-10-31 23:55:33,022 INFO models.celestial_modules.context_fusion: ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-10-31 23:55:33,022 INFO models.celestial_modules.context_fusion: 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-10-31 23:55:33,022 INFO models.celestial_modules.context_fusion: 🎉 Multi-Scale Context Fusion successfully initialized
+2025-10-31 23:55:33,111 INFO __main__: Model initialized successfully
+2025-10-31 23:55:33,119 INFO __main__: Parameter statistics | total=954,851 trainable=954,851 approx_size_mb=3.6
+2025-10-31 23:55:33,125 INFO __main__: Standard precision training
+2025-10-31 23:55:33,125 INFO __main__: Gradient accumulation configured | steps=1 effective_batch_size=1
+2025-10-31 23:55:33,129 INFO __main__: Using MSE Loss for deterministic predictions
+2025-10-31 23:55:33,130 INFO __main__: Early stopping patience configured to 5 (effectively disabled)
+2025-10-31 23:55:33,130 INFO __main__: Checkpoints will be saved to checkpoints/celestial_debug_step4
+2025-10-31 23:55:33,132 INFO __main__: Inspecting data file at ./data/prepared_financial_data.csv for target resolution
+2025-10-31 23:55:33,140 INFO __main__: Feature summary | total_columns=119 feature_columns=118
+2025-10-31 23:55:33,170 INFO __main__: Estimated CSV row count: 7109
+2025-10-31 23:55:33,170 INFO __main__: Auto-set enc_in/dec_in to 118 based on feature count
+2025-10-31 23:55:33,171 INFO __main__: Resolved target indices: [0, 1, 2, 3]
+2025-10-31 23:55:33,171 INFO __main__: Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-10-31 23:55:33,171 INFO __main__: Starting production training loop
+2025-10-31 23:55:33,171 INFO __main__: Configured for 1 training epochs
+2025-10-31 23:55:33,178 INFO __main__: Epoch 1/1 - production training
+2025-10-31 23:55:36,060 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-10-31 23:55:38,838 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-10-31 23:55:45,685 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-10-31 23:55:50,238 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-10-31 23:55:56,190 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-10-31 23:55:58,854 INFO __main__: BATCH 6/6856 | Epoch 1/1 | Loss=1.564776 | Time=25.7s
+2025-10-31 23:56:01,911 INFO __main__: BATCH 7/6856 | Epoch 1/1 | Loss=2.526311 | Time=28.7s
+2025-10-31 23:56:04,179 INFO __main__: BATCH 8/6856 | Epoch 1/1 | Loss=1.952537 | Time=31.0s
+2025-10-31 23:56:08,088 INFO __main__: BATCH 9/6856 | Epoch 1/1 | Loss=1.582060 | Time=34.9s
+2025-10-31 23:56:10,569 INFO __main__: BATCH 10/6856 | Epoch 1/1 | Loss=2.184092 | Time=37.4s
+2025-10-31 23:56:12,733 INFO __main__: BATCH 11/6856 | Epoch 1/1 | Loss=1.788247 | Time=39.6s
+2025-10-31 23:56:16,317 INFO __main__: BATCH 12/6856 | Epoch 1/1 | Loss=1.707410 | Time=43.1s
+2025-10-31 23:56:18,616 INFO __main__: BATCH 13/6856 | Epoch 1/1 | Loss=1.228356 | Time=45.4s
+2025-10-31 23:56:21,187 INFO __main__: BATCH 14/6856 | Epoch 1/1 | Loss=1.436608 | Time=48.0s
+2025-10-31 23:56:23,359 INFO __main__: BATCH 15/6856 | Epoch 1/1 | Loss=1.238052 | Time=50.2s
+2025-10-31 23:56:26,926 INFO __main__: BATCH 16/6856 | Epoch 1/1 | Loss=1.469656 | Time=53.8s
+2025-10-31 23:56:30,932 INFO __main__: BATCH 17/6856 | Epoch 1/1 | Loss=1.380221 | Time=57.8s
+2025-10-31 23:56:38,519 INFO __main__: BATCH 18/6856 | Epoch 1/1 | Loss=1.667074 | Time=65.3s
+2025-10-31 23:56:40,990 INFO __main__: BATCH 19/6856 | Epoch 1/1 | Loss=2.723975 | Time=67.8s
+2025-10-31 23:56:43,237 INFO __main__: BATCH 20/6856 | Epoch 1/1 | Loss=1.357051 | Time=70.1s
+2025-10-31 23:56:45,903 INFO __main__: BATCH 21/6856 | Epoch 1/1 | Loss=1.542529 | Time=72.7s
+2025-10-31 23:56:50,567 INFO __main__: BATCH 22/6856 | Epoch 1/1 | Loss=1.551343 | Time=77.4s
+2025-10-31 23:56:53,258 INFO __main__: BATCH 23/6856 | Epoch 1/1 | Loss=1.237135 | Time=80.1s
+2025-10-31 23:56:55,756 INFO __main__: BATCH 24/6856 | Epoch 1/1 | Loss=3.356942 | Time=82.6s

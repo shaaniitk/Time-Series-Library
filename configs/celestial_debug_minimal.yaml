@@ -1,0 +1,279 @@
+# Celestial Enhanced PGAT DEBUG configuration
+# Minimal dimensions with ALL advanced features enabled for bug detection
+
+# Model and training identifiers
+model: Celestial_Enhanced_PGAT
+model_id: celestial_debug_minimal
+model_name: Celestial_Enhanced_PGAT
+
+# Data settings
+data: custom
+data_name: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d               # Daily frequency (3 time features)
+use_gpu: true
+
+# MINIMAL Sequence settings for fast debugging
+seq_len: 24           # Minimal sequence length
+label_len: 12         # Half of seq_len
+pred_len: 4           # Minimal prediction horizon
+
+# Data split settings - Minimal for fast testing
+validation_length: 10
+test_length: 10
+
+# MINIMAL Training - Just enough to catch bugs
+learning_rate: 0.001
+train_epochs: 2       # Just 2 epochs for bug detection
+batch_size: 2         # Minimal batch size
+patience: 999         # Disable early stopping
+lradj: warmup_cosine
+warmup_epochs: 1      # Minimal warmup
+min_lr: 1e-6
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# MINIMAL MODEL hyperparameters - Keep all features but tiny dimensions
+d_model: 64           # Minimal d_model (must be divisible by n_heads)
+n_heads: 4            # Minimal heads (d_model/n_heads = 16)
+e_layers: 2           # Minimal encoder layers
+d_layers: 2           # Minimal decoder layers
+d_ff: 128             # Minimal feed-forward dimension
+dropout: 0.1
+
+# Input/Output dimensions
+enc_in: 118           # Match CSV structure
+dec_in: 118           # Same as encoder input  
+c_out: 4              # Four target outputs (OHLC)
+
+# ALL ADVANCED FEATURES ENABLED (but with minimal dimensions)
+
+# Celestial system parameters - MINIMAL
+celestial_dim: 16     # Minimal celestial dimension (must be divisible by n_heads)
+celestial_fusion_layers: 2
+num_celestial_bodies: 13
+num_input_waves: 118
+
+# Petri Net Architecture - ENABLED with minimal complexity
+use_petri_net_combiner: true
+num_message_passing_steps: 2
+edge_feature_dim: 8   # Minimal edge features
+use_temporal_attention: true
+use_spatial_attention: true
+bypass_spatiotemporal_with_petri: true
+petri_net_places: 16  # Minimal places
+petri_net_transitions: 20  # Minimal transitions
+
+# Enhanced Features - ALL ENABLED
+use_mixture_decoder: true
+use_sequential_mixture_decoder: true
+use_stochastic_learner: true
+use_hierarchical_mapping: true
+use_efficient_covariate_interaction: true
+
+# Adaptive TopK Pooling - ENABLED with minimal settings
+enable_adaptive_topk: true
+adaptive_topk_ratio: 0.5
+adaptive_topk_temperature: 1.0
+
+# Stochastic Control - ENABLED with minimal complexity
+use_stochastic_control: true
+stochastic_temperature_start: 1.0
+stochastic_temperature_end: 0.1
+stochastic_decay_steps: 100  # Minimal decay steps
+stochastic_noise_std: 0.1
+stochastic_layers: 2
+
+# MDN Decoder - ENABLED with minimal components
+enable_mdn_decoder: true
+mdn_components: 3     # Minimal mixture components
+mdn_sigma_min: 0.001
+mdn_sigma_max: 1.0
+mdn_use_softplus: true
+
+# Target Autocorrelation - ENABLED
+use_target_autocorrelation: true
+target_autocorr_layers: 2
+
+# Calendar Effects - ENABLED with minimal dimension
+use_calendar_effects: true
+calendar_embedding_dim: 16  # Minimal calendar embedding
+
+# Celestial-to-Target Attention - ENABLED
+use_celestial_target_attention: true
+celestial_target_use_gated_fusion: true
+use_c2t_edge_bias: false
+c2t_edge_bias_weight: 0.2
+c2t_aux_rel_loss_weight: 0.0
+
+# Wave aggregation - ENABLED
+aggregate_waves_to_celestial: true
+target_wave_indices: [0, 1, 2, 3]
+
+# Dynamic Spatiotemporal Encoder - ENABLED
+use_dynamic_spatiotemporal_encoder: true
+
+# Context Fusion - ENABLED with minimal settings
+use_multi_scale_context: true
+context_fusion_mode: multi_scale
+context_fusion_layers: 2
+context_fusion_dropout: 0.1
+
+# Hierarchical Mapping - ENABLED with minimal levels
+hierarchical_levels: 2
+hierarchical_reduction_factor: 2
+
+# Multi-scale kernels - MINIMAL
+short_term_kernel_size: 3
+medium_term_kernel_size: 6
+long_term_kernel_size: 12
+
+# Advanced Loss - ENABLED with balanced weights
+loss:
+  type: hybrid_mdn_directional
+  nll_weight: 0.4
+  direction_weight: 2.0
+  trend_weight: 1.5
+  magnitude_weight: 0.1
+  correlation_type: pearson
+
+# Gradient accumulation - MINIMAL
+gradient_accumulation_steps: 1
+
+# Memory and diagnostics - ENABLED for debugging
+enable_memory_diagnostics: true
+enable_memory_snapshots: true
+memory_log_interval: 5
+memory_snapshot_interval: 5
+memory_summary_on_exception: true
+dump_cuda_memory_summary: false
+
+# Adversarial checks - ENABLED with minimal batches
+enable_adversarial_checks: true
+adversarial_max_batches: 2
+adversarial_noise_std: 0.05
+adversarial_scale_factor: 0.1
+adversarial_dropout_ratio: 0.1
+
+# Calibration metrics - ENABLED with minimal samples
+calibration_metrics:
+  compute_crps: true
+  compute_energy_score: true
+  compute_variogram_score: true
+  coverage_levels: [0.5, 0.8, 0.9]
+  crps_samples: 50
+
+# Regularization - MINIMAL
+reg_loss_weight: 0.001
+label_smoothing: 0.01
+
+# Optimization enhancements - ENABLED
+use_lookahead_optimizer: false  # Disable for simplicity
+lookahead_k: 3
+lookahead_alpha: 0.5
+ema_decay: 0.999
+
+# Ensemble - DISABLED for debugging simplicity
+use_ensemble_prediction: false
+ensemble_size: 1
+ensemble_method: simple_average
+
+# Curriculum learning - DISABLED for debugging
+use_curriculum_learning: false
+curriculum_start_seq_len: 24
+curriculum_end_seq_len: 24
+curriculum_steps: 1
+
+# Progressive growing - DISABLED for debugging
+use_progressive_growing: false
+
+# Multi-GPU - DISABLED for debugging
+use_multi_gpu: false
+
+# Knowledge distillation - DISABLED for debugging
+use_knowledge_distillation: false
+
+# Dropout scheduling - ENABLED with minimal range
+use_dropout_schedule: true
+dropout_schedule_start: 0.15
+dropout_schedule_end: 0.05
+
+# Normalization - ENABLED
+use_layer_norm: true
+use_batch_norm: false
+use_spectral_norm: true
+
+# Future celestial conditioning - ENABLED
+use_future_celestial_conditioning: true
+
+# Gated graph combiner - ENABLED
+use_gated_graph_combiner: true
+
+# Phase-aware processing - ENABLED
+use_phase_aware_processing: true
+
+# Logging and debugging
+debug_mode: true
+verbose_logging: true
+log_level: DEBUG
+log_format: '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
+log_file: logs/debug_minimal_training.log
+debug_log_file: logs/debug_minimal_detailed.log
+log_interval: 1       # Log every batch for debugging
+log_gradient_norms: true
+log_weight_norms: true
+
+# Tracking - ALL ENABLED for debugging
+track_training_time: true
+track_memory_usage: true
+track_gpu_utilization: true
+track_learning_rate: true
+track_loss_components: true
+
+# Checkpointing - ENABLED
+save_checkpoints: true
+save_best_only: false
+checkpoint_interval: 1  # Save every epoch for debugging
+
+# Data loading - MINIMAL for fast debugging
+num_workers: 0        # Avoid multiprocessing issues
+persistent_workers: false
+pin_memory: false     # Avoid memory issues
+prefetch_factor: 1
+
+# Reproducibility
+deterministic: true
+production_seed: 42
+random_seed: 42
+seed: 42
+
+# Scaling
+scale: true
+inverse: false
+
+# Mixed precision - DISABLED for debugging clarity
+mixed_precision: false
+use_amp: false
+
+# Additional minimal settings
+max_memory_usage: 0.5  # Conservative memory usage
+early_stopping_min_delta: 1e-6
+early_stopping_patience: 10
+early_stopping_restore_best_weights: true
+
+# Task configuration
+task_name: debug_forecast
+train_only: false
+do_predict: false
+output_attention: false
+distil: false
+mix: false
+factor: 1
+cols: null
+itr: 1
+devices: '0'
+gpu: 0

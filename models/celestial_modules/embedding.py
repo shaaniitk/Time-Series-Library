@@ -14,6 +14,18 @@ from layers.modular.aggregation.phase_aware_celestial_processor import PhaseAwar
 from layers.modular.embedding.calendar_aware_embedding import CalendarEffectsEncoder
 from utils.celestial_wave_aggregator import CelestialWaveAggregator, CelestialDataProcessor
 
+class EmbeddingError(Exception):
+    """Custom exception for embedding-related errors"""
+    pass
+
+class DimensionMismatchError(EmbeddingError):
+    """Raised when input dimensions don't match expected dimensions"""
+    pass
+
+class CelestialProcessingError(EmbeddingError):
+    """Raised when celestial processing fails"""
+    pass
+
 # Enhanced DataEmbedding implementation with proper validation
 class DataEmbedding(nn.Module):
     def __init__(self, c_in, d_model, embed_type='fixed', freq='h', dropout=0.1):
@@ -138,13 +150,21 @@ class TimeFeatureEmbedding(nn.Module):
         super(TimeFeatureEmbedding, self).__init__()
 
         freq_map = {'h': 4, 't': 5, 's': 6, 'm': 1, 'a': 1, 'w': 2, 'd': 3, 'b': 3}
-        d_inp = freq_map.get(freq, 4)  # Default to 4 if freq not found
+        if freq not in freq_map:
+            raise ValueError(f"Unsupported frequency '{freq}'. Supported frequencies: {list(freq_map.keys())}")
+        
+        d_inp = freq_map[freq]
+        self.expected_features = d_inp
         self.embed = nn.Linear(d_inp, d_model, bias=False)
     
     def forward(self, x):
-        # Handle case where input has more features than expected
-        if x.size(-1) > self.embed.in_features:
-            x = x[..., :self.embed.in_features]
+        # STRICT validation - no silent truncation
+        if x.size(-1) != self.expected_features:
+            raise DimensionMismatchError(
+                f"TimeFeatureEmbedding expects {self.expected_features} time features, "
+                f"but got {x.size(-1)}. Input shape: {x.shape}. "
+                f"Ensure time feature preprocessing matches frequency configuration."
+            )
         return self.embed(x)
 
 class EmbeddingModule(nn.Module):
@@ -197,9 +217,15 @@ class EmbeddingModule(nn.Module):
         
         self.enc_embedding = DataEmbedding(embedding_input_dim, config.d_model, config.embed, config.freq, config.dropout)
         
-        # FIXED: Decoder embedding should always expect d_model dimensions
-        # This is because we always project decoder input to d_model (either via celestial processing or raw projection)
-        decoder_embedding_input_dim = config.d_model
+        # Decoder embedding configuration - STRICT dimension handling
+        if config.aggregate_waves_to_celestial:
+            # When using celestial processing, decoder input will be projected via celestial_projection
+            decoder_embedding_input_dim = config.d_model
+        else:
+            # When not using celestial processing, we need a raw projection layer
+            decoder_embedding_input_dim = config.d_model
+            self.raw_dec_projection = nn.Linear(config.dec_in, config.d_model)
+            
         self.dec_embedding = DataEmbedding(decoder_embedding_input_dim, config.d_model, config.embed, config.freq, config.dropout)
 
         if config.use_calendar_effects:
@@ -284,30 +310,41 @@ class EmbeddingModule(nn.Module):
                 f"embedding_c_in={self.enc_embedding.c_in}"
             ) from exc
 
-        # 3. Decoder Embedding - RESTORED: Apply celestial processing for rich information flow
+        # 3. Decoder Embedding - STRICT: No fallbacks, proper error handling
         batch_size_dec, seq_len_dec, dec_in = x_dec.shape
         
-        if self.config.aggregate_waves_to_celestial and dec_in >= self.config.num_input_waves:
+        if self.config.aggregate_waves_to_celestial:
+            if dec_in < self.config.num_input_waves:
+                raise DimensionMismatchError(
+                    f"Decoder input has {dec_in} features but celestial processing requires "
+                    f"{self.config.num_input_waves} input waves. "
+                    f"Either disable celestial processing or ensure decoder input has sufficient features."
+                )
+            
             # Apply celestial processing to decoder input for rich feature representation
             try:
                 celestial_features_dec, _, _ = self.phase_aware_processor(x_dec)
                 x_dec_processed = self.celestial_projection(celestial_features_dec)
+                
                 if getattr(self.config, 'debug_mode', False):
                     print(f"Decoder: Applied celestial processing {x_dec.shape} → {celestial_features_dec.shape} → {x_dec_processed.shape}")
+                    
             except Exception as e:
-                # CRITICAL: If celestial processing fails, we need to project raw input to match decoder embedding expectations
-                print(f"Warning: Decoder celestial processing failed: {e}")
-                print(f"Projecting raw decoder input {x_dec.shape} to match decoder embedding dimension")
-                
-                # Project raw input to match expected decoder embedding dimension
-                if not hasattr(self, 'raw_dec_projection'):
-                    self.raw_dec_projection = nn.Linear(dec_in, self.config.d_model).to(x_dec.device)
-                
-                x_dec_processed = self.raw_dec_projection(x_dec)
+                raise CelestialProcessingError(
+                    f"Decoder celestial processing failed: {e}. "
+                    f"Input shape: {x_dec.shape}, Expected waves: {self.config.num_input_waves}. "
+                    f"Check celestial processor configuration and input data consistency."
+                ) from e
         else:
-            # If not using celestial processing, project raw input to d_model
+            # When not using celestial processing, we need a proper projection layer
+            # This should be configured at initialization, not created on-the-fly
             if not hasattr(self, 'raw_dec_projection'):
-                self.raw_dec_projection = nn.Linear(dec_in, self.config.d_model).to(x_dec.device)
+                raise EmbeddingError(
+                    f"Decoder projection layer not initialized. "
+                    f"When celestial processing is disabled, decoder input projection must be configured. "
+                    f"Input shape: {x_dec.shape}, Expected output: d_model={self.config.d_model}"
+                )
+            
             x_dec_processed = self.raw_dec_projection(x_dec)
             
         dec_out = self.dec_embedding(x_dec_processed, x_mark_dec)

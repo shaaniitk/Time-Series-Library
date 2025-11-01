@@ -111,6 +111,95 @@ class GraphModule(nn.Module):
             nn.Linear(config.d_model, config.d_model // 2), nn.ReLU(),
             nn.Linear(config.d_model // 2, 3)
         )
+
+        # Efficient covariate interaction components
+        if getattr(config, 'use_efficient_covariate_interaction', False):
+            if config.d_model % config.num_graph_nodes != 0:
+                # Calculate suggested d_model values
+                def find_compatible_d_model(current_d_model, num_nodes, n_heads):
+                    """Find the closest d_model that's divisible by both num_nodes and n_heads"""
+                    # Find LCM of num_nodes and n_heads for perfect compatibility
+                    import math
+                    lcm = (num_nodes * n_heads) // math.gcd(num_nodes, n_heads)
+                    
+                    # Find closest multiples of LCM
+                    lower_multiple = (current_d_model // lcm) * lcm
+                    upper_multiple = lower_multiple + lcm
+                    
+                    # Also find simple multiples of num_nodes (if n_heads compatibility not critical)
+                    lower_simple = (current_d_model // num_nodes) * num_nodes
+                    upper_simple = lower_simple + num_nodes
+                    
+                    return {
+                        'lcm': lcm,
+                        'perfect_lower': lower_multiple if lower_multiple > 0 else lcm,
+                        'perfect_upper': upper_multiple,
+                        'simple_lower': lower_simple if lower_simple > 0 else num_nodes,
+                        'simple_upper': upper_simple
+                    }
+                
+                suggestions = find_compatible_d_model(config.d_model, config.num_graph_nodes, config.n_heads)
+                
+                error_msg = f"""
+🚫 CONFIGURATION ERROR: Efficient Covariate Interaction Dimension Mismatch
+
+❌ Current configuration:
+   d_model = {config.d_model}
+   num_graph_nodes = {config.num_graph_nodes} (celestial bodies)
+   n_heads = {config.n_heads}
+
+❌ Problem: d_model ({config.d_model}) is not divisible by num_graph_nodes ({config.num_graph_nodes})
+   Remainder: {config.d_model} % {config.num_graph_nodes} = {config.d_model % config.num_graph_nodes}
+
+✅ SOLUTION: Update your config with one of these d_model values:
+
+   🎯 RECOMMENDED (compatible with both graph nodes AND attention heads):
+      d_model: {suggestions['perfect_lower']} (closest smaller)
+      d_model: {suggestions['perfect_upper']} (closest larger)
+      
+   📊 ALTERNATIVE (compatible with graph nodes only):
+      d_model: {suggestions['simple_lower']} (closest smaller)  
+      d_model: {suggestions['simple_upper']} (closest larger)
+
+💡 WHY: Efficient covariate interaction partitions d_model across {config.num_graph_nodes} graph nodes.
+   Each node gets d_model/{config.num_graph_nodes} = {config.d_model}/{config.num_graph_nodes} dimensions.
+   This requires perfect divisibility for tensor reshaping.
+
+🔧 QUICK FIX: In your YAML config, change:
+   d_model: {config.d_model}  # ❌ Current
+   d_model: {suggestions['perfect_upper']}  # ✅ Recommended
+
+🔄 Or disable efficient covariate interaction:
+   use_efficient_covariate_interaction: false
+"""
+                raise ValueError(error_msg)
+            node_dim = config.d_model // config.num_graph_nodes
+
+            # Processes the covariate graph with a shared weight matrix (graph convolution)
+            self.covariate_interaction_layer = nn.Linear(node_dim, node_dim)
+            
+            # Fuses each target's features with the aggregated summary from the covariate graph.
+            self.target_fusion_layer = nn.Sequential(
+                nn.Linear(node_dim * 2, node_dim), # Combines target node features and covariate context
+                nn.GELU(),
+                nn.Linear(node_dim, node_dim)
+            )
+
+            # Enhancement 1: Target-Specific Covariate Attention (optional)
+            # Each target dynamically attends to covariates at each time step.
+            enable_target_covariate_attention = getattr(config, 'enable_target_covariate_attention', False)
+            if enable_target_covariate_attention:
+                # MultiheadAttention requires embed_dim % num_heads == 0.
+                # Use n_heads when compatible, else fall back to single head.
+                attn_heads = config.n_heads if (node_dim % config.n_heads) == 0 else 1
+                self.covariate_attention = nn.MultiheadAttention(
+                    embed_dim=node_dim,
+                    num_heads=attn_heads,
+                    dropout=config.dropout,
+                    batch_first=True,
+                )
+            else:
+                self.covariate_attention = None
     
     def _normalize_adj(self, adj_matrix):
         identity = torch.eye(adj_matrix.size(-1), device=adj_matrix.device, dtype=torch.float32)
@@ -165,6 +254,27 @@ class GraphModule(nn.Module):
         adj_matrix = adj_flat.view(batch_size, seq_len, num_nodes, num_nodes)
         
         return adj_matrix
+
+    def _validate_adjacency_dimensions(self, astronomical_adj: torch.Tensor, 
+                                     learned_adj: torch.Tensor, 
+                                     dynamic_adj: torch.Tensor, 
+                                     enc_out: torch.Tensor) -> None:
+        """Validate that all adjacency matrices have consistent 4D dimensions."""
+        batch_size, seq_len, d_model = enc_out.shape
+        expected_shape = (batch_size, seq_len, self.config.num_celestial_bodies, self.config.num_celestial_bodies)
+        
+        matrices = {
+            'astronomical_adj': astronomical_adj,
+            'learned_adj': learned_adj, 
+            'dynamic_adj': dynamic_adj
+        }
+        
+        for name, matrix in matrices.items():
+            if matrix.shape != expected_shape:
+                raise ValueError(
+                    f"Adjacency matrix {name} has incorrect dimensions: "
+                    f"got {matrix.shape}, expected {expected_shape}"
+                )
 
     def _process_celestial_graph(self, x_enc_processed: torch.Tensor, enc_out: torch.Tensor):
         """Process encoder features through the dynamic celestial body graph system."""
@@ -227,6 +337,9 @@ class GraphModule(nn.Module):
 
         # 2. Learn data-driven graph
         learned_adj = self._learn_data_driven_graph(enc_out)
+
+        # 2.5. Validate adjacency dimensions for safety and debugging
+        self._validate_adjacency_dimensions(astronomical_adj, learned_adj, dynamic_adj, enc_out)
 
         # 3. Combine all graph types with hierarchical fusion
         if phase_based_adj is not None:
@@ -293,3 +406,71 @@ class GraphModule(nn.Module):
             fusion_metadata['edge_features_preserved'] = False
         
         return enhanced_enc_out, combined_adj, rich_edge_features, fusion_metadata, celestial_features
+
+    def _efficient_graph_processing(self, encoded_features, combined_adj):
+        """
+        Performs partitioned graph processing.
+        1. Computes a context vector from the independent covariate graph.
+        2. Updates target node features based on their interactions and influence from the covariate context.
+        This is much more memory-efficient than processing the full graph iteratively.
+        """
+        batch_size, seq_len, _ = encoded_features.shape
+        num_nodes = self.config.num_graph_nodes
+        
+        # This architecture assumes d_model is divisible by the number of nodes.
+        if self.config.d_model % num_nodes != 0:
+            raise ValueError(f"d_model ({self.config.d_model}) must be divisible by num_graph_nodes ({num_nodes}) for efficient processing.")
+        node_dim = self.config.d_model // num_nodes
+        
+        features_per_node = encoded_features.view(batch_size, seq_len, num_nodes, node_dim)
+        
+        # Partition features and adjacency matrix
+        num_covariates = num_nodes - self.config.c_out
+        covariate_features = features_per_node[:, :, :num_covariates, :]
+        target_features = features_per_node[:, :, num_covariates:, :]
+        
+        adj_cov_cov = combined_adj[:, :, :num_covariates, :num_covariates]
+        adj_tar_cov = combined_adj[:, :, num_covariates:, :num_covariates]
+        adj_tar_tar = combined_adj[:, :, num_covariates:, num_covariates:]
+        
+        # 1. Process Covariates to get a context summary or attention-ready values
+        # Perform graph convolution: A * X
+        cov_interaction = torch.einsum('bsnm,bsmd->bsnd', adj_cov_cov, covariate_features)
+        # Apply shared weight matrix: (A * X) * W
+        processed_covariates = self.covariate_interaction_layer(cov_interaction)
+        # If attention is disabled, aggregate across covariate nodes to get a single context vector per timestep
+        if not getattr(self.config, 'enable_target_covariate_attention', False) or not hasattr(self, 'covariate_attention'):
+            covariate_context = processed_covariates.mean(dim=2)  # Shape: [batch, seq_len, node_dim]
+        
+        # 2. Update Target Features
+        # Influence from covariates on targets: A_tc * C
+        influence_from_cov = torch.einsum('bsnm,bsmd->bsnd', adj_tar_cov, covariate_features)
+        # Self-influence of targets: A_tt * T
+        influence_from_self = torch.einsum('bsnm,bsmd->bsnd', adj_tar_tar, target_features)
+        
+        # The new features for targets are a combination of their old state and influences
+        updated_target_features = target_features + influence_from_cov + influence_from_self
+        
+        # 3. Fuse targets with covariate context (static mean or dynamic attention)
+        if getattr(self.config, 'enable_target_covariate_attention', False) and hasattr(self, 'covariate_attention'):
+            # Target-specific covariate attention
+            # Reshape to [B*S, Lq, E] and [B*S, Lk, E]
+            query = updated_target_features.reshape(batch_size * seq_len, self.config.c_out, node_dim)
+            key = processed_covariates.reshape(batch_size * seq_len, num_covariates, node_dim)
+            value = key
+            attn_output, _ = self.covariate_attention(query, key, value)
+            attention_context = attn_output.reshape(batch_size, seq_len, self.config.c_out, node_dim)
+            fusion_input = torch.cat([updated_target_features, attention_context], dim=-1)
+        else:
+            # Static, shared covariate context for all targets at a time step
+            expanded_context = covariate_context.unsqueeze(2).expand(-1, -1, self.config.c_out, -1)
+            fusion_input = torch.cat([updated_target_features, expanded_context], dim=-1)
+        
+        fused_target_features = self.target_fusion_layer(fusion_input)
+        
+        # 4. Reconstruct the full feature tensor
+        # We use the original, unchanged covariate features and the updated target features
+        final_features_per_node = torch.cat([covariate_features, fused_target_features], dim=2)
+        
+        # Reshape back to the expected [batch, seq_len, d_model]
+        return final_features_per_node.view(batch_size, seq_len, self.config.d_model)

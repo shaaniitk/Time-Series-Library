@@ -160,12 +160,26 @@ def configure_logging(config: SimpleConfig) -> logging.Logger:
                 msg = record.getMessage()
             except Exception:
                 return False
-            # Allow: per-batch loss, epoch summaries, and test loss
+            # Allow: per-batch loss, epoch summaries, directional accuracy, validation, and test loss
             if "loss=" in msg:
                 return True
             if msg.startswith("Epoch ") and ("complete" in msg or "production training" in msg):
                 return True
             if "test_loss=" in msg:
+                return True
+            if "dir_acc=" in msg:
+                return True
+            if "DIRECTIONAL ACCURACY" in msg:
+                return True
+            if "LOSSES:" in msg:
+                return True
+            if "val_loss=" in msg:
+                return True
+            if "Starting validation" in msg:
+                return True
+            if "Validation complete" in msg:
+                return True
+            if "TREND:" in msg:
                 return True
             return False
 
@@ -1075,8 +1089,11 @@ def train_epoch(
                             try:
                                 w = torch.softmax(pi_d, dim=-1)
                                 if mu_d.dim() == 4:
-                                    w_exp = w.unsqueeze(2)
-                                    mix_mean = torch.sum(w_exp * mu_d, dim=-1)
+                                    # pi_d: (batch, seq, targets, components)
+                                    # mu_d: (batch, seq, targets, components)  
+                                    # w: (batch, seq, targets, components)
+                                    # Compute weighted mean across components (last dimension)
+                                    mix_mean = torch.sum(w * mu_d, dim=-1)  # (batch, seq, targets)
                                 else:
                                     mix_mean = torch.sum(w * mu_d, dim=-1).unsqueeze(-1)
                                 _diag_f.write(f"mdn.mixture_mean.shape: {tuple(mix_mean.shape)}\n")
@@ -1253,14 +1270,24 @@ def train_epoch(
             if batch_index % log_interval == 0:
                 elapsed = time.time() - epoch_start
                 
-                # Simple batch logging (enhanced logging temporarily disabled for debugging)
+                # Compute detailed batch metrics including directional accuracy
+                batch_metrics = _compute_detailed_batch_metrics(
+                    raw_loss, outputs_tensor, y_true_for_loss, mdn_outputs, args
+                )
+                
+                # Enhanced batch logging with directional accuracy
+                dir_acc_str = ""
+                if batch_metrics.get('directional_accuracy') is not None:
+                    dir_acc_str = f" | dir_acc={batch_metrics['directional_accuracy']:.1f}%"
+                
                 logger.info(
-                    "BATCH %s/%s | Epoch %s/%s | Loss=%0.6f | Time=%0.1fs",
+                    "BATCH %s/%s | Epoch %s/%s | loss=%0.6f%s | Time=%0.1fs",
                     batch_index + 1,
                     len(train_loader),
                     epoch + 1,
                     args.train_epochs,
                     raw_loss.detach().item(),
+                    dir_acc_str,
                     elapsed,
                 )
                 if epoch == 0 and batch_index == 0:
@@ -1387,6 +1414,9 @@ def validate_epoch(
     total_loss = 0.0
     total_samples = 0
     
+    # Log validation start
+    logger.info("Starting validation for epoch %s/%s", epoch + 1, args.train_epochs)
+    
     with torch.no_grad():
         for batch_index, batch_data in enumerate(val_loader):
             try:
@@ -1502,8 +1532,10 @@ def validate_epoch(
                             # Compute mixture mean
                             weights_da = torch.softmax(log_weights_da, dim=-1)
                             if means_da.dim() == 4:
-                                weights_expanded = weights_da.unsqueeze(2)
-                                pred_for_da = torch.sum(weights_expanded * means_da, dim=-1)
+                                # weights_da: (batch, seq, targets, components)
+                                # means_da: (batch, seq, targets, components)
+                                # Compute weighted mean across components (last dimension)
+                                pred_for_da = torch.sum(weights_da * means_da, dim=-1)  # (batch, seq, targets)
                             else:
                                 pred_for_da = torch.sum(weights_da * means_da, dim=-1)
                         else:
@@ -1613,6 +1645,16 @@ def validate_epoch(
             MEMORY_LOGGER if MEMORY_LOGGER.handlers else None,
             metrics,
         )
+    
+    # Log validation completion
+    logger.info(
+        "Validation complete | Epoch %s/%s | val_loss=%0.6f | batches=%s%s",
+        epoch + 1,
+        args.train_epochs,
+        avg_val_loss_precise,
+        val_batches,
+        f" | dir_acc={avg_dir_accuracy:.1f}%" if avg_dir_accuracy is not None else ""
+    )
     
     # Return the more precise sample-weighted average
     return avg_val_loss_precise, val_batches, avg_dir_accuracy
@@ -1724,8 +1766,9 @@ def collect_predictions(
                 
                 # Point prediction: mean of mixture
                 if mu.dim() == 4:  # [B, S, T, K]
-                    pi_expanded = pi.unsqueeze(2)  # [B, S, 1, K]
-                    pred_tensor = (pi_expanded * mu).sum(dim=-1)  # [B, S, T]
+                    # pi: [B, S, T, K], mu: [B, S, T, K]
+                    # Compute weighted mean across components (last dimension)
+                    pred_tensor = (pi * mu).sum(dim=-1)  # [B, S, T]
                 else:
                     pred_tensor = (pi * mu).sum(dim=-1).unsqueeze(-1)
                 
@@ -1741,8 +1784,9 @@ def collect_predictions(
                     stds_te = stds_te[:, -args.pred_len:, ...]
                     weights_te = weights_te[:, -args.pred_len:, ...]
                 if means_te.dim() == 4:
-                    weights_expanded = weights_te.unsqueeze(2)
-                    pred_tensor = (weights_expanded * means_te).sum(dim=-1)
+                    # weights_te: [B, S, T, K], means_te: [B, S, T, K]
+                    # Compute weighted mean across components (last dimension)
+                    pred_tensor = (weights_te * means_te).sum(dim=-1)  # [B, S, T]
                 else:
                     pred_tensor = (weights_te * means_te).sum(dim=-1).unsqueeze(-1)
             else:
@@ -2486,6 +2530,26 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
             },
         )
 
+    logger.info("Validating configuration for dimension compatibility...")
+    try:
+        # Validate configuration BEFORE model initialization
+        Model.validate_configuration(args)
+        logger.info("✅ Configuration validation passed")
+    except ValueError as config_error:
+        logger.error("❌ Configuration validation failed:")
+        logger.error(str(config_error))
+        return False
+    
+    logger.info("Validating configuration for dimension compatibility...")
+    try:
+        # 🚀 NEW: Validate configuration BEFORE model initialization
+        Model.validate_configuration(args)
+        logger.info("✅ Configuration validation passed")
+    except ValueError as config_error:
+        logger.error("❌ Configuration validation failed:")
+        logger.error(str(config_error))
+        return False
+    
     logger.info("Initializing production Celestial Enhanced PGAT model")
     try:
         model = Model(args).to(device)

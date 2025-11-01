@@ -1,0 +1,174 @@
+# Celestial Enhanced PGAT - Debug Configuration with All Features
+# Minimal dimensions but all advanced features enabled for bug testing
+
+# Basic Model Configuration
+model: Celestial_Enhanced_PGAT
+model_name: Celestial_Enhanced_PGAT
+task_name: long_term_forecast
+data: custom
+data_name: custom
+
+# Data Configuration
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+freq: d
+checkpoints: ./checkpoints/
+
+# Minimal Model Dimensions (for fast debugging)
+seq_len: 96          # Reduced from 500
+pred_len: 12         # Reduced from 20
+label_len: 48        # Reduced from 250
+d_model: 128         # Reduced from 780
+n_heads: 8           # Reduced from 20
+e_layers: 3          # Reduced from 12
+d_layers: 2          # Reduced from 6
+d_ff: 512            # Reduced from 3120
+enc_in: 118
+dec_in: 118
+c_out: 4
+
+# Training Configuration (minimal for debugging)
+train_epochs: 2      # Just 2 epochs for quick testing
+batch_size: 2        # Small batch size
+learning_rate: 0.0001
+patience: 10
+gradient_accumulation_steps: 1  # No accumulation for simplicity
+
+# ALL ADVANCED FEATURES ENABLED (this is the key part)
+# =====================================================
+
+# 🚀 Celestial Graph Features
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+num_celestial_bodies: 13
+celestial_fusion_layers: 2
+celestial_dim: 32    # Minimal but divisible by n_heads
+
+# 🚀 Petri Net Combiner (Advanced Graph Processing)
+use_petri_net_combiner: true
+num_message_passing_steps: 2
+edge_feature_dim: 6
+use_temporal_attention: true
+use_spatial_attention: true
+bypass_spatiotemporal_with_petri: true
+
+# 🚀 Enhanced Decoders
+use_mixture_decoder: true
+use_sequential_mixture_decoder: true
+enable_mdn_decoder: true
+mdn_components: 3    # Minimal components
+mdn_sigma_min: 0.001
+mdn_use_softplus: true
+
+# 🚀 Stochastic Learning
+use_stochastic_learner: true
+use_stochastic_control: true
+stochastic_temperature_start: 1.0
+stochastic_temperature_end: 0.1
+stochastic_decay_steps: 100
+reg_loss_weight: 0.001
+
+# 🚀 Hierarchical Processing
+use_hierarchical_mapping: true
+use_dynamic_spatiotemporal_encoder: true
+
+# 🚀 Efficient Processing
+use_efficient_covariate_interaction: true
+enable_target_covariate_attention: true
+
+# 🚀 Calendar Effects
+use_calendar_effects: true
+calendar_embedding_dim: 32  # d_model // 4
+
+# 🚀 Target Autocorrelation
+use_target_autocorrelation: true
+target_autocorr_layers: 2
+
+# 🚀 Celestial-to-Target Attention
+use_celestial_target_attention: true
+celestial_target_use_gated_fusion: true
+celestial_target_diagnostics: true
+
+# 🚀 Advanced Loss Function
+loss:
+  type: hybrid_mdn_directional
+  nll_weight: 0.3
+  direction_weight: 2.0
+  trend_weight: 1.0
+  magnitude_weight: 0.1
+
+# 🚀 Learning Rate Schedule
+lradj: warmup_cosine
+warmup_epochs: 1     # Minimal warmup
+min_lr: 1e-6
+
+# Target Configuration
+target_wave_indices: [0, 1, 2, 3]
+num_input_waves: 118
+
+# Optimization Settings
+dropout: 0.1
+weight_decay: 0.001
+clip_grad_norm: 1.0
+
+# Hardware Configuration
+use_gpu: true
+mixed_precision: false  # Disabled for debugging clarity
+num_workers: 0
+pin_memory: false
+persistent_workers: false
+
+# Diagnostics and Logging
+verbose_logging: true
+collect_diagnostics: true
+enable_memory_diagnostics: true
+memory_log_interval: 10
+log_level: INFO
+log_interval: 5
+
+# Calibration Metrics (for MDN)
+calibration_metrics:
+  coverage_levels: [0.5, 0.9]
+  compute_crps: false  # Disabled for speed
+  crps_samples: 50
+
+# Adversarial Testing
+enable_adversarial_checks: true
+adversarial_max_batches: 2
+adversarial_noise_std: 0.05
+
+# File Paths
+log_file: logs/debug_all_features_training.log
+model_id: celestial_debug_all_features
+
+# Reproducibility
+seed: 42
+random_seed: 42
+production_seed: 42
+deterministic: true
+
+# Additional Advanced Features
+use_gated_graph_combiner: false  # Use Petri net instead
+use_phase_aware_processing: true
+enable_fusion_diagnostics: true
+
+# Graph Configuration
+num_graph_nodes: 13  # Celestial bodies when aggregating
+
+# Embedding Configuration
+embed: timeF
+activation: gelu
+output_attention: false
+
+# Scaling
+scale: true
+inverse: false
+
+# Additional Flags
+train_only: false
+do_predict: false
+mix: true
+cols: null
+seasonal_patterns: Monthly

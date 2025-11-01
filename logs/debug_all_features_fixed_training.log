@@ -1,0 +1,326 @@
+2025-11-01 00:07:59,933 INFO __main__: Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-11-01 00:07:59,933 INFO __main__: Heavy-duty overnight configuration enabled
+2025-11-01 00:07:59,934 INFO __main__: 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-11-01 00:07:59,934 INFO __main__: ================================================================================
+2025-11-01 00:07:59,936 INFO __main__: Memory diagnostics enabled; detailed logs stored at checkpoints/celestial_debug_all_features_fixed/memory_diagnostics.log
+2025-11-01 00:07:59,936 INFO __main__: Configuration summary | model=Celestial_Enhanced_PGAT seq_len=96 pred_len=12 d_model=104 n_heads=8 e_layers=3 d_layers=2 train_epochs=2
+2025-11-01 00:07:59,936 INFO __main__: Optimization summary | batch_size=2 learning_rate=0.0001 patience=10 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-11-01 00:07:59,937 INFO __main__: Using device: cpu (CPU fallback)
+2025-11-01 00:07:59,948 INFO __main__: Reproducibility seed configured to 42
+2025-11-01 00:07:59,949 INFO __main__: Loading production data modules
+2025-11-01 00:08:00,554 INFO __main__: Training scalers extracted: main_scaler=True, target_scaler=True
+2025-11-01 00:08:00,556 INFO __main__: Loaded train data module | samples=6802 batches=3401 batch_size=2 drop_last=True shuffle=True pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-11-01 00:08:00,931 INFO __main__: Created val dataset with training scalers
+2025-11-01 00:08:00,931 INFO __main__: Loaded val data module | samples=139 batches=70 batch_size=2 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-11-01 00:08:01,378 INFO __main__: Created test dataset with training scalers
+2025-11-01 00:08:01,378 INFO __main__: Loaded test data module | samples=39 batches=20 batch_size=2 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-11-01 00:08:01,378 INFO __main__: Data loader sizes | train=3401 val=70 test=20
+2025-11-01 00:08:01,379 INFO __main__: Preparing scaling utilities for loss computation
+2025-11-01 00:08:01,379 INFO __main__: Main scaler detected with 118 features
+2025-11-01 00:08:01,379 INFO __main__: Target scaler detected with 4 features
+2025-11-01 00:08:01,379 INFO __main__: Using target indices for OHLC: [0, 1, 2, 3]
+2025-11-01 00:08:01,380 INFO __main__: Initializing production Celestial Enhanced PGAT model
+2025-11-01 00:08:01,380 INFO models.Celestial_Enhanced_PGAT_Modular.Model: Initializing Celestial Enhanced PGAT | seq_len=96 pred_len=12 d_model=104 celestial_bodies=13 wave_aggregation=True mixture_decoder=True stochastic_learner=True hierarchical_mapping=True
+2025-11-01 00:08:01,381 INFO models.Celestial_Enhanced_PGAT_Modular.Model: Phase-aware aggregation configured | input_waves=113 target_wave_indices=[0, 1, 2, 3]
+2025-11-01 00:08:01,601 INFO models.celestial_modules.context_fusion: 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=104
+2025-11-01 00:08:01,601 INFO models.celestial_modules.context_fusion: 📊 Multi-scale configuration | short=5 medium=15 long=global dropout=0.100
+2025-11-01 00:08:01,604 INFO models.celestial_modules.context_fusion: ✅ Multi-scale fusion layer initialized
+2025-11-01 00:08:01,604 INFO models.celestial_modules.context_fusion: ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-01 00:08:01,604 INFO models.celestial_modules.context_fusion: 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-01 00:08:01,605 INFO models.celestial_modules.context_fusion: 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-01 00:08:01,605 INFO models.celestial_modules.context_fusion: ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-01 00:08:01,606 INFO models.celestial_modules.context_fusion: 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-01 00:08:01,606 INFO models.celestial_modules.context_fusion: 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-01 00:08:01,891 INFO __main__: Model initialized successfully
+2025-11-01 00:08:01,902 INFO __main__: Parameter statistics | total=4,052,270 trainable=4,052,270 approx_size_mb=15.5
+2025-11-01 00:08:01,914 INFO __main__: Standard precision training
+2025-11-01 00:08:01,915 INFO __main__: Gradient accumulation configured | steps=1 effective_batch_size=2
+2025-11-01 00:08:01,915 INFO __main__: Learning rate schedule preview | warmup_epochs=1 base_lr=0.000100 min_lr=0.000001 remaining_epochs=1
+2025-11-01 00:08:01,915 INFO __main__: Sample learning rates: E1:0.000100, E1:0.000100, E2:0.000100, E2:0.000100, E2:0.000100
+2025-11-01 00:08:01,920 INFO __main__: Using Hybrid MDN+Directional Loss | nll_weight=0.30 direction_weight=2.00 trend_weight=1.00 magnitude_weight=0.10
+2025-11-01 00:08:01,920 INFO __main__: Early stopping patience configured to 10 (effectively disabled)
+2025-11-01 00:08:01,920 INFO __main__: Checkpoints will be saved to checkpoints/celestial_debug_all_features_fixed
+2025-11-01 00:08:01,921 INFO __main__: Inspecting data file at ./data/prepared_financial_data.csv for target resolution
+2025-11-01 00:08:01,933 INFO __main__: Feature summary | total_columns=119 feature_columns=118
+2025-11-01 00:08:01,966 INFO __main__: Estimated CSV row count: 7109
+2025-11-01 00:08:01,967 INFO __main__: Auto-set enc_in/dec_in to 118 based on feature count
+2025-11-01 00:08:01,967 INFO __main__: Resolved target indices: [0, 1, 2, 3]
+2025-11-01 00:08:01,967 INFO __main__: Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-11-01 00:08:01,967 INFO __main__: Starting production training loop
+2025-11-01 00:08:01,967 INFO __main__: Configured for 2 training epochs
+2025-11-01 00:08:01,967 INFO __main__: Warmup phase | epoch=1/1 lr=0.00010000
+2025-11-01 00:08:01,978 INFO __main__: Epoch 1/2 - production training
+2025-11-01 00:08:09,359 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 00:08:13,912 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 00:08:18,193 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 00:08:22,567 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 00:08:27,127 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 00:08:31,918 INFO __main__: BATCH 6/3401 | Epoch 1/2 | Loss=1.326469 | Time=30.0s
+2025-11-01 00:09:16,032 INFO __main__: BATCH 11/3401 | Epoch 1/2 | Loss=3.417741 | Time=74.1s
+2025-11-01 00:13:01,945 INFO __main__: BATCH 16/3401 | Epoch 1/2 | Loss=1.527232 | Time=300.0s
+2025-11-01 00:15:55,198 INFO __main__: BATCH 21/3401 | Epoch 1/2 | Loss=1.305921 | Time=473.2s
+2025-11-01 00:16:18,941 INFO __main__: BATCH 26/3401 | Epoch 1/2 | Loss=1.706179 | Time=497.0s
+2025-11-01 00:16:37,803 INFO __main__: BATCH 31/3401 | Epoch 1/2 | Loss=1.432123 | Time=515.8s
+2025-11-01 00:16:57,972 INFO __main__: BATCH 36/3401 | Epoch 1/2 | Loss=2.219914 | Time=536.0s
+2025-11-01 00:17:18,203 INFO __main__: BATCH 41/3401 | Epoch 1/2 | Loss=1.994807 | Time=556.2s
+2025-11-01 00:17:39,256 INFO __main__: BATCH 46/3401 | Epoch 1/2 | Loss=1.333246 | Time=577.3s
+2025-11-01 00:18:01,341 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 00:18:22,375 INFO __main__: BATCH 56/3401 | Epoch 1/2 | Loss=1.435018 | Time=620.4s
+2025-11-01 00:18:42,879 INFO __main__: BATCH 61/3401 | Epoch 1/2 | Loss=1.983862 | Time=640.9s
+2025-11-01 00:19:02,868 INFO __main__: BATCH 66/3401 | Epoch 1/2 | Loss=1.079358 | Time=660.9s
+2025-11-01 00:19:25,417 INFO __main__: BATCH 71/3401 | Epoch 1/2 | Loss=1.431437 | Time=683.4s
+2025-11-01 00:19:46,928 INFO __main__: BATCH 76/3401 | Epoch 1/2 | Loss=0.971908 | Time=705.0s
+2025-11-01 00:20:07,716 INFO __main__: BATCH 81/3401 | Epoch 1/2 | Loss=1.320073 | Time=725.7s
+2025-11-01 00:20:29,997 INFO __main__: BATCH 86/3401 | Epoch 1/2 | Loss=1.005975 | Time=748.0s
+2025-11-01 00:20:51,306 INFO __main__: BATCH 91/3401 | Epoch 1/2 | Loss=1.102238 | Time=769.3s
+2025-11-01 00:21:13,053 INFO __main__: BATCH 96/3401 | Epoch 1/2 | Loss=1.587314 | Time=791.1s
+2025-11-01 00:21:36,670 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 00:21:57,365 INFO __main__: BATCH 106/3401 | Epoch 1/2 | Loss=0.978354 | Time=835.4s
+2025-11-01 00:22:09,209 INFO __main__: BATCH 111/3401 | Epoch 1/2 | Loss=1.200692 | Time=847.2s
+2025-11-01 00:22:21,128 INFO __main__: BATCH 116/3401 | Epoch 1/2 | Loss=1.772984 | Time=859.2s
+2025-11-01 00:22:35,015 INFO __main__: BATCH 121/3401 | Epoch 1/2 | Loss=0.894155 | Time=873.0s
+2025-11-01 00:22:49,279 INFO __main__: BATCH 126/3401 | Epoch 1/2 | Loss=1.884438 | Time=887.3s
+2025-11-01 00:22:59,776 INFO __main__: BATCH 131/3401 | Epoch 1/2 | Loss=1.380180 | Time=897.8s
+2025-11-01 00:23:09,749 INFO __main__: BATCH 136/3401 | Epoch 1/2 | Loss=2.160612 | Time=907.8s
+2025-11-01 00:23:19,790 INFO __main__: BATCH 141/3401 | Epoch 1/2 | Loss=1.110667 | Time=917.8s
+2025-11-01 00:52:38,651 INFO __main__: BATCH 146/3401 | Epoch 1/2 | Loss=1.436821 | Time=2676.7s
+2025-11-01 00:53:00,642 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:09:16,396 INFO __main__: BATCH 156/3401 | Epoch 1/2 | Loss=2.136944 | Time=3674.4s
+2025-11-01 01:10:12,646 INFO __main__: BATCH 161/3401 | Epoch 1/2 | Loss=0.867999 | Time=3730.7s
+2025-11-01 01:10:25,734 INFO __main__: BATCH 166/3401 | Epoch 1/2 | Loss=1.917937 | Time=3743.8s
+2025-11-01 01:10:39,004 INFO __main__: BATCH 171/3401 | Epoch 1/2 | Loss=1.953424 | Time=3757.0s
+2025-11-01 01:10:56,592 INFO __main__: BATCH 176/3401 | Epoch 1/2 | Loss=1.202537 | Time=3774.6s
+2025-11-01 01:11:13,117 INFO __main__: BATCH 181/3401 | Epoch 1/2 | Loss=1.018227 | Time=3791.1s
+2025-11-01 01:11:32,210 INFO __main__: BATCH 186/3401 | Epoch 1/2 | Loss=1.044690 | Time=3810.2s
+2025-11-01 01:11:54,149 INFO __main__: BATCH 191/3401 | Epoch 1/2 | Loss=1.270343 | Time=3832.2s
+2025-11-01 01:12:19,989 INFO __main__: BATCH 196/3401 | Epoch 1/2 | Loss=1.186072 | Time=3858.0s
+2025-11-01 01:12:47,384 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:13:15,647 INFO __main__: BATCH 206/3401 | Epoch 1/2 | Loss=1.052548 | Time=3913.7s
+2025-11-01 01:13:42,362 INFO __main__: BATCH 211/3401 | Epoch 1/2 | Loss=1.249520 | Time=3940.4s
+2025-11-01 01:14:09,611 INFO __main__: BATCH 216/3401 | Epoch 1/2 | Loss=1.060571 | Time=3967.6s
+2025-11-01 01:14:36,960 INFO __main__: BATCH 221/3401 | Epoch 1/2 | Loss=1.129789 | Time=3995.0s
+2025-11-01 01:15:07,924 INFO __main__: BATCH 226/3401 | Epoch 1/2 | Loss=1.004386 | Time=4026.0s
+2025-11-01 01:15:38,297 INFO __main__: BATCH 231/3401 | Epoch 1/2 | Loss=1.144186 | Time=4056.3s
+2025-11-01 01:16:07,502 INFO __main__: BATCH 236/3401 | Epoch 1/2 | Loss=1.254490 | Time=4085.5s
+2025-11-01 01:16:36,163 INFO __main__: BATCH 241/3401 | Epoch 1/2 | Loss=0.913406 | Time=4114.2s
+2025-11-01 01:17:04,908 INFO __main__: BATCH 246/3401 | Epoch 1/2 | Loss=0.737357 | Time=4142.9s
+2025-11-01 01:17:33,430 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:18:03,855 INFO __main__: BATCH 256/3401 | Epoch 1/2 | Loss=1.680268 | Time=4201.9s
+2025-11-01 01:18:34,782 INFO __main__: BATCH 261/3401 | Epoch 1/2 | Loss=1.066678 | Time=4232.8s
+2025-11-01 01:19:04,615 INFO __main__: BATCH 266/3401 | Epoch 1/2 | Loss=1.412699 | Time=4262.6s
+2025-11-01 01:19:33,745 INFO __main__: BATCH 271/3401 | Epoch 1/2 | Loss=0.667316 | Time=4291.8s
+2025-11-01 01:20:03,201 INFO __main__: BATCH 276/3401 | Epoch 1/2 | Loss=0.705702 | Time=4321.2s
+2025-11-01 01:20:36,857 INFO __main__: BATCH 281/3401 | Epoch 1/2 | Loss=1.317396 | Time=4354.9s
+2025-11-01 01:21:06,019 INFO __main__: BATCH 286/3401 | Epoch 1/2 | Loss=1.153552 | Time=4384.1s
+2025-11-01 01:21:34,963 INFO __main__: BATCH 291/3401 | Epoch 1/2 | Loss=0.818788 | Time=4413.0s
+2025-11-01 01:22:04,038 INFO __main__: BATCH 296/3401 | Epoch 1/2 | Loss=1.388634 | Time=4442.1s
+2025-11-01 01:22:33,076 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:23:03,348 INFO __main__: BATCH 306/3401 | Epoch 1/2 | Loss=2.050534 | Time=4501.4s
+2025-11-01 01:23:32,828 INFO __main__: BATCH 311/3401 | Epoch 1/2 | Loss=1.296801 | Time=4530.9s
+2025-11-01 01:24:06,776 INFO __main__: BATCH 316/3401 | Epoch 1/2 | Loss=1.303401 | Time=4564.8s
+2025-11-01 01:24:39,837 INFO __main__: BATCH 321/3401 | Epoch 1/2 | Loss=1.073632 | Time=4597.9s
+2025-11-01 01:25:14,986 INFO __main__: BATCH 326/3401 | Epoch 1/2 | Loss=1.316677 | Time=4633.0s
+2025-11-01 01:25:48,977 INFO __main__: BATCH 331/3401 | Epoch 1/2 | Loss=1.467438 | Time=4667.0s
+2025-11-01 01:26:19,882 INFO __main__: BATCH 336/3401 | Epoch 1/2 | Loss=1.884298 | Time=4697.9s
+2025-11-01 01:26:49,495 INFO __main__: BATCH 341/3401 | Epoch 1/2 | Loss=1.828940 | Time=4727.5s
+2025-11-01 01:27:18,684 INFO __main__: BATCH 346/3401 | Epoch 1/2 | Loss=2.123322 | Time=4756.7s
+2025-11-01 01:27:48,530 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:28:17,740 INFO __main__: BATCH 356/3401 | Epoch 1/2 | Loss=1.166623 | Time=4815.8s
+2025-11-01 01:28:47,595 INFO __main__: BATCH 361/3401 | Epoch 1/2 | Loss=0.987029 | Time=4845.6s
+2025-11-01 01:29:17,835 INFO __main__: BATCH 366/3401 | Epoch 1/2 | Loss=1.508687 | Time=4875.9s
+2025-11-01 01:29:47,783 INFO __main__: BATCH 371/3401 | Epoch 1/2 | Loss=1.166912 | Time=4905.8s
+2025-11-01 01:30:17,945 INFO __main__: BATCH 376/3401 | Epoch 1/2 | Loss=0.567028 | Time=4936.0s
+2025-11-01 01:30:48,090 INFO __main__: BATCH 381/3401 | Epoch 1/2 | Loss=0.862551 | Time=4966.1s
+2025-11-01 01:31:17,884 INFO __main__: BATCH 386/3401 | Epoch 1/2 | Loss=1.679898 | Time=4995.9s
+2025-11-01 01:31:48,519 INFO __main__: BATCH 391/3401 | Epoch 1/2 | Loss=1.257904 | Time=5026.6s
+2025-11-01 01:32:17,791 INFO __main__: BATCH 396/3401 | Epoch 1/2 | Loss=1.245200 | Time=5055.8s
+2025-11-01 01:32:47,378 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:33:16,957 INFO __main__: BATCH 406/3401 | Epoch 1/2 | Loss=1.462934 | Time=5115.0s
+2025-11-01 01:33:46,699 INFO __main__: BATCH 411/3401 | Epoch 1/2 | Loss=1.058337 | Time=5144.7s
+2025-11-01 01:34:17,850 INFO __main__: BATCH 416/3401 | Epoch 1/2 | Loss=0.971065 | Time=5175.9s
+2025-11-01 01:34:47,747 INFO __main__: BATCH 421/3401 | Epoch 1/2 | Loss=0.857526 | Time=5205.8s
+2025-11-01 01:35:17,302 INFO __main__: BATCH 426/3401 | Epoch 1/2 | Loss=0.683667 | Time=5235.3s
+2025-11-01 01:35:47,693 INFO __main__: BATCH 431/3401 | Epoch 1/2 | Loss=0.963482 | Time=5265.7s
+2025-11-01 01:36:17,099 INFO __main__: BATCH 436/3401 | Epoch 1/2 | Loss=1.288273 | Time=5295.1s
+2025-11-01 01:36:44,541 INFO __main__: BATCH 441/3401 | Epoch 1/2 | Loss=0.807755 | Time=5322.6s
+2025-11-01 01:37:12,952 INFO __main__: BATCH 446/3401 | Epoch 1/2 | Loss=1.770540 | Time=5351.0s
+2025-11-01 01:37:39,987 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:38:06,822 INFO __main__: BATCH 456/3401 | Epoch 1/2 | Loss=1.108740 | Time=5404.9s
+2025-11-01 01:38:32,918 INFO __main__: BATCH 461/3401 | Epoch 1/2 | Loss=1.025010 | Time=5431.0s
+2025-11-01 01:39:02,641 INFO __main__: BATCH 466/3401 | Epoch 1/2 | Loss=1.204162 | Time=5460.7s
+2025-11-01 01:39:32,448 INFO __main__: BATCH 471/3401 | Epoch 1/2 | Loss=2.275533 | Time=5490.5s
+2025-11-01 01:40:02,223 INFO __main__: BATCH 476/3401 | Epoch 1/2 | Loss=1.110570 | Time=5520.3s
+2025-11-01 01:40:31,479 INFO __main__: BATCH 481/3401 | Epoch 1/2 | Loss=0.887723 | Time=5549.5s
+2025-11-01 01:41:00,861 INFO __main__: BATCH 486/3401 | Epoch 1/2 | Loss=1.688052 | Time=5578.9s
+2025-11-01 01:41:30,552 INFO __main__: BATCH 491/3401 | Epoch 1/2 | Loss=1.457947 | Time=5608.6s
+2025-11-01 01:42:00,898 INFO __main__: BATCH 496/3401 | Epoch 1/2 | Loss=1.316939 | Time=5638.9s
+2025-11-01 01:42:32,453 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:43:03,263 INFO __main__: BATCH 506/3401 | Epoch 1/2 | Loss=1.607150 | Time=5701.3s
+2025-11-01 01:43:33,030 INFO __main__: BATCH 511/3401 | Epoch 1/2 | Loss=1.669078 | Time=5731.1s
+2025-11-01 01:44:03,669 INFO __main__: BATCH 516/3401 | Epoch 1/2 | Loss=1.216463 | Time=5761.7s
+2025-11-01 01:44:33,678 INFO __main__: BATCH 521/3401 | Epoch 1/2 | Loss=1.447103 | Time=5791.7s
+2025-11-01 01:45:04,962 INFO __main__: BATCH 526/3401 | Epoch 1/2 | Loss=1.017009 | Time=5823.0s
+2025-11-01 01:45:35,780 INFO __main__: BATCH 531/3401 | Epoch 1/2 | Loss=1.893388 | Time=5853.8s
+2025-11-01 01:46:05,731 INFO __main__: BATCH 536/3401 | Epoch 1/2 | Loss=1.017249 | Time=5883.8s
+2025-11-01 01:46:35,439 INFO __main__: BATCH 541/3401 | Epoch 1/2 | Loss=1.032411 | Time=5913.5s
+2025-11-01 01:47:05,229 INFO __main__: BATCH 546/3401 | Epoch 1/2 | Loss=1.076504 | Time=5943.3s
+2025-11-01 01:47:35,234 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:48:04,474 INFO __main__: BATCH 556/3401 | Epoch 1/2 | Loss=6.221763 | Time=6002.5s
+2025-11-01 01:48:34,819 INFO __main__: BATCH 561/3401 | Epoch 1/2 | Loss=1.330075 | Time=6032.9s
+2025-11-01 01:49:05,103 INFO __main__: BATCH 566/3401 | Epoch 1/2 | Loss=1.184065 | Time=6063.1s
+2025-11-01 01:49:36,525 INFO __main__: BATCH 571/3401 | Epoch 1/2 | Loss=0.999537 | Time=6094.6s
+2025-11-01 01:50:07,022 INFO __main__: BATCH 576/3401 | Epoch 1/2 | Loss=0.945864 | Time=6125.1s
+2025-11-01 01:50:37,656 INFO __main__: BATCH 581/3401 | Epoch 1/2 | Loss=1.458374 | Time=6155.7s
+2025-11-01 01:51:08,081 INFO __main__: BATCH 586/3401 | Epoch 1/2 | Loss=1.369941 | Time=6186.1s
+2025-11-01 01:51:36,401 INFO __main__: BATCH 591/3401 | Epoch 1/2 | Loss=1.740566 | Time=6214.4s
+2025-11-01 01:52:01,291 INFO __main__: BATCH 596/3401 | Epoch 1/2 | Loss=1.751230 | Time=6239.3s
+2025-11-01 01:52:25,581 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:52:50,174 INFO __main__: BATCH 606/3401 | Epoch 1/2 | Loss=0.888604 | Time=6288.2s
+2025-11-01 01:53:15,773 INFO __main__: BATCH 611/3401 | Epoch 1/2 | Loss=1.740622 | Time=6313.8s
+2025-11-01 01:53:40,225 INFO __main__: BATCH 616/3401 | Epoch 1/2 | Loss=0.800859 | Time=6338.3s
+2025-11-01 01:54:07,879 INFO __main__: BATCH 621/3401 | Epoch 1/2 | Loss=0.735843 | Time=6365.9s
+2025-11-01 01:54:36,180 INFO __main__: BATCH 626/3401 | Epoch 1/2 | Loss=0.698153 | Time=6394.2s
+2025-11-01 01:55:03,708 INFO __main__: BATCH 631/3401 | Epoch 1/2 | Loss=1.132850 | Time=6421.7s
+2025-11-01 01:55:31,448 INFO __main__: BATCH 636/3401 | Epoch 1/2 | Loss=1.764820 | Time=6449.5s
+2025-11-01 01:55:59,249 INFO __main__: BATCH 641/3401 | Epoch 1/2 | Loss=0.833683 | Time=6477.3s
+2025-11-01 01:56:27,158 INFO __main__: BATCH 646/3401 | Epoch 1/2 | Loss=1.444196 | Time=6505.2s
+2025-11-01 01:56:54,559 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 01:57:21,841 INFO __main__: BATCH 656/3401 | Epoch 1/2 | Loss=1.493981 | Time=6559.9s
+2025-11-01 01:57:49,185 INFO __main__: BATCH 661/3401 | Epoch 1/2 | Loss=1.338961 | Time=6587.2s
+2025-11-01 01:58:16,634 INFO __main__: BATCH 666/3401 | Epoch 1/2 | Loss=1.061750 | Time=6614.7s
+2025-11-01 01:58:44,407 INFO __main__: BATCH 671/3401 | Epoch 1/2 | Loss=1.000947 | Time=6642.4s
+2025-11-01 01:59:12,034 INFO __main__: BATCH 676/3401 | Epoch 1/2 | Loss=1.354208 | Time=6670.1s
+2025-11-01 01:59:39,588 INFO __main__: BATCH 681/3401 | Epoch 1/2 | Loss=0.841048 | Time=6697.6s
+2025-11-01 02:00:05,864 INFO __main__: BATCH 686/3401 | Epoch 1/2 | Loss=1.226892 | Time=6723.9s
+2025-11-01 02:00:31,403 INFO __main__: BATCH 691/3401 | Epoch 1/2 | Loss=0.666712 | Time=6749.4s
+2025-11-01 02:00:56,608 INFO __main__: BATCH 696/3401 | Epoch 1/2 | Loss=1.195731 | Time=6774.6s
+2025-11-01 02:01:21,170 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 02:01:46,362 INFO __main__: BATCH 706/3401 | Epoch 1/2 | Loss=0.926731 | Time=6824.4s
+2025-11-01 02:02:12,605 INFO __main__: BATCH 711/3401 | Epoch 1/2 | Loss=1.336832 | Time=6850.6s
+2025-11-01 02:02:40,089 INFO __main__: BATCH 716/3401 | Epoch 1/2 | Loss=1.594185 | Time=6878.1s
+2025-11-01 02:03:06,130 INFO __main__: BATCH 721/3401 | Epoch 1/2 | Loss=1.126407 | Time=6904.2s
+2025-11-01 02:03:31,762 INFO __main__: BATCH 726/3401 | Epoch 1/2 | Loss=0.710097 | Time=6929.8s
+2025-11-01 02:03:57,421 INFO __main__: BATCH 731/3401 | Epoch 1/2 | Loss=0.685063 | Time=6955.5s
+2025-11-01 02:04:23,274 INFO __main__: BATCH 736/3401 | Epoch 1/2 | Loss=0.971278 | Time=6981.3s
+2025-11-01 02:04:46,512 INFO __main__: BATCH 741/3401 | Epoch 1/2 | Loss=0.842268 | Time=7004.5s
+2025-11-01 02:05:08,841 INFO __main__: BATCH 746/3401 | Epoch 1/2 | Loss=1.626030 | Time=7026.9s
+2025-11-01 02:05:31,658 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 02:05:55,420 INFO __main__: BATCH 756/3401 | Epoch 1/2 | Loss=0.940268 | Time=7073.5s
+2025-11-01 02:06:19,596 INFO __main__: BATCH 761/3401 | Epoch 1/2 | Loss=1.354500 | Time=7097.6s
+2025-11-01 02:06:43,307 INFO __main__: BATCH 766/3401 | Epoch 1/2 | Loss=1.603409 | Time=7121.3s
+2025-11-01 02:07:05,264 INFO __main__: BATCH 771/3401 | Epoch 1/2 | Loss=0.944635 | Time=7143.3s
+2025-11-01 02:07:27,111 INFO __main__: BATCH 776/3401 | Epoch 1/2 | Loss=1.555279 | Time=7165.1s
+2025-11-01 02:07:51,568 INFO __main__: BATCH 781/3401 | Epoch 1/2 | Loss=1.160818 | Time=7189.6s
+2025-11-01 02:08:14,545 INFO __main__: BATCH 786/3401 | Epoch 1/2 | Loss=1.200360 | Time=7212.6s
+2025-11-01 02:08:37,466 INFO __main__: BATCH 791/3401 | Epoch 1/2 | Loss=1.059260 | Time=7235.5s
+2025-11-01 02:09:01,816 INFO __main__: BATCH 796/3401 | Epoch 1/2 | Loss=1.274168 | Time=7259.8s
+2025-11-01 02:09:28,825 ERROR __main__: Training step failed: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 1230, in train_epoch
+    f.write(f"y_pred_for_loss.requires_grad: {y_pred_for_loss.requires_grad}\n")
+                                              ^^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is not associated with a value
+2025-11-01 02:27:59,870 INFO __main__: BATCH 806/3401 | Epoch 1/2 | Loss=1.149789 | Time=8397.9s
+2025-11-01 03:19:25,675 INFO __main__: BATCH 811/3401 | Epoch 1/2 | Loss=1.718185 | Time=11483.7s
+2025-11-01 05:12:13,101 INFO __main__: BATCH 816/3401 | Epoch 1/2 | Loss=1.348709 | Time=18251.1s
+2025-11-01 07:00:43,035 INFO __main__: BATCH 821/3401 | Epoch 1/2 | Loss=1.301040 | Time=24761.1s

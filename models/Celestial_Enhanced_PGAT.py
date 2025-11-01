@@ -387,7 +387,64 @@ class Model(nn.Module):
 
         if self.use_efficient_covariate_interaction:
             if self.d_model % self.num_graph_nodes != 0:
-                raise ValueError(f"d_model ({self.d_model}) must be divisible by num_graph_nodes ({self.num_graph_nodes}) for efficient processing.")
+                # Calculate suggested d_model values
+                def find_compatible_d_model(current_d_model, num_nodes, n_heads):
+                    """Find the closest d_model that's divisible by both num_nodes and n_heads"""
+                    # Find LCM of num_nodes and n_heads for perfect compatibility
+                    import math
+                    lcm = (num_nodes * n_heads) // math.gcd(num_nodes, n_heads)
+                    
+                    # Find closest multiples of LCM
+                    lower_multiple = (current_d_model // lcm) * lcm
+                    upper_multiple = lower_multiple + lcm
+                    
+                    # Also find simple multiples of num_nodes (if n_heads compatibility not critical)
+                    lower_simple = (current_d_model // num_nodes) * num_nodes
+                    upper_simple = lower_simple + num_nodes
+                    
+                    return {
+                        'lcm': lcm,
+                        'perfect_lower': lower_multiple if lower_multiple > 0 else lcm,
+                        'perfect_upper': upper_multiple,
+                        'simple_lower': lower_simple if lower_simple > 0 else num_nodes,
+                        'simple_upper': upper_simple
+                    }
+                
+                suggestions = find_compatible_d_model(self.d_model, self.num_graph_nodes, self.n_heads)
+                
+                error_msg = f"""
+🚫 CONFIGURATION ERROR: Efficient Covariate Interaction Dimension Mismatch
+
+❌ Current configuration:
+   d_model = {self.d_model}
+   num_graph_nodes = {self.num_graph_nodes} (celestial bodies)
+   n_heads = {self.n_heads}
+
+❌ Problem: d_model ({self.d_model}) is not divisible by num_graph_nodes ({self.num_graph_nodes})
+   Remainder: {self.d_model} % {self.num_graph_nodes} = {self.d_model % self.num_graph_nodes}
+
+✅ SOLUTION: Update your config with one of these d_model values:
+
+   🎯 RECOMMENDED (compatible with both graph nodes AND attention heads):
+      d_model: {suggestions['perfect_lower']} (closest smaller)
+      d_model: {suggestions['perfect_upper']} (closest larger)
+      
+   📊 ALTERNATIVE (compatible with graph nodes only):
+      d_model: {suggestions['simple_lower']} (closest smaller)  
+      d_model: {suggestions['simple_upper']} (closest larger)
+
+💡 WHY: Efficient covariate interaction partitions d_model across {self.num_graph_nodes} graph nodes.
+   Each node gets d_model/{self.num_graph_nodes} = {self.d_model}/{self.num_graph_nodes} dimensions.
+   This requires perfect divisibility for tensor reshaping.
+
+🔧 QUICK FIX: In your YAML config, change:
+   d_model: {self.d_model}  # ❌ Current
+   d_model: {suggestions['perfect_upper']}  # ✅ Recommended
+
+🔄 Or disable efficient covariate interaction:
+   use_efficient_covariate_interaction: false
+"""
+                raise ValueError(error_msg)
             node_dim = self.d_model // self.num_graph_nodes
 
             # Processes the covariate graph with a shared weight matrix (graph convolution)
@@ -660,6 +717,78 @@ class Model(nn.Module):
                 nn.init.xavier_uniform_(param)
             elif 'bias' in name:
                 nn.init.zeros_(param)
+    
+    @staticmethod
+    def validate_configuration(configs):
+        """
+        Validate configuration for dimension compatibility issues BEFORE model initialization.
+        Call this early in training scripts to catch configuration errors with helpful messages.
+        
+        Args:
+            configs: Configuration object with model parameters
+            
+        Raises:
+            ValueError: With detailed suggestions if configuration is invalid
+        """
+        d_model = getattr(configs, 'd_model', 512)
+        n_heads = getattr(configs, 'n_heads', 8)
+        use_efficient_covariate = getattr(configs, 'use_efficient_covariate_interaction', False)
+        use_celestial_graph = getattr(configs, 'use_celestial_graph', True)
+        aggregate_waves = getattr(configs, 'aggregate_waves_to_celestial', True)
+        num_celestial_bodies = getattr(configs, 'num_celestial_bodies', 13)
+        
+        errors = []
+        suggestions = []
+        
+        # Check d_model and n_heads compatibility
+        if d_model % n_heads != 0:
+            closest_d_model = ((d_model // n_heads) + 1) * n_heads
+            errors.append(f"d_model ({d_model}) not divisible by n_heads ({n_heads})")
+            suggestions.append(f"d_model: {closest_d_model}  # Auto-adjusted for attention compatibility")
+        
+        # Check efficient covariate interaction requirements
+        if use_efficient_covariate and use_celestial_graph and aggregate_waves:
+            num_graph_nodes = num_celestial_bodies
+            if d_model % num_graph_nodes != 0:
+                # Find LCM for perfect compatibility
+                import math
+                lcm = (num_graph_nodes * n_heads) // math.gcd(num_graph_nodes, n_heads)
+                perfect_d_model = ((d_model // lcm) + 1) * lcm
+                simple_d_model = ((d_model // num_graph_nodes) + 1) * num_graph_nodes
+                
+                errors.append(f"d_model ({d_model}) not divisible by num_graph_nodes ({num_graph_nodes}) for efficient covariate interaction")
+                suggestions.extend([
+                    f"d_model: {perfect_d_model}  # Perfect compatibility (graph nodes + attention heads)",
+                    f"d_model: {simple_d_model}  # Simple compatibility (graph nodes only)",
+                    "# OR disable: use_efficient_covariate_interaction: false"
+                ])
+        
+        # Check celestial_dim compatibility if specified
+        celestial_dim = getattr(configs, 'celestial_dim', None)
+        if celestial_dim and celestial_dim % n_heads != 0:
+            closest_celestial_dim = ((celestial_dim // n_heads) + 1) * n_heads
+            errors.append(f"celestial_dim ({celestial_dim}) not divisible by n_heads ({n_heads})")
+            suggestions.append(f"celestial_dim: {closest_celestial_dim}  # Attention head compatibility")
+        
+        if errors:
+            error_msg = f"""
+🚫 CONFIGURATION VALIDATION FAILED
+
+❌ Issues found:
+{chr(10).join(f"   • {error}" for error in errors)}
+
+✅ RECOMMENDED FIXES:
+{chr(10).join(f"   {suggestion}" for suggestion in suggestions)}
+
+💡 Add these to your YAML config file to resolve all dimension compatibility issues.
+
+🔧 QUICK COPY-PASTE:
+# Dimension fixes
+{chr(10).join(suggestion for suggestion in suggestions if not suggestion.startswith('#'))}
+"""
+            raise ValueError(error_msg)
+        
+        return True  # All validations passed
 
     def _log_info(self, message: str, *args: Any) -> None:
         """Log informational messages when verbose logging is enabled."""
@@ -1880,29 +2009,10 @@ class Model(nn.Module):
         # Reshape to apply the learner to each time step
         enc_out_flat = enc_out.reshape(batch_size * seq_len, d_model)
         
-        if self.use_stochastic_learner:
-            # Stochastic graph learning for each time step
-            mean = self.stochastic_mean(enc_out_flat)
-            logvar = self.stochastic_logvar(enc_out_flat)
-            
-            if self.training:
-                # Sample during training
-                std = torch.exp(0.5 * logvar)
-                eps = torch.randn_like(std)
-                adj_flat = mean + eps * std
-                
-                # Calculate KL divergence for each element in the batch*seq_len dimension
-                kl_div = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp(), dim=1)
-                
-                # Reshape to [batch, seq_len] to correctly average over the sequence
-                kl_div_per_step = kl_div.view(batch_size, seq_len)
-                
-                # Average across sequence length and then batch to get a single scalar loss
-                self.latest_stochastic_loss = kl_div_per_step.mean()
-            else:
-                # Use mean during inference
-                adj_flat = mean
-                self.latest_stochastic_loss = 0.0
+        if self.use_stochastic_learner and self.stochastic_learner is not None:
+            # Use enhanced stochastic graph learner
+            adj_flat, kl_loss = self.stochastic_learner(enc_out_flat)
+            self.latest_stochastic_loss = kl_loss
         else:
             # Deterministic graph learning
             adj_flat = self.traditional_graph_learner(enc_out_flat)

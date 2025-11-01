@@ -1,0 +1,128 @@
+# Celestial Enhanced PGAT - Simple Debug Configuration
+# Minimal setup to test core functionality without complex features
+
+# Basic Model Configuration
+model: Celestial_Enhanced_PGAT
+model_name: Celestial_Enhanced_PGAT
+task_name: long_term_forecast
+data: custom
+data_name: custom
+
+# Data Configuration
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+freq: d
+checkpoints: ./checkpoints/
+
+# Very Minimal Model Dimensions
+seq_len: 48          # Very small for quick testing
+pred_len: 6          # Very small for quick testing
+label_len: 24        # Very small for quick testing
+d_model: 64          # Very small
+n_heads: 4           # Very small
+e_layers: 2          # Very small
+d_layers: 1          # Very small
+d_ff: 256            # Very small
+enc_in: 113          # Use detected value
+dec_in: 113          # Use detected value
+c_out: 4
+
+# Training Configuration (minimal)
+train_epochs: 1      # Just 1 epoch for testing
+batch_size: 1        # Single batch
+learning_rate: 0.001
+patience: 5
+gradient_accumulation_steps: 1
+
+# Core Features Only (to test basic functionality)
+# ===============================================
+
+# Basic Celestial Features
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+num_celestial_bodies: 13
+celestial_fusion_layers: 1
+celestial_dim: 16    # Small but divisible by n_heads (4)
+
+# Disable Advanced Features Initially
+use_petri_net_combiner: false
+use_mixture_decoder: false
+use_sequential_mixture_decoder: false
+enable_mdn_decoder: false
+use_stochastic_learner: false
+use_stochastic_control: false
+use_hierarchical_mapping: false
+use_efficient_covariate_interaction: false
+enable_target_covariate_attention: false
+use_calendar_effects: false
+use_target_autocorrelation: false
+use_celestial_target_attention: false
+
+# Simple Loss Function
+loss:
+  type: mse  # Simple MSE loss
+
+# Simple Learning Rate
+lradj: type1
+warmup_epochs: 0
+
+# Target Configuration
+target_wave_indices: [0, 1, 2, 3]
+num_input_waves: 113  # Use detected value
+
+# Basic Optimization
+dropout: 0.1
+weight_decay: 0.0001
+
+# Hardware Configuration
+use_gpu: true
+mixed_precision: false
+num_workers: 0
+pin_memory: false
+persistent_workers: false
+
+# Minimal Diagnostics
+verbose_logging: true
+collect_diagnostics: false
+enable_memory_diagnostics: false
+log_level: INFO
+log_interval: 1
+
+# Disable Advanced Testing
+enable_adversarial_checks: false
+
+# File Paths
+log_file: logs/debug_simple_training.log
+model_id: celestial_debug_simple
+
+# Reproducibility
+seed: 42
+random_seed: 42
+production_seed: 42
+deterministic: true
+
+# Basic Graph Configuration
+num_graph_nodes: 13
+
+# Basic Embedding
+embed: timeF
+activation: gelu
+output_attention: false
+
+# Scaling
+scale: true
+inverse: false
+
+# Basic Flags
+train_only: false
+do_predict: false
+mix: true
+cols: null
+seasonal_patterns: Monthly
+
+# Spatial/Temporal Encoding
+use_dynamic_spatiotemporal_encoder: true
+use_temporal_attention: true
+use_spatial_attention: true

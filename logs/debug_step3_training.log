@@ -1,0 +1,68 @@
+2025-10-31 23:51:22,528 INFO __main__: Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-10-31 23:51:22,529 INFO __main__: Heavy-duty overnight configuration enabled
+2025-10-31 23:51:22,529 INFO __main__: 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-10-31 23:51:22,529 INFO __main__: ================================================================================
+2025-10-31 23:51:22,531 INFO __main__: Configuration summary | model=Celestial_Enhanced_PGAT seq_len=48 pred_len=6 d_model=64 n_heads=4 e_layers=2 d_layers=1 train_epochs=1
+2025-10-31 23:51:22,532 INFO __main__: Optimization summary | batch_size=1 learning_rate=0.001 patience=5 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-10-31 23:51:22,532 INFO __main__: Using device: cpu (CPU fallback)
+2025-10-31 23:51:22,541 INFO __main__: Reproducibility seed configured to 42
+2025-10-31 23:51:22,541 INFO __main__: Loading production data modules
+2025-10-31 23:51:23,220 INFO __main__: Training scalers extracted: main_scaler=True, target_scaler=True
+2025-10-31 23:51:23,220 INFO __main__: Loaded train data module | samples=6856 batches=6856 batch_size=1 drop_last=True shuffle=True pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 23:51:24,054 INFO __main__: Created val dataset with training scalers
+2025-10-31 23:51:24,054 INFO __main__: Loaded val data module | samples=145 batches=145 batch_size=1 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 23:51:24,635 INFO __main__: Created test dataset with training scalers
+2025-10-31 23:51:24,636 INFO __main__: Loaded test data module | samples=45 batches=45 batch_size=1 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-10-31 23:51:24,636 INFO __main__: Data loader sizes | train=6856 val=145 test=45
+2025-10-31 23:51:24,637 INFO __main__: Preparing scaling utilities for loss computation
+2025-10-31 23:51:24,637 INFO __main__: Main scaler detected with 118 features
+2025-10-31 23:51:24,637 INFO __main__: Target scaler detected with 4 features
+2025-10-31 23:51:24,637 INFO __main__: Using target indices for OHLC: [0, 1, 2, 3]
+2025-10-31 23:51:24,637 INFO __main__: Initializing production Celestial Enhanced PGAT model
+2025-10-31 23:51:24,638 INFO models.Celestial_Enhanced_PGAT_Modular.Model: Initializing Celestial Enhanced PGAT | seq_len=48 pred_len=6 d_model=64 celestial_bodies=13 wave_aggregation=True mixture_decoder=False stochastic_learner=True hierarchical_mapping=False
+2025-10-31 23:51:24,639 INFO models.Celestial_Enhanced_PGAT_Modular.Model: Phase-aware aggregation configured | input_waves=113 target_wave_indices=[0, 1, 2, 3]
+2025-10-31 23:51:24,862 INFO models.celestial_modules.context_fusion: 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=64
+2025-10-31 23:51:24,862 INFO models.celestial_modules.context_fusion: 📊 Multi-scale configuration | short=5 medium=15 long=global dropout=0.100
+2025-10-31 23:51:24,864 INFO models.celestial_modules.context_fusion: ✅ Multi-scale fusion layer initialized
+2025-10-31 23:51:24,864 INFO models.celestial_modules.context_fusion: ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-10-31 23:51:24,864 INFO models.celestial_modules.context_fusion: 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-10-31 23:51:24,864 INFO models.celestial_modules.context_fusion: 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-10-31 23:51:24,864 INFO models.celestial_modules.context_fusion: ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-10-31 23:51:24,865 INFO models.celestial_modules.context_fusion: 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-10-31 23:51:24,865 INFO models.celestial_modules.context_fusion: 🎉 Multi-Scale Context Fusion successfully initialized
+2025-10-31 23:51:24,937 INFO __main__: Model initialized successfully
+2025-10-31 23:51:24,944 INFO __main__: Parameter statistics | total=927,380 trainable=927,380 approx_size_mb=3.5
+2025-10-31 23:51:24,949 INFO __main__: Standard precision training
+2025-10-31 23:51:24,949 INFO __main__: Gradient accumulation configured | steps=1 effective_batch_size=1
+2025-10-31 23:51:24,954 INFO __main__: Using MSE Loss for deterministic predictions
+2025-10-31 23:51:24,954 INFO __main__: Early stopping patience configured to 5 (effectively disabled)
+2025-10-31 23:51:24,954 INFO __main__: Checkpoints will be saved to checkpoints/celestial_debug_step3
+2025-10-31 23:51:24,954 INFO __main__: Inspecting data file at ./data/prepared_financial_data.csv for target resolution
+2025-10-31 23:51:24,964 INFO __main__: Feature summary | total_columns=119 feature_columns=118
+2025-10-31 23:51:25,006 INFO __main__: Estimated CSV row count: 7109
+2025-10-31 23:51:25,007 INFO __main__: Auto-set enc_in/dec_in to 118 based on feature count
+2025-10-31 23:51:25,007 INFO __main__: Resolved target indices: [0, 1, 2, 3]
+2025-10-31 23:51:25,007 INFO __main__: Resolved target names: ['log_Open', 'log_High', 'log_Low', 'log_Close']
+2025-10-31 23:51:25,007 INFO __main__: Starting production training loop
+2025-10-31 23:51:25,009 INFO __main__: Configured for 1 training epochs
+2025-10-31 23:51:25,016 INFO __main__: Epoch 1/1 - production training
+2025-10-31 23:51:29,020 INFO __main__: BATCH 1/6856 | Epoch 1/1 | Loss=1.365806 | Time=4.0s
+2025-10-31 23:51:33,222 INFO __main__: BATCH 2/6856 | Epoch 1/1 | Loss=8.053481 | Time=8.2s
+2025-10-31 23:51:38,074 INFO __main__: BATCH 3/6856 | Epoch 1/1 | Loss=2.881924 | Time=13.1s
+2025-10-31 23:51:42,210 INFO __main__: BATCH 4/6856 | Epoch 1/1 | Loss=0.383621 | Time=17.2s
+2025-10-31 23:51:46,240 INFO __main__: BATCH 5/6856 | Epoch 1/1 | Loss=1.633370 | Time=21.2s
+2025-10-31 23:52:02,807 INFO __main__: BATCH 6/6856 | Epoch 1/1 | Loss=1.299749 | Time=37.8s
+2025-10-31 23:52:09,281 INFO __main__: BATCH 7/6856 | Epoch 1/1 | Loss=7.415298 | Time=44.3s
+2025-10-31 23:52:17,224 INFO __main__: BATCH 8/6856 | Epoch 1/1 | Loss=2.458327 | Time=52.2s
+2025-10-31 23:52:34,025 INFO __main__: BATCH 9/6856 | Epoch 1/1 | Loss=0.549747 | Time=69.0s
+2025-10-31 23:52:39,077 INFO __main__: BATCH 10/6856 | Epoch 1/1 | Loss=3.931426 | Time=74.1s
+2025-10-31 23:52:46,829 INFO __main__: BATCH 11/6856 | Epoch 1/1 | Loss=1.631892 | Time=81.8s
+2025-10-31 23:53:01,613 INFO __main__: BATCH 12/6856 | Epoch 1/1 | Loss=0.867761 | Time=96.6s
+2025-10-31 23:53:09,159 INFO __main__: BATCH 13/6856 | Epoch 1/1 | Loss=0.463398 | Time=104.1s
+2025-10-31 23:53:27,715 INFO __main__: BATCH 14/6856 | Epoch 1/1 | Loss=0.986038 | Time=122.7s
+2025-10-31 23:53:44,600 INFO __main__: BATCH 15/6856 | Epoch 1/1 | Loss=0.544823 | Time=139.6s
+2025-10-31 23:53:47,884 INFO __main__: BATCH 16/6856 | Epoch 1/1 | Loss=0.751919 | Time=142.9s
+2025-10-31 23:53:56,518 INFO __main__: BATCH 17/6856 | Epoch 1/1 | Loss=0.659979 | Time=151.5s
+2025-10-31 23:54:07,763 INFO __main__: BATCH 18/6856 | Epoch 1/1 | Loss=1.512464 | Time=162.8s
+2025-10-31 23:54:19,910 INFO __main__: BATCH 19/6856 | Epoch 1/1 | Loss=5.871008 | Time=174.9s
+2025-10-31 23:54:31,434 INFO __main__: BATCH 20/6856 | Epoch 1/1 | Loss=0.777402 | Time=186.4s

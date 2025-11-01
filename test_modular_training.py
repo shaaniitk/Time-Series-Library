@@ -44,9 +44,11 @@ def test_modular_training_integration():
         # Test forward pass with production-like dimensions
         batch_size = 2
         x_enc = torch.randn(batch_size, configs.seq_len, configs.enc_in)
-        x_mark_enc = torch.randn(batch_size, configs.seq_len, 4)  # time features
-        x_dec = torch.randn(batch_size, configs.label_len + configs.pred_len, configs.dec_in)  # Use dec_in for decoder
-        x_mark_dec = torch.randn(batch_size, configs.label_len + configs.pred_len, 4)
+        
+        # Daily frequency ('d') expects 3 time features: [month, day, weekday]
+        x_mark_enc = torch.randn(batch_size, configs.seq_len, 3)  # Correct time features for daily freq
+        x_dec = torch.randn(batch_size, configs.label_len + configs.pred_len, configs.dec_in)
+        x_mark_dec = torch.randn(batch_size, configs.label_len + configs.pred_len, 3)  # Correct time features
         
         print(f"✓ Created production-like inputs:")
         print(f"  x_enc: {x_enc.shape}")

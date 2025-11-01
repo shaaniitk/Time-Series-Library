@@ -1,0 +1,43 @@
+2025-11-01 00:05:08,569 INFO __main__: Starting PRODUCTION Celestial Enhanced PGAT training run
+2025-11-01 00:05:08,569 INFO __main__: Heavy-duty overnight configuration enabled
+2025-11-01 00:05:08,569 INFO __main__: 🔍 DIAGNOSTIC MODE ENABLED - Writing to training_diagnostic.log
+2025-11-01 00:05:08,569 INFO __main__: ================================================================================
+2025-11-01 00:05:08,575 INFO __main__: Configuration summary | model=Celestial_Enhanced_PGAT seq_len=48 pred_len=6 d_model=64 n_heads=4 e_layers=2 d_layers=1 train_epochs=1
+2025-11-01 00:05:08,575 INFO __main__: Optimization summary | batch_size=1 learning_rate=0.001 patience=5 target=log_Open,log_High,log_Low,log_Close target_wave_indices=[0, 1, 2, 3] c_out=4 wave_aggregation=True
+2025-11-01 00:05:08,576 INFO __main__: Using device: cpu (CPU fallback)
+2025-11-01 00:05:08,582 INFO __main__: Reproducibility seed configured to 42
+2025-11-01 00:05:08,582 INFO __main__: Loading production data modules
+2025-11-01 00:05:09,176 INFO __main__: Training scalers extracted: main_scaler=True, target_scaler=True
+2025-11-01 00:05:09,176 INFO __main__: Loaded train data module | samples=6856 batches=6856 batch_size=1 drop_last=True shuffle=True pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-11-01 00:05:09,700 INFO __main__: Created val dataset with training scalers
+2025-11-01 00:05:09,701 INFO __main__: Loaded val data module | samples=145 batches=145 batch_size=1 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-11-01 00:05:10,414 INFO __main__: Created test dataset with training scalers
+2025-11-01 00:05:10,415 INFO __main__: Loaded test data module | samples=45 batches=45 batch_size=1 drop_last=False shuffle=False pin_memory=False prefetch_factor=n/a persistent_workers=False
+2025-11-01 00:05:10,415 INFO __main__: Data loader sizes | train=6856 val=145 test=45
+2025-11-01 00:05:10,415 INFO __main__: Preparing scaling utilities for loss computation
+2025-11-01 00:05:10,415 INFO __main__: Main scaler detected with 118 features
+2025-11-01 00:05:10,415 INFO __main__: Target scaler detected with 4 features
+2025-11-01 00:05:10,415 INFO __main__: Using target indices for OHLC: [0, 1, 2, 3]
+2025-11-01 00:05:10,415 INFO __main__: Initializing production Celestial Enhanced PGAT model
+2025-11-01 00:05:10,416 INFO models.Celestial_Enhanced_PGAT_Modular.Model: Initializing Celestial Enhanced PGAT | seq_len=48 pred_len=6 d_model=64 celestial_bodies=13 wave_aggregation=True mixture_decoder=False stochastic_learner=False hierarchical_mapping=True
+2025-11-01 00:05:10,416 INFO models.Celestial_Enhanced_PGAT_Modular.Model: Phase-aware aggregation configured | input_waves=113 target_wave_indices=[0, 1, 2, 3]
+2025-11-01 00:05:10,596 INFO models.celestial_modules.context_fusion: 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=64
+2025-11-01 00:05:10,596 INFO models.celestial_modules.context_fusion: 📊 Multi-scale configuration | short=5 medium=15 long=global dropout=0.100
+2025-11-01 00:05:10,602 INFO models.celestial_modules.context_fusion: ✅ Multi-scale fusion layer initialized
+2025-11-01 00:05:10,602 INFO models.celestial_modules.context_fusion: ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-01 00:05:10,602 INFO models.celestial_modules.context_fusion: 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-01 00:05:10,603 INFO models.celestial_modules.context_fusion: 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-01 00:05:10,603 INFO models.celestial_modules.context_fusion: ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-01 00:05:10,603 INFO models.celestial_modules.context_fusion: 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-01 00:05:10,603 INFO models.celestial_modules.context_fusion: 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-01 00:05:10,659 ERROR __main__: Model initialization failed: d_model (64) must be divisible by num_graph_nodes (13) for efficient processing.
+Traceback (most recent call last):
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/scripts/train/train_celestial_production.py", line 2491, in train_celestial_pgat_production
+    model = Model(args).to(device)
+            ^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/models/Celestial_Enhanced_PGAT_Modular.py", line 92, in __init__
+    self.graph_module = GraphModule(self.model_config)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shantanumisra/workspace/TSLib/Time-Series-Library/models/celestial_modules/graph.py", line 118, in __init__
+    raise ValueError(f"d_model ({config.d_model}) must be divisible by num_graph_nodes ({config.num_graph_nodes}) for efficient processing.")
+ValueError: d_model (64) must be divisible by num_graph_nodes (13) for efficient processing.

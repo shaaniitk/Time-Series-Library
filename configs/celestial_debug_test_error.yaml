@@ -1,0 +1,107 @@
+# Celestial Enhanced PGAT - Test Error Handling
+# Deliberately broken configuration to test error messages
+
+# Basic Model Configuration
+model: Celestial_Enhanced_PGAT
+model_name: Celestial_Enhanced_PGAT
+task_name: long_term_forecast
+data: custom
+data_name: custom
+
+# Data Configuration
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+freq: d
+checkpoints: ./checkpoints/
+
+# DELIBERATELY BROKEN: d_model not divisible by num_graph_nodes
+seq_len: 48
+pred_len: 6
+label_len: 24
+d_model: 64          # ❌ 64 % 13 = 12 (not divisible)
+n_heads: 4           # ❌ 64 % 4 = 0 (this is fine)
+e_layers: 2
+d_layers: 1
+d_ff: 256
+enc_in: 113
+dec_in: 113
+c_out: 4
+
+# Training Configuration
+train_epochs: 1
+batch_size: 1
+learning_rate: 0.001
+patience: 5
+gradient_accumulation_steps: 1
+
+# Enable the problematic feature
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+num_celestial_bodies: 13
+celestial_fusion_layers: 1
+celestial_dim: 16
+
+# ❌ This should trigger the helpful error message
+use_efficient_covariate_interaction: true
+enable_target_covariate_attention: true
+
+# Keep other features simple
+use_petri_net_combiner: false
+use_mixture_decoder: false
+enable_mdn_decoder: false
+use_stochastic_learner: false
+use_hierarchical_mapping: false
+use_calendar_effects: false
+use_target_autocorrelation: false
+use_celestial_target_attention: false
+
+# Simple settings
+loss:
+  type: mse
+lradj: type1
+warmup_epochs: 0
+target_wave_indices: [0, 1, 2, 3]
+num_input_waves: 113
+dropout: 0.1
+weight_decay: 0.0001
+use_gpu: true
+mixed_precision: false
+num_workers: 0
+pin_memory: false
+persistent_workers: false
+
+# Diagnostics
+verbose_logging: true
+collect_diagnostics: false
+enable_memory_diagnostics: false
+log_level: INFO
+log_interval: 1
+enable_adversarial_checks: false
+
+# File Paths
+log_file: logs/debug_test_error_training.log
+model_id: celestial_debug_test_error
+
+# Reproducibility
+seed: 42
+random_seed: 42
+production_seed: 42
+deterministic: true
+
+# Graph Configuration
+num_graph_nodes: 13
+use_dynamic_spatiotemporal_encoder: true
+
+# Basic settings
+embed: timeF
+activation: gelu
+output_attention: false
+scale: true
+inverse: false
+train_only: false
+do_predict: false
+mix: true
+cols: null
+seasonal_patterns: Monthly
