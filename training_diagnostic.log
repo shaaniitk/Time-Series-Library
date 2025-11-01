@@ -17550,3 +17550,59 @@ mdn.sigma.shape: (2, 12, 4, 3)
 mdn.mixture_mean.shape: (2, 12, 4)
 mdn.mixture_mean.mean/std: 0.059370 / 0.094238
 outputs_tensor sample (first up to 8 values): [0.03620567172765732, -0.041407641023397446, 0.002397090196609497, 0.13217459619045258, 0.0015889378264546394, 0.16006499528884888, -0.01442774012684822, 0.021280109882354736]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 12, 4)
+outputs_tensor.mean/std: -0.059615 / 0.080512
+y_true_for_loss.shape: (2, 12, 4)
+y_true_for_loss.mean/std: 0.249070 / 0.552672
+c_out_evaluation: 4
+enable_mdn flag: True
+mdn.pi.shape: (2, 12, 4, 3)
+mdn.mu.shape: (2, 12, 4, 3)
+mdn.sigma.shape: (2, 12, 4, 3)
+mdn.mixture_mean.shape: (2, 12, 4)
+mdn.mixture_mean.mean/std: -0.060109 / 0.073390
+outputs_tensor sample (first up to 8 values): [-0.04755467176437378, -0.21552962064743042, 0.06074310094118118, 0.008170001208782196, -0.049946945160627365, -0.01590999960899353, -0.0715402364730835, 0.04090290516614914]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 12, 4)
+outputs_tensor.mean/std: 0.004699 / 0.118001
+y_true_for_loss.shape: (2, 12, 4)
+y_true_for_loss.mean/std: 0.031256 / 0.822206
+c_out_evaluation: 4
+enable_mdn flag: True
+mdn.pi.shape: (2, 12, 4, 3)
+mdn.mu.shape: (2, 12, 4, 3)
+mdn.sigma.shape: (2, 12, 4, 3)
+mdn.mixture_mean.shape: (2, 12, 4)
+mdn.mixture_mean.mean/std: -0.005191 / 0.107263
+outputs_tensor sample (first up to 8 values): [0.015482787042856216, -0.08501653373241425, -0.012369740754365921, -0.09960669279098511, -0.05621693655848503, -0.061872947961091995, -0.004481006413698196, -0.015409247949719429]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 12, 4)
+outputs_tensor.mean/std: -0.021484 / 0.084354
+y_true_for_loss.shape: (2, 12, 4)
+y_true_for_loss.mean/std: -0.059568 / 1.036817
+c_out_evaluation: 4
+enable_mdn flag: True
+mdn.pi.shape: (2, 12, 4, 3)
+mdn.mu.shape: (2, 12, 4, 3)
+mdn.sigma.shape: (2, 12, 4, 3)
+mdn.mixture_mean.shape: (2, 12, 4)
+mdn.mixture_mean.mean/std: -0.023205 / 0.078974
+outputs_tensor sample (first up to 8 values): [0.1338687688112259, -0.04049087315797806, -0.1259160041809082, 0.056596964597702026, 0.06835272908210754, -0.06210992857813835, -0.013160329312086105, 0.057269126176834106]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 12, 4)
+outputs_tensor.mean/std: -0.017836 / 0.085286
+y_true_for_loss.shape: (2, 12, 4)
+y_true_for_loss.mean/std: -0.143876 / 0.725382
+c_out_evaluation: 4
+enable_mdn flag: True
+mdn.pi.shape: (2, 12, 4, 3)
+mdn.mu.shape: (2, 12, 4, 3)
+mdn.sigma.shape: (2, 12, 4, 3)
+mdn.mixture_mean.shape: (2, 12, 4)
+mdn.mixture_mean.mean/std: -0.028152 / 0.078560
+outputs_tensor sample (first up to 8 values): [-0.02724611945450306, -0.16409477591514587, -0.12184347212314606, -0.08912455290555954, 0.0798238217830658, -0.007403835654258728, 0.04777843505144119, -0.13124658167362213]

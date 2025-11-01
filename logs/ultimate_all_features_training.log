@@ -288,3 +288,4 @@ UnboundLocalError: cannot access local variable 'y_pred_for_loss' where it is no
 2025-11-01 09:26:43,761 INFO __main__: BATCH 776/3401 | Epoch 1/3 | Loss=1.555040 | Time=3024.5s
 2025-11-01 09:26:59,440 INFO __main__: BATCH 781/3401 | Epoch 1/3 | Loss=1.161018 | Time=3040.1s
 2025-11-01 09:27:30,273 INFO __main__: BATCH 786/3401 | Epoch 1/3 | Loss=1.201484 | Time=3071.0s
+2025-11-01 09:29:20,423 INFO __main__: BATCH 791/3401 | Epoch 1/3 | Loss=1.058614 | Time=3181.1s
