@@ -1132,10 +1132,9 @@ def train_epoch(
                 pass
             # --- end debug ---
 
-            # Priority: MDN decoder > sequential mixture > standard loss
+            # Priority: Hybrid MDN Directional > MDN decoder > sequential mixture > standard loss
             enable_mdn = getattr(args, "enable_mdn_decoder", False)
             if enable_mdn and mdn_outputs is not None:
-                # MDN decoder path: compute NLL loss
                 pi, mu, sigma = mdn_outputs
                 if pi.size(1) > args.pred_len:
                     pi = pi[:, -args.pred_len:, ...]
@@ -1146,7 +1145,19 @@ def train_epoch(
                     if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
                     else y_true_for_loss
                 )
-                raw_loss = mdn_nll_loss(pi, mu, sigma, targets_mdn, reduce='mean')
+                
+                # Check if using hybrid directional loss
+                from layers.modular.losses.directional_trend_loss import HybridMDNDirectionalLoss
+                if isinstance(criterion, HybridMDNDirectionalLoss):
+                    # Convert MDN outputs to format expected by hybrid loss
+                    # (pi, mu, sigma) -> (mu, log_sigma, log_pi)
+                    log_stds = torch.log(sigma.clamp(min=1e-6))
+                    log_weights = torch.log(pi.clamp(min=1e-8))
+                    mdn_params_hybrid = (mu, log_stds, log_weights)
+                    raw_loss = criterion(mdn_params_hybrid, targets_mdn)
+                else:
+                    # Use direct MDN NLL loss
+                    raw_loss = mdn_nll_loss(pi, mu, sigma, targets_mdn, reduce='mean')
             else:
                 # Fallback to sequential mixture or standard loss
                 is_seq_mixture = sequential_mixture_loss_cls is not None and isinstance(criterion, sequential_mixture_loss_cls)
@@ -1491,10 +1502,9 @@ def validate_epoch(
                     batch_y_targets, target_scaler, target_indices, device
                 )
 
-                # Priority: MDN decoder > sequential mixture > standard loss
+                # Priority: Hybrid MDN Directional > MDN decoder > sequential mixture > standard loss
                 enable_mdn = getattr(args, "enable_mdn_decoder", False)
                 if enable_mdn and mdn_outputs is not None:
-                    # MDN decoder path: compute NLL loss
                     pi, mu, sigma = mdn_outputs
                     if pi.size(1) > args.pred_len:
                         pi = pi[:, -args.pred_len:, ...]
@@ -1505,7 +1515,18 @@ def validate_epoch(
                         if y_true_for_loss.dim() == 3 and y_true_for_loss.size(-1) == 1
                         else y_true_for_loss
                     )
-                    loss = mdn_nll_loss(pi, mu, sigma, targets_mdn, reduce='mean')
+                    
+                    # Check if using hybrid directional loss
+                    from layers.modular.losses.directional_trend_loss import HybridMDNDirectionalLoss
+                    if isinstance(criterion, HybridMDNDirectionalLoss):
+                        # Convert MDN outputs to format expected by hybrid loss
+                        log_stds = torch.log(sigma.clamp(min=1e-6))
+                        log_weights = torch.log(pi.clamp(min=1e-8))
+                        mdn_params_hybrid = (mu, log_stds, log_weights)
+                        loss = criterion(mdn_params_hybrid, targets_mdn)
+                    else:
+                        # Use direct MDN NLL loss
+                        loss = mdn_nll_loss(pi, mu, sigma, targets_mdn, reduce='mean')
                 else:
                     # Fallback to mixture or standard loss
                     use_mixture_loss = False
