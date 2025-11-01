@@ -37,7 +37,7 @@ num_input_waves: 118            # Total input waves
 
 # Training Configuration
 batch_size: 2                   # Small batch for memory efficiency
-train_epochs: 2                 # Quick test (increase for production)
+train_epochs: 75                # Full production training (restored from original)
 learning_rate: 0.00008          # Conservative learning rate
 weight_decay: 0.015             # Regularization
 gradient_accumulation_steps: 3  # Effective batch size = 6
@@ -210,7 +210,7 @@ early_stopping_restore_best_weights: true
 log_level: INFO
 log_format: '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s'
 log_file: logs/production_ultimate_deep_training_fixed.log
-log_interval: 50
+log_interval: 10                # Show batch progress every 10 batches
 verbose_logging: false
 debug_mode: true
 debug_log_file: logs/debug_training_fixed.log

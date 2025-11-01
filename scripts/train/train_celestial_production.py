@@ -181,6 +181,12 @@ def configure_logging(config: SimpleConfig) -> logging.Logger:
                 return True
             if "TREND:" in msg:
                 return True
+            if "Starting epoch" in msg:
+                return True
+            if "TEST:" in msg:
+                return True
+            if "BATCH" in msg and "loss=" in msg:
+                return True
             return False
 
     root_logger = logging.getLogger()
@@ -208,9 +214,21 @@ def configure_logging(config: SimpleConfig) -> logging.Logger:
     root_logger.addHandler(console_handler)
     root_logger.setLevel(level)
 
+    # Also add console handler to the module logger
     LOGGER.setLevel(level)
-    for handler in LOGGER.handlers:
-        handler.setLevel(level)
+    # Remove existing handlers from LOGGER to avoid duplicates
+    for handler in list(LOGGER.handlers):
+        LOGGER.removeHandler(handler)
+    
+    # Add console handler to module logger as well
+    module_console_handler = logging.StreamHandler(stream=sys.stdout)
+    module_console_handler.setLevel(logging.INFO)
+    module_console_handler.setFormatter(logging.Formatter(log_format))
+    module_console_handler.addFilter(LossOnlyFilter())
+    LOGGER.addHandler(module_console_handler)
+    
+    # Prevent propagation to avoid duplicate messages
+    LOGGER.propagate = False
 
     return LOGGER
 
@@ -1270,16 +1288,25 @@ def train_epoch(
             if batch_index % log_interval == 0:
                 elapsed = time.time() - epoch_start
                 
-                # Compute detailed batch metrics including directional accuracy
-                batch_metrics = _compute_detailed_batch_metrics(
-                    raw_loss, outputs_tensor, y_true_for_loss, mdn_outputs, args
-                )
-                
-                # Enhanced batch logging with directional accuracy
+                # Simple directional accuracy computation (robust)
                 dir_acc_str = ""
-                if batch_metrics.get('directional_accuracy') is not None:
-                    dir_acc_str = f" | dir_acc={batch_metrics['directional_accuracy']:.1f}%"
+                try:
+                    if outputs_tensor is not None and y_true_for_loss is not None:
+                        # Simple directional accuracy: percentage of correct direction predictions
+                        pred_diff = outputs_tensor[:, 1:] - outputs_tensor[:, :-1]
+                        true_diff = y_true_for_loss[:, 1:] - y_true_for_loss[:, :-1]
+                        
+                        pred_signs = torch.sign(pred_diff)
+                        true_signs = torch.sign(true_diff)
+                        
+                        correct_directions = (pred_signs == true_signs).float()
+                        dir_accuracy = correct_directions.mean().item() * 100
+                        dir_acc_str = f" | dir_acc={dir_accuracy:.1f}%"
+                except Exception:
+                    # Graceful fallback if directional accuracy computation fails
+                    pass
                 
+                # Enhanced batch logging with loss and directional accuracy
                 logger.info(
                     "BATCH %s/%s | Epoch %s/%s | loss=%0.6f%s | Time=%0.1fs",
                     batch_index + 1,
@@ -2779,6 +2806,9 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
     # PRODUCTION Training loop
     logger.info("Starting production training loop")
     logger.info("Configured for %s training epochs", args.train_epochs)
+    
+    # Test logging filter - this should appear in console
+    logger.info("TEST: This message contains loss=0.000000 and should appear in console")
     artifacts = create_training_artifacts(checkpoint_dir)
 
     if args.enable_memory_diagnostics:
@@ -2803,6 +2833,9 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
 
         # Adjust learning rate BEFORE training this epoch
         current_lr = adjust_learning_rate_warmup_cosine(optimizer, epoch, args)
+        
+        # Test batch logging at start of each epoch
+        logger.info("Starting epoch %s/%s with loss=0.000000 (test message)", epoch + 1, args.train_epochs)
 
         avg_train_loss, train_batches = train_epoch(
             model=model,
