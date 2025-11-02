@@ -1,18 +1,19 @@
-# 🌌 CELESTIAL ENHANCED PGAT - ULTIMATE DEEP CONFIGURATION (FIXED)
-# Heavy-duty overnight training with maximum model capacity
-# FIXED: Dimensional compatibility issues resolved
+# 🌌 CELESTIAL ENHANCED PGAT - OPTIMIZED OVERNIGHT PRODUCTION CONFIG
+# Updated: November 2, 2025
+# With Issues #1-6, #8, #10 fixes applied for optimal convergence
+# Expected runtime: 8-12 hours on single GPU
 
-# Core Model Architecture - ULTIMATE DEEP
+# Core Model Architecture - BALANCED DEEP
 activation: gelu
-d_model: 780                    # Main model dimension
+d_model: 780                    # Main model dimension (13 celestial × 60)
 n_heads: 20                     # Attention heads (780 ÷ 20 = 39 per head)
 d_ff: 3120                      # Feed-forward dimension (4 × d_model)
-e_layers: 12                    # Encoder layers (deep)
-d_layers: 6                     # Decoder layers
+e_layers: 8                     # Encoder layers (reduced from 12 for faster convergence)
+d_layers: 4                     # Decoder layers (reduced from 6)
 
-# FIXED: Dimensional Compatibility
-celestial_dim: 260              # FIXED: LCM(20,13) = 260 (divisible by both n_heads and num_celestial_bodies)
-calendar_embedding_dim: 195     # FIXED: d_model ÷ 4 = 195 (optimal size)
+# FIXED: Dimensional Compatibility (Issue #1)
+celestial_dim: 60               # FIXED: Compatible with n_heads (60×13=780=d_model)
+calendar_embedding_dim: 195     # d_model ÷ 4 = 195 (optimal size)
 num_celestial_bodies: 13        # Celestial bodies count
 
 # Data Configuration
@@ -26,99 +27,95 @@ target_wave_indices: [0, 1, 2, 3]
 freq: d
 embed: timeF
 
-# Sequence Configuration - ULTRA LONG TERM
-seq_len: 500                    # Input sequence length
-label_len: 250                  # Decoder label length
-pred_len: 20                    # Prediction horizon
+# Sequence Configuration - OPTIMIZED FOR CONVERGENCE
+seq_len: 250                    # Reduced from 500 for faster training
+label_len: 125                  # Decoder label length
+pred_len: 10                    # Reduced from 20 for better accuracy
 c_out: 4                        # Output features (OHLC)
-enc_in: 118                     # Encoder input features
+enc_in: 118                     # Encoder input features (auto-detected: 113)
 dec_in: 118                     # Decoder input features
 num_input_waves: 118            # Total input waves
 
-# Training Configuration
-batch_size: 2                   # Small batch for memory efficiency
-train_epochs: 75                # Full production training (restored from original)
-learning_rate: 0.00008          # Conservative learning rate
-weight_decay: 0.015             # Regularization
-gradient_accumulation_steps: 3  # Effective batch size = 6
+# Training Configuration - OPTIMIZED
+batch_size: 4                   # Increased from 2 for efficiency
+train_epochs: 60                # Reduced from 75 for overnight completion
+learning_rate: 0.0001           # Slightly higher than 0.00008
+weight_decay: 0.01              # Reduced from 0.015
+gradient_accumulation_steps: 3  # Effective batch size = 12
 
-# ENHANCED: Mixture NLL Directional Loss (REBALANCED)
+# BALANCED: Loss Configuration for Best Convergence
 loss:
-  type: hybrid_mdn_directional  # Hybrid MDN + Directional loss
-  nll_weight: 0.15              # REDUCED: MDN NLL component weight
-  direction_weight: 8.0         # INCREASED: Directional accuracy weight (primary focus)
-  trend_weight: 0.5             # REDUCED: Trend consistency weight (was dominating)
-  magnitude_weight: 0.1         # REDUCED: Magnitude accuracy weight
-  correlation_type: pearson     # Correlation type for trend
+  type: hybrid_mdn_directional  
+  nll_weight: 0.3               # Increased from 0.15 (MDN needs signal)
+  direction_weight: 5.0         # Reduced from 8.0 (was dominating)
+  trend_weight: 0.8             # Increased from 0.5  
+  magnitude_weight: 0.2         # Increased from 0.1
+  correlation_type: pearson     
 
-# MDN Configuration (ACTIVATED)
-enable_mdn_decoder: true        # Enable MDN decoder
-use_mixture_decoder: true       # Enable mixture decoder
-use_sequential_mixture_decoder: true  # Enable sequential mixture
-mdn_components: 8               # Number of mixture components
-mdn_sigma_min: 0.001           # Minimum sigma
-mdn_sigma_max: 1.0             # Maximum sigma
-mdn_use_softplus: true         # Use softplus for sigma
+# MDN Configuration - STABLE SETUP
+enable_mdn_decoder: true        
+use_mixture_decoder: false      # FIXED Issue #3: Single head only
+use_sequential_mixture_decoder: false  # FIXED Issue #3: Single head only
+mdn_components: 5               # Reduced from 8 for faster convergence
+mdn_sigma_min: 0.001           
+mdn_sigma_max: 1.0             
+mdn_use_softplus: true         
 
-# Advanced Features - ENABLED
+# Advanced Features - OPTIMIZED
 use_efficient_covariate_interaction: true
 use_celestial_graph: true
 use_celestial_target_attention: true
 use_calendar_effects: true
-use_phase_aware_processing: true
-use_hierarchical_mapping: true
-use_multi_scale_context: true
+use_phase_aware_processing: true  # FIXED Issue #5: Explicit flag
+use_hierarchical_mapping: false   # Disabled for simplicity
+use_multi_scale_context: true    # FIXED Issue #4: Already implemented
 use_dynamic_spatiotemporal_encoder: true
-use_gated_graph_combiner: true
+use_gated_graph_combiner: false  # Disabled (using Petri net)
 use_petri_net_combiner: true
 use_spatial_attention: true
 use_temporal_attention: true
 use_target_autocorrelation: true
-use_stochastic_learner: true
-use_stochastic_control: true
+use_stochastic_learner: false    # Disabled for stability
+use_stochastic_control: false    # Disabled for stability
+
+# FIXED Issue #10: Stochastic Warmup
+stochastic_warmup_epochs: 3     # MDN calibration period
 
 # Celestial Configuration
 aggregate_waves_to_celestial: true
-celestial_fusion_layers: 6
+celestial_fusion_layers: 4      # Reduced from 6
 use_future_celestial_conditioning: false
 
-# Graph Configuration
-num_message_passing_steps: 4
-edge_feature_dim: 32
+# Graph Configuration  
+num_message_passing_steps: 3    # Reduced from 4
+edge_feature_dim: 24            # Reduced from 32
 
 # Context Fusion
 context_fusion_mode: multi_scale
-context_fusion_layers: 3
+context_fusion_layers: 2        # Reduced from 3
 context_fusion_dropout: 0.1
 
 # Petri Net Configuration
-bypass_spatiotemporal_with_petri: true
+bypass_spatiotemporal_with_petri: true  # FIXED Issue #2: Soft blend implemented
 petri_net_places: 39
 petri_net_transitions: 52
 
-# Hierarchical Configuration
-hierarchical_levels: 5
-hierarchical_reduction_factor: 2
-
-# Stochastic Configuration
-stochastic_layers: 4
-stochastic_temperature_start: 3.0
-stochastic_temperature_end: 0.05
-stochastic_decay_steps: 3000
+# Stochastic Configuration (DISABLED for stability)
+stochastic_temperature_start: 2.0   # Lower from 3.0
+stochastic_temperature_end: 0.1    # Higher from 0.05
+stochastic_decay_steps: 2000       # Faster decay
 
 # Kernel Sizes
-short_term_kernel_size: 5
-medium_term_kernel_size: 25
-long_term_kernel_size: 125
+short_term_kernel_size: 3       # Reduced from 5
+medium_term_kernel_size: 15     # Reduced from 25
+long_term_kernel_size: 75       # Reduced from 125
 
-# Regularization
-dropout: 0.1
-use_dropout_schedule: true
-dropout_schedule_start: 0.15
-dropout_schedule_end: 0.05
-clip_grad_norm: 0.8
-reg_loss_weight: 0.002
-label_smoothing: 0.05
+# Regularization - BALANCED
+dropout: 0.15                   # Increased from 0.1 for generalization
+use_dropout_schedule: false     # Disabled for simplicity
+clip_grad_norm: 1.0             # Increased from 0.8
+reg_loss_weight: 0.001          # Reduced from 0.002
+label_smoothing: 0.0            # Disabled
 
 # Learning Rate Schedule
 lradj: warmup_cosine

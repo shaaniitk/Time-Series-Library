@@ -105,6 +105,15 @@ class Model(nn.Module):
             nn.LayerNorm(self.model_config.d_model)
         )
         
+        # FIX ISSUE #10: Stochastic warmup for MDN stability
+        # Disable stochastic noise for first N epochs to let MDN calibrate
+        self.stochastic_warmup_epochs = int(getattr(configs, 'stochastic_warmup_epochs', 3))
+        self.current_epoch = 0  # Updated externally by training script
+        self.logger.info(
+            "🎲 Stochastic warmup: %d epochs (noise disabled during warmup)",
+            self.stochastic_warmup_epochs
+        )
+        
         # Efficient covariate interaction (if enabled)
         if self.model_config.use_efficient_covariate_interaction:
             self._setup_efficient_covariate_interaction()
@@ -121,6 +130,29 @@ class Model(nn.Module):
                 nn.init.xavier_uniform_(param)
             elif 'bias' in name:
                 nn.init.zeros_(param)
+    
+    def set_current_epoch(self, epoch: int) -> None:
+        """Update current epoch for scheduling (called by training script).
+        
+        FIX ISSUE #10: Enables stochastic warmup - stochastic noise is disabled
+        for the first stochastic_warmup_epochs to allow MDN to stabilize.
+        
+        Args:
+            epoch: Current training epoch (0-indexed)
+        """
+        self.current_epoch = epoch
+        
+        # Log warmup status transitions
+        if epoch == self.stochastic_warmup_epochs:
+            self.logger.info(
+                "✅ Stochastic warmup complete (epoch %d) - enabling stochastic noise",
+                epoch
+            )
+        elif epoch < self.stochastic_warmup_epochs:
+            self.logger.debug(
+                "⏳ Stochastic warmup: epoch %d/%d (noise disabled)",
+                epoch, self.stochastic_warmup_epochs
+            )
     
     def _setup_efficient_covariate_interaction(self):
         """Setup efficient covariate interaction components."""

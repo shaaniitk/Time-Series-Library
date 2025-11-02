@@ -143,6 +143,17 @@ class AttentionRegistry:
         raise ValueError(f"Unknown attention component: {component_name}. Available: {list(cls._registry.keys())}")
 
 def get_attention_component(name, **kwargs):
+    # Handle well-known legacy/alias names before consulting the registry
+    if name in {"autocorrelation_layer", "autocorrelation", "autocorrelation_attention"}:
+        # Map legacy/simple names to the canonical AutoCorrelationAttention
+        return AutoCorrelationAttention(
+            d_model=kwargs.get('d_model'),
+            n_heads=kwargs.get('n_heads'),
+            factor=kwargs.get('factor', 1),
+            dropout=kwargs.get('dropout', 0.1),
+            scales=kwargs.get('scales', [1, 2])
+        )
+
     component_class = AttentionRegistry.get(name)
     
     # Legacy components

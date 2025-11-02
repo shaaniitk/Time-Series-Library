@@ -173,16 +173,24 @@ class EmbeddingModule(nn.Module):
         self.config = config
 
         # Enhanced Phase-Aware Wave Processing System
+        # FIX ISSUE #5: Add explicit phase-aware processing flag check
         if config.aggregate_waves_to_celestial:
-            self.phase_aware_processor = PhaseAwareCelestialProcessor(
-                num_input_waves=config.num_input_waves,
-                celestial_dim=config.celestial_dim,
-                waves_per_body=9,
-                num_heads=config.n_heads
-            )
+            # Check if phase-aware processing is requested (default: True)
+            use_phase_aware = getattr(config, 'use_phase_aware_processing', True)
             
-            # Update num_input_waves with auto-detected value from processor
-            config.num_input_waves = self.phase_aware_processor.num_input_waves
+            if use_phase_aware:
+                self.phase_aware_processor = PhaseAwareCelestialProcessor(
+                    num_input_waves=config.num_input_waves,
+                    celestial_dim=config.celestial_dim,
+                    waves_per_body=9,
+                    num_heads=config.n_heads
+                )
+                
+                # Update num_input_waves with auto-detected value from processor
+                config.num_input_waves = self.phase_aware_processor.num_input_waves
+            else:
+                # Simple aggregation without phase-aware processing
+                self.phase_aware_processor = None
             
             # Keep the old processor for target extraction
             self.wave_aggregator = CelestialWaveAggregator(

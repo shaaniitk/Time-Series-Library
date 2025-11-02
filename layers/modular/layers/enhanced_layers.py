@@ -15,10 +15,9 @@ class EnhancedEncoderLayer(BaseEncoderLayer):
         self.decomp2 = decomposition_component
         self.feed_forward = FeedForward(d_model, d_ff, dropout, activation)
         self.dropout = nn.Dropout(dropout)
-        self.gate = nn.Sequential(
-            nn.Conv1d(d_model, d_model, kernel_size=1),
-            nn.Sigmoid()
-        )
+        self.d_model = d_model
+        self.gate_linear = nn.Linear(d_model, d_model)
+        self.gate_act = nn.Sigmoid()
         self.attention_scale = nn.Parameter(torch.ones(1) * 0.1)
         self.ffn_scale = nn.Parameter(torch.ones(1) * 0.1)
 
@@ -26,15 +25,20 @@ class EnhancedEncoderLayer(BaseEncoderLayer):
         new_x, attn = self.attention(x, x, x, attn_mask=attn_mask)
         x = x + self.dropout(self.attention_scale * new_x)
         
-        x, _ = self.decomp1(x)
+        # Support decomposition modules that return either (residual, trend) or only trend
+        decomp_out = self.decomp1(x)
+        if isinstance(decomp_out, tuple):
+            x, _ = decomp_out
+        else:
+            trend = decomp_out
+            x = x - trend if trend.shape == x.shape else x
         
         residual = x
-        y = x.transpose(-1, 1)
+        # Lightweight gating on feature dimension to avoid layout pitfalls
+        gate_values = self.gate_act(self.gate_linear(x))
+        y = x * gate_values
         
-        gate_values = self.gate(y)
-        y = y * gate_values
-        
-        y = self.feed_forward(y.transpose(-1, 1))
+        y = self.feed_forward(y)
         
         x = residual + self.ffn_scale * y
         
@@ -76,21 +80,49 @@ class EnhancedDecoderLayer(BaseDecoderLayer):
         residual = x
         new_x = self.self_attention(x, x, x, attn_mask=x_mask)[0]
         x = residual + self.dropout(self.self_attn_scale * new_x)
-        x, trend1 = self.decomp1(x)
+        # decomp1 may return trend only or (residual, trend)
+        out1 = self.decomp1(x)
+        if isinstance(out1, tuple):
+            x, trend1 = out1
+        else:
+            trend1 = out1
+            x = x - trend1 if trend1.shape == x.shape else x
         
         residual = x
         cross_tensor = self._extract_cross_memory(cross)
+        # Normalize cross tensor shape to [B, L, D]
+        import torch as _torch
+        if _torch.is_tensor(cross_tensor):
+            if cross_tensor.dim() == 2:
+                cross_tensor = cross_tensor.unsqueeze(0)
+            if cross_tensor.size(0) != x.size(0):
+                if cross_tensor.size(0) == 1:
+                    cross_tensor = cross_tensor.expand(x.size(0), -1, -1)
+                else:
+                    cross_tensor = cross_tensor[:x.size(0)]
         new_x = self.cross_attention(x, cross_tensor, cross_tensor, attn_mask=cross_mask)[0]
         x = residual + self.dropout(self.cross_attn_scale * new_x)
-        x, trend2 = self.decomp2(x)
+        
+        out2 = self.decomp2(x)
+        if isinstance(out2, tuple):
+            x, trend2 = out2
+        else:
+            trend2 = out2
+            x = x - trend2 if trend2.shape == x.shape else x
         
         residual = x
         y = self.dropout(self.activation(self.conv1(x.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))
         x = residual + y
-        x, trend3 = self.decomp3(x)
+        
+        out3 = self.decomp3(x)
+        if isinstance(out3, tuple):
+            x, trend3 = out3
+        else:
+            trend3 = out3
+            x = x - trend3 if trend3.shape == x.shape else x
 
-        residual_trend = trend1 + trend2 + trend3
+        residual_trend = trend1 + trend2 + trend3 if (isinstance(trend1, type(trend2)) and isinstance(trend2, type(trend3))) else 0
         return x, residual_trend
 
     @staticmethod

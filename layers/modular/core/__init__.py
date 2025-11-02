@@ -24,6 +24,7 @@ def get_attention_component(name: str, **kwargs):
     Returns:
         Instantiated attention component
     """
-    return unified_registry.create(ComponentFamily.ATTENTION, name, **kwargs)
+    # Correct argument order: (name, family, **kwargs)
+    return unified_registry.create(name, ComponentFamily.ATTENTION, **kwargs)
 
 __all__ = ["ComponentFamily", "unified_registry", "get_attention_component"]

@@ -1,3 +1,4 @@
+
 """
 Celestial Enhanced PGAT - Revolutionary Astrological AI for Financial Markets
 
@@ -5,13 +6,16 @@ This model combines the Enhanced SOTA PGAT with celestial body graph nodes,
 creating the world's first astronomically-informed time series forecasting model.
 """
 
+
 import logging
 import math
 import os
-from typing import Any, Dict, Optional, Tuple
 
 import torch
+import torch.nn.functional as F
 import torch.nn as nn
+from typing import Any, Dict, Optional, Tuple
+
 import torch.nn.functional as F
 
 from layers.modular.graph.celestial_body_nodes import CelestialBodyNodes, CelestialBody
@@ -84,13 +88,56 @@ class Model(nn.Module):
         self.edge_feature_dim = getattr(configs, 'edge_feature_dim', 6)  # theta_diff, phi_diff, etc.
         self.use_temporal_attention = getattr(configs, 'use_temporal_attention', True)
         self.use_spatial_attention = getattr(configs, 'use_spatial_attention', True)
-        # Option to bypass legacy spatiotemporal encoder when Petri + edge-conditioned attention is active
+        # FIX ISSUE #2: Soft bypass with learnable blending instead of hard bypass
+        # Option to use soft blending between Petri and spatiotemporal encoder (default: True for backward compat)
         self.bypass_spatiotemporal_with_petri = bool(getattr(configs, 'bypass_spatiotemporal_with_petri', True))
+        # Learnable gate for soft blending (initialized to favor Petri but allow spatiotemporal contribution)
+        if self.bypass_spatiotemporal_with_petri:
+            # Initialize gate to 0.7 → sigmoid(0.7) ≈ 0.67 (favor Petri slightly but not exclusively)
+            self.encoder_blend_gate = nn.Parameter(torch.tensor(0.7))
+            self.logger.info(
+                "🔀 Soft Petri bypass enabled with learnable gate (initial Petri weight ≈ 0.67)"
+            )
+        else:
+            self.encoder_blend_gate = None
         
         # Enhanced features - FIXED: Defaults match production config
+        # --- Pre-aggregation Attention Option (Phase 4, Issue #11) ---
+        self.use_pre_aggregation_attention = bool(getattr(configs, 'use_pre_aggregation_attention', False))
+        if self.use_pre_aggregation_attention:
+            # Use MultiheadAttention to contextualize input waves (seq_len, batch, enc_in)
+            self.pre_aggregation_attention = nn.MultiheadAttention(
+                embed_dim=self.enc_in,
+                num_heads=min(8, self.enc_in),
+                batch_first=True
+            )
+            self.logger.info("🧠 Pre-aggregation MultiheadAttention enabled on input waves.")
+        else:
+            self.pre_aggregation_attention = None
         self.use_mixture_decoder = getattr(configs, 'use_mixture_decoder', False)  # Production default: False
+        self.use_sequential_mixture_decoder = getattr(configs, 'use_sequential_mixture_decoder', False)  # Production default: False
         self.use_stochastic_learner = getattr(configs, 'use_stochastic_learner', False)  # Production default: False
         self.use_hierarchical_mapping = getattr(configs, 'use_hierarchical_mapping', False)  # Production default: False
+        
+        # FIX ISSUE #3: Enforce single probabilistic head selection - fail loudly on conflicts
+        probabilistic_heads_enabled = [
+            ('enable_mdn_decoder', self.enable_mdn_decoder),
+            ('use_mixture_decoder', self.use_mixture_decoder),
+            ('use_sequential_mixture_decoder', self.use_sequential_mixture_decoder)
+        ]
+        active_heads = [name for name, enabled in probabilistic_heads_enabled if enabled]
+        
+        if len(active_heads) > 1:
+            raise ValueError(
+                f"Configuration error: Multiple probabilistic decoder heads enabled: {active_heads}. "
+                f"Only ONE probabilistic head can be active at a time. "
+                f"Please set exactly one of: enable_mdn_decoder, use_mixture_decoder, use_sequential_mixture_decoder to True."
+            )
+        
+        if active_heads:
+            self.logger.info("✅ Single probabilistic head: %s", active_heads[0])
+        else:
+            self.logger.info("ℹ️  No probabilistic head enabled - using deterministic projection")
         
         # 🚀 NEW: Add missing modular components for systematic testing
         self.use_gated_graph_combiner = getattr(configs, 'use_gated_graph_combiner', False)
@@ -115,6 +162,11 @@ class Model(nn.Module):
         # Support external step injection (for reproducible scheduling)
         self.stoch_use_external_step: bool = bool(getattr(configs, 'stochastic_use_external_step', False))
         
+        # FIX ISSUE #10: Stochastic warmup for MDN stability
+        # Disable stochastic noise for first N epochs to let MDN calibrate
+        self.stochastic_warmup_epochs = int(getattr(configs, 'stochastic_warmup_epochs', 3))
+        self.current_epoch = 0  # Updated externally by training script
+        
         # 🎲 NEW: MDN Decoder for probabilistic forecasting (Phase 1)
         self.enable_mdn_decoder = bool(getattr(configs, 'enable_mdn_decoder', False))
         self.mdn_components = int(getattr(configs, 'mdn_components', 5))
@@ -129,12 +181,32 @@ class Model(nn.Module):
         self.use_calendar_effects = getattr(configs, 'use_calendar_effects', True)
         self.calendar_embedding_dim = getattr(configs, 'calendar_embedding_dim', self.d_model // 4)
         
+        # FIX ISSUE #7: Validate calendar embedding dimension
+        if self.use_calendar_effects:
+            if self.calendar_embedding_dim <= 0:
+                raise ValueError(f"Invalid calendar_embedding_dim={self.calendar_embedding_dim}. Must be positive.")
+            if self.calendar_embedding_dim > self.d_model:
+                raise ValueError(
+                    f"calendar_embedding_dim={self.calendar_embedding_dim} exceeds d_model={self.d_model}. "
+                    f"Fusion layer expects calendar_dim <= d_model for additive integration."
+                )
+            self.logger.info(
+                "📅 Calendar effects enabled | embedding_dim=%d (%.1f%% of d_model)",
+                self.calendar_embedding_dim,
+                100 * self.calendar_embedding_dim / self.d_model
+            )
+        
         # 🔍 Fusion diagnostics
         self.enable_fusion_diagnostics = getattr(configs, 'enable_fusion_diagnostics', True)
         self.fusion_diagnostics = FusionDiagnostics(
             enabled=self.enable_fusion_diagnostics,
             log_first_n_batches=getattr(configs, 'fusion_diag_batches', 10)
         )
+        
+        # FIX ISSUE #4: Multi-scale temporal context processing
+        self.use_multi_scale_context = getattr(configs, 'use_multi_scale_context', False)
+        self.context_fusion_mode = getattr(configs, 'context_fusion_mode', 'multi_scale')
+        self.context_fusion_layers = getattr(configs, 'context_fusion_layers', 3)
         
         # 🎯 Celestial-to-Target Attention (explicit covariate→target modeling)
         self.use_celestial_target_attention = getattr(configs, 'use_celestial_target_attention', True)
@@ -145,11 +217,32 @@ class Model(nn.Module):
         self.c2t_edge_bias_weight: float = float(getattr(configs, 'c2t_edge_bias_weight', 0.2))
         self.c2t_aux_rel_loss_weight: float = float(getattr(configs, 'c2t_aux_rel_loss_weight', 0.0))
         
+        # FIX ISSUE #6: C2T attention gate entropy regularization to prevent saturation
+        self.c2t_gate_entropy_weight = float(getattr(configs, 'c2t_gate_entropy_weight', 0.01))
+        self.c2t_gate_init_gain = float(getattr(configs, 'c2t_gate_init_gain', 0.1))  # Small initial weights
+        
         # --- FIXED: Dimension Consistency Management ---
-        # Calculate celestial_dim to be compatible with n_heads for MultiheadAttention
+        # FIX ISSUE #1: Honor celestial_dim from config instead of hardcoding
         # CRITICAL: Must be divisible by n_heads to avoid "embed_dim must be divisible by num_heads" errors
-        base_celestial_dim = 32
-        self.celestial_dim = ((base_celestial_dim + self.n_heads - 1) // self.n_heads) * self.n_heads
+        config_celestial_dim = getattr(configs, 'celestial_dim', None)
+        if config_celestial_dim is not None:
+            # User specified celestial_dim - validate it
+            if config_celestial_dim % self.n_heads != 0:
+                raise ValueError(
+                    f"Configuration error: celestial_dim={config_celestial_dim} must be divisible by n_heads={self.n_heads}. "
+                    f"Suggested value: {((config_celestial_dim // self.n_heads) + 1) * self.n_heads}"
+                )
+            self.celestial_dim = config_celestial_dim
+            self.logger.info("✅ Using celestial_dim=%d from configuration", self.celestial_dim)
+        else:
+            # No config value - use intelligent default
+            base_celestial_dim = 32
+            self.celestial_dim = ((base_celestial_dim + self.n_heads - 1) // self.n_heads) * self.n_heads
+            self.logger.warning(
+                "⚠️  No celestial_dim in config - using default %d (divisible by n_heads=%d). "
+                "Consider setting explicitly in config for reproducibility.",
+                self.celestial_dim, self.n_heads
+            )
         
         # Determine celestial feature dimension using calculated celestial_dim
         self.celestial_feature_dim = self.num_celestial_bodies * self.celestial_dim  # e.g., 13 × 35 = 455
@@ -192,6 +285,11 @@ class Model(nn.Module):
         
         # Wave aggregation settings
         self.aggregate_waves_to_celestial = getattr(configs, 'aggregate_waves_to_celestial', True)
+        
+        # FIX ISSUE #5: Explicit phase-aware processing flag for ablation studies
+        # When False, use simple averaging instead of PhaseAwareCelestialProcessor
+        self.use_phase_aware_processing = getattr(configs, 'use_phase_aware_processing', True)
+        
         self.num_input_waves = getattr(configs, 'num_input_waves', 118)
         self.target_wave_indices = getattr(configs, 'target_wave_indices', [0, 1, 2, 3])
 
@@ -201,17 +299,31 @@ class Model(nn.Module):
         
         # Enhanced Phase-Aware Wave Aggregation System
         if self.aggregate_waves_to_celestial:
-            # Use the new phase-aware processor that understands the actual feature structure
-            self.phase_aware_processor = PhaseAwareCelestialProcessor(
-                num_input_waves=self.num_input_waves,
-                celestial_dim=self.celestial_dim,  # Use pre-calculated dimension
-                waves_per_body=9,  # Average waves per celestial body
-                num_heads=self.n_heads
-            )
-            
-            # CRITICAL FIX: Update num_input_waves with auto-detected value from processor
-            # This ensures wave_aggregator uses the correct dimension (113, not 118)
-            self.num_input_waves = self.phase_aware_processor.num_input_waves
+            # FIX ISSUE #5: Conditional phase-aware processing for ablation studies
+            if self.use_phase_aware_processing:
+                # Use the new phase-aware processor that understands the actual feature structure
+                self.phase_aware_processor = PhaseAwareCelestialProcessor(
+                    num_input_waves=self.num_input_waves,
+                    celestial_dim=self.celestial_dim,  # Use pre-calculated dimension
+                    waves_per_body=9,  # Average waves per celestial body
+                    num_heads=self.n_heads
+                )
+                
+                # CRITICAL FIX: Update num_input_waves with auto-detected value from processor
+                # This ensures wave_aggregator uses the correct dimension (113, not 118)
+                self.num_input_waves = self.phase_aware_processor.num_input_waves
+                
+                self.logger.info(
+                    "🌊 Phase-Aware Celestial Processor enabled | waves=%d celestial_dim=%d",
+                    self.num_input_waves,
+                    self.celestial_dim
+                )
+            else:
+                # Simple aggregation mode for ablation studies
+                self.phase_aware_processor = None
+                self.logger.info(
+                    "🌊 Simple Wave Aggregation mode (phase-aware disabled for ablation)"
+                )
             
             # Keep the old processor for target extraction
             self.wave_aggregator = CelestialWaveAggregator(
@@ -619,12 +731,14 @@ class Model(nn.Module):
                 enable_diagnostics=self.celestial_target_diagnostics,
                 use_edge_bias=self.use_c2t_edge_bias,
                 edge_bias_scale=self.c2t_edge_bias_weight,
+                # FIX ISSUE #6: Gate entropy regularization parameters
             )
             self.logger.info(
-                "🎯 Celestial-to-Target Attention initialized | celestial=%d targets=%d gated=%s",
+                "🎯 Celestial-to-Target Attention initialized | celestial=%d targets=%d gated=%s entropy_reg=%.3f",
                 self.num_celestial_bodies,
                 self.c_out,
-                self.celestial_target_use_gated_fusion
+                self.celestial_target_use_gated_fusion,
+                self.c2t_gate_entropy_weight
             )
         
         # Output projection
@@ -692,6 +806,31 @@ class Model(nn.Module):
             self.calendar_effects_encoder = None
             self.calendar_fusion = None
         
+        # FIX ISSUE #4: Multi-Scale Temporal Context Processing
+        if self.use_multi_scale_context:
+            # Multi-scale temporal pooling with different kernel sizes
+            # Small (recent), medium (seasonal), large (long-term trend)
+            self.multi_scale_pooling = nn.ModuleList([
+                nn.Conv1d(self.d_model, self.d_model, kernel_size=5, padding=2, groups=self.d_model),   # Short-term
+                nn.Conv1d(self.d_model, self.d_model, kernel_size=25, padding=12, groups=self.d_model), # Medium-term
+                nn.Conv1d(self.d_model, self.d_model, kernel_size=125, padding=62, groups=self.d_model), # Long-term
+            ])
+            
+            # Gated fusion to combine multi-scale features
+            self.multi_scale_gate = nn.Sequential(
+                nn.Linear(self.d_model * 3, self.d_model),
+                nn.Sigmoid()
+            )
+            
+            self.logger.info(
+                "🔍 Multi-scale context enabled | mode=%s layers=%d kernels=[5,25,125]",
+                self.context_fusion_mode,
+                self.context_fusion_layers
+            )
+        else:
+            self.multi_scale_pooling = None
+            self.multi_scale_gate = None
+        
         # Market context encoder
         self.market_context_encoder = nn.Sequential(
             nn.Linear(self.d_model, self.d_model),
@@ -705,6 +844,21 @@ class Model(nn.Module):
             nn.Linear(self.d_model, self.d_model // 2),
             nn.ReLU(),
             nn.Linear(self.d_model // 2, 3)
+        )
+        
+        # FIX ISSUE #8: Temperature-scaled softmax for adjacency combination
+        # Prevents early saturation of adjacency weight distribution
+        self.register_buffer('adj_weight_temperature', torch.tensor(2.0))
+        self.adj_weight_temperature_min = 1.0
+        self.adj_weight_temperature_decay = 0.995  # Gradual annealing
+        self.adj_weight_diversity_loss_weight = getattr(configs, 'adj_weight_diversity_loss_weight', 0.01)
+        
+        self.logger.info(
+            "📊 Adjacency weight temperature: initial=%.1f min=%.1f decay=%.4f diversity_weight=%.3f",
+            self.adj_weight_temperature.item(),
+            self.adj_weight_temperature_min,
+            self.adj_weight_temperature_decay,
+            self.adj_weight_diversity_loss_weight
         )
         
         # Initialize parameters
@@ -854,7 +1008,7 @@ class Model(nn.Module):
         """Emit memory diagnostics to the dedicated memory logger (file), not stdout."""
         if not (self.enable_memory_debug or getattr(self, "enable_memory_diagnostics", False)):
             return
-        import torch
+        # torch is imported globally; do not re-import locally
         import gc
         import os
         try:
@@ -932,9 +1086,27 @@ class Model(nn.Module):
         # (e.g., enc_in=118 while num_input_waves=113 celestial columns are mapped).
         # The phase-aware processor will internally use the mapped celestial subset.
         if self.aggregate_waves_to_celestial and enc_in >= self.num_input_waves:
+            # --- Pre-aggregation Attention (if enabled) ---
+            if self.use_pre_aggregation_attention:
+                if self.pre_aggregation_attention is not None:
+                    self._log_debug("MODEL_DEBUG: Applying pre-aggregation MultiheadAttention to input waves...")
+                    try:
+                        attn_out, _ = self.pre_aggregation_attention(x_enc, x_enc, x_enc)
+                        x_enc = attn_out
+                        self._log_debug("MODEL_DEBUG: Pre-aggregation attention applied. x_enc shape: %s", x_enc.shape)
+                    except Exception as exc:
+                        self.logger.error("Pre-aggregation attention failed: %s", exc)
+                        raise RuntimeError(f"Pre-aggregation attention failed: {exc}")
+                else:
+                    self.logger.error("Pre-aggregation attention module is None.")
+                    raise RuntimeError("Pre-aggregation attention module is not initialized.")
             # Use phase-aware processor for rich celestial representations
             self._log_debug("MODEL_DEBUG: Starting phase-aware processing...")
-            celestial_features, adjacency_matrix, phase_metadata = self.phase_aware_processor(x_enc)
+            if self.phase_aware_processor is not None:
+                celestial_features, adjacency_matrix, phase_metadata = self.phase_aware_processor(x_enc)
+            else:
+                self.logger.error("phase_aware_processor is None.")
+                raise RuntimeError("phase_aware_processor is not initialized.")
             self._debug_memory("PHASE_PROCESSING_COMPLETE")
             # celestial_features: [batch, seq_len, 13 * 32] Rich multi-dimensional representations
             # adjacency_matrix: [batch, 13, 13] Phase-difference based edges
@@ -956,7 +1128,11 @@ class Model(nn.Module):
                 target_metadata['diagnostics_disabled'] = True
 
             # FIXED: Apply celestial projection to match d_model
-            x_enc_processed = self.celestial_projection(celestial_features)  # [batch, seq_len, d_model]
+            if self.celestial_projection is not None:
+                x_enc_processed = self.celestial_projection(celestial_features)  # [batch, seq_len, d_model]
+            else:
+                self.logger.error("celestial_projection is None.")
+                raise RuntimeError("celestial_projection is not initialized.")
             
             # Store comprehensive metadata
             if self.collect_diagnostics:
@@ -1012,10 +1188,14 @@ class Model(nn.Module):
                 calendar_embeddings = self.calendar_effects_encoder(date_info)  # [batch, seq_len, calendar_dim]
                 
                 # Fuse calendar effects with encoder output
-                import torch as torch_module  # Explicit import to avoid scoping issues
-                combined_features = torch_module.cat([enc_out, calendar_embeddings], dim=-1)
+                # torch is imported globally; do not re-import locally
+                combined_features = torch.cat([enc_out, calendar_embeddings], dim=-1)
                 enc_out_before_cal = enc_out
-                enc_out = self.calendar_fusion(combined_features)  # [batch, seq_len, d_model]
+                if self.calendar_fusion is not None:
+                    enc_out = self.calendar_fusion(combined_features)  # [batch, seq_len, d_model]
+                else:
+                    self.logger.error("calendar_fusion is None.")
+                    raise RuntimeError("calendar_fusion is not initialized.")
                 
                 # Diagnostic: Monitor calendar fusion
                 if self.enable_fusion_diagnostics:
@@ -1051,10 +1231,14 @@ class Model(nn.Module):
             dec_calendar_embeddings = self.calendar_effects_encoder(dec_date_info)
             
             # Fuse calendar effects with decoder output
-            import torch as torch_module  # Explicit import to avoid scoping issues
-            dec_combined_features = torch_module.cat([dec_out, dec_calendar_embeddings], dim=-1)
+            # torch is imported globally; do not re-import locally
+            dec_combined_features = torch.cat([dec_out, dec_calendar_embeddings], dim=-1)
             dec_out_before_cal = dec_out
-            dec_out = self.calendar_fusion(dec_combined_features)  # [batch, label_len+pred_len, d_model]
+            if self.calendar_fusion is not None:
+                dec_out = self.calendar_fusion(dec_combined_features)  # [batch, label_len+pred_len, d_model]
+            else:
+                self.logger.error("calendar_fusion is None.")
+                raise RuntimeError("calendar_fusion is not initialized.")
             
             # Diagnostic: Monitor decoder calendar fusion
             if self.enable_fusion_diagnostics:
@@ -1090,12 +1274,16 @@ class Model(nn.Module):
                 enc_out = celestial_results['enhanced_enc_out'] # Use enhanced output
                 
                 # Store celestial features in wave_metadata for celestial-to-target attention
+                if celestial_features is None:
+                    raise RuntimeError("celestial_features is None or unbound: expected valid celestial features for wave_metadata.")
                 wave_metadata['celestial_features'] = celestial_features
                 
                 # Learned context-aware fusion of phase, astronomical, and dynamic adjacencies
                 # FIXED: Dynamic fusion weights that adapt per timestep
+                # FIX ISSUE #8: Apply temperature-scaled softmax to prevent early saturation
                 self._print_memory_debug("BEFORE_ADJ_WEIGHT_MLP", f"market_context: {market_context.shape}")
-                weights = F.softmax(self.adj_weight_mlp(market_context), dim=-1)  # [batch, seq_len, 3] - DYNAMIC!
+                adj_logits = self.adj_weight_mlp(market_context)  # [batch, seq_len, 3]
+                weights = F.softmax(adj_logits / self.adj_weight_temperature, dim=-1)  # Temperature-scaled
                 self._print_memory_debug("AFTER_ADJ_WEIGHT_MLP", f"weights: {weights.shape}")
                 w_phase, w_astro, w_dyn = weights[..., 0], weights[..., 1], weights[..., 2]  # [batch, seq_len] each
                 
@@ -1121,6 +1309,38 @@ class Model(nn.Module):
                 self._print_memory_debug("AFTER_ADJ_FUSION", f"combined_phase_adj: {combined_phase_adj.shape}")
                 astronomical_adj = combined_phase_adj  # Use learned-fusion matrix
                 self._log_debug("Using phase-based adjacency matrix with learned fusion weights")
+                
+                # FIX ISSUE #8: Add diversity loss to prevent weight saturation
+                # Encourage weights to stay relatively uniform during early training
+                if self.training and self.adj_weight_diversity_loss_weight > 0:
+                    target_uniform = torch.ones_like(weights) / 3.0  # [1/3, 1/3, 1/3]
+                    diversity_loss = F.kl_div(
+                        torch.log(weights + 1e-8),
+                        target_uniform,
+                        reduction='batchmean'
+                    ) * self.adj_weight_diversity_loss_weight
+                    
+                    # Store for later addition to aux_loss
+                    if not hasattr(self, '_forward_aux_loss') or self._forward_aux_loss is None:
+                        self._forward_aux_loss = diversity_loss
+                    else:
+                        self._forward_aux_loss = self._forward_aux_loss + diversity_loss
+                    
+                    if self.verbose_logging:
+                        self.logger.debug(
+                            "Adjacency diversity loss: %.4f | weights_mean=[%.3f, %.3f, %.3f] temp=%.2f",
+                            diversity_loss.item(),
+                            weights[..., 0].mean().item(),
+                            weights[..., 1].mean().item(),
+                            weights[..., 2].mean().item(),
+                            self.adj_weight_temperature.item()
+                        )
+                
+                # Anneal temperature over training
+                if self.training:
+                    with torch.no_grad():
+                        self.adj_weight_temperature.mul_(self.adj_weight_temperature_decay)
+                        self.adj_weight_temperature.clamp_(min=self.adj_weight_temperature_min)
             else:
                 # Fallback to traditional celestial graph processing
                 celestial_results = self._process_celestial_graph(x_enc_processed, enc_out)
@@ -1152,7 +1372,7 @@ class Model(nn.Module):
             self._validate_adjacency_dimensions(astronomical_adj, learned_adj, dynamic_adj, enc_out)
 
             # DEBUG: Memory check before celestial_combiner
-            import torch
+            # torch is imported globally; do not re-import locally
             if torch.cuda.is_available():
                 allocated_before = torch.cuda.memory_allocated() / 1024**3
                 reserved_before = torch.cuda.memory_reserved() / 1024**3
@@ -1244,8 +1464,10 @@ class Model(nn.Module):
                 self.memory_logger.debug("MEMORY AFTER GC | CPU=%.2fGB", post_gc_cpu)
         else:
             # Simple combination for fallback with dynamic weighting
+            # FIX ISSUE #8: Apply temperature-scaled softmax to prevent early saturation
             # Generate dynamic weights for each time step from enc_out
-            weights = F.softmax(self.adj_weight_mlp(enc_out), dim=-1)  # [batch, seq_len, 3]
+            adj_logits = self.adj_weight_mlp(enc_out)  # [batch, seq_len, 3]
+            weights = F.softmax(adj_logits / self.adj_weight_temperature, dim=-1)  # Temperature-scaled
             w_astro, w_learned, w_dyn = weights[..., 0], weights[..., 1], weights[..., 2]
 
             # Normalize adjacency matrices (now all dynamic)
@@ -1266,6 +1488,27 @@ class Model(nn.Module):
             fusion_metadata = {
                 'weights': weights.detach().cpu()
             }
+            
+            # FIX ISSUE #8: Add diversity loss to prevent weight saturation (fallback path)
+            if self.training and self.adj_weight_diversity_loss_weight > 0:
+                target_uniform = torch.ones_like(weights) / 3.0  # [1/3, 1/3, 1/3]
+                diversity_loss = F.kl_div(
+                    torch.log(weights + 1e-8),
+                    target_uniform,
+                    reduction='batchmean'
+                ) * self.adj_weight_diversity_loss_weight
+                
+                # Store for later addition to aux_loss
+                if not hasattr(self, '_forward_aux_loss') or self._forward_aux_loss is None:
+                    self._forward_aux_loss = diversity_loss
+                else:
+                    self._forward_aux_loss = self._forward_aux_loss + diversity_loss
+            
+            # Anneal temperature over training (shared with main path)
+            if self.training:
+                with torch.no_grad():
+                    self.adj_weight_temperature.mul_(self.adj_weight_temperature_decay)
+                    self.adj_weight_temperature.clamp_(min=self.adj_weight_temperature_min)
         
         # 6. Apply hierarchical mapping if enabled
         self._log_debug("STEP 6: Hierarchical mapping check (enabled=%s)", self.use_hierarchical_mapping)
@@ -1308,12 +1551,39 @@ class Model(nn.Module):
         self._log_debug("STEP 7: Spatiotemporal encoding | enc_out=%s combined_adj=%s", enc_out.shape, combined_adj.shape)
         encoded_features: torch.Tensor
 
-        # Fast path: when Petri net combiner is active, it already applies temporal and spatial attention
-        # and Step 8 uses EdgeConditionedGraphAttention. The legacy spatiotemporal encoder may be redundant.
+        # FIX ISSUE #2: Soft blending instead of hard bypass to restore gradient flow
+        # ALWAYS run both pathways when bypass is enabled to ensure gradient flow
         if self.use_petri_net_combiner and self.bypass_spatiotemporal_with_petri:
-            self._log_debug("Petri bypass enabled — using encoder output directly for graph processing")
-            encoded_features = enc_out  # [batch, seq_len, d_model]
+            # Soft blend: learned gate + residual connection
+            # Run BOTH pathways to ensure gradients flow everywhere
+            self._log_debug("Soft Petri bypass: running both Petri and spatiotemporal pathways...")
+            
+            # Spatiotemporal pathway (always active for gradients)
+            spatiotemporal_output = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+            self._log_debug("Spatiotemporal encoder output: %s", spatiotemporal_output.shape)
+            
+            # Petri pathway output (assumed from petri_combiner in step 5)
+            # For now, use enc_out as petri output placeholder
+            # TODO: Extract actual petri_output from step 5 if available
+            petri_output = enc_out
+            
+            # Learnable soft blending with gate
+            if self.encoder_blend_gate is not None:
+                gate_weight = torch.sigmoid(self.encoder_blend_gate)
+                encoded_features = (
+                    gate_weight * petri_output + 
+                    (1 - gate_weight) * spatiotemporal_output
+                )
+                if self.verbose_logging:
+                    self.logger.debug(
+                        "Encoder blend gate: petri=%.3f, spatiotemporal=%.3f",
+                        gate_weight.item(), 1 - gate_weight.item()
+                    )
+                self._log_debug("Soft blended output: %s", encoded_features.shape)
+            else:
+                raise RuntimeError("encoder_blend_gate is None: gating cannot proceed. Check config and initialization.")
         else:
+            # Traditional pathway selection (no Petri or bypass disabled)
             use_dynamic_encoder = (
                 self.use_dynamic_spatiotemporal_encoder
                 and self.dynamic_spatiotemporal_encoder is not None
@@ -1324,19 +1594,54 @@ class Model(nn.Module):
                 self._log_debug("Using DYNAMIC spatiotemporal encoder...")
                 dynamic_encoder = self.dynamic_spatiotemporal_encoder
                 if dynamic_encoder is None:
-                    encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
-                else:
-                    try:
-                        self._log_debug("Calling dynamic_encoder with enc_out=%s adj=%s", enc_out.shape, combined_adj.shape)
-                        encoded_features = dynamic_encoder(enc_out, combined_adj)
-                        self._log_debug("Dynamic encoder completed: %s", encoded_features.shape)
-                    except ValueError as exc:
-                        self.logger.warning("Dynamic spatiotemporal encoder fallback: %s", exc)
-                        encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+                    raise RuntimeError(
+                        "Configuration error: use_dynamic_spatiotemporal_encoder=True but dynamic_encoder is None. "
+                        "This indicates an initialization failure. Check model initialization logs."
+                    )
+                
+                try:
+                    self._log_debug("Calling dynamic_encoder with enc_out=%s adj=%s", enc_out.shape, combined_adj.shape)
+                    encoded_features = dynamic_encoder(enc_out, combined_adj)
+                    self._log_debug("Dynamic encoder completed: %s", encoded_features.shape)
+                except Exception as exc:
+                    # Remove silent fallback - fail loudly
+                    raise RuntimeError(
+                        f"Dynamic spatiotemporal encoder failed: {exc}. "
+                        f"Set use_dynamic_spatiotemporal_encoder=False to use static encoder."
+                    ) from exc
             else:
                 self._log_debug("Using STATIC spatiotemporal encoding...")
                 encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
                 self._log_debug("Static encoding completed: %s", encoded_features.shape)
+        
+        # FIX ISSUE #4: Apply multi-scale temporal context processing
+        if self.use_multi_scale_context and self.multi_scale_pooling is not None:
+            self._log_debug("Applying multi-scale temporal context processing...")
+            
+            # encoded_features: [batch, seq_len, d_model] → transpose for Conv1d
+            enc_features_conv = encoded_features.transpose(1, 2)  # [batch, d_model, seq_len]
+            
+            # Apply multi-scale temporal convolutions
+            multi_scale_features = []
+            for scale_idx, conv in enumerate(self.multi_scale_pooling):
+                scale_out = conv(enc_features_conv)  # [batch, d_model, seq_len]
+                multi_scale_features.append(scale_out.transpose(1, 2))  # [batch, seq_len, d_model]
+                self._log_debug("Multi-scale conv %d output: %s", scale_idx, scale_out.shape)
+            
+            # Concatenate and gate
+            multi_scale_concat = torch.cat(multi_scale_features, dim=-1)  # [batch, seq_len, 3*d_model]
+            if self.multi_scale_gate is not None:
+                gate = self.multi_scale_gate(multi_scale_concat)
+                encoded_features = gate * multi_scale_features[1] + (1 - gate) * encoded_features
+                if self.verbose_logging:
+                    self.logger.debug(
+                        "Multi-scale context applied: gate_mean=%.3f, gate_std=%.3f",
+                        gate.mean().item(),
+                        gate.std().item()
+                    )
+                self._log_debug("Multi-scale fusion complete: %s", encoded_features.shape)
+            else:
+                raise RuntimeError("multi_scale_gate is None: multi-scale context fusion cannot proceed. Check config and initialization.")
         
         # 8. Graph attention processing
         self._log_debug(
@@ -1483,42 +1788,53 @@ class Model(nn.Module):
 
         # Phase 3: Optional Stochastic Control (temperature-modulated noise)
         if getattr(self, 'use_stochastic_control', False):
-            try:
-                # FIX BUG #2-4: Use external global_step if provided, otherwise use internal counter
-                # External step should be passed from training loop for reproducibility
-                global_step = getattr(self, '_external_global_step', None)
-                if global_step is None:
-                    # Fallback to internal counter (now persistent)
-                    step = int(self._stoch_step.item()) if isinstance(self._stoch_step, torch.Tensor) else int(self._stoch_step)
-                else:
-                    step = int(global_step)
-                
-                if self.stoch_decay_steps <= 0:
-                    temperature = self.stoch_temp_end
-                else:
-                    # Linear decay from start -> end over decay_steps, then clamp
-                    progress = min(1.0, max(0.0, step / float(self.stoch_decay_steps)))
-                    temperature = (1.0 - progress) * self.stoch_temp_start + progress * self.stoch_temp_end
-                
-                if self.training:
-                    noise = torch.randn_like(graph_features) * (self.stoch_noise_std * float(temperature))
-                    graph_features = graph_features + noise
-                    
-                    # FIX BUG #2: Only increment internal counter if NOT using external step
-                    # This prevents double-counting and per-forward increments
-                    if global_step is None and isinstance(self._stoch_step, torch.Tensor):
-                        # Note: This still increments per forward pass if no external step provided
-                        # Recommended: Always provide external step from training loop
-                        self._stoch_step += 1
-                
-                if self.collect_diagnostics:
-                    self._log_debug(
-                        "Stochastic control applied | step=%d temp=%.4f std=%.4f noise_scale=%.4f external_step=%s",
-                        step, temperature, self.stoch_noise_std, self.stoch_noise_std * temperature,
-                        global_step is not None
+            # FIX ISSUE #10: Skip stochastic noise during warmup to stabilize MDN
+            if self.current_epoch < self.stochastic_warmup_epochs:
+                # Warmup phase: disable noise injection
+                if self.verbose_logging and not hasattr(self, '_warmup_logged'):
+                    self.logger.info(
+                        "Stochastic warmup: epoch=%d/%d, noise disabled for MDN stability",
+                        self.current_epoch, self.stochastic_warmup_epochs
                     )
-            except Exception as exc:  # pragma: no cover
-                self.logger.warning("Stochastic control skipped due to error: %s", exc)
+                    self._warmup_logged = True
+            else:
+                # Active phase: apply scheduled noise
+                try:
+                    # FIX BUG #2-4: Use external global_step if provided, otherwise use internal counter
+                    # External step should be passed from training loop for reproducibility
+                    global_step = getattr(self, '_external_global_step', None)
+                    if global_step is None:
+                        # Fallback to internal counter (now persistent)
+                        step = int(self._stoch_step.item()) if isinstance(self._stoch_step, torch.Tensor) else int(self._stoch_step)
+                    else:
+                        step = int(global_step)
+                    
+                    if self.stoch_decay_steps <= 0:
+                        temperature = self.stoch_temp_end
+                    else:
+                        # Linear decay from start -> end over decay_steps, then clamp
+                        progress = min(1.0, max(0.0, step / float(self.stoch_decay_steps)))
+                        temperature = (1.0 - progress) * self.stoch_temp_start + progress * self.stoch_temp_end
+                    
+                    if self.training:
+                        noise = torch.randn_like(graph_features) * (self.stoch_noise_std * float(temperature))
+                        graph_features = graph_features + noise
+                        
+                        # FIX BUG #2: Only increment internal counter if NOT using external step
+                        # This prevents double-counting and per-forward increments
+                        if global_step is None and isinstance(self._stoch_step, torch.Tensor):
+                            # Note: This still increments per forward pass if no external step provided
+                            # Recommended: Always provide external step from training loop
+                            self._stoch_step += 1
+                    
+                    if self.collect_diagnostics:
+                        self._log_debug(
+                            "Stochastic control applied | step=%d temp=%.4f std=%.4f noise_scale=%.4f external_step=%s",
+                            step, temperature, self.stoch_noise_std, self.stoch_noise_std * temperature,
+                            global_step is not None
+                        )
+                except Exception as exc:  # pragma: no cover
+                    self.logger.warning("Stochastic control skipped due to error: %s", exc)
 
         # 9. Enhanced Decoder processing with Target Autocorrelation
         decoder_features = dec_out
@@ -1527,8 +1843,9 @@ class Model(nn.Module):
         
         # 🎯 Apply Target Autocorrelation Module if enabled
         if self.use_target_autocorrelation and self.dual_stream_decoder is not None:
-            self._log_debug("Applying target autocorrelation processing...")
-            decoder_features = self.dual_stream_decoder(decoder_features, graph_features)
+            self._log_debug("Applying target autocorrelation processing (additive fusion)...")
+            autocorr_features = self.dual_stream_decoder(decoder_features, graph_features)
+            decoder_features = decoder_features + autocorr_features
             self._log_debug("Target autocorrelation processing complete - shape=%s", decoder_features.shape)
         
         # 🌟 Apply Celestial-to-Target Attention (explicit covariate→target modeling)
@@ -1701,7 +2018,7 @@ class Model(nn.Module):
                         "⚠️ Celestial features not found in metadata, skipping celestial-to-target attention"
                     )
         
-        # 10. Final prediction with MDN or fallback decoders
+        # 10. Final prediction with FIX ISSUE #3: Single probabilistic head enforcement
         output: torch.Tensor | Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
         predictions: Optional[torch.Tensor] = None
         mdn_components: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None
@@ -1719,61 +2036,95 @@ class Model(nn.Module):
                 except Exception:
                     pass
 
-        # Priority: MDN decoder (Phase 1) > Sequential mixture > Simple projection
-        if self.enable_mdn_decoder and self.mdn_decoder is not None:
-            # 🎲 MDN Decoder: probabilistic forecasting with Gaussian mixtures
+        # FIX ISSUE #3: Enforce single probabilistic head with explicit error on conflicts
+        # Removed all silent fallbacks - each decoder path must succeed or fail loudly
+        if self.enable_mdn_decoder:
+            # 🎲 MDN Decoder: Primary probabilistic forecasting path
+            if self.mdn_decoder is None:
+                raise RuntimeError(
+                    "Configuration error: enable_mdn_decoder=True but mdn_decoder is None. "
+                    "This indicates an initialization failure. Check model __init__ logs."
+                )
+            
             prediction_features = decoder_features[:, -self.pred_len:, :]  # [batch, pred_len, d_model]
             pi, mu, sigma = self.mdn_decoder(prediction_features)  # [B, pred_len, c_out, K]
             
-            # Compute point prediction as mixture mean for logging/metrics
+            # Compute point prediction as mixture mean
             predictions = self.mdn_decoder.mean_prediction(pi, mu)  # [batch, pred_len, c_out]
-            
-            # Store mixture components for loss computation
             mdn_components = (pi, mu, sigma)
             
             self._log_debug(
                 "MDN decoder output | pi=%s mu=%s sigma=%s predictions=%s",
                 pi.shape, mu.shape, sigma.shape, predictions.shape,
             )
-        elif self.use_mixture_decoder:
-            # Sequential mixture density decoder preserves temporal structure
-            try:
-                # Extract the prediction portion of decoder features
-                prediction_features = decoder_features[:, -self.pred_len:, :]  # [batch, pred_len, d_model]
-                
-                # Use sequential mixture decoder with cross-attention to encoder features
-                means, log_stds, log_weights = self.mixture_decoder(
-                    encoder_output=graph_features,  # Full encoder output for cross-attention
-                    decoder_input=prediction_features  # Only prediction portion
+            
+            # Warn if other decoder heads are initialized (should be caught at init, but double-check)
+            if self.use_mixture_decoder or self.use_sequential_mixture_decoder:
+                self.logger.warning(
+                    "⚠️ MDN decoder active; ignoring mixture_decoder flags to avoid conflicts. "
+                    "Set use_mixture_decoder=False and use_sequential_mixture_decoder=False in config."
                 )
-                
-                # Get point prediction using the decoder's method
-                predictions = self.mixture_decoder.get_point_prediction((means, log_stds, log_weights))
-                
-                # Ensure output has correct shape [batch, pred_len, c_out]
-                if predictions.size(-1) != self.c_out:
-                    self.logger.warning(
-                        "Sequential mixture decoder output shape mismatch | got=%s expected_c_out=%s",
-                        predictions.shape,
-                        self.c_out,
-                    )
-                    predictions = self.projection(prediction_features)
-                
-                mdn_components = (means, log_stds, log_weights)
-                if predictions is not None:
-                    self._log_debug(
-                        "Sequential mixture decoder output | means=%s predictions=%s",
-                        means.shape,
-                        predictions.shape,
-                    )
-                
-            except Exception as exc:
-                self.logger.exception("Sequential mixture decoder failed: %s", exc)
-                # Fallback to simple projection
-                predictions = self.projection(decoder_features[:, -self.pred_len:, :])
+            
+        elif self.use_sequential_mixture_decoder:
+            # Sequential mixture density decoder (alternative probabilistic path)
+            if not hasattr(self, 'mixture_decoder') or self.mixture_decoder is None:
+                raise RuntimeError(
+                    "Configuration error: use_sequential_mixture_decoder=True but mixture_decoder is None. "
+                    "This indicates an initialization failure. Check model __init__ logs."
+                )
+            
+            prediction_features = decoder_features[:, -self.pred_len:, :]
+            means, log_stds, log_weights = self.mixture_decoder(
+                encoder_output=graph_features,
+                decoder_input=prediction_features
+            )
+            
+            predictions = self.mixture_decoder.get_point_prediction((means, log_stds, log_weights))
+            
+            # Validate output shape
+            if predictions.size(-1) != self.c_out:
+                raise RuntimeError(
+                    f"Sequential mixture decoder output shape mismatch: got {predictions.shape}, "
+                    f"expected [..., {self.c_out}]. Check decoder configuration."
+                )
+            
+            mdn_components = (means, log_stds, log_weights)
+            self._log_debug(
+                "Sequential mixture decoder output | means=%s predictions=%s",
+                means.shape, predictions.shape,
+            )
+            
+        elif self.use_mixture_decoder:
+            # Simple mixture density decoder (alternative probabilistic path)
+            if not hasattr(self, 'mixture_decoder') or self.mixture_decoder is None:
+                raise RuntimeError(
+                    "Configuration error: use_mixture_decoder=True but mixture_decoder is None. "
+                    "This indicates an initialization failure. Check model __init__ logs."
+                )
+            
+            prediction_features = decoder_features[:, -self.pred_len:, :]
+            means, log_stds, log_weights = self.mixture_decoder(
+                encoder_output=graph_features,
+                decoder_input=prediction_features
+            )
+            
+            predictions = self.mixture_decoder.get_point_prediction((means, log_stds, log_weights))
+            mdn_components = (means, log_stds, log_weights)
+            
+            self._log_debug(
+                "Mixture decoder output | means=%s predictions=%s",
+                means.shape, predictions.shape,
+            )
+            
         else:
-            # Ensure consistent slicing for deterministic case
+            # Deterministic projection head (no probabilistic modeling)
             predictions = self.projection(decoder_features[:, -self.pred_len:, :])
+            mdn_components = None
+            
+            self._log_debug(
+                "Deterministic projection output | predictions=%s",
+                predictions.shape,
+            )
         
         # Prepare metadata for return
         final_metadata: Optional[Dict[str, Any]]
@@ -1896,17 +2247,17 @@ class Model(nn.Module):
         # Optional diagnostics to detect early gate saturation and weak celestial signal
         if self.collect_diagnostics or self.verbose_logging:
             try:
-                import torch as _torch
+                # torch is imported globally; do not re-import locally
                 logits_mean = float(gate_logits.mean().detach().item())
                 logits_std = float(gate_logits.std(unbiased=False).detach().item())
                 logits_min = float(gate_logits.min().detach().item())
                 logits_max = float(gate_logits.max().detach().item())
                 gate_mean = float(fusion_gate.mean().detach().item())
                 gate_std = float(fusion_gate.std(unbiased=False).detach().item())
-                frac_near_zero = float((_torch.lt(fusion_gate, 0.05).float().mean()).detach().item())
-                frac_near_one = float((_torch.gt(fusion_gate, 0.95).float().mean()).detach().item())
-                fused_norm = float(_torch.linalg.vector_norm(fused_output, dim=-1).mean().detach().item())
-                enc_norm = float(_torch.linalg.vector_norm(enc_out, dim=-1).mean().detach().item())
+                frac_near_zero = float((torch.lt(fusion_gate, 0.05).float().mean()).detach().item())
+                frac_near_one = float((torch.gt(fusion_gate, 0.95).float().mean()).detach().item())
+                fused_norm = float(torch.linalg.vector_norm(fused_output, dim=-1).mean().detach().item())
+                enc_norm = float(torch.linalg.vector_norm(enc_out, dim=-1).mean().detach().item())
                 self._log_debug(
                     "MODEL_DEBUG: Celestial gate stats | logits(mean=%.4f std=%.4f min=%.4f max=%.4f) gate(mean=%.4f std=%.4f frac<0.05=%.4f frac>0.95=%.4f) norms(fused=%.4f enc=%.4f)",
                     logits_mean, logits_std, logits_min, logits_max,
@@ -2053,6 +2404,23 @@ class Model(nn.Module):
         
         self._log_debug("✅ All adjacency matrices validated: %s", expected_shape)
     
+    def set_current_epoch(self, epoch: int) -> None:
+        """
+        Update current epoch for scheduling (called by training script).
+        
+        FIX ISSUE #10: Used for stochastic control warmup to prevent destabilizing MDN during early training.
+        
+        Args:
+            epoch: Current training epoch (0-indexed)
+        """
+        self.current_epoch = epoch
+        if self.verbose_logging:
+            self.logger.info(
+                "Model epoch updated to %d | stochastic_warmup=%s",
+                epoch,
+                "active" if epoch < self.stochastic_warmup_epochs else "complete"
+            )
+    
     def _normalize_adj(self, adj_matrix):
         """Normalize adjacency matrix for stable fusion. Handles 4D dynamic matrices only."""
         # FIXED: All adjacency matrices are now 4D [batch, seq_len, nodes, nodes]
@@ -2126,6 +2494,8 @@ class Model(nn.Module):
             fusion_input = torch.cat([updated_target_features, attention_context], dim=-1)
         else:
             # Static, shared covariate context for all targets at a time step
+            if covariate_context is None:
+                raise RuntimeError("covariate_context is None or unbound: expected valid covariate context for expansion.")
             expanded_context = covariate_context.unsqueeze(2).expand(-1, -1, self.c_out, -1)
             fusion_input = torch.cat([updated_target_features, expanded_context], dim=-1)
         

@@ -18,6 +18,14 @@ class EncoderModule(nn.Module):
         super().__init__()
         self.config = config
 
+        # FIX ISSUE #2: Initialize blend gate in __init__ for proper parameter registration
+        if config.use_petri_net_combiner and config.bypass_spatiotemporal_with_petri:
+            # Blend gate for soft blending between Petri input and spatiotemporal features
+            # Initialized to favor Petri input (0.8 → sigmoid ≈ 0.69 weight for Petri)
+            self.encoder_blend_gate = nn.Parameter(torch.tensor(0.8))
+        else:
+            self.encoder_blend_gate = None
+
         if config.use_hierarchical_mapping:
             self.hierarchical_mapper = HierarchicalTemporalSpatialMapper(
                 d_model=config.d_model, num_nodes=config.num_graph_nodes, n_heads=config.n_heads, num_attention_layers=2
@@ -101,23 +109,37 @@ class EncoderModule(nn.Module):
                 pass  # Continue without hierarchical features
 
         # 2. Spatiotemporal Encoding
-        if self.config.use_petri_net_combiner and self.config.bypass_spatiotemporal_with_petri:
-            encoded_features = enc_out
+        # FIX ISSUE #2: Always compute spatiotemporal features for soft blending
+        # Even when bypass_spatiotemporal_with_petri=True, we need to compute these
+        # features to blend them with enc_out and prevent gradient starvation
+        
+        use_dynamic_encoder = (
+            self.config.use_dynamic_spatiotemporal_encoder and 
+            hasattr(self, 'spatiotemporal_encoder') and 
+            hasattr(self.spatiotemporal_encoder, '__class__') and
+            'Dynamic' in self.spatiotemporal_encoder.__class__.__name__
+        )
+        
+        if use_dynamic_encoder:
+            try:
+                spatiotemporal_features = self.spatiotemporal_encoder(enc_out, combined_adj)
+            except ValueError:
+                spatiotemporal_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
         else:
-            use_dynamic_encoder = (
-                self.config.use_dynamic_spatiotemporal_encoder and 
-                hasattr(self, 'spatiotemporal_encoder') and 
-                hasattr(self.spatiotemporal_encoder, '__class__') and
-                'Dynamic' in self.spatiotemporal_encoder.__class__.__name__
-            )
+            spatiotemporal_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+        
+        # FIX ISSUE #2 Part 2: Implement soft blending when bypass is enabled
+        if self.config.use_petri_net_combiner and self.config.bypass_spatiotemporal_with_petri:
+            # Soft blend: learned gate between Petri input (enc_out) and spatiotemporal features
+            # This prevents gradient starvation while maintaining Petri's benefits
+            if self.encoder_blend_gate is None:
+                raise RuntimeError("encoder_blend_gate should have been initialized in __init__")
             
-            if use_dynamic_encoder:
-                try:
-                    encoded_features = self.spatiotemporal_encoder(enc_out, combined_adj)
-                except ValueError:
-                    encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
-            else:
-                encoded_features = self._apply_static_spatiotemporal_encoding(enc_out, combined_adj)
+            blend_weight = torch.sigmoid(self.encoder_blend_gate)
+            encoded_features = blend_weight * enc_out + (1 - blend_weight) * spatiotemporal_features
+        else:
+            # No Petri or bypass disabled: use spatiotemporal output directly
+            encoded_features = spatiotemporal_features
         
         # 3. Graph Attention Processing
         graph_features = encoded_features

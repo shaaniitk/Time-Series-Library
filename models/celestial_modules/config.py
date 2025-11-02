@@ -147,10 +147,38 @@ class CelestialPGATConfig:
         # Calculate calendar embedding dimension if not explicitly set
         self.calendar_embedding_dim = self.d_model // 4
 
-        # Calculate derived celestial dimensions
+        # FIX ISSUE #1: Honor celestial_dim from config when safe
         base_celestial_dim = 32
-        self.celestial_dim = ((base_celestial_dim + self.n_heads - 1) // self.n_heads) * self.n_heads
+        config_celestial_dim = self.celestial_dim  # User-specified value from dataclass default or config
+        
+        if config_celestial_dim != 32:  # User explicitly set a non-default value
+            # Validate config value is compatible with n_heads
+            if config_celestial_dim % self.n_heads == 0:
+                self.celestial_dim = config_celestial_dim
+                logger.info(
+                    "Using celestial_dim=%s from config (compatible with n_heads=%s)",
+                    config_celestial_dim, self.n_heads
+                )
+            else:
+                # Round up to nearest head-compatible value
+                self.celestial_dim = ((config_celestial_dim + self.n_heads - 1) // self.n_heads) * self.n_heads
+                logger.warning(
+                    "celestial_dim=%s adjusted to %s for n_heads=%s compatibility",
+                    config_celestial_dim, self.celestial_dim, self.n_heads
+                )
+        else:
+            # No explicit config - compute minimal compatible dimension
+            self.celestial_dim = ((base_celestial_dim + self.n_heads - 1) // self.n_heads) * self.n_heads
+        
         self.celestial_feature_dim = self.num_celestial_bodies * self.celestial_dim
+        
+        # Validate d_model consistency
+        if self.use_celestial_graph and self.aggregate_waves_to_celestial:
+            if self.celestial_feature_dim != self.d_model:
+                logger.warning(
+                    "celestial_feature_dim=%s does not match d_model=%s; this may cause dimension issues",
+                    self.celestial_feature_dim, self.d_model
+                )
 
         # Set the number of graph nodes based on aggregation
         if self.use_celestial_graph and self.aggregate_waves_to_celestial:

@@ -26,7 +26,7 @@ test_length: 50         # Large test set
 
 # PRODUCTION Optimization - 20 epochs overnight with advanced scheduling
 learning_rate: 0.001     # Base learning rate after warmup
-train_epochs: 50        # Full overnight training
+train_epochs: 1         # Short smoke run (override from 50 for quick validation)
 batch_size: 12           # Reduced due to aggressive depth
 patience: 999            # Effectively disable early stopping
 lradj: warmup_cosine     # Warmup + Cosine Annealing for robust training
@@ -105,6 +105,8 @@ log_interval: 10         # Log every 10 batches
 gradient_accumulation_steps: 3  # Aggressive: offset deeper model memory; effective batch ≈ 36
 mixed_precision: false   # Disabled for stability (enable if GPU supports it)
 save_best_only: false    # Save all checkpoints for analysis
+max_batches: 8           # Limit training to first N batches for smoke testing
+val_max_batches: 2       # Limit validation batches for quick turnaround
  
 # 🎲 PROBABILISTIC MDN DECODER - PHASE 1 INTEGRATION
 enable_mdn_decoder: false         # Enable Mixture Density Network decoder for probabilistic forecasting
@@ -121,3 +123,12 @@ calibration_metrics:
 enable_memory_diagnostics: true   # Writes detailed snapshots to checkpoints/<run>/memory_diagnostics.log
 memory_log_interval: 50           # Log every N batches (increase to reduce log volume)
 collect_diagnostics: false        # Model will skip building per-batch metadata dicts to reduce transient allocations
+
+# Loss configuration — enable directional per-target weights
+loss:
+  type: directional_trend           # Pure directional for deterministic smoke test
+  direction_weight: 8.0
+  trend_weight: 0.5
+  magnitude_weight: 0.1
+  correlation_type: pearson
+  per_target_weights: [1.0, 0.8, 1.2, 1.0]   # OHLC weights (len must match c_out)

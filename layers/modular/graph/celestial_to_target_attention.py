@@ -90,6 +90,10 @@ class CelestialToTargetAttention(nn.Module):
             for _ in range(num_targets)
         ])
         
+        # FIX ISSUE #6: Gate entropy regularization to prevent saturation
+        self.gate_entropy_weight = 0.01  # Regularization weight
+        self.gate_init_gain = 0.1  # Small initial weights for gates
+        
         # Optional gated fusion (learn how much celestial influence to accept)
         if use_gated_fusion:
             self.fusion_gates = nn.ModuleList([
@@ -101,6 +105,14 @@ class CelestialToTargetAttention(nn.Module):
                 )
                 for _ in range(num_targets)
             ])
+            
+            # Initialize gate final layers with small weights
+            for gate in self.fusion_gates:
+                # gate[-2] is the final Linear layer before Sigmoid
+                if hasattr(gate[-2], 'weight'):
+                    nn.init.xavier_uniform_(gate[-2].weight, gain=self.gate_init_gain)
+                    if hasattr(gate[-2], 'bias') and gate[-2].bias is not None:
+                        nn.init.constant_(gate[-2].bias, 0.0)
         
         # LayerNorms for stable fusion
         self.target_norms = nn.ModuleList([
@@ -317,7 +329,24 @@ class CelestialToTargetAttention(nn.Module):
                 'summary': self._compute_diagnostics_summary(attention_weights_dict, gate_values_dict)
             }
         
-        return enhanced_target_features, diagnostics
+        # FIX ISSUE #6: Compute gate entropy regularization loss
+        gate_entropy_loss = 0.0
+        if self.use_gated_fusion and self.training and len(gate_values_dict) > 0:
+            # Encourage gates to maintain diversity (avoid saturation to 0 or 1)
+            for gate_values in gate_values_dict.values():
+                # gate_values: [batch, pred_len, d_model]
+                # Compute binary entropy: -p*log(p) - (1-p)*log(1-p)
+                eps = 1e-8
+                p = gate_values.clamp(eps, 1-eps)
+                entropy_per_element = -(p * torch.log(p) + (1-p) * torch.log(1-p))
+                # Negative entropy loss (we want to MAXIMIZE entropy, i.e., minimize negative entropy)
+                gate_entropy_loss += -entropy_per_element.mean() * self.gate_entropy_weight
+        
+        # Add gate entropy loss to diagnostics
+        if return_diagnostics and diagnostics is not None:
+            diagnostics['gate_entropy_loss'] = gate_entropy_loss.item() if isinstance(gate_entropy_loss, torch.Tensor) else gate_entropy_loss
+        
+        return enhanced_target_features, diagnostics, gate_entropy_loss
     
     def _compute_diagnostics_summary(
         self,

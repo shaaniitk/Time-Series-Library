@@ -101,6 +101,21 @@ class DecoderModule(nn.Module):
     def __init__(self, config: CelestialPGATConfig):
         super().__init__()
         self.config = config
+        
+        # FIX ISSUE #3: Enforce single probabilistic head selection - fail loudly on conflicts
+        probabilistic_heads_enabled = [
+            ('enable_mdn_decoder', config.enable_mdn_decoder),
+            ('use_mixture_decoder', config.use_mixture_decoder),
+            ('use_sequential_mixture_decoder', config.use_sequential_mixture_decoder)
+        ]
+        active_heads = [name for name, enabled in probabilistic_heads_enabled if enabled]
+        
+        if len(active_heads) > 1:
+            raise ValueError(
+                f"Multiple probabilistic decoder heads enabled: {active_heads}. "
+                f"Please enable only ONE of: enable_mdn_decoder, use_mixture_decoder, use_sequential_mixture_decoder. "
+                f"This prevents wasted parameters and gradient conflicts."
+            )
 
         self.decoder_layers = nn.ModuleList([
             DecoderLayer(config.d_model, config.n_heads, config.dropout) for _ in range(config.d_layers)
@@ -232,11 +247,17 @@ class DecoderModule(nn.Module):
             
             # Apply celestial-to-target attention if we have celestial features
             if celestial_feats is not None:
-                enhanced_target_features, celestial_target_diagnostics = self.celestial_to_target_attention(
+                enhanced_target_features, celestial_target_diagnostics, gate_entropy_loss = self.celestial_to_target_attention(
                     target_features=decoder_target_features,
                     celestial_features=celestial_feats,
                     return_diagnostics=self.config.celestial_target_diagnostics
                 )
+                
+                # FIX ISSUE #6: Add gate entropy regularization loss
+                if isinstance(gate_entropy_loss, torch.Tensor):
+                    aux_loss += gate_entropy_loss.item()
+                elif isinstance(gate_entropy_loss, (int, float)):
+                    aux_loss += gate_entropy_loss
                 
                 # Optional: auxiliary relation loss
                 if (self.config.c2t_aux_rel_loss_weight > 0.0 and 

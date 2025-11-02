@@ -1020,7 +1020,12 @@ def train_epoch(
         )
 
     log_interval = max(1, int(getattr(args, "log_interval", 10)))
+    max_batches = int(getattr(args, "max_batches", 0) or 0)
     for batch_index, batch_data in enumerate(train_loader):
+        # Optional early-exit for smoke testing: stop after N batches
+        if max_batches and batch_index >= max_batches:
+            logger.info("Max batches reached (%s); ending epoch early", max_batches)
+            break
         try:
             # 🌟 NEW: Support both legacy 4-tuple and new 6-tuple (with future celestial)
             if len(batch_data) == 6:
@@ -1443,7 +1448,12 @@ def validate_epoch(
     logger.info("Starting validation for epoch %s/%s", epoch + 1, args.train_epochs)
     
     with torch.no_grad():
+        val_max_batches = int(getattr(args, "val_max_batches", 0) or 0)
         for batch_index, batch_data in enumerate(val_loader):
+            # Optional early-exit for smoke testing during validation
+            if val_max_batches and batch_index >= val_max_batches:
+                logger.info("Max validation batches reached (%s); ending validation early", val_max_batches)
+                break
             try:
                 # FIXED: Handle both 4-tuple and 6-tuple data formats (same as training)
                 if len(batch_data) == 6:
@@ -2666,7 +2676,8 @@ def train_celestial_pgat_production(config_path: str = "configs/celestial_enhanc
         model_config = {
             'enable_mdn_decoder': getattr(args, 'enable_mdn_decoder', False),
             'use_mixture_decoder': getattr(args, 'use_mixture_decoder', False),
-            'use_sequential_mixture_decoder': getattr(args, 'use_sequential_mixture_decoder', False)
+            'use_sequential_mixture_decoder': getattr(args, 'use_sequential_mixture_decoder', False),
+            'c_out': getattr(args, 'c_out', None),
         }
         
         # Create and validate loss handler ONCE for the entire training
