@@ -94,7 +94,9 @@ class Model(nn.Module):
             self.graph_module = None
         
         self.encoder_module = EncoderModule(self.model_config)
+        
         self.postprocessing_module = PostProcessingModule(self.model_config)
+        
         self.decoder_module = DecoderModule(self.model_config)
 
         # Enhanced components from original model

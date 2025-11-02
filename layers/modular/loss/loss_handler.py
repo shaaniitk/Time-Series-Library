@@ -98,16 +98,15 @@ class HybridMDNDirectionalLossHandler(BaseLossHandler):
     
     def validate_compatibility(self, model_config: Dict[str, Any]) -> None:
         """Validate compatibility with model configuration"""
-        if not model_config.get('enable_mdn_decoder', False):
-            raise ValueError(
-                "HybridMDNDirectionalLoss requires enable_mdn_decoder=True. "
-                "Current config has enable_mdn_decoder=False."
-            )
+        # FIXED: Accept EITHER enable_mdn_decoder OR use_mixture_decoder (but not both)
+        # The decoder module enforces mutual exclusivity, so we just need one of them
+        has_mdn = model_config.get('enable_mdn_decoder', False)
+        has_mixture = model_config.get('use_mixture_decoder', False)
         
-        if not model_config.get('use_mixture_decoder', False):
+        if not (has_mdn or has_mixture):
             raise ValueError(
-                "HybridMDNDirectionalLoss requires use_mixture_decoder=True. "
-                "Current config has use_mixture_decoder=False."
+                "HybridMDNDirectionalLoss requires enable_mdn_decoder=True OR use_mixture_decoder=True. "
+                f"Current config has enable_mdn_decoder={has_mdn}, use_mixture_decoder={has_mixture}."
             )
 
 

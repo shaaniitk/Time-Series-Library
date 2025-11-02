@@ -1,149 +1,108 @@
 CELESTIAL ENHANCED PGAT - TRAINING DIAGNOSTICS
 ================================================================================
-Config: configs/celestial_enhanced_pgat_production.yaml
-Start time: 2025-11-02 17:39:19
+Config: configs/celestial_production_OPTIMIZED.yaml
+Start time: 2025-11-02 21:19:51
 ================================================================================
 
 
 --- MODEL OUTPUT DIAGNOSTICS ---
-outputs_tensor.shape: (12, 10, 4)
-outputs_tensor.mean/std: 0.395549 / 0.927233
-y_true_for_loss.shape: (12, 10, 4)
-y_true_for_loss.mean/std: 0.014562 / 0.792359
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.129930 / 0.530584
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.155532 / 0.636137
 c_out_evaluation: 4
 enable_mdn flag: False
-outputs_tensor sample (first up to 8 values): [0.10651463270187378, 0.14077728986740112, 2.5586886405944824, -0.4839329123497009, -0.3872995972633362, 0.12642890214920044, 0.1699271947145462, 0.5506333708763123]
-
-================================================================================
-EPOCH 1 | BATCH 0/562 | TRAINING MODE
-================================================================================
-raw_loss (full batch loss): 0.72284353
-loss (scaled for backward): 0.24094784
-effective_cycle (gradient_accumulation_steps): 3
-loss/raw_loss ratio: 0.3333 (should be ~1/3)
-accumulated train_loss so far: 0.72284353
-avg train_loss so far: 0.72284353
-NOTE: NOW ACCUMULATING 'loss' (scaled), NOT 'raw_loss' (3x inflated)
-outputs_tensor.requires_grad: True
-outputs_tensor mean/std: 0.395549 / 0.927233
-y_true_for_loss mean/std: 0.014562 / 0.792359
-
---- MODEL OUTPUT DIAGNOSTICS ---
-outputs_tensor.shape: (12, 10, 4)
-outputs_tensor.mean/std: 0.369402 / 0.891203
-y_true_for_loss.shape: (12, 10, 4)
-y_true_for_loss.mean/std: 0.046523 / 1.180645
-c_out_evaluation: 4
-enable_mdn flag: False
-outputs_tensor sample (first up to 8 values): [0.4100796580314636, 0.11789971590042114, 2.0192596912384033, 0.26929378509521484, -0.03895106911659241, -1.2748992443084717, 1.7132537364959717, 0.12767596542835236]
-
-================================================================================
-EPOCH 1 | BATCH 1/562 | TRAINING MODE
-================================================================================
-raw_loss (full batch loss): 1.04436100
-loss (scaled for backward): 0.34812033
-effective_cycle (gradient_accumulation_steps): 3
-loss/raw_loss ratio: 0.3333 (should be ~1/3)
-accumulated train_loss so far: 1.76720452
-avg train_loss so far: 0.88360226
-NOTE: NOW ACCUMULATING 'loss' (scaled), NOT 'raw_loss' (3x inflated)
-outputs_tensor.requires_grad: True
-outputs_tensor mean/std: 0.369402 / 0.891203
-y_true_for_loss mean/std: 0.046523 / 1.180645
-
---- MODEL OUTPUT DIAGNOSTICS ---
-outputs_tensor.shape: (12, 10, 4)
-outputs_tensor.mean/std: 0.298391 / 0.884171
-y_true_for_loss.shape: (12, 10, 4)
-y_true_for_loss.mean/std: -0.069181 / 0.806394
-c_out_evaluation: 4
-enable_mdn flag: False
-outputs_tensor sample (first up to 8 values): [0.3479115664958954, -0.643291711807251, 1.4439470767974854, 1.1444402933120728, -0.3352242112159729, 1.2871336936950684, 0.5319822430610657, 0.6037887334823608]
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.167761 / 0.889137
+outputs_tensor sample (first up to 8 values): [0.09591898322105408, 0.02881120890378952, -1.4638291597366333, -0.3300016224384308, 0.14646893739700317, -0.28005439043045044, -0.5249562859535217, 0.5987710952758789]
 
 --- OPTIMIZER STEP DIAGNOSTICS ---
 embedding_module.celestial_projection.0.weight:
-  weight_norm_before: 20.39780235
-  weight_norm_after: 20.39518547
-  weight_change: 0.00261688
-  grad_norm: 0.07697942
+  weight_norm_before: 27.89590454
+  weight_norm_after: 27.89590454
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 embedding_module.celestial_projection.0.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407845
-  weight_change: 0.00407845
-  grad_norm: 0.00912913
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 embedding_module.celestial_projection.1.weight:
-  weight_norm_before: 20.39607811
-  weight_norm_after: 20.39452744
-  weight_change: 0.00155067
-  grad_norm: 0.00548877
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 embedding_module.celestial_projection.1.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407836
-  weight_change: 0.00407836
-  grad_norm: 0.00593156
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 embedding_module.calendar_effects_encoder.calendar_projection.0.weight:
-  weight_norm_before: 9.29742718
-  weight_norm_after: 9.29408360
-  weight_change: 0.00334358
-  grad_norm: 0.03103071
+  weight_norm_before: 12.87673473
+  weight_norm_after: 12.87673473
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 embedding_module.calendar_effects_encoder.calendar_projection.0.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00203948
-  weight_change: 0.00203948
-  grad_norm: 0.01218228
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 embedding_module.calendar_effects_encoder.calendar_projection.1.weight:
-  weight_norm_before: 10.19803905
-  weight_norm_after: 10.19694138
-  weight_change: 0.00109768
-  grad_norm: 0.00368602
+  weight_norm_before: 13.96424007
+  weight_norm_after: 13.96424007
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 embedding_module.calendar_effects_encoder.calendar_projection.1.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00203865
-  weight_change: 0.00203865
-  grad_norm: 0.00366627
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 graph_module.celestial_query_projection.weight:
-  weight_norm_before: 10.48536015
-  weight_norm_after: 10.48238087
-  weight_change: 0.00297928
-  grad_norm: 0.01371773
+  weight_norm_before: 12.07330227
+  weight_norm_after: 12.07330227
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 graph_module.celestial_query_projection.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00159891
-  weight_change: 0.00159891
-  grad_norm: 0.00085703
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 graph_module.celestial_key_projection.weight:
-  weight_norm_before: 10.53599644
-  weight_norm_after: 10.53385067
-  weight_change: 0.00214577
-  grad_norm: 0.01445956
+  weight_norm_before: 12.04475689
+  weight_norm_after: 12.04475689
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 graph_module.celestial_key_projection.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00000061
-  weight_change: 0.00000061
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
   grad_norm: 0.00000000
 graph_module.celestial_value_projection.weight:
-  weight_norm_before: 10.53231716
-  weight_norm_after: 10.53129768
-  weight_change: 0.00101948
-  grad_norm: 0.03515814
+  weight_norm_before: 12.06542778
+  weight_norm_after: 12.06542778
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 graph_module.celestial_value_projection.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00159994
-  weight_change: 0.00159994
-  grad_norm: 0.00730081
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 graph_module.celestial_output_projection.weight:
-  weight_norm_before: 10.46575928
-  weight_norm_after: 10.46445847
-  weight_change: 0.00130081
-  grad_norm: 0.04325437
+  weight_norm_before: 12.04640770
+  weight_norm_after: 12.04640770
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 graph_module.celestial_output_projection.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407890
-  weight_change: 0.00407890
-  grad_norm: 0.02500636
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 encoder_module.spatiotemporal_encoder.node_feature_projection.weight:
-  weight_norm_before: 27.80315208
-  weight_norm_after: 27.80315208
+  weight_norm_before: 38.05214310
+  weight_norm_after: 38.05214310
   weight_change: 0.00000000
   grad_norm: 0.00000000
 encoder_module.spatiotemporal_encoder.node_feature_projection.bias:
@@ -152,8 +111,8 @@ encoder_module.spatiotemporal_encoder.node_feature_projection.bias:
   weight_change: 0.00000000
   grad_norm: 0.00000000
 encoder_module.spatiotemporal_encoder.node_feature_back_projection.weight:
-  weight_norm_before: 27.78366852
-  weight_norm_after: 27.78366852
+  weight_norm_before: 38.06806183
+  weight_norm_after: 38.06806183
   weight_change: 0.00000000
   grad_norm: 0.00000000
 encoder_module.spatiotemporal_encoder.node_feature_back_projection.bias:
@@ -162,323 +121,1823 @@ encoder_module.spatiotemporal_encoder.node_feature_back_projection.bias:
   weight_change: 0.00000000
   grad_norm: 0.00000000
 decoder_module.dual_stream_decoder.target_autocorr.target_projection.weight:
-  weight_norm_before: 20.39223671
-  weight_norm_after: 20.39022827
-  weight_change: 0.00200844
-  grad_norm: 0.11631177
+  weight_norm_before: 27.94985771
+  weight_norm_after: 27.94985771
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.dual_stream_decoder.target_autocorr.target_projection.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407857
-  weight_change: 0.00407857
-  grad_norm: 0.00655865
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.weight:
-  weight_norm_before: 20.38771248
-  weight_norm_after: 20.38591194
-  weight_change: 0.00180054
-  grad_norm: 0.10778523
+  weight_norm_before: 27.94690704
+  weight_norm_after: 27.94690704
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407919
-  weight_change: 0.00407919
-  grad_norm: 0.16867588
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.weight:
-  weight_norm_before: 20.39607811
-  weight_norm_after: 20.39415550
-  weight_change: 0.00192261
-  grad_norm: 0.00496055
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407775
-  weight_change: 0.00407775
-  grad_norm: 0.00547292
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.target_query_projections.0.weight:
-  weight_norm_before: 20.40799141
-  weight_norm_after: 20.37944603
-  weight_change: 0.02854538
-  grad_norm: 0.00551962
+  weight_norm_before: 27.94819450
+  weight_norm_after: 27.94819450
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.target_query_projections.0.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407148
-  weight_change: 0.00407148
-  grad_norm: 0.00037797
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.target_query_projections.1.weight:
-  weight_norm_before: 20.39057922
-  weight_norm_after: 20.36045074
-  weight_change: 0.03012848
-  grad_norm: 0.00485277
+  weight_norm_before: 27.93074608
+  weight_norm_after: 27.93074608
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.target_query_projections.1.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00406590
-  weight_change: 0.00406590
-  grad_norm: 0.00030733
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.target_query_projections.2.weight:
-  weight_norm_before: 20.41257477
-  weight_norm_after: 20.38350105
-  weight_change: 0.02907372
-  grad_norm: 0.00551543
+  weight_norm_before: 27.93249893
+  weight_norm_after: 27.93249893
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.target_query_projections.2.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00406766
-  weight_change: 0.00406766
-  grad_norm: 0.00038255
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.target_query_projections.3.weight:
-  weight_norm_before: 20.39950752
-  weight_norm_after: 20.37085152
-  weight_change: 0.02865601
-  grad_norm: 0.00559625
+  weight_norm_before: 27.90202713
+  weight_norm_after: 27.90202713
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.target_query_projections.3.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00406506
-  weight_change: 0.00406506
-  grad_norm: 0.00036917
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.celestial_key_projection.weight:
-  weight_norm_before: 20.39309692
-  weight_norm_after: 20.37936020
-  weight_change: 0.01373672
-  grad_norm: 0.01068299
+  weight_norm_before: 27.93618774
+  weight_norm_after: 27.93618774
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.celestial_key_projection.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00000249
-  weight_change: 0.00000249
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
   grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.celestial_value_projection.weight:
-  weight_norm_before: 20.42152977
-  weight_norm_after: 20.41782761
-  weight_change: 0.00370216
-  grad_norm: 0.04052721
+  weight_norm_before: 27.91129875
+  weight_norm_after: 27.91129875
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.celestial_value_projection.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407761
-  weight_change: 0.00407761
-  grad_norm: 0.00279450
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.0.0.weight:
-  weight_norm_before: 20.37491798
-  weight_norm_after: 20.36813545
-  weight_change: 0.00678253
-  grad_norm: 0.04268195
+  weight_norm_before: 27.92699432
+  weight_norm_after: 27.92699432
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.0.0.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00406991
-  weight_change: 0.00406991
-  grad_norm: 0.00163627
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.0.3.weight:
-  weight_norm_before: 20.42715454
-  weight_norm_after: 20.41823196
-  weight_change: 0.00892258
-  grad_norm: 0.03830734
+  weight_norm_before: 27.91111946
+  weight_norm_after: 27.91111946
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.0.3.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407727
-  weight_change: 0.00407727
-  grad_norm: 0.00174263
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.1.0.weight:
-  weight_norm_before: 20.38710594
-  weight_norm_after: 20.38054276
-  weight_change: 0.00656319
-  grad_norm: 0.04186083
+  weight_norm_before: 27.91056442
+  weight_norm_after: 27.91056442
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.1.0.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407229
-  weight_change: 0.00407229
-  grad_norm: 0.00149242
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.1.3.weight:
-  weight_norm_before: 20.40802002
-  weight_norm_after: 20.39969254
-  weight_change: 0.00832748
-  grad_norm: 0.03689194
+  weight_norm_before: 27.91073990
+  weight_norm_after: 27.91073990
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.1.3.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407727
-  weight_change: 0.00407727
-  grad_norm: 0.00174263
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.2.0.weight:
-  weight_norm_before: 20.42550659
-  weight_norm_after: 20.41897202
-  weight_change: 0.00653458
-  grad_norm: 0.04111175
+  weight_norm_before: 27.92597961
+  weight_norm_after: 27.92597961
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.2.0.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407400
-  weight_change: 0.00407400
-  grad_norm: 0.00156099
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.2.3.weight:
-  weight_norm_before: 20.39109993
-  weight_norm_after: 20.38220596
-  weight_change: 0.00889397
-  grad_norm: 0.03865166
+  weight_norm_before: 27.93752098
+  weight_norm_after: 27.93752098
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.2.3.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407727
-  weight_change: 0.00407727
-  grad_norm: 0.00174263
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.3.0.weight:
-  weight_norm_before: 20.38328743
-  weight_norm_after: 20.37715149
-  weight_change: 0.00613594
-  grad_norm: 0.04447277
+  weight_norm_before: 27.90942383
+  weight_norm_after: 27.90942383
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.3.0.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407313
-  weight_change: 0.00407313
-  grad_norm: 0.00169054
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.3.3.weight:
-  weight_norm_before: 20.36063957
-  weight_norm_after: 20.35284805
-  weight_change: 0.00779152
-  grad_norm: 0.04296669
+  weight_norm_before: 27.91378784
+  weight_norm_after: 27.91378784
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_to_target_attention.output_projections.3.3.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00407727
-  weight_change: 0.00407727
-  grad_norm: 0.00174263
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.projection.weight:
-  weight_norm_before: 2.76386905
-  weight_norm_after: 2.76344228
-  weight_change: 0.00042677
-  grad_norm: 0.11222508
+  weight_norm_before: 2.82264590
+  weight_norm_after: 2.82264590
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.projection.bias:
   weight_norm_before: 0.00000000
-  weight_norm_after: 0.00040000
-  weight_change: 0.00040000
-  grad_norm: 0.00523867
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
 decoder_module.celestial_projection.weight:
-  weight_norm_before: 11.77490520
-  weight_norm_after: 11.77490520
+  weight_norm_before: 16.12551689
+  weight_norm_after: 16.12551689
   weight_change: 0.00000000
-  grad_norm: 0.01993723
+  grad_norm: 0.00000000
 decoder_module.celestial_projection.bias:
-  weight_norm_before: 2.11233163
-  weight_norm_after: 2.11233163
+  weight_norm_before: 2.08272696
+  weight_norm_after: 2.08272696
   weight_change: 0.00000000
-  grad_norm: 0.00268292
+  grad_norm: 0.00000000
 optimizer_step_executed: True
-current_lr: 0.00020000
+current_lr: 0.00001250
 
 ================================================================================
-EPOCH 1 | BATCH 2/562 | TRAINING MODE
+EPOCH 1 | BATCH 0/3200 | TRAINING MODE
 ================================================================================
-raw_loss (full batch loss): 0.85642022
-loss (scaled for backward): 0.28547341
-effective_cycle (gradient_accumulation_steps): 3
-loss/raw_loss ratio: 0.3333 (should be ~1/3)
-accumulated train_loss so far: 2.62362474
-avg train_loss so far: 0.87454158
+raw_loss (full batch loss): 0.97471184
+loss (scaled for backward): 0.97471184
+effective_cycle (gradient_accumulation_steps): 1
+loss/raw_loss ratio: 1.0000 (should be ~1/1)
+accumulated train_loss so far: 0.97471184
+avg train_loss so far: 0.97471184
 NOTE: NOW ACCUMULATING 'loss' (scaled), NOT 'raw_loss' (3x inflated)
 outputs_tensor.requires_grad: True
-outputs_tensor mean/std: 0.298391 / 0.884171
-y_true_for_loss mean/std: -0.069181 / 0.806394
+outputs_tensor mean/std: 0.129930 / 0.530584
+y_true_for_loss mean/std: -0.155532 / 0.636137
+aux_loss contribution: -0.02528816
 
 --- MODEL OUTPUT DIAGNOSTICS ---
-outputs_tensor.shape: (12, 10, 4)
-outputs_tensor.mean/std: -0.874932 / 0.710525
-y_true_for_loss.shape: (12, 10, 4)
-y_true_for_loss.mean/std: 0.075794 / 0.718567
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: -0.058145 / 0.565939
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.027139 / 0.982672
 c_out_evaluation: 4
 enable_mdn flag: False
-outputs_tensor sample (first up to 8 values): [-0.8316708207130432, -0.19595381617546082, -1.6213115453720093, -1.5635840892791748, -0.7341305613517761, -0.4366348087787628, -1.694533348083496, -0.9946375489234924]
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.135563 / 0.876084
+outputs_tensor sample (first up to 8 values): [-0.832989513874054, 0.14079196751117706, -0.8777384757995605, -0.07949817180633545, 0.15452387928962708, 0.6674481630325317, -0.44138336181640625, 1.3861548900604248]
+
+--- OPTIMIZER STEP DIAGNOSTICS ---
+embedding_module.celestial_projection.0.weight:
+  weight_norm_before: 27.89590454
+  weight_norm_after: 27.89590454
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.1.weight:
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.0.weight:
+  weight_norm_before: 12.87673473
+  weight_norm_after: 12.87673473
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.1.weight:
+  weight_norm_before: 13.96424007
+  weight_norm_after: 13.96424007
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_query_projection.weight:
+  weight_norm_before: 12.07330227
+  weight_norm_after: 12.07330227
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_query_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_key_projection.weight:
+  weight_norm_before: 12.04475689
+  weight_norm_after: 12.04475689
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_key_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_value_projection.weight:
+  weight_norm_before: 12.06542778
+  weight_norm_after: 12.06542778
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_value_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_output_projection.weight:
+  weight_norm_before: 12.04640770
+  weight_norm_after: 12.04640770
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_output_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_projection.weight:
+  weight_norm_before: 38.05214310
+  weight_norm_after: 38.05214310
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_back_projection.weight:
+  weight_norm_before: 38.06806183
+  weight_norm_after: 38.06806183
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_back_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.target_projection.weight:
+  weight_norm_before: 27.94985771
+  weight_norm_after: 27.94985771
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.target_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.weight:
+  weight_norm_before: 27.94690704
+  weight_norm_after: 27.94690704
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.weight:
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.0.weight:
+  weight_norm_before: 27.94819450
+  weight_norm_after: 27.94819450
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.1.weight:
+  weight_norm_before: 27.93074608
+  weight_norm_after: 27.93074608
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.2.weight:
+  weight_norm_before: 27.93249893
+  weight_norm_after: 27.93249893
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.2.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.3.weight:
+  weight_norm_before: 27.90202713
+  weight_norm_after: 27.90202713
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_key_projection.weight:
+  weight_norm_before: 27.93618774
+  weight_norm_after: 27.93618774
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_key_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_value_projection.weight:
+  weight_norm_before: 27.91129875
+  weight_norm_after: 27.91129875
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_value_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.0.weight:
+  weight_norm_before: 27.92699432
+  weight_norm_after: 27.92699432
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.3.weight:
+  weight_norm_before: 27.91111946
+  weight_norm_after: 27.91111946
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.0.weight:
+  weight_norm_before: 27.91056442
+  weight_norm_after: 27.91056442
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.3.weight:
+  weight_norm_before: 27.91073990
+  weight_norm_after: 27.91073990
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.0.weight:
+  weight_norm_before: 27.92597961
+  weight_norm_after: 27.92597961
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.3.weight:
+  weight_norm_before: 27.93752098
+  weight_norm_after: 27.93752098
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.0.weight:
+  weight_norm_before: 27.90942383
+  weight_norm_after: 27.90942383
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.3.weight:
+  weight_norm_before: 27.91378784
+  weight_norm_after: 27.91378784
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.projection.weight:
+  weight_norm_before: 2.82264590
+  weight_norm_after: 2.82264590
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_projection.weight:
+  weight_norm_before: 16.12551689
+  weight_norm_after: 16.12551689
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_projection.bias:
+  weight_norm_before: 2.08272696
+  weight_norm_after: 2.08272696
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+optimizer_step_executed: True
+current_lr: 0.00001250
 
 ================================================================================
-EPOCH 1 | BATCH 3/562 | TRAINING MODE
+EPOCH 1 | BATCH 1/3200 | TRAINING MODE
 ================================================================================
-raw_loss (full batch loss): 0.68055314
-loss (scaled for backward): 0.22685105
-effective_cycle (gradient_accumulation_steps): 3
-loss/raw_loss ratio: 0.3333 (should be ~1/3)
-accumulated train_loss so far: 3.30417788
-avg train_loss so far: 0.82604447
+raw_loss (full batch loss): 0.97478575
+loss (scaled for backward): 0.97478575
+effective_cycle (gradient_accumulation_steps): 1
+loss/raw_loss ratio: 1.0000 (should be ~1/1)
+accumulated train_loss so far: 1.94949758
+avg train_loss so far: 0.97474879
 NOTE: NOW ACCUMULATING 'loss' (scaled), NOT 'raw_loss' (3x inflated)
 outputs_tensor.requires_grad: True
-outputs_tensor mean/std: -0.874932 / 0.710525
-y_true_for_loss mean/std: 0.075794 / 0.718567
+outputs_tensor mean/std: -0.058145 / 0.565939
+y_true_for_loss mean/std: -0.027139 / 0.982672
+aux_loss contribution: -0.02521425
 
 --- MODEL OUTPUT DIAGNOSTICS ---
-outputs_tensor.shape: (12, 10, 4)
-outputs_tensor.mean/std: -0.857284 / 0.636407
-y_true_for_loss.shape: (12, 10, 4)
-y_true_for_loss.mean/std: 0.024487 / 0.880601
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: -0.007620 / 0.568077
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.158783 / 0.699227
 c_out_evaluation: 4
 enable_mdn flag: False
-outputs_tensor sample (first up to 8 values): [-0.5777934193611145, -0.21333548426628113, -1.9916303157806396, -1.2884812355041504, -0.7048379778862, 0.5150802731513977, -1.7540357112884521, -0.5344327688217163]
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.197024 / 0.845174
+outputs_tensor sample (first up to 8 values): [-0.17328143119812012, 0.5957925319671631, 0.04764726758003235, -0.19049835205078125, -0.4426150321960449, 1.38934326171875, 0.2908383309841156, -0.9630519151687622]
+
+--- OPTIMIZER STEP DIAGNOSTICS ---
+embedding_module.celestial_projection.0.weight:
+  weight_norm_before: 27.89590454
+  weight_norm_after: 27.89590454
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.1.weight:
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.0.weight:
+  weight_norm_before: 12.87673473
+  weight_norm_after: 12.87673473
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.1.weight:
+  weight_norm_before: 13.96424007
+  weight_norm_after: 13.96424007
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_query_projection.weight:
+  weight_norm_before: 12.07330227
+  weight_norm_after: 12.07330227
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_query_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_key_projection.weight:
+  weight_norm_before: 12.04475689
+  weight_norm_after: 12.04475689
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_key_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_value_projection.weight:
+  weight_norm_before: 12.06542778
+  weight_norm_after: 12.06542778
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_value_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_output_projection.weight:
+  weight_norm_before: 12.04640770
+  weight_norm_after: 12.04640770
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_output_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_projection.weight:
+  weight_norm_before: 38.05214310
+  weight_norm_after: 38.05214310
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_back_projection.weight:
+  weight_norm_before: 38.06806183
+  weight_norm_after: 38.06806183
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_back_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.target_projection.weight:
+  weight_norm_before: 27.94985771
+  weight_norm_after: 27.94985771
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.target_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.weight:
+  weight_norm_before: 27.94690704
+  weight_norm_after: 27.94690704
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.weight:
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.0.weight:
+  weight_norm_before: 27.94819450
+  weight_norm_after: 27.94819450
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.1.weight:
+  weight_norm_before: 27.93074608
+  weight_norm_after: 27.93074608
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.2.weight:
+  weight_norm_before: 27.93249893
+  weight_norm_after: 27.93249893
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.2.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.3.weight:
+  weight_norm_before: 27.90202713
+  weight_norm_after: 27.90202713
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_key_projection.weight:
+  weight_norm_before: 27.93618774
+  weight_norm_after: 27.93618774
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_key_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_value_projection.weight:
+  weight_norm_before: 27.91129875
+  weight_norm_after: 27.91129875
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_value_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.0.weight:
+  weight_norm_before: 27.92699432
+  weight_norm_after: 27.92699432
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.3.weight:
+  weight_norm_before: 27.91111946
+  weight_norm_after: 27.91111946
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.0.weight:
+  weight_norm_before: 27.91056442
+  weight_norm_after: 27.91056442
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.3.weight:
+  weight_norm_before: 27.91073990
+  weight_norm_after: 27.91073990
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.0.weight:
+  weight_norm_before: 27.92597961
+  weight_norm_after: 27.92597961
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.3.weight:
+  weight_norm_before: 27.93752098
+  weight_norm_after: 27.93752098
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.0.weight:
+  weight_norm_before: 27.90942383
+  weight_norm_after: 27.90942383
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.3.weight:
+  weight_norm_before: 27.91378784
+  weight_norm_after: 27.91378784
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.projection.weight:
+  weight_norm_before: 2.82264590
+  weight_norm_after: 2.82264590
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_projection.weight:
+  weight_norm_before: 16.12551689
+  weight_norm_after: 16.12551689
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_projection.bias:
+  weight_norm_before: 2.08272696
+  weight_norm_after: 2.08272696
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+optimizer_step_executed: True
+current_lr: 0.00001250
 
 ================================================================================
-EPOCH 1 | BATCH 4/562 | TRAINING MODE
+EPOCH 1 | BATCH 2/3200 | TRAINING MODE
 ================================================================================
-raw_loss (full batch loss): 0.42468193
-loss (scaled for backward): 0.14156064
-effective_cycle (gradient_accumulation_steps): 3
-loss/raw_loss ratio: 0.3333 (should be ~1/3)
-accumulated train_loss so far: 3.72885981
-avg train_loss so far: 0.74577196
+raw_loss (full batch loss): 0.97476429
+loss (scaled for backward): 0.97476429
+effective_cycle (gradient_accumulation_steps): 1
+loss/raw_loss ratio: 1.0000 (should be ~1/1)
+accumulated train_loss so far: 2.92426187
+avg train_loss so far: 0.97475396
 NOTE: NOW ACCUMULATING 'loss' (scaled), NOT 'raw_loss' (3x inflated)
 outputs_tensor.requires_grad: True
-outputs_tensor mean/std: -0.857284 / 0.636407
-y_true_for_loss mean/std: 0.024487 / 0.880601
+outputs_tensor mean/std: -0.007620 / 0.568077
+y_true_for_loss mean/std: 0.158783 / 0.699227
+aux_loss contribution: -0.02523573
 
 --- MODEL OUTPUT DIAGNOSTICS ---
-outputs_tensor.shape: (12, 10, 4)
-outputs_tensor.mean/std: -0.860604 / 0.654012
-y_true_for_loss.shape: (12, 10, 4)
-y_true_for_loss.mean/std: 0.100145 / 0.588056
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.010649 / 0.614827
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.285039 / 0.474559
 c_out_evaluation: 4
 enable_mdn flag: False
-outputs_tensor sample (first up to 8 values): [-1.0275945663452148, 0.8909724354743958, -0.6942407488822937, -1.803178071975708, -0.5551326870918274, -0.5255093574523926, -0.3869706690311432, -0.3545190989971161]
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.100241 / 0.871323
+outputs_tensor sample (first up to 8 values): [-0.8140746355056763, -0.10799965262413025, -1.3296763896942139, 0.19081823527812958, -0.9919048547744751, -0.25841712951660156, 0.609702467918396, 0.4937228560447693]
+
+--- OPTIMIZER STEP DIAGNOSTICS ---
+embedding_module.celestial_projection.0.weight:
+  weight_norm_before: 27.89590454
+  weight_norm_after: 27.89590454
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.1.weight:
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.0.weight:
+  weight_norm_before: 12.87673473
+  weight_norm_after: 12.87673473
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.1.weight:
+  weight_norm_before: 13.96424007
+  weight_norm_after: 13.96424007
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_query_projection.weight:
+  weight_norm_before: 12.07330227
+  weight_norm_after: 12.07330227
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_query_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_key_projection.weight:
+  weight_norm_before: 12.04475689
+  weight_norm_after: 12.04475689
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_key_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_value_projection.weight:
+  weight_norm_before: 12.06542778
+  weight_norm_after: 12.06542778
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_value_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_output_projection.weight:
+  weight_norm_before: 12.04640770
+  weight_norm_after: 12.04640770
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_output_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_projection.weight:
+  weight_norm_before: 38.05214310
+  weight_norm_after: 38.05214310
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_back_projection.weight:
+  weight_norm_before: 38.06806183
+  weight_norm_after: 38.06806183
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_back_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.target_projection.weight:
+  weight_norm_before: 27.94985771
+  weight_norm_after: 27.94985771
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.target_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.weight:
+  weight_norm_before: 27.94690704
+  weight_norm_after: 27.94690704
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.weight:
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.0.weight:
+  weight_norm_before: 27.94819450
+  weight_norm_after: 27.94819450
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.1.weight:
+  weight_norm_before: 27.93074608
+  weight_norm_after: 27.93074608
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.2.weight:
+  weight_norm_before: 27.93249893
+  weight_norm_after: 27.93249893
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.2.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.3.weight:
+  weight_norm_before: 27.90202713
+  weight_norm_after: 27.90202713
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_key_projection.weight:
+  weight_norm_before: 27.93618774
+  weight_norm_after: 27.93618774
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_key_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_value_projection.weight:
+  weight_norm_before: 27.91129875
+  weight_norm_after: 27.91129875
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_value_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.0.weight:
+  weight_norm_before: 27.92699432
+  weight_norm_after: 27.92699432
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.3.weight:
+  weight_norm_before: 27.91111946
+  weight_norm_after: 27.91111946
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.0.weight:
+  weight_norm_before: 27.91056442
+  weight_norm_after: 27.91056442
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.3.weight:
+  weight_norm_before: 27.91073990
+  weight_norm_after: 27.91073990
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.0.weight:
+  weight_norm_before: 27.92597961
+  weight_norm_after: 27.92597961
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.3.weight:
+  weight_norm_before: 27.93752098
+  weight_norm_after: 27.93752098
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.0.weight:
+  weight_norm_before: 27.90942383
+  weight_norm_after: 27.90942383
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.3.weight:
+  weight_norm_before: 27.91378784
+  weight_norm_after: 27.91378784
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.projection.weight:
+  weight_norm_before: 2.82264590
+  weight_norm_after: 2.82264590
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_projection.weight:
+  weight_norm_before: 16.12551689
+  weight_norm_after: 16.12551689
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_projection.bias:
+  weight_norm_before: 2.08272696
+  weight_norm_after: 2.08272696
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+optimizer_step_executed: True
+current_lr: 0.00001250
+
+================================================================================
+EPOCH 1 | BATCH 3/3200 | TRAINING MODE
+================================================================================
+raw_loss (full batch loss): 0.97472918
+loss (scaled for backward): 0.97472918
+effective_cycle (gradient_accumulation_steps): 1
+loss/raw_loss ratio: 1.0000 (should be ~1/1)
+accumulated train_loss so far: 3.89899105
+avg train_loss so far: 0.97474776
+NOTE: NOW ACCUMULATING 'loss' (scaled), NOT 'raw_loss' (3x inflated)
+outputs_tensor.requires_grad: True
+outputs_tensor mean/std: 0.010649 / 0.614827
+y_true_for_loss mean/std: 0.285039 / 0.474559
+aux_loss contribution: -0.02527079
 
 --- MODEL OUTPUT DIAGNOSTICS ---
-outputs_tensor.shape: (12, 10, 4)
-outputs_tensor.mean/std: 0.741146 / 1.013781
-y_true_for_loss.shape: (12, 10, 4)
-y_true_for_loss.mean/std: -0.003480 / 1.938953
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.076860 / 0.534346
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.264155 / 0.604309
 c_out_evaluation: 4
 enable_mdn flag: False
-outputs_tensor sample (first up to 8 values): [1.0060460567474365, -0.494119256734848, 0.9597763419151306, 2.858248472213745, 1.2697628736495972, 0.1283092200756073, 0.5160316824913025, 0.8454654216766357]
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.033815 / 0.845528
+outputs_tensor sample (first up to 8 values): [-0.7149423360824585, -0.5634829998016357, 0.13693708181381226, 0.30980777740478516, 0.1489851027727127, 0.5668214559555054, 0.4032303988933563, 0.6538176536560059]
+
+--- OPTIMIZER STEP DIAGNOSTICS ---
+embedding_module.celestial_projection.0.weight:
+  weight_norm_before: 27.89590454
+  weight_norm_after: 27.89590454
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.1.weight:
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.celestial_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.0.weight:
+  weight_norm_before: 12.87673473
+  weight_norm_after: 12.87673473
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.1.weight:
+  weight_norm_before: 13.96424007
+  weight_norm_after: 13.96424007
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+embedding_module.calendar_effects_encoder.calendar_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_query_projection.weight:
+  weight_norm_before: 12.07330227
+  weight_norm_after: 12.07330227
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_query_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_key_projection.weight:
+  weight_norm_before: 12.04475689
+  weight_norm_after: 12.04475689
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_key_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_value_projection.weight:
+  weight_norm_before: 12.06542778
+  weight_norm_after: 12.06542778
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_value_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_output_projection.weight:
+  weight_norm_before: 12.04640770
+  weight_norm_after: 12.04640770
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+graph_module.celestial_output_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_projection.weight:
+  weight_norm_before: 38.05214310
+  weight_norm_after: 38.05214310
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_back_projection.weight:
+  weight_norm_before: 38.06806183
+  weight_norm_after: 38.06806183
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+encoder_module.spatiotemporal_encoder.node_feature_back_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.target_projection.weight:
+  weight_norm_before: 27.94985771
+  weight_norm_after: 27.94985771
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.target_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.weight:
+  weight_norm_before: 27.94690704
+  weight_norm_after: 27.94690704
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.weight:
+  weight_norm_before: 27.92848015
+  weight_norm_after: 27.92848015
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.dual_stream_decoder.target_autocorr.output_projection.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.0.weight:
+  weight_norm_before: 27.94819450
+  weight_norm_after: 27.94819450
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.1.weight:
+  weight_norm_before: 27.93074608
+  weight_norm_after: 27.93074608
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.1.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.2.weight:
+  weight_norm_before: 27.93249893
+  weight_norm_after: 27.93249893
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.2.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.3.weight:
+  weight_norm_before: 27.90202713
+  weight_norm_after: 27.90202713
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.target_query_projections.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_key_projection.weight:
+  weight_norm_before: 27.93618774
+  weight_norm_after: 27.93618774
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_key_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_value_projection.weight:
+  weight_norm_before: 27.91129875
+  weight_norm_after: 27.91129875
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.celestial_value_projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.0.weight:
+  weight_norm_before: 27.92699432
+  weight_norm_after: 27.92699432
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.3.weight:
+  weight_norm_before: 27.91111946
+  weight_norm_after: 27.91111946
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.0.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.0.weight:
+  weight_norm_before: 27.91056442
+  weight_norm_after: 27.91056442
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.3.weight:
+  weight_norm_before: 27.91073990
+  weight_norm_after: 27.91073990
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.1.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.0.weight:
+  weight_norm_before: 27.92597961
+  weight_norm_after: 27.92597961
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.3.weight:
+  weight_norm_before: 27.93752098
+  weight_norm_after: 27.93752098
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.2.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.0.weight:
+  weight_norm_before: 27.90942383
+  weight_norm_after: 27.90942383
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.0.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.3.weight:
+  weight_norm_before: 27.91378784
+  weight_norm_after: 27.91378784
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_to_target_attention.output_projections.3.3.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.projection.weight:
+  weight_norm_before: 2.82264590
+  weight_norm_after: 2.82264590
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.projection.bias:
+  weight_norm_before: 0.00000000
+  weight_norm_after: 0.00000000
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_projection.weight:
+  weight_norm_before: 16.12551689
+  weight_norm_after: 16.12551689
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+decoder_module.celestial_projection.bias:
+  weight_norm_before: 2.08272696
+  weight_norm_after: 2.08272696
+  weight_change: 0.00000000
+  grad_norm: 0.00000000
+optimizer_step_executed: True
+current_lr: 0.00001250
+
+================================================================================
+EPOCH 1 | BATCH 4/3200 | TRAINING MODE
+================================================================================
+raw_loss (full batch loss): 0.97478479
+loss (scaled for backward): 0.97478479
+effective_cycle (gradient_accumulation_steps): 1
+loss/raw_loss ratio: 1.0000 (should be ~1/1)
+accumulated train_loss so far: 4.87377584
+avg train_loss so far: 0.97475517
+NOTE: NOW ACCUMULATING 'loss' (scaled), NOT 'raw_loss' (3x inflated)
+outputs_tensor.requires_grad: True
+outputs_tensor mean/std: 0.076860 / 0.534346
+y_true_for_loss mean/std: 0.264155 / 0.604309
+aux_loss contribution: -0.02521520
 
 --- MODEL OUTPUT DIAGNOSTICS ---
-outputs_tensor.shape: (12, 10, 4)
-outputs_tensor.mean/std: 0.787560 / 1.052779
-y_true_for_loss.shape: (12, 10, 4)
-y_true_for_loss.mean/std: 0.034300 / 0.894851
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.056913 / 0.618221
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.133762 / 0.525327
 c_out_evaluation: 4
 enable_mdn flag: False
-outputs_tensor sample (first up to 8 values): [1.0231502056121826, -0.06946515291929245, 0.9629325270652771, 2.556400775909424, 0.29757946729660034, -0.46475711464881897, 0.17544473707675934, 2.7733004093170166]
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.141160 / 0.730821
+outputs_tensor sample (first up to 8 values): [0.6289797425270081, 1.4340839385986328, -0.018644608557224274, 0.3314206600189209, 0.16402223706245422, 0.4258779287338257, -0.1370246708393097, 0.37791183590888977]
 
-################################################################################
-EPOCH 1 TRAINING SUMMARY
-################################################################################
-total_train_loss: 6.34382412
-train_batches: 8
-total_train_samples: 96
-avg_train_loss (legacy - batch avg): 0.79297801
-avg_train_loss (precise - sample weighted): 0.79297801
-difference: 0.00000000
-gradient_accumulation_steps: 3
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: -0.076993 / 0.646495
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.059609 / 0.428585
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.128108 / 0.713336
+outputs_tensor sample (first up to 8 values): [0.7698007225990295, 1.716035008430481, -0.15076212584972382, -0.059084296226501465, 0.12637174129486084, -0.7127341628074646, -0.09125078469514847, -1.2601407766342163]
 
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: -0.013329 / 0.531127
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.615094 / 1.939530
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.018474 / 0.857638
+outputs_tensor sample (first up to 8 values): [-0.18464545905590057, 0.7720143795013428, -0.3555189371109009, -0.8138278722763062, -0.5667993426322937, -0.010726779699325562, -0.9990283846855164, 0.3046829104423523]
 
-================================================================================
-EPOCH 1 | BATCH 0 | VALIDATION MODE
-================================================================================
-loss: 0.61182976
-accumulated val_loss so far: 0.61182976
-avg val_loss so far: 0.61182976
-outputs_tensor mean/std: 0.665862 / 0.885386
-y_true_for_loss mean/std: 0.009463 / 0.510001
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.016649 / 0.590853
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.857457 / 1.869149
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.156251 / 0.700541
+outputs_tensor sample (first up to 8 values): [-0.42020681500434875, 0.8885189294815063, 0.46460458636283875, 0.6620427370071411, -1.2152613401412964, -0.691217839717865, 0.035833463072776794, -0.4672790765762329]
 
-================================================================================
-EPOCH 1 | BATCH 1 | VALIDATION MODE
-================================================================================
-loss: 0.66316932
-accumulated val_loss so far: 1.27499908
-avg val_loss so far: 0.63749954
-outputs_tensor mean/std: 0.670690 / 0.874132
-y_true_for_loss mean/std: -0.186175 / 0.474190
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: -0.126906 / 0.629653
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.125305 / 0.515193
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.175108 / 0.822557
+outputs_tensor sample (first up to 8 values): [-0.9512553811073303, 1.105090618133545, -0.27929356694221497, -0.4792325496673584, 0.18484017252922058, 0.41205838322639465, -0.3888538181781769, -1.262843370437622]
 
-################################################################################
-EPOCH 1 VALIDATION SUMMARY
-################################################################################
-total_val_loss: 1.27499908
-val_batches: 2
-total_samples: 24
-avg_val_loss (legacy - batch avg): 0.63749954
-avg_val_loss (precise - sample weighted): 0.63749954
-difference: 0.00000000
-directional_accuracy: 56.71%
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.032981 / 0.561111
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.150410 / 0.905866
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.053061 / 0.721365
+outputs_tensor sample (first up to 8 values): [0.611933708190918, 0.10917264223098755, 0.4505382776260376, -1.3202511072158813, 0.08146372437477112, 0.33376091718673706, -0.1497371345758438, -0.808525800704956]
 
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.149135 / 0.619562
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.055872 / 0.421648
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.062549 / 1.110290
+outputs_tensor sample (first up to 8 values): [0.3903007209300995, -0.25235703587532043, 0.5346983075141907, -0.14932328462600708, 0.41852590441703796, 0.5324109792709351, -0.12354640662670135, 0.044694602489471436]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.122035 / 0.625180
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.190545 / 0.800470
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.134043 / 0.853101
+outputs_tensor sample (first up to 8 values): [-0.6053954362869263, 0.14784127473831177, 0.30532291531562805, 0.3023607134819031, -0.2946692705154419, 0.5054444074630737, 0.927045464515686, 1.2243891954421997]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: -0.145815 / 0.601622
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.013694 / 1.012995
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.189357 / 0.887754
+outputs_tensor sample (first up to 8 values): [-0.5380248427391052, 0.1210411787033081, -0.6443830132484436, -0.015149950981140137, -0.0217728391289711, 0.037991076707839966, 0.4074348211288452, -1.3567349910736084]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.020381 / 0.596574
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.147965 / 1.576168
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.186021 / 0.895581
+outputs_tensor sample (first up to 8 values): [0.30300718545913696, 0.14558663964271545, -0.5550217032432556, 0.5251562595367432, -0.012565173208713531, 0.15003657341003418, -0.649510383605957, -0.8178035616874695]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.018499 / 0.534092
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.091813 / 1.104383
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.025821 / 0.775924
+outputs_tensor sample (first up to 8 values): [0.5410670042037964, 0.28322651982307434, 0.5800609588623047, 0.5178241729736328, 0.6870313286781311, 0.014218278229236603, -0.9323821067810059, -0.45198073983192444]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.076180 / 0.507827
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.200225 / 0.689967
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.082442 / 0.872116
+outputs_tensor sample (first up to 8 values): [0.9021382331848145, 0.6565408706665039, 0.6606389284133911, 0.45967966318130493, -0.8253023624420166, 0.2738022208213806, 0.29880595207214355, 0.3373768925666809]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.102680 / 0.616556
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.085413 / 1.736811
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.109679 / 0.989551
+outputs_tensor sample (first up to 8 values): [-0.19137363135814667, 0.09384916722774506, -0.11356514692306519, 0.05204227566719055, -0.19983865320682526, 0.36958229541778564, 0.29129889607429504, 0.9461777210235596]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: -0.033819 / 0.576253
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.430923 / 0.699916
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.060865 / 0.864959
+outputs_tensor sample (first up to 8 values): [-0.10459831357002258, 0.38064098358154297, -0.10099564492702484, 0.2638041377067566, -0.2638075053691864, -0.011401534080505371, -0.8789870142936707, 0.17375069856643677]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.058356 / 0.661878
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.198333 / 1.025412
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.045427 / 0.750861
+outputs_tensor sample (first up to 8 values): [-0.22240087389945984, 0.5098825693130493, -0.3866100311279297, 0.38673195242881775, -0.5950604677200317, -0.07282449305057526, -0.17565315961837769, 0.6603346467018127]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.046951 / 0.614485
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.082026 / 0.910016
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.189237 / 0.850819
+outputs_tensor sample (first up to 8 values): [-0.08624103665351868, 0.6610680818557739, -0.0012235715985298157, 0.08728589862585068, 0.39609718322753906, 0.1749875247478485, 0.8644100427627563, 0.3429102897644043]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.106720 / 0.738048
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.332749 / 0.626451
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.093118 / 0.889009
+outputs_tensor sample (first up to 8 values): [1.02397882938385, 0.06879720091819763, -2.0021474361419678, -0.27976590394973755, -1.19814133644104, -0.49390846490859985, 0.6475687623023987, 0.5147862434387207]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: -0.024619 / 0.666324
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.275618 / 0.454157
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.028589 / 0.812387
+outputs_tensor sample (first up to 8 values): [0.6078678369522095, 0.720440149307251, -0.5379144549369812, -1.3607245683670044, 0.18915779888629913, 0.3580014407634735, 0.20567409694194794, -0.6191238164901733]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.037814 / 0.703749
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.101390 / 0.506232
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.007927 / 0.924106
+outputs_tensor sample (first up to 8 values): [0.6897289752960205, 1.4599124193191528, -1.232494831085205, -1.0204275846481323, 0.07917062193155289, 0.29340943694114685, -0.748147189617157, -1.1399152278900146]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: -0.061071 / 0.624885
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: 0.069791 / 0.541553
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.081732 / 0.723888
+outputs_tensor sample (first up to 8 values): [0.4845580458641052, -0.9515212178230286, -1.8151605129241943, 0.2177484929561615, -0.13422860205173492, 0.5521571040153503, -0.5460571050643921, -0.2999224066734314]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.041136 / 0.623479
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.115007 / 0.825980
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: 0.131403 / 0.742447
+outputs_tensor sample (first up to 8 values): [-1.1783696413040161, 0.09676556289196014, 1.037156105041504, -0.9619938135147095, -0.17872223258018494, 0.26656752824783325, -0.21496738493442535, -0.2115626335144043]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.104120 / 0.658621
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.261294 / 0.375855
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.081711 / 1.110232
+outputs_tensor sample (first up to 8 values): [0.13598483800888062, -0.3865879774093628, 1.0609228610992432, -1.4799941778182983, -0.12745401263237, -0.5106508731842041, 0.9016628861427307, -0.8414385914802551]
+
+--- MODEL OUTPUT DIAGNOSTICS ---
+outputs_tensor.shape: (2, 10, 4)
+outputs_tensor.mean/std: 0.115971 / 0.588290
+y_true_for_loss.shape: (2, 10, 4)
+y_true_for_loss.mean/std: -0.075198 / 0.944342
+c_out_evaluation: 4
+enable_mdn flag: False
+mdn.pi.shape: (2, 10, 4, 5)
+mdn.mu.shape: (2, 10, 4, 5)
+mdn.sigma.shape: (2, 10, 5)
+mdn.mixture_mean.shape: (2, 10, 4)
+mdn.mixture_mean.mean/std: -0.073370 / 0.727453
+outputs_tensor sample (first up to 8 values): [0.1734175980091095, -0.8714950680732727, 0.5742619037628174, 2.209261655807495, -0.10708557069301605, 0.02470824122428894, -0.10820870101451874, 0.3018232583999634]

@@ -28,7 +28,7 @@ freq: d
 embed: timeF
 
 # Sequence Configuration - OPTIMIZED FOR CONVERGENCE
-seq_len: 250                    # Reduced from 500 for faster training
+seq_len: 50                     # SAFE MODE: Reduced from 250 to save memory
 label_len: 125                  # Decoder label length
 pred_len: 10                    # Reduced from 20 for better accuracy
 c_out: 4                        # Output features (OHLC)
@@ -37,8 +37,8 @@ dec_in: 118                     # Decoder input features
 num_input_waves: 118            # Total input waves
 
 # Training Configuration - OPTIMIZED
-batch_size: 4                   # Increased from 2 for efficiency
-train_epochs: 60                # Reduced from 75 for overnight completion
+batch_size: 1                   # SAFE MODE: Reduced from 4 to prevent OOM
+train_epochs: 2                 # SAFE MODE: Just for testing decoder fix                # Reduced from 75 for overnight completion
 learning_rate: 0.0001           # Slightly higher than 0.00008
 weight_decay: 0.01              # Reduced from 0.015
 gradient_accumulation_steps: 3  # Effective batch size = 12

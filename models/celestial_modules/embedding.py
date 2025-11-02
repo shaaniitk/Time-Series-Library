@@ -197,6 +197,7 @@ class EmbeddingModule(nn.Module):
                 num_input_waves=config.num_input_waves,
                 num_celestial_bodies=config.num_celestial_bodies
             )
+            
             self.data_processor = CelestialDataProcessor(
                 self.wave_aggregator,
                 target_indices=config.target_wave_indices
@@ -247,6 +248,7 @@ class EmbeddingModule(nn.Module):
         else:
             self.calendar_effects_encoder = None
             self.calendar_fusion = None
+        
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         # DTYPE FIX: Ensure all inputs are float32

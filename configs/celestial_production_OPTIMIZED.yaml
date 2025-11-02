@@ -28,7 +28,7 @@ freq: d
 embed: timeF
 
 # Sequence Configuration - OPTIMIZED FOR CONVERGENCE
-seq_len: 250                    # Reduced from 500 for faster training
+seq_len: 500                    # Testing full sequence with batch=1
 label_len: 125                  # Decoder label length
 pred_len: 10                    # Reduced from 20 for better accuracy
 c_out: 4                        # Output features (OHLC)
@@ -37,11 +37,11 @@ dec_in: 118                     # Decoder input features
 num_input_waves: 118            # Total input waves
 
 # Training Configuration - OPTIMIZED
-batch_size: 4                   # Increased from 2 for efficiency
-train_epochs: 60                # Reduced from 75 for overnight completion
+batch_size: 1                   # STABLE: batch_size=2 causes shape mismatch bug
+train_epochs: 60                # Full training run                # Reduced from 75 for overnight completion
 learning_rate: 0.0001           # Slightly higher than 0.00008
 weight_decay: 0.01              # Reduced from 0.015
-gradient_accumulation_steps: 3  # Effective batch size = 12
+gradient_accumulation_steps: 1  # OPTIMIZED: Increase to 2-4 if OOM (simulates larger batch)
 
 # BALANCED: Loss Configuration for Best Convergence
 loss:
@@ -178,13 +178,13 @@ use_gpu: false              # FORCED CPU MODE for debugging
 gpu: 0
 devices: '0'
 num_workers: 0
-pin_memory: false           # Disabled for CPU mode
+pin_memory: false               # Keep false to save system RAM           # Disabled for CPU mode
 persistent_workers: false
 prefetch_factor: 2
 
 # Memory Management
 max_memory_usage: 0.85
-enable_memory_diagnostics: false
+enable_memory_diagnostics: true  # OPTIMIZED: Monitor memory usage
 enable_memory_snapshots: true
 memory_log_interval: 100
 memory_snapshot_interval: 100

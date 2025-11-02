@@ -79,3 +79,386 @@
 2025-11-02 05:41:57,759 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
 2025-11-02 05:41:57,759 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
 2025-11-02 05:41:57,759 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:01:10,698 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:01:10,757 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:01:10,757 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:01:10,769 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:01:10,769 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:01:10,769 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:01:10,769 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:01:10,769 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:01:10,769 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:01:10,769 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:01:11,329 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:03:24,306 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:03:24,350 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:03:24,350 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:03:24,362 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:03:24,362 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:03:24,362 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:03:24,362 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:03:24,362 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:03:24,362 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:03:24,362 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:03:24,934 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:06:02,428 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:06:02,478 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:06:02,479 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:06:02,491 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:06:02,491 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:06:02,491 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:06:02,491 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:06:02,491 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:06:02,491 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:06:02,491 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:06:03,041 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:06:28,168 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:06:28,212 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:06:28,212 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:06:28,224 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:06:28,224 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:06:28,224 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:06:28,224 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:06:28,224 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:06:28,224 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:06:28,224 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:06:28,778 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:06:43,243 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:06:43,286 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:06:43,286 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:06:43,298 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:06:43,298 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:06:43,298 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:06:43,298 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:06:43,298 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:06:43,298 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:06:43,298 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:06:43,844 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:07:35,683 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:07:35,733 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:07:35,733 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:07:35,747 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:07:35,747 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:07:35,747 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:07:35,747 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:07:35,747 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:07:35,747 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:07:35,747 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:07:36,335 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:08:01,719 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:08:01,764 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:08:01,764 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:08:01,777 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:08:01,777 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:08:01,777 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:08:01,777 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:08:01,777 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:08:01,777 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:08:01,777 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:08:02,331 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:08:24,831 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:08:24,883 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:08:24,883 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:08:24,896 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:08:24,896 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:08:24,896 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:08:24,897 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:08:24,897 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:08:24,897 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:08:24,897 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:08:25,447 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:08:50,772 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:08:50,819 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:08:50,819 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:08:50,832 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:08:50,832 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:08:50,832 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:08:50,832 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:08:50,832 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:08:50,832 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:08:50,832 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:08:51,380 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:09:16,210 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:09:16,254 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:09:16,254 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:09:16,266 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:09:16,266 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:09:16,266 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:09:16,266 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:09:16,266 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:09:16,266 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:09:16,266 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:09:16,823 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:09:43,178 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:09:43,222 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:09:43,222 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:09:43,234 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:09:43,235 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:09:43,235 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:09:43,235 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:09:43,235 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:09:43,235 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:09:43,235 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:09:43,791 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:09:55,528 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:09:55,576 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:09:55,576 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:09:55,588 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:09:55,588 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:09:55,588 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:09:55,588 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:09:55,588 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:09:55,588 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:09:55,588 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:09:56,133 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:10:21,401 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:10:21,445 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:10:21,445 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:10:21,457 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:10:21,457 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:10:21,457 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:10:21,457 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:10:21,457 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:10:21,457 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:10:21,457 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:10:22,012 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:10:31,508 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:10:31,554 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:10:31,554 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:10:31,567 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:10:31,567 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:10:31,567 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:10:31,567 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:10:31,567 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:10:31,567 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:10:31,567 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:10:32,120 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:15:14,088 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:15:14,131 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:15:14,132 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:15:14,144 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:15:14,144 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:15:14,144 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:15:14,144 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:15:14,144 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:15:14,144 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:15:14,144 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:15:14,712 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:15:39,020 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:15:39,064 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:15:39,064 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:15:39,076 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:15:39,077 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:15:39,077 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:15:39,077 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:15:39,077 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:15:39,077 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:15:39,077 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:15:39,631 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:16:06,573 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:16:06,617 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:16:06,617 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:16:06,630 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:16:06,630 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:16:06,630 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:16:06,630 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:16:06,630 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:16:06,630 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:16:06,630 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:16:07,188 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:16:31,552 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:16:31,597 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:16:31,598 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:16:31,610 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:16:31,610 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:16:31,610 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:16:31,610 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:16:31,610 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:16:31,610 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:16:31,610 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:16:32,163 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:17:18,104 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:17:18,149 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:17:18,149 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:17:18,162 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:17:18,162 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:17:18,162 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:17:18,162 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:17:18,162 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:17:18,162 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:17:18,162 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:17:18,723 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:18:13,731 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:18:13,775 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:18:13,775 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:18:13,787 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:18:13,787 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:18:13,787 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:18:13,787 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:18:13,787 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:18:13,787 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:18:13,787 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:18:22,452 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:18:22,496 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:18:22,496 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:18:22,508 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:18:22,508 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:18:22,508 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:18:22,508 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:18:22,508 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:18:22,508 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:18:22,508 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:18:38,709 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:18:38,757 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:18:38,757 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:18:38,769 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:18:38,769 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:18:38,769 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:18:38,769 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:18:38,769 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:18:38,769 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:18:38,770 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:18:39,359 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:21:01,498 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:21:01,545 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:21:01,545 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:21:01,557 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:21:01,557 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:21:01,557 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:21:01,557 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:21:01,557 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:21:01,557 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:21:01,557 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:21:02,145 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:22:37,679 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:22:37,724 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:22:37,724 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:22:37,737 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:22:37,737 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:22:37,737 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:22:37,737 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:22:37,737 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:22:37,737 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:22:37,737 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:22:38,333 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:25:25,334 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:25:25,378 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:25:25,378 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:25:25,390 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:25:25,391 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:25:25,391 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:25:25,391 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:25:25,391 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:25:25,391 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:25:25,391 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:25:25,978 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 18:25:38,503 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 18:25:38,562 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 18:25:38,562 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 18:25:38,576 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 18:25:38,576 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 18:25:38,576 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 18:25:38,576 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 18:25:38,576 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 18:25:38,576 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 18:25:38,576 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 18:25:39,283 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 20:01:42,914 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 20:01:42,972 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 20:01:42,972 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 20:01:42,984 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 20:01:42,984 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 20:01:42,984 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 20:01:42,984 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 20:01:42,984 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 20:01:42,984 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 20:01:42,984 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 20:01:43,573 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 20:04:55,003 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 20:04:55,056 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 20:04:55,056 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 20:04:55,069 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 20:04:55,069 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 20:04:55,069 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 20:04:55,069 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 20:04:55,069 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 20:04:55,069 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 20:04:55,069 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 20:04:55,741 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 20:05:10,787 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 20:05:10,931 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 20:05:10,931 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 20:05:10,946 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 20:05:10,946 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 20:05:10,946 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 20:05:10,946 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 20:05:10,946 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 20:05:10,946 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 20:05:10,946 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 20:05:11,722 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 20:08:50,836 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 20:08:50,892 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 20:08:50,892 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 20:08:50,904 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 20:08:50,904 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 20:08:50,904 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 20:08:50,904 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 20:08:50,904 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 20:08:50,904 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 20:08:50,904 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 20:08:51,534 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 20:38:49,086 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 20:38:49,129 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 20:38:49,129 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 20:38:49,141 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 20:38:49,141 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 20:38:49,141 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 20:38:49,141 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 20:38:49,141 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 20:38:49,142 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 20:38:49,142 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 20:38:49,739 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 20:40:37,431 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 20:40:37,492 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 20:40:37,492 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 20:40:37,504 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 20:40:37,505 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 20:40:37,505 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 20:40:37,505 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 20:40:37,505 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 20:40:37,505 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 20:40:37,505 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 20:40:38,098 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 20:44:58,648 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 20:44:58,693 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 20:44:58,694 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 20:44:58,706 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 20:44:58,706 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 20:44:58,706 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 20:44:58,706 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 20:44:58,706 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 20:44:58,706 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 20:44:58,706 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 20:44:59,308 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 21:16:43,168 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 21:16:43,213 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 21:16:43,213 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 21:16:43,226 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 21:16:43,226 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 21:16:43,226 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 21:16:43,226 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 21:16:43,226 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 21:16:43,226 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 21:16:43,226 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 21:16:43,826 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)
+2025-11-02 21:19:51,872 | INFO     | models.celestial_modules.config | Using celestial_dim=60 from config (compatible with n_heads=20)
+2025-11-02 21:19:51,920 | INFO     | models.celestial_modules.context_fusion | 🌟 Initializing Multi-Scale Context Fusion | mode=multi_scale | d_model=780
+2025-11-02 21:19:51,920 | INFO     | models.celestial_modules.context_fusion | 📊 Multi-scale configuration | short=3 medium=15 long=75 dropout=0.100
+2025-11-02 21:19:51,933 | INFO     | models.celestial_modules.context_fusion | ✅ Multi-scale fusion layer initialized
+2025-11-02 21:19:51,933 | INFO     | models.celestial_modules.context_fusion | ⚡ Performance: Small overhead (~8% memory increase, fast)
+2025-11-02 21:19:51,933 | INFO     | models.celestial_modules.context_fusion | 🧠 Benefits: Multi-temporal patterns, richest context, gradient flow enhancement
+2025-11-02 21:19:51,933 | INFO     | models.celestial_modules.context_fusion | 🌊 Gradient Flow: Creates shortcuts for long-term dependencies
+2025-11-02 21:19:51,933 | INFO     | models.celestial_modules.context_fusion | ⚖️  Bias Mitigation: Balances recent vs historical observations
+2025-11-02 21:19:51,933 | INFO     | models.celestial_modules.context_fusion | 🔍 Temporal Awareness: Provides both local dynamics and global context
+2025-11-02 21:19:51,933 | INFO     | models.celestial_modules.context_fusion | 🎉 Multi-Scale Context Fusion successfully initialized
+2025-11-02 21:19:52,550 | INFO     | models.Celestial_Enhanced_PGAT_Modular.Model | 🎲 Stochastic warmup: 3 epochs (noise disabled during warmup)

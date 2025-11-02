@@ -145,7 +145,7 @@ class DecoderModule(nn.Module):
             self.mixture_decoder = SequentialMixtureDensityDecoder(
                 d_model=config.d_model,
                 pred_len=config.pred_len,
-                num_components=3,
+                num_components=config.mdn_components,  # FIXED: Use config value, not hardcoded 3
                 num_targets=config.c_out,
                 num_decoder_layers=2,
                 num_heads=config.n_heads,
