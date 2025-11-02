@@ -247,13 +247,19 @@ class MixtureNLLLoss(nn.Module):
         for target_idx in range(num_targets):
             target_feature = targets[:, :, target_idx]  # [batch, pred_len]
             
-            # Get means and stds for this target feature
+            # Get means, stds, and weights for this target feature
             if means.dim() == 4:  # [B, T, num_targets, K]
                 target_means = means[:, :, target_idx, :]  # [B, T, K]
                 target_stds = stds[:, :, target_idx, :]    # [B, T, K]
+                # FIXED: Also extract weights for this target
+                if log_weights.dim() == 4:  # [B, T, num_targets, K]
+                    target_log_weights = log_weights[:, :, target_idx, :]  # [B, T, K]
+                else:  # [B, T, K] - shared weights across targets
+                    target_log_weights = log_weights
             else:  # [B, T, K] - shared across targets
                 target_means = means
                 target_stds = stds
+                target_log_weights = log_weights
             
             # Expand target to match mixture dimensions
             target_expanded = target_feature.unsqueeze(-1).expand_as(target_means)  # [B, T, K]
@@ -266,7 +272,7 @@ class MixtureNLLLoss(nn.Module):
             )
             
             # log-sum over mixture components
-            log_weighted = log_weights + log_probs
+            log_weighted = target_log_weights + log_probs
             max_log = torch.max(log_weighted, dim=-1, keepdim=True)[0]
             log_sum = max_log + torch.log(torch.sum(torch.exp(log_weighted - max_log), dim=-1, keepdim=True) + self.eps)
             log_sum = log_sum.squeeze(-1)  # [B, T]

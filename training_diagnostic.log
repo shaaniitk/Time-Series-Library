@@ -1,7 +1,7 @@
 CELESTIAL ENHANCED PGAT - TRAINING DIAGNOSTICS
 ================================================================================
 Config: configs/celestial_production_deep_ultimate_fixed.yaml
-Start time: 2025-11-01 18:05:19
+Start time: 2025-11-02 10:27:43
 ================================================================================
 
 
@@ -18,3 +18,17 @@ mdn.sigma.shape: (2, 20, 4, 8)
 mdn.mixture_mean.shape: (2, 20, 4)
 mdn.mixture_mean.mean/std: -0.212047 / 0.346889
 outputs_tensor sample (first up to 8 values): [0.38990530371665955, -0.17834538221359253, -0.6293145418167114, -0.7770043611526489, 0.020000673830509186, 0.149880513548851, -0.5162447094917297, -0.9515455961227417]
+
+================================================================================
+EPOCH 1 | BATCH 0/3195 | TRAINING MODE
+================================================================================
+raw_loss (full batch loss): 0.93208390
+loss (scaled for backward): 0.31069463
+effective_cycle (gradient_accumulation_steps): 3
+loss/raw_loss ratio: 0.3333 (should be ~1/3)
+accumulated train_loss so far: 0.93208390
+avg train_loss so far: 0.93208390
+NOTE: NOW ACCUMULATING 'loss' (scaled), NOT 'raw_loss' (3x inflated)
+outputs_tensor.requires_grad: True
+outputs_tensor mean/std: -0.113964 / 0.441298
+y_true_for_loss mean/std: -0.093669 / 0.700912

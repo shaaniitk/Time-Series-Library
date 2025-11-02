@@ -152,13 +152,18 @@ class DirectionalTrendLoss(nn.Module):
         means, log_stds, log_weights = mdn_params
         
         # Compute mixture weights
-        weights = F.softmax(log_weights, dim=-1)  # [batch, seq_len, num_components]
+        weights = F.softmax(log_weights, dim=-1)  # Softmax over components (last dim)
         
         # Handle multivariate case
         if means.dim() == 4:  # [batch, seq_len, num_targets, num_components]
-            # Expand weights to match means dimensions
-            weights_expanded = weights.unsqueeze(2)  # [batch, seq_len, 1, num_components]
-            mixture_mean = torch.sum(weights_expanded * means, dim=-1)  # [batch, seq_len, num_targets]
+            # Check if weights also have per-target dimensions
+            if weights.dim() == 4:  # [batch, seq_len, num_targets, num_components]
+                # Weights are per-target, direct multiplication
+                mixture_mean = torch.sum(weights * means, dim=-1)  # [batch, seq_len, num_targets]
+            else:  # weights: [batch, seq_len, num_components] - shared across targets
+                # Expand weights to match means dimensions
+                weights_expanded = weights.unsqueeze(2)  # [batch, seq_len, 1, num_components]
+                mixture_mean = torch.sum(weights_expanded * means, dim=-1)  # [batch, seq_len, num_targets]
         else:  # [batch, seq_len, num_components]
             mixture_mean = torch.sum(weights * means, dim=-1)  # [batch, seq_len]
         
