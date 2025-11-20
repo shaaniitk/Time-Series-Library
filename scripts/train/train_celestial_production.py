@@ -1158,16 +1158,13 @@ def train_epoch(
                 # Compute loss using pre-created handler (efficient!)
                 raw_loss = loss_handler.compute_loss(model_outputs_for_loss, targets_for_loss)
                 
-                # DIAGNOSTIC: Verify loss computation is working
-                if batch_index == 0 and epoch == 0:
-                    print(f"🎉 FIRST LOSS COMPUTED SUCCESSFULLY: {raw_loss.item():.6f}")
-                
             except Exception as loss_error:
-                # Just print the error and continue - don't crash
-                print(f"❌ LOSS COMPUTATION FAILED: {loss_error}")
-                print(f"   Model outputs shape: {model_outputs_for_loss[0].shape if isinstance(model_outputs_for_loss, tuple) else model_outputs_for_loss.shape}")
-                print(f"   Targets shape: {targets_for_loss.shape}")
-                print(f"   Batch index: {batch_index}, Epoch: {epoch}")
+                logger.error(
+                    "❌ LOSS COMPUTATION FAILED: %s\n   Model outputs shape: %s\n   Targets shape: %s",
+                    str(loss_error),
+                    str(getattr(model_outputs_for_loss, 'shape', 'N/A') if torch.is_tensor(model_outputs_for_loss) else 'tuple/other'),
+                    targets_for_loss.shape,
+                )
                 # Use a fallback loss to continue training
                 raw_loss = torch.tensor(1.0, requires_grad=True, device=device)
 

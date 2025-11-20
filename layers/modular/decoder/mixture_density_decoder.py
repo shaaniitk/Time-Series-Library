@@ -248,17 +248,20 @@ class MixtureNLLLoss(nn.Module):
             target_feature = targets[:, :, target_idx]  # [batch, pred_len]
             
             # Get means, stds, and weights for this target feature
+            # FIXED: Check dimensions of each tensor independently
             if means.dim() == 4:  # [B, T, num_targets, K]
                 target_means = means[:, :, target_idx, :]  # [B, T, K]
-                target_stds = stds[:, :, target_idx, :]    # [B, T, K]
-                # FIXED: Also extract weights for this target
-                if log_weights.dim() == 4:  # [B, T, num_targets, K]
-                    target_log_weights = log_weights[:, :, target_idx, :]  # [B, T, K]
-                else:  # [B, T, K] - shared weights across targets
-                    target_log_weights = log_weights
             else:  # [B, T, K] - shared across targets
                 target_means = means
+                
+            if stds.dim() == 4:  # [B, T, num_targets, K]
+                target_stds = stds[:, :, target_idx, :]    # [B, T, K]
+            else:  # [B, T, K] - shared across targets
                 target_stds = stds
+                
+            if log_weights.dim() == 4:  # [B, T, num_targets, K]
+                target_log_weights = log_weights[:, :, target_idx, :]  # [B, T, K]
+            else:  # [B, T, K] - shared weights across targets
                 target_log_weights = log_weights
             
             # Expand target to match mixture dimensions
