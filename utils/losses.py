@@ -23,6 +23,7 @@ import pdb
 from utils.logger import logger
 import torch.nn.functional as F # type: ignore
 from typing import List, Tuple, Optional
+from layers.modular.decoder.mixture_density_decoder import MixtureNLLLoss
 
 
 def divide_no_nan(a, b):
@@ -540,6 +541,7 @@ def get_loss_function(loss_name: str, **kwargs):
         'trend_aware': TrendAwareLoss,
         'quantile': QuantileLoss,
         'multiscale_trend_aware': MultiScaleTrendAwareLoss,
+        'mixture': MixtureNLLLoss,
     }
     
     if loss_name.lower() not in loss_functions:

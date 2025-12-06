@@ -1,0 +1,74 @@
+# Test advanced components config
+model: Celestial_Enhanced_PGAT
+model_id: celestial_enhanced_pgat_advanced_test
+
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: false
+
+seq_len: 96
+label_len: 48
+pred_len: 24
+
+validation_length: 10
+test_length: 10
+
+learning_rate: 0.005
+train_epochs: 1
+batch_size: 2
+patience: 1
+lradj: type1
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# Model Sizing (Must be divisible by num_graph_nodes=13 for efficient processing AND even for PositionalEncoding)
+# 13 * 6 = 78 (Even, divisible by 13)
+d_model: 78 
+n_heads: 6 # 78 / 6 = 13 (perfect)
+e_layers: 1
+d_layers: 1
+dropout: 0.1
+
+enc_in: 118
+dec_in: 118
+c_out: 4
+
+# Advanced Components
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+celestial_fusion_layers: 1
+
+# Petri Net Combiner
+use_petri_net_combiner: true
+bypass_spatiotemporal_with_petri: true
+
+# Hierarchical Mapping
+use_hierarchical_mapping: true
+
+# Stochastic Graph Learning
+use_stochastic_learner: true
+
+# Mixture Decoder (Sequential)
+use_mixture_decoder: true
+enable_mdn_decoder: false # Mutual exclusion
+mdn_components: 3
+loss: mixture # Critical for MDN
+
+# Future Conditioning
+use_future_celestial_conditioning: true
+
+# Efficient Covariate Interaction
+use_efficient_covariate_interaction: true
+enable_target_covariate_attention: true
+
+# Diagnostics
+collect_diagnostics: true
+celestial_target_diagnostics: true
+
+reg_loss_weight: 0.001
+kl_weight: 0.0001

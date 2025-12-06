@@ -4,6 +4,7 @@ import models as models_pkg
 
 # GCLI modular model
 from models.modular_autoformer import ModularAutoformer
+from models.Celestial_Enhanced_PGAT_Modular import Model as Celestial_Enhanced_PGAT_Model # Explicitly import your model
 
 # Import HF models and factory (optional; may not always be present)
 try:
@@ -32,6 +33,7 @@ class Exp_Basic(object):
 
         # Always register the modular entry point explicitly
         self.model_dict['ModularAutoformer'] = ModularAutoformer
+        self.model_dict['Celestial_Enhanced_PGAT'] = Celestial_Enhanced_PGAT_Model # Register your model here
 
         # Optionally register HF models if available
         if HFEnhancedAutoformer is not None:

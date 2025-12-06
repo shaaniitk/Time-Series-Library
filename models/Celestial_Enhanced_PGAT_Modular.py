@@ -60,6 +60,9 @@ class Model(nn.Module):
         # 1. Centralized Configuration
         self.model_config = CelestialPGATConfig.from_original_configs(configs)
         
+        # Validate configuration early
+        self.validate_configuration(self.model_config)
+        
         # 2. Initialize utility and diagnostics systems (if available)
         if ModelUtils is not None:
             self.utils = ModelUtils(self.model_config, self.logger)
@@ -165,6 +168,12 @@ class Model(nn.Module):
             )
         
         node_dim = self.model_config.d_model // self.model_config.num_graph_nodes
+        
+        # FEATURE 1: Learned projections for semantic validity
+        # Map global d_model embedding to node-specific features
+        self.projection_to_nodes = nn.Linear(self.model_config.d_model, self.model_config.num_graph_nodes * node_dim)
+        # Map node-specific features back to global d_model
+        self.projection_from_nodes = nn.Linear(self.model_config.num_graph_nodes * node_dim, self.model_config.d_model)
         
         self.covariate_interaction_layer = nn.Linear(node_dim, node_dim)
         self.target_fusion_layer = nn.Sequential(
@@ -452,16 +461,22 @@ class Model(nn.Module):
                 f"Check decoder output projection and configuration."
             )
         
+        # CRITICAL FIX: Return only what Exp_Long_Term_Forecast expects (pred, aux, mdn)
+        # Verify if final_metadata breaks the training loop.
+        # Returning tuple of length 3 or 2 depending on MDN.
+        
         if mdn_components is not None:
-            return (predictions, aux_loss, mdn_components, final_metadata)
+            return (predictions, aux_loss, mdn_components)
         else:
-            return (predictions, final_metadata)
+            return (predictions, aux_loss)
 
     def _efficient_graph_processing(self, encoded_features, combined_adj):
         """
         Performs partitioned graph processing.
-        1. Computes a context vector from the independent covariate graph.
-        2. Updates target node features based on their interactions and influence from the covariate context.
+        1. Projects global embedding to node-specific features (Learned Projection).
+        2. Computes a context vector from the independent covariate graph.
+        3. Updates target node features based on their interactions and influence from the covariate context.
+        4. Projects back to global embedding.
         """
         batch_size, seq_len, _ = encoded_features.shape
         num_nodes = self.model_config.num_graph_nodes
@@ -470,7 +485,8 @@ class Model(nn.Module):
             raise ValueError(f"d_model ({self.model_config.d_model}) must be divisible by num_graph_nodes ({num_nodes}) for efficient processing.")
         node_dim = self.model_config.d_model // num_nodes
         
-        features_per_node = encoded_features.view(batch_size, seq_len, num_nodes, node_dim)
+        # Learned projection instead of view
+        features_per_node = self.projection_to_nodes(encoded_features).view(batch_size, seq_len, num_nodes, node_dim)
         
         # Partition features and adjacency matrix
         num_covariates = num_nodes - self.model_config.c_out
@@ -509,7 +525,9 @@ class Model(nn.Module):
         
         # 4. Reconstruct the full feature tensor
         final_features_per_node = torch.cat([covariate_features, fused_target_features], dim=2)
-        return final_features_per_node.view(batch_size, seq_len, self.model_config.d_model)
+        
+        # Project back
+        return self.projection_from_nodes(final_features_per_node.view(batch_size, seq_len, -1))
 
     def _learn_traditional_graph(self, enc_out):
         """Learn a traditional graph adjacency matrix - NOT IMPLEMENTED."""

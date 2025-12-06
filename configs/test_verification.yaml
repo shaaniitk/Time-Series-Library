@@ -1,0 +1,52 @@
+# Test verification config
+model: Celestial_Enhanced_PGAT
+model_id: celestial_enhanced_pgat_test
+
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: false
+
+seq_len: 96
+label_len: 48
+pred_len: 24
+
+validation_length: 10
+test_length: 10
+
+learning_rate: 0.005
+train_epochs: 1
+batch_size: 2
+patience: 1
+lradj: type1
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+d_model: 64
+n_heads: 4
+e_layers: 1
+d_layers: 1
+dropout: 0.1
+
+enc_in: 118
+dec_in: 118
+c_out: 4
+
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+celestial_fusion_layers: 1
+
+num_input_waves: 118
+target_wave_indices: [0, 1, 2, 3]
+
+use_mixture_decoder: false
+use_stochastic_learner: false
+use_hierarchical_mapping: false
+mdn_multivariate_mode: independent
+
+reg_loss_weight: 0.001
+kl_weight: 0.0001

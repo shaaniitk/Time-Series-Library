@@ -324,13 +324,23 @@ class DecoderModule(nn.Module):
                     decoder_input=prediction_features
                 )
                 predictions = self.mixture_decoder.get_point_prediction((means, log_stds, log_weights))
-                
-                if predictions.size(-1) != self.config.c_out:
-                    predictions = self.projection(prediction_features)
-                
                 mdn_components = (means, log_stds, log_weights)
-            except Exception:
+
+                
+                # Only set mdn_components if not fallen back
+                if predictions.size(-1) != self.config.c_out:
+                    print(f"Mixture decoder prediction shape mismatch: {predictions.shape}")
+                    predictions = self.projection(prediction_features)
+                    mdn_components = None 
+                else:
+                    mdn_components = (means, log_stds, log_weights)
+
+            except Exception as e:
+                print(f"Mixture decoder failed: {e}")
+                import traceback
+                traceback.print_exc()
                 predictions = self.projection(prediction_features)
+                mdn_components = None
         else:
             predictions = self.projection(prediction_features)
         

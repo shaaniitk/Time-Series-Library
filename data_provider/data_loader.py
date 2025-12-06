@@ -78,12 +78,14 @@ class ForecastingDataset(Dataset):
         r_end = r_begin + self.label_len + self.pred_len
         
         # Get scaled data for x, and unscaled data for y
-        seq_x = self.data_x[s_begin:s_end]  # Past celestial/covariate features
-        seq_y = self.data_y[r_begin:r_end]  # Decoder input + labels (unscaled)
+        seq_x = torch.from_numpy(self.data_x[s_begin:s_end]).float()
+        seq_y = torch.from_numpy(self.data_y[r_begin:r_end]).float() # Keep unscaled data as float
+        if seq_y.ndim == 1:
+            seq_y = seq_y.unsqueeze(-1) # Ensure 2D for single feature
         
         # Extract time features
-        seq_x_mark = self.data_stamp[s_begin:s_end]
-        seq_y_mark = self.data_stamp[r_begin:r_end]
+        seq_x_mark = torch.from_numpy(self.data_stamp[s_begin:s_end]).float()
+        seq_y_mark = torch.from_numpy(self.data_stamp[r_begin:r_end]).float()
         
         # 🌟 NEW: Load future celestial states for deterministic covariates
         if self.use_future_celestial:
@@ -91,12 +93,16 @@ class ForecastingDataset(Dataset):
             # These are KNOWN deterministic states (e.g., planetary positions)
             future_begin = s_end
             future_end = s_end + self.pred_len
-            future_celestial_x = self.data_x[future_begin:future_end]  # [pred_len, features]
-            future_celestial_mark = self.data_stamp[future_begin:future_end]  # [pred_len, mark_dim]
+            future_celestial_x = torch.from_numpy(self.data_x[future_begin:future_end]).float()  # [pred_len, features]
+            future_celestial_mark = torch.from_numpy(self.data_stamp[future_begin:future_end]).float()  # [pred_len, mark_dim]
             
+            # Debugging: check shapes before return
+            logger.debug(f"ForecastingDataset (future_celestial): Shapes: seq_x={seq_x.shape}, seq_y={seq_y.shape}, seq_x_mark={seq_x_mark.shape}, seq_y_mark={seq_y_mark.shape}, future_celestial_x={future_celestial_x.shape}, future_celestial_mark={future_celestial_mark.shape}")
             return seq_x, seq_y, seq_x_mark, seq_y_mark, future_celestial_x, future_celestial_mark
         else:
             # Legacy mode: no future celestial data
+            # Debugging: check shapes before return
+            logger.debug(f"ForecastingDataset (legacy): Shapes: seq_x={seq_x.shape}, seq_y={seq_y.shape}, seq_x_mark={seq_x_mark.shape}, seq_y_mark={seq_y_mark.shape}")
             return seq_x, seq_y, seq_x_mark, seq_y_mark
     
     def __len__(self):
@@ -380,6 +386,8 @@ class Dataset_Custom(Dataset):
             logger.error(f"Failed to read CSV: {e}")
             raise
 
+        self.df_raw = df_raw  # Store the raw dataframe
+
         # --- Border calculation ---
         data_len = len(df_raw)
         if hasattr(self.args, 'data') and self.args.data == 'custom':
@@ -395,9 +403,12 @@ class Dataset_Custom(Dataset):
             border1s = [0, 12 * 30 * 24 * 4 - self.seq_len, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4 - self.seq_len]
             border2s = [12 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 8 * 30 * 24 * 4]
         
-        border1 = border1s[self.set_type]
-        border2 = border2s[self.set_type]
-
+        self.border1s = border1s
+        self.border2s = border2s
+        
+        border1 = self.border1s[self.set_type]
+        border2 = self.border2s[self.set_type]
+        
         # Sanity checks for borders
         if border1 < 0:
             logger.warning(
@@ -500,17 +511,30 @@ class Dataset_Custom(Dataset):
                 self.pred_len,
             )
 
+    def get_raw_df(self):
+        """Returns the full, raw pandas DataFrame."""
+        return getattr(self, 'df_raw', None)
+
+    def get_raw_train_df(self):
+        """Returns the training split of the raw pandas DataFrame."""
+        if hasattr(self, 'df_raw') and hasattr(self, 'border1s') and hasattr(self, 'border2s'):
+            return self.df_raw.iloc[self.border1s[0]:self.border2s[0]]
+        return None
+
     def __getitem__(self, index):
         s_begin = index
         s_end = s_begin + self.seq_len
         r_begin = s_end - self.label_len
         r_end = r_begin + self.label_len + self.pred_len
 
-        seq_x = self.data_x[s_begin:s_end]
-        seq_y = self.data_y[r_begin:r_end]
-        seq_x_mark = self.data_stamp[s_begin:s_end]
-        seq_y_mark = self.data_stamp[r_begin:r_end]
+        seq_x = torch.from_numpy(self.data_x[s_begin:s_end]).float()
+        seq_y = torch.from_numpy(self.data_y[r_begin:r_end]).float()
+        if seq_y.ndim == 1:
+            seq_y = seq_y.unsqueeze(-1) # Ensure 2D for single feature
+        seq_x_mark = torch.from_numpy(self.data_stamp[s_begin:s_end]).float()
+        seq_y_mark = torch.from_numpy(self.data_stamp[r_begin:r_end]).float()
 
+        logger.debug(f"Dataset_Custom: Shapes before return: seq_x={seq_x.shape}, seq_y={seq_y.shape}, seq_x_mark={seq_x_mark.shape}, seq_y_mark={seq_y_mark.shape}")
         return seq_x, seq_y, seq_x_mark, seq_y_mark
 
     def __len__(self):

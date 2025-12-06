@@ -213,7 +213,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             )
         with torch.no_grad(): # Use self.vali_loader directly
             for i, batch_data in enumerate(vali_loader):
-                batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
+                if self.args.use_future_celestial_conditioning:
+                    batch_x, batch_y, batch_x_mark, batch_y_mark, future_celestial_x, _future_celestial_mark = batch_data
+                else:
+                    batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
+                    future_celestial_x = None
                 batch_x = batch_x.float().to(self.device)
                 # batch_y has unscaled targets, scaled covariates (if M/MS)
                 batch_x_mark = batch_x_mark.float().to(self.device)
@@ -246,37 +250,25 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     future_covariates_scaled = self.scaler_manager.scaler.transform(future_covariates_unscaled.reshape(-1, total_features_in_batch_y - c_out_evaluation)).reshape(future_covariates_unscaled.shape)
 
                 # Concatenate to form dec_inp
-                dec_inp_val = self._construct_dec_inp(hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled)
+                dec_inp_val = self._construct_dec_inp(
+                    hist_targets_scaled,
+                    hist_covariates_scaled,
+                    future_targets_zeros,
+                    future_covariates_scaled,
+                    future_celestial_data=future_celestial_x,
+                )
                 
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                            # Extract appropriate features for PGAT models
-                            if self.args.model == 'Enhanced_SOTA_PGAT':
-                                # Enhanced model handles feature separation internally
-                                wave_window = batch_x
-                                target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
-                            else:
-                                # Base model needs only the first enc_in features
-                                enc_in = getattr(self.args, 'enc_in', 7)
-                                wave_window = batch_x[:, :, :enc_in]
-                                target_window = torch.zeros(batch_x.size(0), self.args.pred_len, enc_in, device=batch_x.device, dtype=batch_x.dtype)
-                            outputs_raw = self.model(wave_window, target_window, None)
+                            wave_window = batch_x
+                            outputs_raw = self.model(wave_window, dec_inp_val, batch_x_mark, batch_y_mark)
                         else:
                             outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 else:
                     if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                        # Extract appropriate features for PGAT models
-                        if self.args.model == 'Enhanced_SOTA_PGAT':
-                            # Enhanced model handles feature separation internally
-                            wave_window = batch_x
-                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
-                        else:
-                            # Base model needs only the first enc_in features
-                            enc_in = getattr(self.args, 'enc_in', 7)
-                            wave_window = batch_x[:, :, :enc_in]
-                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, enc_in, device=batch_x.device, dtype=batch_x.dtype)
-                        outputs_raw = self.model(wave_window, target_window, None)
+                        wave_window = batch_x
+                        outputs_raw = self.model(wave_window, dec_inp_val, batch_x_mark, batch_y_mark)
                     else:
                         outputs_raw = self.model(batch_x, batch_x_mark, dec_inp_val, batch_y_mark)
                 
@@ -379,6 +371,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             train_loss_epoch_list = []
 
             self.model.train()
+            
+            # Feature: Support model-specific epoch updates (e.g. for stochastic warmup)
+            if hasattr(self.model, 'set_current_epoch'):
+                self.model.set_current_epoch(epoch)
+            elif hasattr(self.model, 'module') and hasattr(self.model.module, 'set_current_epoch'):
+                self.model.module.set_current_epoch(epoch)
+                
             epoch_time = time.time()
             print(f"\n=== Starting Epoch {epoch + 1}/{self.args.train_epochs} ===")
             print(f"Expected training steps: {train_steps}")
@@ -393,7 +392,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 )
             
             for i, batch_data in enumerate(train_loader):
-                batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
+                if self.args.use_future_celestial_conditioning:
+                    batch_x, batch_y, batch_x_mark, batch_y_mark, future_celestial_x, future_celestial_mark = batch_data
+                else:
+                    batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
+                    future_celestial_x = None  # Placeholder
+                    future_celestial_mark = None  # Placeholder
                 iter_count += 1
                 model_optim.zero_grad()
                 # batch_x is already scaled by ForecastingDataset
@@ -437,38 +441,31 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     hist_covariates_scaled_train,
                     future_targets_zeros_train,
                     future_covariates_scaled_train,
+                    future_celestial_data=future_celestial_x, # Pass future_celestial_x here
                 )
 
                 outputs_raw_train = None # Initialize
                 if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
                         if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                            # Extract appropriate features for PGAT models
-                            if self.args.model == 'Enhanced_SOTA_PGAT':
-                                # Enhanced model handles feature separation internally
-                                wave_window = batch_x
-                                target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
-                            else:
-                                # Base model needs only the first enc_in features
-                                enc_in = getattr(self.args, 'enc_in', 7)
-                                wave_window = batch_x[:, :, :enc_in]
-                                target_window = torch.zeros(batch_x.size(0), self.args.pred_len, enc_in, device=batch_x.device, dtype=batch_x.dtype)
-                            outputs_raw_train = self.model(wave_window, target_window, None)
+                            # For PGAT models, the decoder input (dec_inp) is passed as the third argument.
+                            # batch_y_mark is for time features, passed as fourth argument.
+                            # wave_window is batch_x
+                            wave_window = batch_x
+                            # target_window is now dec_inp, which contains historical targets + future covariates
+                            target_window = dec_inp # dec_inp now correctly has future covariates
+                            outputs_raw_train = self.model(wave_window, target_window, batch_x_mark, batch_y_mark)
                         else:
                             outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
                     if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                        # Extract appropriate features for PGAT models
-                        if self.args.model == 'Enhanced_SOTA_PGAT':
-                            # Enhanced model handles feature separation internally
-                            wave_window = batch_x
-                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, batch_x.size(-1), device=batch_x.device, dtype=batch_x.dtype)
-                        else:
-                            # Base model needs only the first enc_in features
-                            enc_in = getattr(self.args, 'enc_in', 7)
-                            wave_window = batch_x[:, :, :enc_in]
-                            target_window = torch.zeros(batch_x.size(0), self.args.pred_len, enc_in, device=batch_x.device, dtype=batch_x.dtype)
-                        outputs_raw_train = self.model(wave_window, target_window, None)
+                        # For PGAT models, the decoder input (dec_inp) is passed as the third argument.
+                        # batch_y_mark is for time features, passed as fourth argument.
+                        # wave_window is batch_x
+                        wave_window = batch_x
+                        # target_window is now dec_inp, which contains historical targets + future covariates
+                        target_window = dec_inp # dec_inp now correctly has future covariates
+                        outputs_raw_train = self.model(wave_window, target_window, batch_x_mark, batch_y_mark)
                     else:
                         outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 
@@ -637,7 +634,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.eval()
         with torch.no_grad():
             for i, batch_data in enumerate(test_loader):
-                batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
+                if self.args.use_future_celestial_conditioning:
+                    batch_x, batch_y, batch_x_mark, batch_y_mark, future_celestial_x, _future_celestial_mark = batch_data
+                else:
+                    batch_x, batch_y, batch_x_mark, batch_y_mark = batch_data
+                    future_celestial_x = None
                 batch_x = batch_x.float().to(self.device)
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
@@ -673,62 +674,26 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     ).reshape(future_covariates_unscaled.shape)
 
                 # Construct decoder input with historical (scaled) and future parts
-                dec_inp_test = self._construct_dec_inp(hist_targets_scaled, hist_covariates_scaled, future_targets_zeros, future_covariates_scaled)
+                dec_inp_test = self._construct_dec_inp(
+                    hist_targets_scaled,
+                    hist_covariates_scaled,
+                    future_targets_zeros,
+                    future_covariates_scaled,
+                    future_celestial_data=future_celestial_x,
+                )
                 
                 outputs_raw_test = None  # Initialize
                 if self.args.use_amp:  # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
                         if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                            # Extract appropriate features for PGAT models
-                            if self.args.model == 'Enhanced_SOTA_PGAT':
-                                # Enhanced model handles feature separation internally
-                                wave_window = batch_x
-                                target_window = torch.zeros(
-                                    batch_x.size(0),
-                                    self.args.pred_len,
-                                    batch_x.size(-1),
-                                    device=batch_x.device,
-                                    dtype=batch_x.dtype,
-                                )
-                            else:
-                                # Base model needs only the first enc_in features
-                                enc_in = getattr(self.args, 'enc_in', 7)
-                                wave_window = batch_x[:, :, :enc_in]
-                                target_window = torch.zeros(
-                                    batch_x.size(0),
-                                    self.args.pred_len,
-                                    enc_in,
-                                    device=batch_x.device,
-                                    dtype=batch_x.dtype,
-                                )
-                            outputs_raw_test = self.model(wave_window, target_window, None)
+                            wave_window = batch_x
+                            outputs_raw_test = self.model(wave_window, dec_inp_test, batch_x_mark, batch_y_mark)
                         else:
                             outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
                 else:
                     if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
-                        # Extract appropriate features for PGAT models
-                        if self.args.model == 'Enhanced_SOTA_PGAT':
-                            # Enhanced model handles feature separation internally
-                            wave_window = batch_x
-                            target_window = torch.zeros(
-                                batch_x.size(0),
-                                self.args.pred_len,
-                                batch_x.size(-1),
-                                device=batch_x.device,
-                                dtype=batch_x.dtype,
-                            )
-                        else:
-                            # Base model needs only the first enc_in features
-                            enc_in = getattr(self.args, 'enc_in', 7)
-                            wave_window = batch_x[:, :, :enc_in]
-                            target_window = torch.zeros(
-                                batch_x.size(0),
-                                self.args.pred_len,
-                                enc_in,
-                                device=batch_x.device,
-                                dtype=batch_x.dtype,
-                            )
-                        outputs_raw_test = self.model(wave_window, target_window, None)
+                        wave_window = batch_x
+                        outputs_raw_test = self.model(wave_window, dec_inp_test, batch_x_mark, batch_y_mark)
                     else:
                         outputs_raw_test = self.model(batch_x, batch_x_mark, dec_inp_test, batch_y_mark)
 
@@ -892,9 +857,22 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         output_tensor: Union[torch.Tensor, Sequence[torch.Tensor]] = raw_output
 
         if isinstance(raw_output, (tuple, list)):
-            if len(raw_output) == 3 and all(isinstance(part, torch.Tensor) for part in raw_output):
-                mdn_tuple = (cast(torch.Tensor, raw_output[0]), cast(torch.Tensor, raw_output[1]), cast(torch.Tensor, raw_output[2]))
+            if len(raw_output) == 3:
                 output_tensor = raw_output[0]
+                
+                # Handle 2nd element as aux loss
+                scalar_aux, _ = Exp_Long_Term_Forecast._extract_auxiliary_loss(raw_output[1])
+                if scalar_aux is not None:
+                    aux_loss = scalar_aux
+                    
+                # Handle 3rd element
+                if isinstance(raw_output[2], tuple):
+                    mdn_tuple = raw_output[2]
+                elif isinstance(raw_output[2], torch.Tensor) and all(isinstance(part, torch.Tensor) for part in raw_output):
+                    # Legacy case: 3 tensors? Unclear use case, but preserving structure if needed
+                    # Actually, the original code assumed 3 tensors were (pi, mu, sigma) for MDN only if returned directly?
+                    pass
+
             elif len(raw_output) == 2:
                 primary, secondary = raw_output
                 scalar_aux, _ = Exp_Long_Term_Forecast._extract_auxiliary_loss(secondary)
@@ -911,18 +889,19 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
     def _construct_dec_inp(
         self,
-        hist_targets_scaled: torch.Tensor,
-        hist_covariates_scaled: Optional[torch.Tensor],
+        hist_targets_scaled: Union[torch.Tensor, np.ndarray],
+        hist_covariates_scaled: Optional[Union[torch.Tensor, np.ndarray]],
         future_targets_zeros: torch.Tensor,
-        future_covariates_scaled: Optional[torch.Tensor],
+        future_covariates_scaled: Optional[Union[torch.Tensor, np.ndarray]],
+        future_celestial_data: Optional[Union[torch.Tensor, np.ndarray]] = None, # NEW: Add future celestial data
     ) -> torch.Tensor:
         """Construct decoder input without leaving the torch tensor domain."""
 
-        # Convert numpy arrays to tensors if needed
-        if isinstance(hist_targets_scaled, np.ndarray):
-            hist_targets_scaled_t = torch.from_numpy(hist_targets_scaled).float().to(self.device)
-        else:
-            hist_targets_scaled_t = hist_targets_scaled.to(self.device)
+        # Convert all inputs to tensors and move to device
+        hist_targets_scaled_t = hist_targets_scaled
+        if isinstance(hist_targets_scaled_t, np.ndarray):
+            hist_targets_scaled_t = torch.from_numpy(hist_targets_scaled_t).float()
+        hist_targets_scaled_t = hist_targets_scaled_t.to(self.device)
             
         future_targets_zeros_t = future_targets_zeros.to(self.device)
 
@@ -930,31 +909,75 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         dec_inp_future: torch.Tensor = future_targets_zeros_t
 
         if self.args.features in ['M', 'MS']:
-            if hist_covariates_scaled is not None and future_covariates_scaled is not None:
-                # Convert numpy arrays to tensors if needed
-                if isinstance(hist_covariates_scaled, np.ndarray):
-                    hist_covariates_scaled_t = torch.from_numpy(hist_covariates_scaled).float().to(self.device)
-                else:
-                    hist_covariates_scaled_t = hist_covariates_scaled.to(self.device)
-                    
-                if isinstance(future_covariates_scaled, np.ndarray):
-                    future_covariates_scaled_t = torch.from_numpy(future_covariates_scaled).float().to(self.device)
-                else:
-                    future_covariates_scaled_t = future_covariates_scaled.to(self.device)
-
+            # Handle historical covariates
+            if hist_covariates_scaled is not None:
+                hist_covariates_scaled_t = hist_covariates_scaled
+                if isinstance(hist_covariates_scaled_t, np.ndarray):
+                    hist_covariates_scaled_t = torch.from_numpy(hist_covariates_scaled_t).float()
+                hist_covariates_scaled_t = hist_covariates_scaled_t.to(self.device)
                 dec_inp_hist = torch.cat([hist_targets_scaled_t, hist_covariates_scaled_t], dim=-1)
-                dec_inp_future = torch.cat([future_targets_zeros_t, future_covariates_scaled_t], dim=-1)
             else:
                 logger.warning(
-                    "Covariates expected for M/MS mode but not provided to _construct_dec_inp. Proceeding with targets only."
+                    "Historical covariates expected for M/MS mode but not provided to _construct_dec_inp. Proceeding with targets only for historical input."
                 )
+
+            # Handle future covariates (combining regular future_covariates and future_celestial_data)
+            combined_future_covariates: Optional[torch.Tensor] = None
+            if future_covariates_scaled is not None:
+                future_covariates_scaled_t = future_covariates_scaled
+                if isinstance(future_covariates_scaled_t, np.ndarray):
+                    future_covariates_scaled_t = torch.from_numpy(future_covariates_scaled_t).float()
+                future_covariates_scaled_t = future_covariates_scaled_t.to(self.device)
+                combined_future_covariates = future_covariates_scaled_t
+            
+            if future_celestial_data is not None:
+                future_celestial_data_t = future_celestial_data
+                if isinstance(future_celestial_data_t, np.ndarray):
+                    future_celestial_data_t = torch.from_numpy(future_celestial_data_t).float()
+                future_celestial_data_t = future_celestial_data_t.to(self.device)
+                if combined_future_covariates is not None:
+                    # Concatenate if both exist
+                    combined_future_covariates = torch.cat([combined_future_covariates, future_celestial_data_t], dim=-1)
+                else:
+                    # If only celestial data, use it as combined future covariates
+                    combined_future_covariates = future_celestial_data_t
+
+            if combined_future_covariates is not None:
+                dec_inp_future = torch.cat([future_targets_zeros_t, combined_future_covariates], dim=-1)
+            else:
+                logger.warning(
+                    "Future covariates (including celestial) expected for M/MS mode but not provided to _construct_dec_inp. Proceeding with zero targets only for future input."
+                )
+
         elif self.args.features == 'S':
             dec_inp_hist = hist_targets_scaled_t
             dec_inp_future = future_targets_zeros_t
+            if future_celestial_data is not None:
+                logger.warning(
+                    "Future celestial data provided for 'S' mode, but 'S' mode does not typically use covariates in decoder input. Ignoring future_celestial_data."
+                )
         else:
             logger.warning(
                 "Feature mode %s not explicitly handled; defaulting to targets only in decoder input.",
                 self.args.features,
             )
+
+        # Ensure feature dimensions match between hist and future
+        if dec_inp_future.shape[-1] > dec_inp_hist.shape[-1]:
+            diff = dec_inp_future.shape[-1] - dec_inp_hist.shape[-1]
+            zeros_padding = torch.zeros(
+                (dec_inp_hist.shape[0], dec_inp_hist.shape[1], diff),
+                device=dec_inp_hist.device,
+                dtype=dec_inp_hist.dtype
+            )
+            dec_inp_hist = torch.cat([dec_inp_hist, zeros_padding], dim=-1)
+        elif dec_inp_hist.shape[-1] > dec_inp_future.shape[-1]:
+            diff = dec_inp_hist.shape[-1] - dec_inp_future.shape[-1]
+            zeros_padding = torch.zeros(
+                (dec_inp_future.shape[0], dec_inp_future.shape[1], diff),
+                device=dec_inp_future.device,
+                dtype=dec_inp_future.dtype
+            )
+            dec_inp_future = torch.cat([dec_inp_future, zeros_padding], dim=-1)
 
         return torch.cat([dec_inp_hist, dec_inp_future], dim=1)
