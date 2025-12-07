@@ -55,6 +55,7 @@ class CelestialToTargetAttention(nn.Module):
         use_full_temporal_context: bool = False,
         use_edge_bias: bool = False,
         edge_bias_scale: float = 1.0,
+        celestial_dim: Optional[int] = None, 
     ):
         super().__init__()
         self.num_celestial = num_celestial
@@ -70,14 +71,18 @@ class CelestialToTargetAttention(nn.Module):
         
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
+        # Use provided celestial_dim or default to d_model
+        self.input_celestial_dim = celestial_dim if celestial_dim is not None else d_model
+        
         # Per-target query projections (each target has its own query space)
         self.target_query_projections = nn.ModuleList([
             nn.Linear(d_model, d_model) for _ in range(num_targets)
         ])
         
         # Shared celestial key/value projections (all targets see same celestial space)
-        self.celestial_key_projection = nn.Linear(d_model, d_model)
-        self.celestial_value_projection = nn.Linear(d_model, d_model)
+        # Input: [B, S, C, celestial_dim] -> Project to d_model space for attention
+        self.celestial_key_projection = nn.Linear(self.input_celestial_dim, d_model)
+        self.celestial_value_projection = nn.Linear(self.input_celestial_dim, d_model)
         
         # Per-target multi-head attention
         self.target_attentions = nn.ModuleList([

@@ -14,6 +14,7 @@ import os
 import time
 import warnings
 import numpy as np
+from layers.modular.curriculum.factory import CurriculumFactory
 import inspect # For checking model constructor arguments
 from utils.dtw_metric import dtw, accelerated_dtw
 from utils.augmentation import run_augmentation, run_augmentation_single
@@ -97,6 +98,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     "device": str(self.device),
                 },
             )
+
+        # Initialize Curriculum Learning Strategy
+        self.curriculum = CurriculumFactory.get_curriculum(self.args, self.device)
+        if self.curriculum:
+            logger.info(f"Initialized Curriculum Learning: {self.curriculum.__class__.__name__}")
 
     def _build_model(self):
         ModelClass = self.model_dict[self.args.model]
@@ -378,6 +384,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             elif hasattr(self.model, 'module') and hasattr(self.model.module, 'set_current_epoch'):
                 self.model.module.set_current_epoch(epoch)
                 
+            # Update curriculum at the start of the epoch
+            if self.curriculum:
+                self.curriculum.update_epoch(epoch)
+                # Optional: log stats
+                if epoch == 0: # Log once per epoch, not per batch
+                    stats = self.curriculum.get_stats()
+                    logger.info(f"Curriculum Stats: {stats}")
+
             epoch_time = time.time()
             print(f"\n=== Starting Epoch {epoch + 1}/{self.args.train_epochs} ===")
             print(f"Expected training steps: {train_steps}")
@@ -447,43 +461,31 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs_raw_train = None # Initialize
                 if self.args.use_amp: # This branch is for AMP (Automatic Mixed Precision)
                     with torch.cuda.amp.autocast():
-                        if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
+                        if self.args.model == 'Celestial_Enhanced_PGAT':
+                             outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, future_celestial_x=future_celestial_x)
+                        elif self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
                             # For PGAT models, the decoder input (dec_inp) is passed as the third argument.
                             # batch_y_mark is for time features, passed as fourth argument.
                             # wave_window is batch_x
                             wave_window = batch_x
                             # target_window is now dec_inp, which contains historical targets + future covariates
                             target_window = dec_inp # dec_inp now correctly has future covariates
-                            outputs_raw_train = self.model(wave_window, target_window, batch_x_mark, batch_y_mark)
+                            outputs_raw_train = self.model(wave_window, target_window, batch_x_mark, batch_y_mark, future_celestial_x=future_celestial_x)
                         else:
                             outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 else:
-                    if self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT']:
+                    if self.args.model == 'Celestial_Enhanced_PGAT':
+                         outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, future_celestial_x=future_celestial_x)
+                    elif self.args.model in ['SOTA_Temporal_PGAT', 'Enhanced_SOTA_PGAT', 'ModularAutoformer']:
                         # For PGAT models, the decoder input (dec_inp) is passed as the third argument.
                         # batch_y_mark is for time features, passed as fourth argument.
                         # wave_window is batch_x
                         wave_window = batch_x
                         # target_window is now dec_inp, which contains historical targets + future covariates
                         target_window = dec_inp # dec_inp now correctly has future covariates
-                        outputs_raw_train = self.model(wave_window, target_window, batch_x_mark, batch_y_mark)
+                        outputs_raw_train = self.model(wave_window, target_window, batch_x_mark, batch_y_mark, future_celestial_x=future_celestial_x)
                     else:
                         outputs_raw_train = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                
-                outputs_tensor_train, aux_loss_train, mdn_outputs_train = self._normalize_model_output(outputs_raw_train)
-                if logger.isEnabledFor(10):
-                    logger.debug(
-                        "TRAIN forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
-                        tuple(outputs_tensor_train.shape),
-                        self.args.pred_len,
-                        self.dm.c_out_model,
-                    )
-                if logger.isEnabledFor(10):
-                    logger.debug(
-                        "TRAIN forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
-                        tuple(outputs_tensor_train.shape),
-                        self.args.pred_len,
-                        self.dm.c_out_model,
-                    )
                 
                 # Prepare y_true for loss: scale the target part of batch_y
                 y_true_targets_unscaled_train_loss = batch_y[:, -self.args.pred_len:, :c_out_evaluation_train]
@@ -491,26 +493,87 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     y_true_targets_unscaled_train_loss, device=self.device
                 )
 
-                is_criterion_pinball_train = isinstance(criterion, PinballLoss) or \
-                                             (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
-                
-                # Compute loss (handle MDN vs deterministic)
-                if isinstance(criterion, MixtureNLLLoss) or mdn_outputs_train is not None:
-                    if mdn_outputs_train is None:
-                        raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple during training.")
-                    means_t, stds_t, weights_t = mdn_outputs_train
-                    if means_t.size(1) > self.args.pred_len:
-                        means_t = means_t[:, -self.args.pred_len:, ...]
-                        stds_t = stds_t[:, -self.args.pred_len:, ...]
-                        weights_t = weights_t[:, -self.args.pred_len:, ...]
-                    targets_t = y_true_for_loss_train.squeeze(-1) if y_true_for_loss_train.dim() == 3 and y_true_for_loss_train.size(-1) == 1 else y_true_for_loss_train
-                    loss_train = criterion((means_t, stds_t, weights_t), targets_t)
+                # --- Warmup Logic ---
+                # Check for warmup_epochs in args, default to 0 if not present
+                warmup_epochs = getattr(self.args, 'warmup_epochs', 0)
+                if warmup_epochs > 0 and epoch < warmup_epochs:
+                    # Linear warmup from 0.1 * lr to 1.0 * lr
+                    warmup_progress = (epoch + i / len(train_loader)) / warmup_epochs
+                    warmup_factor = 0.1 + 0.9 * warmup_progress
+                    warmup_factor = min(1.0, warmup_factor)
+                    
+                    # Apply to optimizer
+                    current_lr = self.args.learning_rate * warmup_factor
+                    for param_group in model_optim.param_groups:
+                        param_group['lr'] = current_lr
+                    
+                    if i % 100 == 0: # minimal logging
+                         logger.debug(f"Warmup: Factor {warmup_factor:.4f}, LR {current_lr:.6f}")
+
+                # --- Curriculum Learning & Loss Calculation ---
+                curriculum_mask = None
+                if self.curriculum:
+                    curriculum_mask = self.curriculum.get_mask(self.args.pred_len)
+                    self.curriculum.on_batch_start(batch_x, batch_y) # Optional hook
+
+                # Use model's internal loss logic if available (Modular Approach)
+                if hasattr(self.model, 'compute_loss'):
+                     loss_train = self.model.compute_loss(
+                         outputs_raw_train, 
+                         y_true_for_loss_train, 
+                         criterion, 
+                         curriculum_mask=curriculum_mask,
+                         logger=logger
+                     )
                 else:
-                    if is_criterion_pinball_train:
-                        y_pred_for_loss_train = outputs_tensor_train[:, -self.args.pred_len:, :]
+                    # Fallback for non-modular models
+                    outputs_tensor_train, aux_loss_train, mdn_outputs_train = self._normalize_model_output(outputs_raw_train)
+                    if logger.isEnabledFor(10):
+                        logger.debug(
+                            "TRAIN forward | outputs_raw=%s | pred_len=%s | c_out_model=%s",
+                            tuple(outputs_tensor_train.shape),
+                            self.args.pred_len,
+                            self.dm.c_out_model,
+                        )
+                    
+                    is_criterion_pinball_train = isinstance(criterion, PinballLoss) or \
+                                                 (hasattr(criterion, '_is_pinball_loss_based') and criterion._is_pinball_loss_based)
+                    
+                    if isinstance(criterion, MixtureNLLLoss) or mdn_outputs_train is not None:
+                        if mdn_outputs_train is None:
+                            raise ValueError("MixtureNLLLoss requires model to return a (means, stds, weights) tuple during training.")
+                        means_t, stds_t, weights_t = mdn_outputs_train
+                        if means_t.size(1) > self.args.pred_len:
+                            means_t = means_t[:, -self.args.pred_len:, ...]
+                            stds_t = stds_t[:, -self.args.pred_len:, ...]
+                            weights_t = weights_t[:, -self.args.pred_len:, ...]
+                        targets_t = y_true_for_loss_train.squeeze(-1) if y_true_for_loss_train.dim() == 3 and y_true_for_loss_train.size(-1) == 1 else y_true_for_loss_train
+                        
+                        if curriculum_mask is not None:
+                            eff_len = int(curriculum_mask.sum().item())
+                            means_t = means_t[:, :eff_len, ...]
+                            stds_t = stds_t[:, :eff_len, ...]
+                            weights_t = weights_t[:, :eff_len, ...]
+                            targets_t = targets_t[:, :eff_len, ...]
+                            
+                        loss_train = criterion((means_t, stds_t, weights_t), targets_t)
                     else:
-                        y_pred_for_loss_train = outputs_tensor_train[:, -self.args.pred_len:, :c_out_evaluation_train]
-                    loss_train = criterion(y_pred_for_loss_train, y_true_for_loss_train)
+                        if is_criterion_pinball_train:
+                            y_pred_for_loss_train = outputs_tensor_train[:, -self.args.pred_len:, :]
+                        else:
+                            y_pred_for_loss_train = outputs_tensor_train[:, -self.args.pred_len:, :c_out_evaluation_train]
+                        
+                        if curriculum_mask is not None:
+                            eff_len = int(curriculum_mask.sum().item())
+                            y_pred_for_loss_train = y_pred_for_loss_train[:, :eff_len, :]
+                            y_true_for_loss_train = y_true_for_loss_train[:, :eff_len, :]
+
+                        loss_train = criterion(y_pred_for_loss_train, y_true_for_loss_train)
+                    
+                    # Add auxiliary loss if present
+                    if aux_loss_train:
+                        loss_train = loss_train + aux_loss_train
+
                 if logger.isEnabledFor(10):
                     logger.debug(
                         "TRAIN loss | criterion=%s | y_true=%s | pinball=%s | mdn=%s",
@@ -520,9 +583,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         isinstance(criterion, MixtureNLLLoss) or (mdn_outputs_train is not None),
                     )
                 
-                # Add auxiliary loss if present
-                if aux_loss_train:
-                    loss_train = loss_train + aux_loss_train
+
                 
                 train_loss_epoch_list.append(loss_train.item())
 

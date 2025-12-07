@@ -607,3 +607,110 @@ class Model(nn.Module):
             self.context_fusion.enable_diagnostics = enabled
             if hasattr(self.model_config, 'enable_context_diagnostics'):
                 self.model_config.enable_context_diagnostics = enabled
+
+    def compute_loss(self, outputs, targets, criterion, curriculum_mask=None, logger=None):
+        """
+        Unpack model outputs and calculate the total loss.
+        Handles:
+        - Output unpacking (Tensor vs Tuple)
+        - MDN vs Standard Loss (using checks on criterion or output structure)
+        - Auxiliary Loss (from unpacking)
+        - Curriculum Masking (slicing inputs/targets logic)
+        """
+        predictions = outputs
+        aux_loss = 0.0
+        mdn_components = None
+
+        # 1. Unpack outputs generically
+        if isinstance(outputs, (tuple, list)):
+            if len(outputs) >= 3:
+                # Assuming (pred, aux, mdn) signature based on recent implementation
+                # But be careful about strictness.
+                predictions = outputs[0]
+                # Try to extract aux
+                if isinstance(outputs[1], (int, float, torch.Tensor)):
+                     # Basic heuristic: 2nd element is aux loss
+                     if isinstance(outputs[1], torch.Tensor) and outputs[1].numel() == 1:
+                         aux_loss = outputs[1].item()
+                     elif isinstance(outputs[1], (int, float)):
+                         aux_loss = outputs[1]
+                
+                # Try to extract MDN
+                if isinstance(outputs[2], tuple):
+                    mdn_components = outputs[2]
+            
+            elif len(outputs) == 2:
+                # (pred, aux) or (pred, mdn)?
+                predictions = outputs[0]
+                if isinstance(outputs[1], tuple):
+                    mdn_components = outputs[1] # MDN tuple
+                elif isinstance(outputs[1], (int, float)) or (isinstance(outputs[1], torch.Tensor) and outputs[1].numel() == 1):
+                    aux_loss = outputs[1] if isinstance(outputs[1], (int, float)) else outputs[1].item()
+
+        # 2. Check for MDN Loss requirement
+        # If mdn_components is present OR criterion is MixtureNLLLoss, we use MDN path
+        from layers.modular.decoder.mixture_density_decoder import MixtureNLLLoss
+        use_mdn_loss = isinstance(criterion, MixtureNLLLoss) or (mdn_components is not None)
+
+        loss_val = 0.0
+        
+        # 3. Apply Curriculum Masking (Slicing) logic
+        # Slice predictions/targets/components to effective length
+        eff_p = predictions
+        eff_t = targets
+        eff_mdn = mdn_components
+        
+        if curriculum_mask is not None:
+            eff_len = int(curriculum_mask.sum().item())
+            # Ensure at least 1 step
+            eff_len = max(1, eff_len) 
+            
+            # Slice Predictions: [Batch, Len, Dim]
+            eff_p = predictions[:, :eff_len, :]
+            
+            # Slice Targets (handle dimension mismatch if any)
+            # targets usually [Batch, Len, Dim] or [Batch, Len, 1]
+            eff_t = targets[:, :eff_len, ...]
+
+            # Slice MDN components if present
+            if mdn_components is not None:
+                means, log_stds, log_weights = mdn_components
+                # Usually [Batch, Len, Guassians, Dim] or similar. Time is dim 1.
+                # Check dim 1 size
+                if means.size(1) >= eff_len:
+                    means = means[:, :eff_len, ...]
+                    log_stds = log_stds[:, :eff_len, ...]
+                    log_weights = log_weights[:, :eff_len, ...]
+                    eff_mdn = (means, log_stds, log_weights)
+        else:
+            # If no curriculum, still might need to crop MDN to pred_len if output is longer?
+            # Or assume they match. Standardize on matching.
+            if use_mdn_loss and mdn_components is not None:
+                means, _, _ = mdn_components
+                pred_len = predictions.size(1)
+                if means.size(1) > pred_len:
+                    # Crop MDN extra steps if any
+                     means, log_stds, log_weights = mdn_components
+                     eff_mdn = (means[:, :pred_len, ...], log_stds[:, :pred_len, ...], log_weights[:, :pred_len, ...])
+
+        # 4. Compute Main Loss
+        if use_mdn_loss:
+            if eff_mdn is None:
+                # Fallback to MSE if MDN expected but components missing (e.g. failure case)
+                if logger: logger.warning("MDN components missing for MixtureNLLLoss. Falling back to simple criterion on point predictions.")
+                loss_val = F.mse_loss(eff_p, eff_t) # Basic fallback
+            else:
+                # Reshape targets for MDN if needed (squeeze last dim if 1)
+                if eff_t.dim() == 3 and eff_t.size(-1) == 1:
+                    target_for_mdn = eff_t.squeeze(-1)
+                else:
+                    target_for_mdn = eff_t
+                
+                loss_val = criterion(eff_mdn, target_for_mdn)
+        else:
+            # Deterministic Loss
+            # ensure targets and preds match shapes?
+            # Typically criterion handles it, but let's be safe
+             loss_val = criterion(eff_p, eff_t)
+
+        return loss_val + aux_loss

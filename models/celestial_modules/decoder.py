@@ -136,6 +136,7 @@ class DecoderModule(nn.Module):
                 enable_diagnostics=config.celestial_target_diagnostics,
                 use_edge_bias=config.use_c2t_edge_bias,
                 edge_bias_scale=config.c2t_edge_bias_weight,
+                celestial_dim=config.celestial_dim, # Pass the correct dimension
             )
         else:
             self.celestial_to_target_attention = None

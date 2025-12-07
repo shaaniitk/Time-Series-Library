@@ -24,17 +24,24 @@ validation_length: 500  # Larger validation set for better evaluation
 test_length: 200        # Larger test set
 
 # Optimization
-learning_rate: 0.005
-train_epochs: 2
+# Optimization
+learning_rate: 0.001 # Slightly lower for stability with advanced components
+train_epochs: 10
+warmup_epochs: 3         # Warmup for first 3 epochs
 batch_size: 32
 patience: 3
 lradj: type1
 weight_decay: 0.0001
 clip_grad_norm: 1.0
 
+# Curriculum Learning
+use_curriculum_learning: true
+min_curriculum_ratio: 0.2 # Start with 20% of pred_len
+
 # Model hyperparameters
-d_model: 64
-n_heads: 4
+# Adjusted for 13 celestial bodies: 78 is divisible by 13 AND even (for PositionalEncoding)
+d_model: 78
+n_heads: 6
 e_layers: 2
 d_layers: 1
 dropout: 0.1
@@ -49,16 +56,28 @@ use_celestial_graph: true               # Enable full celestial system
 aggregate_waves_to_celestial: true      # Enable wave aggregation to celestial bodies
 celestial_fusion_layers: 3              # Enhanced fusion layers
 
-# Wave aggregation settings - PERFECT FOR ASTROLOGICAL DATA
-num_input_waves: 118   # Full celestial wave features
-target_wave_indices: [0, 1, 2, 3]  # All OHLC targets (log_Open, log_High, log_Low, log_Close)
+# Advanced Components Configuration
+use_petri_net_combiner: true
+bypass_spatiotemporal_with_petri: true
+use_hierarchical_mapping: true
+use_stochastic_learner: true
 
-# Probabilistic decoding - SIMPLIFIED FOR TESTING
-use_mixture_decoder: false              # Disable probabilistic predictions (simplified)
-use_stochastic_learner: false           # Disable stochastic graph learning (simplified)
-use_hierarchical_mapping: false         # Disable hierarchical temporal-spatial mapping (simplified)
+# Probabilistic decoding
+use_mixture_decoder: true             # Enable Mixture Density Network
+enable_mdn_decoder: false             # Mutually exclusive with use_mixture_decoder
+mdn_components: 3
 mdn_multivariate_mode: independent
+loss: mixture                         # Critical for MDN training
+
+# Future Conditioning & Interaction
+use_future_celestial_conditioning: true
+use_efficient_covariate_interaction: true # Requires d_model % num_nodes == 0
+enable_target_covariate_attention: true
+
+# Diagnostics
+collect_diagnostics: true
+celestial_target_diagnostics: true
 
 # Regularization - ENHANCED FOR ASTROLOGICAL AI
-reg_loss_weight: 0.001  # KL divergence weight for stochastic graph learning (reduced to prevent loss explosion)
+reg_loss_weight: 0.001  # KL divergence weight for stochastic graph learning
 kl_weight: 0.0001       # Additional KL regularization
