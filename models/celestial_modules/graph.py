@@ -38,7 +38,7 @@ class GraphModule(nn.Module):
                 dropout=config.dropout,
                 use_temporal_attention=config.use_temporal_attention,
                 use_spatial_attention=config.use_spatial_attention,
-                use_gradient_checkpointing=True,
+                use_gradient_checkpointing=config.use_gradient_checkpointing,
                 enable_memory_debug=config.enable_memory_debug,
                 memory_debug_prefix="PETRI"
             )

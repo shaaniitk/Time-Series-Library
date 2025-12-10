@@ -15,20 +15,20 @@ freq: d               # Daily frequency
 use_gpu: true
 
 # Sequence settings
-seq_len: 96
+seq_len: 750
 label_len: 48
-pred_len: 24
+pred_len: 20
 
 # Data split settings
-validation_length: 500  # Larger validation set for better evaluation
-test_length: 200        # Larger test set
+validation_length: 1000  # Larger validation set for better evaluation
+test_length: 1000        # Larger test set
 
 # Optimization
 # Optimization
-learning_rate: 0.001 # Slightly lower for stability with advanced components
+learning_rate: 0.0001 # Reduced learning rate for stability with large model
 train_epochs: 10
 warmup_epochs: 3         # Warmup for first 3 epochs
-batch_size: 32
+batch_size: 4
 patience: 3
 lradj: type1
 weight_decay: 0.0001
@@ -39,11 +39,11 @@ use_curriculum_learning: true
 min_curriculum_ratio: 0.2 # Start with 20% of pred_len
 
 # Model hyperparameters
-# Adjusted for 13 celestial bodies: 78 is divisible by 13 AND even (for PositionalEncoding)
-d_model: 78
-n_heads: 6
-e_layers: 2
-d_layers: 1
+# Scaled up model: d_model=520 (divisible by 13 and 8)
+d_model: 520
+n_heads: 8
+e_layers: 3
+d_layers: 2
 dropout: 0.1
 
 # Input/Output dimensions (based on prepared_financial_data.csv)
@@ -73,6 +73,9 @@ loss: mixture                         # Critical for MDN training
 use_future_celestial_conditioning: true
 use_efficient_covariate_interaction: true # Requires d_model % num_nodes == 0
 enable_target_covariate_attention: true
+
+# Optimization
+use_gradient_checkpointing: true
 
 # Diagnostics
 collect_diagnostics: true

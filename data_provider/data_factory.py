@@ -70,6 +70,7 @@ def setup_financial_forecasting_data(args):
         args.validation_length,
         args.test_length,
         min_train_len=args.seq_len + args.pred_len,
+        overlap_len=args.seq_len, # Provide history context for val/test
     )
 
     # Step 4: Create and fit the ScalerManager with the correct data scopes
@@ -139,49 +140,56 @@ def _split_data(
     test_length: int,
     *,
     min_train_len: int,
+    overlap_len: int = 0,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Chronologically split into train/val/test honoring requested lengths.
+    """Chronologically split into train/val/test honoring requested lengths with overlap.
 
     Rules:
     - Keep at least ``min_train_len`` rows for training (sliding-window minimum).
     - Try to honor ``validation_length`` and ``test_length`` exactly where possible.
-    - If the dataset is too small, first reduce ``validation_length`` down to 0, then reduce
-      ``test_length`` as needed, to preserve the minimum train rows.
-
-    This avoids small-dataset caps (like 25%/20%) that can yield zero-window val/test splits.
+    - If defined, ``overlap_len`` (usually seq_len) is PREPENDED to val and test sets
+      to provide history context. This allows val/test sets to generate valid windows
+      starting from their first real data point.
     """
     total_len = len(df)
 
     # Start with requested lengths (non-negative)
-    num_val = max(0, int(validation_length))
-    num_test = max(0, int(test_length))
+    num_val_target = max(0, int(validation_length))
+    num_test_target = max(0, int(test_length))
 
-    # Ensure at least the required training rows remain
+    # Ensure at least the required training rows remain.
+    # Note: min_train_len is basically just seq_len + pred_len usually.
     required = max(1, int(min_train_len))
+    
+    # We first calculate the "core" non-overlapping sizes
     # Reduce val first, then test, until the constraint is satisfied
-    while total_len - (num_val + num_test) < required and (num_val > 0 or num_test > 0):
-        if num_val > 0:
-            num_val -= 1
-        elif num_test > 0:
-            num_test -= 1
+    current_val = num_val_target
+    current_test = num_test_target
+    
+    while total_len - (current_val + current_test) < required and (current_val > 0 or current_test > 0):
+        if current_val > 0:
+            current_val -= 1
+        elif current_test > 0:
+            current_test -= 1
 
-    # Whatever remains goes to training
-    num_train = max(required, total_len - num_val - num_test)
-
-    # Guard against any overflows due to rounding
-    if num_train + num_val + num_test > total_len:
-        overflow = (num_train + num_val + num_test) - total_len
-        # trim from test preferentially
-        trim_test = min(overflow, num_test)
-        num_test -= trim_test
-        overflow -= trim_test
-        if overflow > 0:
-            num_val = max(0, num_val - overflow)
-
-    # Materialize splits
+    # whatever remains is training
+    num_train = max(required, total_len - current_val - current_test)
+    
+    # Materialize splits with OVERLAP
+    # Train: [0 : num_train]
     df_train = df.iloc[0:num_train].copy()
-    df_val = df.iloc[num_train:num_train + num_val].copy()
-    df_test = df.iloc[num_train + num_val:num_train + num_val + num_test].copy()
+    
+    # Val: [num_train - overlap : num_train + current_val]
+    # We start 'overlap_len' before the validation block starts
+    val_start = max(0, num_train - overlap_len)
+    val_end = min(total_len, num_train + current_val)
+    df_val = df.iloc[val_start:val_end].copy()
+    
+    # Test: [num_train + current_val - overlap : num_train + current_val + current_test]
+    test_start = max(0, num_train + current_val - overlap_len)
+    test_end = min(total_len, num_train + current_val + current_test)
+    df_test = df.iloc[test_start:test_end].copy()
+    
     return df_train, df_val, df_test
 # --- END OF NEW PIPELINE ---
 

@@ -1,0 +1,72 @@
+# Test scaling config
+model: Celestial_Enhanced_PGAT
+model_id: test_scale
+
+data: custom
+root_path: ./data
+data_path: prepared_financial_data.csv
+features: MS
+target: log_Open,log_High,log_Low,log_Close
+embed: timeF
+freq: d
+use_gpu: false
+
+# Scaled Sequence Lengths
+seq_len: 750
+label_len: 48
+pred_len: 20
+
+validation_length: 10
+test_length: 10
+
+# Optimization - Short run for verification
+learning_rate: 0.001
+train_epochs: 2
+warmup_epochs: 0
+batch_size: 4 # Small batch for safety
+patience: 1
+lradj: type1
+weight_decay: 0.0001
+clip_grad_norm: 1.0
+
+# Curriculum Learning
+use_curriculum_learning: true
+min_curriculum_ratio: 0.2
+
+# Model Sizing (Large)
+d_model: 520
+n_heads: 8
+e_layers: 2
+d_layers: 1
+dropout: 0.1
+
+enc_in: 118
+dec_in: 118
+c_out: 4
+
+# Advanced Components
+use_celestial_graph: true
+aggregate_waves_to_celestial: true
+celestial_fusion_layers: 1
+use_petri_net_combiner: true
+bypass_spatiotemporal_with_petri: true
+use_hierarchical_mapping: true
+use_stochastic_learner: true
+use_mixture_decoder: true 
+loss: mixture
+
+# Future Conditioning
+use_future_celestial_conditioning: true
+use_efficient_covariate_interaction: true
+enable_target_covariate_attention: true
+
+# Optimization
+use_gradient_checkpointing: true
+
+# Diagnostics
+collect_diagnostics: false
+celestial_target_diagnostics: false
+celestial_dim: 32 # Explicitly set compatible with n_heads=8 (32 is div by 8)
+
+reg_loss_weight: 0.001
+kl_weight: 0.0001

@@ -217,6 +217,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     "criterion": type(criterion).__name__,
                 },
             )
+        
+        # Check for empty loader
+        if hasattr(vali_loader, "__len__") and len(vali_loader) == 0:
+            logger.warning("Validation loader is empty. Skipping validation and returning infinity.")
+            return float('inf')
+
         with torch.no_grad(): # Use self.vali_loader directly
             for i, batch_data in enumerate(vali_loader):
                 if self.args.use_future_celestial_conditioning:
@@ -608,10 +614,21 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 if self.args.use_amp and scaler_amp is not None:
                     scaler_amp.scale(loss_train).backward()
+                    
+                    # Gradient Clipping with AMP
+                    if hasattr(self.args, 'clip_grad_norm') and self.args.clip_grad_norm > 0:
+                        scaler_amp.unscale_(model_optim)
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip_grad_norm)
+                        
                     scaler_amp.step(model_optim)
                     scaler_amp.update()
                 else:
                     loss_train.backward()
+                    
+                    # Gradient Clipping
+                    if hasattr(self.args, 'clip_grad_norm') and self.args.clip_grad_norm > 0:
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip_grad_norm)
+                        
                     model_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))

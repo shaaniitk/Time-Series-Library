@@ -180,8 +180,15 @@ class MixtureNLLLoss(nn.Module):
                 targets = args[0]
             assert targets is not None, "Targets must be provided."
         
-        # Convert parameters
+        # Convert parameters with hardening
+        # Clamp log_stds to prevent overflow/underflow
+        log_stds = torch.clamp(log_stds, min=-15.0, max=15.0)
         stds = torch.exp(log_stds).clamp_min(self.eps)
+        
+        # Check for NaNs
+        if torch.isnan(mixture_params[0]).any() or torch.isnan(log_stds).any():
+             print("Warning: NaNs detected in MixtureNLLLoss inputs")
+        
         log_weights = F.log_softmax(log_weights, dim=-1)
         
         # Handle targets with different shapes - MULTIVARIATE SUPPORT
@@ -199,7 +206,8 @@ class MixtureNLLLoss(nn.Module):
         
     def _compute_univariate_nll(self, means, log_stds, log_weights, targets):
         """Compute NLL for single target feature (original implementation)."""
-        # Convert parameters
+        # Convert parameters with hardening
+        log_stds = torch.clamp(log_stds, min=-15.0, max=15.0)
         stds = torch.exp(log_stds).clamp_min(self.eps)
         log_weights = F.log_softmax(log_weights, dim=-1)
         
@@ -237,7 +245,8 @@ class MixtureNLLLoss(nn.Module):
         """Compute NLL treating each target feature independently."""
         batch_size, pred_len, num_targets = targets.shape
         
-        # Convert parameters
+        # Convert parameters with hardening
+        log_stds = torch.clamp(log_stds, min=-15.0, max=15.0)
         stds = torch.exp(log_stds).clamp_min(self.eps)
         log_weights = F.log_softmax(log_weights, dim=-1)
         
@@ -290,7 +299,8 @@ class MixtureNLLLoss(nn.Module):
         """Compute NLL for joint multivariate distribution (simplified diagonal covariance)."""
         batch_size, pred_len, num_targets = targets.shape
         
-        # Convert parameters
+        # Convert parameters with hardening
+        log_stds = torch.clamp(log_stds, min=-15.0, max=15.0)
         stds = torch.exp(log_stds).clamp_min(self.eps)
         log_weights = F.log_softmax(log_weights, dim=-1)
         

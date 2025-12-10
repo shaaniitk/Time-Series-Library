@@ -221,47 +221,24 @@ class CelestialPetriNetCombiner(nn.Module):
         # PRESERVED as vectors, not compressed to scalars!
         self._dbg("EDGE_FEATURES", {"edge_features": edge_features})
         
-        # 2. Incorporate encoder context into edge features
-        # Broadcast context to all edges
-        context_broadcast = enc_out.unsqueeze(2).unsqueeze(3).expand(
-            -1, -1, num_nodes, num_nodes, -1
-        )
-        # Shape: [batch, seq_len, num_nodes, num_nodes, d_model]
-        # Note: expand does not allocate, but concatenation below will.
-        
-        # Fuse context with edge features
-        context_edge_combined = torch.cat([
-            context_broadcast,
-            edge_features
-        ], dim=-1).reshape(-1, self.d_model + self.edge_feature_dim)
-        self._dbg("CAT_CONTEXT_EDGE", {"ctx_edge_combined": context_edge_combined})
-        
-        enriched_edge_features = self.context_edge_fusion(context_edge_combined)
-        enriched_edge_features = enriched_edge_features.reshape(
-            batch_size, seq_len, num_nodes, num_nodes, self.edge_feature_dim
-        )
-        # Shape: [batch, seq_len, num_nodes, num_nodes, edge_feature_dim]
-        self._dbg("ENRICHED_EDGE_FEATURES", {"enriched_edge_features": enriched_edge_features})
-        
-        # 3. Initialize node states from encoder output
-        # Each node gets the global encoder context as initial state
-        node_states = enc_out.unsqueeze(2).expand(-1, -1, num_nodes, -1).contiguous()
-        # Shape: [batch, seq_len, num_nodes, d_model]
-        self._dbg("INIT_NODE_STATES", {"node_states": node_states})
-        
-        # 4. Petri net message passing (token flow through graph)
+        # 2. Heavy Processing (Enrichment + Message Passing)
         message_passing_metadata = []
-        
-        for i, mp_layer in enumerate(self.message_passing_layers):
-            node_states, mp_meta = mp_layer(
-                node_states=node_states,
-                edge_features=enriched_edge_features,
-                edge_mask=None  # All edges valid in complete graph
+        if self.use_gradient_checkpointing and enc_out.requires_grad:
+            # Checkpointing requires input tensors to have requires_grad
+            node_states, enriched_edge_features, mp_metadata = torch.utils.checkpoint.checkpoint(
+                self._heavy_processing,
+                edge_features,
+                enc_out,
+                num_nodes,
+                use_reentrant=False
             )
-            message_passing_metadata.append(mp_meta)
-            self._dbg(f"MESSAGE_PASS_{i+1}", {"node_states": node_states})
-        
-        # 5. Optional temporal attention (delayed effects)
+        else:
+            node_states, enriched_edge_features, mp_metadata = self._heavy_processing(
+                edge_features, enc_out, num_nodes
+            )
+            
+        message_passing_metadata.extend(mp_metadata)
+
         if self.use_temporal_attention and self.temporal_attention is not None:
             node_states = self.temporal_attention(node_states)
             self._dbg("TEMPORAL_ATTENTION", {"node_states": node_states})
@@ -303,3 +280,37 @@ class CelestialPetriNetCombiner(nn.Module):
             return combined_adjacency, enriched_edge_features, metadata
         else:
             return combined_adjacency, None, metadata
+
+    def _heavy_processing(self, edge_features, enc_out, num_nodes):
+        # Re-broadcast context (re-computed during backward if checkpointed)
+        batch_size, seq_len, d_model = enc_out.shape
+        
+        # Broadcast context to all edges
+        context_broadcast = enc_out.unsqueeze(2).unsqueeze(3).expand(
+            -1, -1, num_nodes, num_nodes, -1
+        )
+        
+        # Fuse context with edge features
+        context_edge_combined = torch.cat([
+            context_broadcast,
+            edge_features
+        ], dim=-1).reshape(-1, self.d_model + self.edge_feature_dim)
+        
+        enriched_edge_features = self.context_edge_fusion(context_edge_combined)
+        enriched_edge_features = enriched_edge_features.reshape(
+            edge_features.shape[0], edge_features.shape[1], num_nodes, num_nodes, self.edge_feature_dim
+        )
+        
+        # Initialize node states
+        node_states = enc_out.unsqueeze(2).expand(-1, -1, num_nodes, -1).contiguous()
+        
+        mp_metadata = []
+        for mp_layer in self.message_passing_layers:
+            node_states, mp_meta = mp_layer(
+                node_states=node_states,
+                edge_features=enriched_edge_features,
+                edge_mask=None
+            )
+            mp_metadata.append(mp_meta)
+            
+        return node_states, enriched_edge_features, mp_metadata

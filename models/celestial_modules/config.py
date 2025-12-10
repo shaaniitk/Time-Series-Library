@@ -114,6 +114,9 @@ class CelestialPGATConfig:
     context_fusion_dropout: float = 0.1
     enable_context_diagnostics: bool = False
 
+    # Optimization
+    use_gradient_checkpointing: bool = False
+
     # Internal / Derived
     celestial_dim: int = 32
     celestial_feature_dim: int = 416 # 13 * 32
