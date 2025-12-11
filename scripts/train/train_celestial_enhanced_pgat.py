@@ -45,8 +45,17 @@ def main():
         config_dict = yaml.safe_load(f)
     
     # Merge config_dict into args Namespace
+    # Merge config_dict into args Namespace, handling nested dictionaries (like 'data')
     for key, value in config_dict.items():
-        setattr(args, key, value)
+        if isinstance(value, dict):
+             # For nested dicts like 'data', we flatten them into the main args
+             # This handles args.data.root_path -> args.root_path
+             for sub_key, sub_value in value.items():
+                 setattr(args, sub_key, sub_value)
+             # Also keep the original dict for compatibility if needed (some code might check args.data)
+             setattr(args, key, value) 
+        else:
+             setattr(args, key, value)
 
     # HACK: Force CPU if CUDA is not available or compiled with torch
     if not torch.cuda.is_available(): 
@@ -108,7 +117,9 @@ def main():
     # Construct a base setting string that does *not* include the unique ID placeholder yet
     base_setting_string = '{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}'.format(
         getattr(args, 'model', 'unknown_model'),
-        getattr(args, 'data', 'unknown_data'),
+        getattr(args, 'model', 'unknown_model'),
+        # Fix: args.data is a dict which causes formatting issues later. Use data_path or dataset.
+        getattr(args, 'data_path', 'data'),
         getattr(args, 'features', 'S'),
         getattr(args, 'seq_len', 0),
         getattr(args, 'label_len', 0),

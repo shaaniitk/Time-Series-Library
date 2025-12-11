@@ -1,86 +1,59 @@
-# Celestial Enhanced PGAT direct training configuration
 
-# Model and training identifiers
-model: Celestial_Enhanced_PGAT
-model_id: celestial_enhanced_pgat_synth_d
+model: RM-C-PGAT
 
-# Data settings
-data: custom
-root_path: ./data
-data_path: prepared_financial_data.csv
-features: MS          # Multivariate input, univariate output
-target: log_Open,log_High,log_Low,log_Close     # Predict all OHLC values
-embed: timeF
-freq: d               # Daily frequency
-use_gpu: true
+data:
+  root_path: ./data
+  data_path: prepared_financial_data.csv
+  dataset: Custom
+  features: MS
+  target: log_Open,log_High,log_Low,log_Close
+  freq: d
+  scaler_type: robust
 
-# Sequence settings
 seq_len: 750
 label_len: 48
 pred_len: 20
-
-# Data split settings
-validation_length: 1000  # Larger validation set for better evaluation
-test_length: 1000        # Larger test set
-
-# Optimization
-# Optimization
-learning_rate: 0.0001 # Reduced learning rate for stability with large model
-train_epochs: 10
-warmup_epochs: 3         # Warmup for first 3 epochs
+validation_length: 1000
+test_length: 1000
 batch_size: 4
-patience: 3
-lradj: type1
-weight_decay: 0.0001
-clip_grad_norm: 1.0
+num_workers: 0
 
-# Curriculum Learning
-use_curriculum_learning: true
-min_curriculum_ratio: 0.2 # Start with 20% of pred_len
-
-# Model hyperparameters
-# Scaled up model: d_model=520 (divisible by 13 and 8)
+enc_in: 118
+dec_in: 118
+c_out: 4
 d_model: 520
 n_heads: 8
 e_layers: 3
 d_layers: 2
+d_ff: 1024
 dropout: 0.1
 
-# Input/Output dimensions (based on prepared_financial_data.csv)
-enc_in: 118    # Number of celestial wave features (excluding date and OHLC targets)
-dec_in: 118    # Same as encoder input  
-c_out: 4       # Four target outputs (OHLC)
+learning_rate: 0.0001
+factor: 0.3
+patience: 2
+train_epochs: 10
+lradj: type1  # Added to fix AttributeError
+loss: mixture
+mixture_components: 5
 
-# Celestial graph settings - FULL ASTROLOGICAL AI ENABLED! 🌌
-use_celestial_graph: true               # Enable full celestial system
-aggregate_waves_to_celestial: true      # Enable wave aggregation to celestial bodies
-celestial_fusion_layers: 3              # Enhanced fusion layers
+use_gpu: False
+gpu: 0
+use_multi_gpu: False
+devices: '0'
 
-# Advanced Components Configuration
-use_petri_net_combiner: true
-bypass_spatiotemporal_with_petri: true
-use_hierarchical_mapping: true
-use_stochastic_learner: true
+# Advanced Components
+use_celestial_graph: True
+use_celestial_target_attention: True
+use_future_celestial_conditioning: True
+enable_target_covariate_attention: True
+phase_aware: True
+multiscale_patching: True
 
-# Probabilistic decoding
-use_mixture_decoder: true             # Enable Mixture Density Network
-enable_mdn_decoder: false             # Mutually exclusive with use_mixture_decoder
-mdn_components: 3
-mdn_multivariate_mode: independent
-loss: mixture                         # Critical for MDN training
+# Robustness
+bypass_spatiotemporal_with_petri: True
+use_efficient_covariate_interaction: True
+gradient_clip_val: 1.0
 
-# Future Conditioning & Interaction
-use_future_celestial_conditioning: true
-use_efficient_covariate_interaction: true # Requires d_model % num_nodes == 0
-enable_target_covariate_attention: true
-
-# Optimization
-use_gradient_checkpointing: true
-
-# Diagnostics
-collect_diagnostics: true
-celestial_target_diagnostics: true
-
-# Regularization - ENHANCED FOR ASTROLOGICAL AI
-reg_loss_weight: 0.001  # KL divergence weight for stochastic graph learning
-kl_weight: 0.0001       # Additional KL regularization
+# Graph params
+num_graph_nodes: 13
+celestial_dim: 32

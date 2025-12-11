@@ -182,7 +182,8 @@ class MixtureNLLLoss(nn.Module):
         
         # Convert parameters with hardening
         # Clamp log_stds to prevent overflow/underflow
-        log_stds = torch.clamp(log_stds, min=-15.0, max=15.0)
+        # TIGHTENED CLAMPING: [-5.0, 5.0] to prevent extreme penalty on OOB data
+        log_stds = torch.clamp(log_stds, min=-5.0, max=5.0)
         stds = torch.exp(log_stds).clamp_min(self.eps)
         
         # Check for NaNs
@@ -207,7 +208,8 @@ class MixtureNLLLoss(nn.Module):
     def _compute_univariate_nll(self, means, log_stds, log_weights, targets):
         """Compute NLL for single target feature (original implementation)."""
         # Convert parameters with hardening
-        log_stds = torch.clamp(log_stds, min=-15.0, max=15.0)
+        # TIGHTENED CLAMPING: [-5.0, 5.0]
+        log_stds = torch.clamp(log_stds, min=-5.0, max=5.0)
         stds = torch.exp(log_stds).clamp_min(self.eps)
         log_weights = F.log_softmax(log_weights, dim=-1)
         
@@ -246,7 +248,8 @@ class MixtureNLLLoss(nn.Module):
         batch_size, pred_len, num_targets = targets.shape
         
         # Convert parameters with hardening
-        log_stds = torch.clamp(log_stds, min=-15.0, max=15.0)
+        # TIGHTENED CLAMPING: [-5.0, 5.0]
+        log_stds = torch.clamp(log_stds, min=-5.0, max=5.0)
         stds = torch.exp(log_stds).clamp_min(self.eps)
         log_weights = F.log_softmax(log_weights, dim=-1)
         
@@ -300,7 +303,8 @@ class MixtureNLLLoss(nn.Module):
         batch_size, pred_len, num_targets = targets.shape
         
         # Convert parameters with hardening
-        log_stds = torch.clamp(log_stds, min=-15.0, max=15.0)
+        # TIGHTENED CLAMPING: [-5.0, 5.0]
+        log_stds = torch.clamp(log_stds, min=-5.0, max=5.0)
         stds = torch.exp(log_stds).clamp_min(self.eps)
         log_weights = F.log_softmax(log_weights, dim=-1)
         

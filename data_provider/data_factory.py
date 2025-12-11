@@ -75,10 +75,12 @@ def setup_financial_forecasting_data(args):
 
     # Step 4: Create and fit the ScalerManager with the correct data scopes
     logger.info("Step 4: Fitting scalers with correct data scopes...")
+    # Get scaler type from args, default to 'standard'
+    scaler_type = getattr(args, 'scaler_type', 'standard')
     scaler_manager = ScalerManager(
-        # Pass the actual lists of target and covariate features (excluding 'date')
         target_features=dim_manager.target_features,
-        covariate_features=dim_manager.covariate_features
+        covariate_features=dim_manager.covariate_features,
+        scaler_type=scaler_type
     )
     scaler_manager.fit(train_df=df_train, full_df=merged_df)
     

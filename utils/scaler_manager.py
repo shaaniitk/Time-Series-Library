@@ -1,22 +1,28 @@
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler
 from typing import Dict, List, Optional, Tuple
 
 # ... (imports and class definition remain the same) ...
 
 class ScalerManager:
-    def __init__(self, target_features: List[str], covariate_features: List[str]):
+    def __init__(self, target_features: List[str], covariate_features: List[str], scaler_type: str = 'standard'):
         self.target_features = target_features
         # Filter out 'date' from covariate features to avoid scaling issues
         self.covariate_features = [col for col in covariate_features if col != 'date']
+        self.scaler_type = scaler_type.lower()
         
         # Print debug info
-        print(f"ScalerManager initialized with {len(self.target_features)} target features and {len(self.covariate_features)} covariate features")
+        print(f"ScalerManager initialized with {len(self.target_features)} target features and {len(self.covariate_features)} covariate features. Type: {self.scaler_type}")
         
-        self.target_scaler = StandardScaler()
-        self.scaler: Optional[StandardScaler] = StandardScaler() if self.covariate_features else None # Renamed for consistency
+        if self.scaler_type == 'robust':
+            self.target_scaler = RobustScaler()
+            self.scaler: Optional[object] = RobustScaler() if self.covariate_features else None
+        else:
+            self.target_scaler = StandardScaler()
+            self.scaler: Optional[object] = StandardScaler() if self.covariate_features else None
+            
         self._target_stats_cache: Dict[Tuple[torch.device, torch.dtype], Tuple[torch.Tensor, torch.Tensor]] = {}
         self._cov_stats_cache: Dict[Tuple[torch.device, torch.dtype], Tuple[torch.Tensor, torch.Tensor]] = {}
 
@@ -105,8 +111,15 @@ class ScalerManager:
         key = (device, dtype)
         cached = self._target_stats_cache.get(key)
         if cached is None:
-            mean = torch.as_tensor(self.target_scaler.mean_, device=device, dtype=dtype)
-            scale = torch.as_tensor(self.target_scaler.scale_, device=device, dtype=dtype)
+            if hasattr(self.target_scaler, 'center_'): # RobustScaler
+                 mean_val = self.target_scaler.center_
+                 scale_val = self.target_scaler.scale_
+            else: # StandardScaler
+                 mean_val = self.target_scaler.mean_
+                 scale_val = self.target_scaler.scale_
+
+            mean = torch.as_tensor(mean_val, device=device, dtype=dtype)
+            scale = torch.as_tensor(scale_val, device=device, dtype=dtype)
             self._target_stats_cache[key] = (mean, scale)
             return mean, scale
         return cached
@@ -121,8 +134,15 @@ class ScalerManager:
         key = (device, dtype)
         cached = self._cov_stats_cache.get(key)
         if cached is None:
-            mean = torch.as_tensor(self.scaler.mean_, device=device, dtype=dtype)
-            scale = torch.as_tensor(self.scaler.scale_, device=device, dtype=dtype)
+            if hasattr(self.scaler, 'center_'): # RobustScaler
+                 mean_val = self.scaler.center_
+                 scale_val = self.scaler.scale_
+            else: # StandardScaler
+                 mean_val = self.scaler.mean_
+                 scale_val = self.scaler.scale_
+                 
+            mean = torch.as_tensor(mean_val, device=device, dtype=dtype)
+            scale = torch.as_tensor(scale_val, device=device, dtype=dtype)
             self._cov_stats_cache[key] = (mean, scale)
             return mean, scale
         return cached

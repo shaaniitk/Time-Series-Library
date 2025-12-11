@@ -24,7 +24,8 @@ RUN bash -lc "grep -vE '^(torch($|vision|audio)|torch-geom|torch-geometric|torch
     && "$VENV_PATH/bin/pip" install --no-cache-dir -r /tmp/req-no-torch.txt
 
 # Optional: install pure-Python torch_geometric if imports are expected without compiled ops
-# RUN "$VENV_PATH/bin/pip" install --no-cache-dir torch_geometric
+# Install pure-Python torch_geometric (HeteroData support)
+RUN "$VENV_PATH/bin/pip" install --no-cache-dir torch_geometric
 
 # Add entrypoint that ensures venv is active and can conditionally sync deps on container start
 COPY scripts/docker/entrypoint.sh /usr/local/bin/tsl-entrypoint

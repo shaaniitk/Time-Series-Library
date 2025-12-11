@@ -34,6 +34,7 @@ class Exp_Basic(object):
         # Always register the modular entry point explicitly
         self.model_dict['ModularAutoformer'] = ModularAutoformer
         self.model_dict['Celestial_Enhanced_PGAT'] = Celestial_Enhanced_PGAT_Model # Register your model here
+        self.model_dict['RM-C-PGAT'] = Celestial_Enhanced_PGAT_Model # Valid config name mapping
 
         # Optionally register HF models if available
         if HFEnhancedAutoformer is not None:
@@ -70,7 +71,11 @@ class Exp_Basic(object):
             self.model_dict['Mamba'] = Mamba
 
         self.device = self._acquire_device()
+        print(f"Exp_Basic: Device acquired: {self.device}", flush=True)
+
+        print("Exp_Basic: Building model...", flush=True)
         self.model = self._build_model().to(self.device)
+        print("Exp_Basic: Model built and moved to device.", flush=True)
 
     def _build_model(self):
         raise NotImplementedError

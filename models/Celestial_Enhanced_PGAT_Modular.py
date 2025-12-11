@@ -78,7 +78,9 @@ class Model(nn.Module):
             self.logger.info("ModelDiagnostics not available - diagnostics disabled")
 
         # 3. Instantiate all modules
+        self.logger.info("Initializing EmbeddingModule...")
         self.embedding_module = EmbeddingModule(self.model_config)
+        self.logger.info("EmbeddingModule initialized.")
         
         # Multi-Scale Context Fusion Module (if available)
         if ContextFusionFactory is not None:
@@ -92,23 +94,34 @@ class Model(nn.Module):
             self.context_fusion = None
         
         if self.model_config.use_celestial_graph:
+            self.logger.info("Initializing GraphModule...")
             self.graph_module = GraphModule(self.model_config)
+            self.logger.info("GraphModule initialized.")
         else:
             self.graph_module = None
+            self.logger.info("GraphModule disabled.")
         
+        self.logger.info("Initializing EncoderModule...")
         self.encoder_module = EncoderModule(self.model_config)
+        self.logger.info("EncoderModule initialized.")
         
+        self.logger.info("Initializing PostProcessingModule...")
         self.postprocessing_module = PostProcessingModule(self.model_config)
+        self.logger.info("PostProcessingModule initialized.")
         
+        self.logger.info("Initializing DecoderModule...")
         self.decoder_module = DecoderModule(self.model_config)
+        self.logger.info("DecoderModule initialized.")
 
         # Enhanced components from original model
+        self.logger.info("Initializing market_context_encoder...")
         self.market_context_encoder = nn.Sequential(
             nn.Linear(self.model_config.d_model, self.model_config.d_model),
             nn.GELU(),
             nn.Linear(self.model_config.d_model, self.model_config.d_model),
             nn.LayerNorm(self.model_config.d_model)
         )
+        self.logger.info("market_context_encoder initialized.")
         
         # FIX ISSUE #10: Stochastic warmup for MDN stability
         # Disable stochastic noise for first N epochs to let MDN calibrate
@@ -121,12 +134,16 @@ class Model(nn.Module):
         
         # Efficient covariate interaction (if enabled)
         if self.model_config.use_efficient_covariate_interaction:
+            self.logger.info("Setting up efficient covariate interaction...")
             self._setup_efficient_covariate_interaction()
+            self.logger.info("Efficient covariate interaction setup.")
         
         self._external_global_step = None
         
         # Initialize parameters
+        self.logger.info("Initializing parameters...")
         self._initialize_parameters()
+        self.logger.info("Parameters initialized. __init__ complete.")
     
     def _initialize_parameters(self):
         """Initialize model parameters"""

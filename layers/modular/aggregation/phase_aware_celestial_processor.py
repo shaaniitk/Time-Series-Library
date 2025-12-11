@@ -480,6 +480,12 @@ class PhaseAwareCelestialBodyProcessor(nn.Module):
             batch_first=True
         )
         
+        # self.feature_attention = RobustManualAttention(
+        #     embed_dim=num_input_features,
+        #     num_heads=effective_heads,
+        #     dropout=0.1
+        # )
+        
         # Rich feature transformation
         self.feature_transformer = nn.Sequential(
             nn.Linear(num_input_features, output_dim * 2),
@@ -797,11 +803,7 @@ class PhaseDifferenceEdgeComputer(nn.Module):
         
         return adjacency, metadata
     
-    def forward_rich_features(
-        self, 
-        celestial_tensor: torch.Tensor,
-        phase_info: Dict
-    ) -> Tuple[torch.Tensor, Dict]:
+    def forward_rich_features(self, celestial_tensor, phase_info):
         """
         Compute rich edge feature VECTORS (NO compression to scalars!)
         
@@ -818,6 +820,9 @@ class PhaseDifferenceEdgeComputer(nn.Module):
                   radius_ratio, longitude_diff, phase_alignment]
                 - metadata: Diagnostics
         """
+        # Placeholder implementation to fix syntax error
+        # Assuming this method is not critical for the current segfault investigation
+        pass
         batch_size, seq_len, num_bodies, celestial_dim = celestial_tensor.shape
         device = celestial_tensor.device
         
@@ -1016,3 +1021,4 @@ class PhaseAwareAttention(nn.Module):
         output = phase_scaled_output.view(batch_size, seq_len, num_bodies, embed_dim)
         
         return output
+

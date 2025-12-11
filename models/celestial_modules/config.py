@@ -134,6 +134,18 @@ class CelestialPGATConfig:
                 if value == f.default:
                     value = f.default_factory()
             kwargs[f.name] = value
+            kwargs[f.name] = value
+        
+        # Verify MDN enablement based on loss type from original config
+        original_loss = getattr(configs, 'loss', 'mse')
+        if original_loss == 'mixture':
+             if not kwargs.get('enable_mdn_decoder', False) and \
+                not kwargs.get('use_mixture_decoder', False) and \
+                not kwargs.get('use_sequential_mixture_decoder', False):
+                 # Auto-enable MDN decoder if mixture loss is requested but no specific head is enabled
+                 logger.info("Auto-enabling enable_mdn_decoder due to loss='mixture'")
+                 kwargs['enable_mdn_decoder'] = True
+
         return cls(**kwargs)
 
     def __post_init__(self):

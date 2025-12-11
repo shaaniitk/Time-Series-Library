@@ -250,3 +250,4 @@ debug_model_memory_20251016_215418.txt
 debug_model_memory_20251016_215814.txt
 model_test_output.txt
 production_debug_output.txt
+core.*

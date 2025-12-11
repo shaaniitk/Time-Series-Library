@@ -219,16 +219,17 @@ class DecoderModule(nn.Module):
                     celestial_dim = celestial_feature_dim // self.config.num_celestial_bodies
                     celestial_feats = celestial_feats.view(batch_size, seq_len, self.config.num_celestial_bodies, celestial_dim)
                     
-                    if celestial_dim != self.config.d_model:
-                        if not hasattr(self, 'future_celestial_to_dmodel'):
-                            self.future_celestial_to_dmodel = nn.Linear(
-                                celestial_dim, self.config.d_model
-                            ).to(celestial_feats.device)
-                        
-                        batch_size, seq_len, num_celestial, celestial_dim = celestial_feats.shape
-                        celestial_feats_flat = celestial_feats.view(-1, celestial_dim)
-                        celestial_feats_projected = self.future_celestial_to_dmodel(celestial_feats_flat)
-                        celestial_feats = celestial_feats_projected.view(batch_size, seq_len, num_celestial, self.config.d_model)
+                    # NOTE: Projection removed - handled by attention module
+                    # if celestial_dim != self.config.d_model:
+                    #     if not hasattr(self, 'future_celestial_to_dmodel'):
+                    #         self.future_celestial_to_dmodel = nn.Linear(
+                    #             celestial_dim, self.config.d_model
+                    #         ).to(celestial_feats.device)
+                    #     
+                    #     batch_size, seq_len, num_celestial, celestial_dim = celestial_feats.shape
+                    #     celestial_feats_flat = celestial_feats.view(-1, celestial_dim)
+                    #     celestial_feats_projected = self.future_celestial_to_dmodel(celestial_feats_flat)
+                    #     celestial_feats = celestial_feats_projected.view(batch_size, seq_len, num_celestial, self.config.d_model)
             elif past_celestial_features is not None:
                 # Fallback to past celestial features
                 celestial_feats = past_celestial_features
@@ -237,14 +238,15 @@ class DecoderModule(nn.Module):
                     celestial_dim = celestial_feature_dim // self.config.num_celestial_bodies
                     celestial_feats = celestial_feats.view(batch_size, seq_len, self.config.num_celestial_bodies, celestial_dim)
                     
-                    if celestial_dim != self.config.d_model:
-                        if not hasattr(self, 'celestial_projection'):
-                            self.celestial_projection = nn.Linear(celestial_dim, self.config.d_model).to(celestial_feats.device)
-                        
-                        batch_size, seq_len, num_celestial, celestial_dim = celestial_feats.shape
-                        celestial_feats_flat = celestial_feats.view(-1, celestial_dim)
-                        celestial_feats_projected = self.celestial_projection(celestial_feats_flat)
-                        celestial_feats = celestial_feats_projected.view(batch_size, seq_len, num_celestial, self.config.d_model)
+                    # NOTE: Projection removed - handled by attention module
+                    # if celestial_dim != self.config.d_model:
+                    #     if not hasattr(self, 'celestial_projection'):
+                    #         self.celestial_projection = nn.Linear(celestial_dim, self.config.d_model).to(celestial_feats.device)
+                    #     
+                    #     batch_size, seq_len, num_celestial, celestial_dim = celestial_feats.shape
+                    #     celestial_feats_flat = celestial_feats.view(-1, celestial_dim)
+                    #     celestial_feats_projected = self.celestial_projection(celestial_feats_flat)
+                    #     celestial_feats = celestial_feats_projected.view(batch_size, seq_len, num_celestial, self.config.d_model)
             
             # Apply celestial-to-target attention if we have celestial features
             if celestial_feats is not None:
