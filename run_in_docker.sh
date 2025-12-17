@@ -80,7 +80,7 @@ if [ "$BUILD" = true ] || [[ "$(docker images -q $IMAGE_NAME 2> /dev/null)" == "
 fi
 
 # Prepare run flags
-COMMON_FLAGS="--shm-size=8g -v $(pwd):/workspace"
+COMMON_FLAGS="--shm-size=8g -v $(pwd):/workspace -e PYTHONUNBUFFERED=1"
 if [ "$CLEAN" = true ]; then
     COMMON_FLAGS="$COMMON_FLAGS --rm"
 fi
