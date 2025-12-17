@@ -82,13 +82,16 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         # Initialize the parent class *after* model_init_args is set.
         # Pass the resolved args to the parent, which will store it as self.args.
+        print("DEBUG: Calling super().__init__", flush=True)
         super(Exp_Long_Term_Forecast, self).__init__(args)
+        print("DEBUG: Returned from super().__init__", flush=True)
         
         # Ensure the args object used by the parent also has the managers
         # This is important if any other part of the code expects args.scaler_manager or args.dim_manager
         self.args.dim_manager = self.dm
         self.args.scaler_manager = self.scaler_manager
 
+        print(f"DEBUG: Checking memory_diagnostics: {self.memory_diagnostics}", flush=True)
         if self.memory_diagnostics is not None:
             parameter_count = sum(param.numel() for param in self.model.parameters())
             self.memory_diagnostics.snapshot(
@@ -100,9 +103,22 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             )
 
         # Initialize Curriculum Learning Strategy
+        print("DEBUG: initializing curriculum", flush=True)
         self.curriculum = CurriculumFactory.get_curriculum(self.args, self.device)
+        print(f"DEBUG: curriculum initialized: {self.curriculum}", flush=True)
         if self.curriculum:
             logger.info(f"Initialized Curriculum Learning: {self.curriculum.__class__.__name__}")
+        
+        print("DEBUG: Exp_Long_Term_Forecast.__init__ complete", flush=True)
+        
+        # Test for GPU Deadlock
+        import sys
+        print("DEBUG: Synchronizing CUDA...", flush=True)
+        torch.cuda.synchronize()
+        print("DEBUG: Synchronized! GPU is responsive.", flush=True)
+        
+        # Checking if we accept return
+        print("DEBUG: Returning from __init__", flush=True)
 
     def _build_model(self):
         ModelClass = self.model_dict[self.args.model]
@@ -342,6 +358,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return total_loss_avg
 
     def train(self, setting):  # type: ignore[override]
+        print(f"DEBUG: Entered Exp_Long_Term_Forecast.train with setting: {setting}", flush=True)
         logger.info(f"Starting training with setting: {setting}")
         # Data loaders are passed in during initialization
         train_loader = self.train_loader

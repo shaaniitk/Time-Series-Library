@@ -36,7 +36,7 @@ lradj: type1  # Added to fix AttributeError
 loss: mixture
 mixture_components: 5
 
-use_gpu: False
+use_gpu: True
 gpu: 0
 use_multi_gpu: False
 devices: '0'

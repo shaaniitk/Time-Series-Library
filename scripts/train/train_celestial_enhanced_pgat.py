@@ -24,7 +24,9 @@ from data_provider.data_factory import data_provider
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
+import logging
 import warnings
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 warnings.filterwarnings('ignore')
 
 
@@ -111,28 +113,35 @@ def main():
     # Initialize experiment
     exp = Exp_Long_Term_Forecast(args)
 
+    print("DEBUG: Experiment initialized. Constructing setting string...", flush=True)
+
     print("🌌 Celestial Enhanced PGAT Training with Standard Exp_Long_Term_Forecast")
     print("=" * 60)
 
     # Construct a base setting string that does *not* include the unique ID placeholder yet
-    base_setting_string = '{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}'.format(
-        getattr(args, 'model', 'unknown_model'),
-        getattr(args, 'model', 'unknown_model'),
-        # Fix: args.data is a dict which causes formatting issues later. Use data_path or dataset.
-        getattr(args, 'data_path', 'data'),
-        getattr(args, 'features', 'S'),
-        getattr(args, 'seq_len', 0),
-        getattr(args, 'label_len', 0),
-        getattr(args, 'pred_len', 0),
-        getattr(args, 'd_model', 0),
-        getattr(args, 'n_heads', 0),
-        getattr(args, 'e_layers', 0),
-        getattr(args, 'd_layers', 0),
-        getattr(args, 'd_ff', 0),
-        getattr(args, 'factor', 0),
-        getattr(args, 'embed', 'FIX'),
-        getattr(args, 'distil', True),
-        getattr(args, 'des', 'Exp')) # A default description for the experiment
+    try:
+        base_setting_string = '{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}'.format(
+            getattr(args, 'model', 'unknown_model'),
+            getattr(args, 'model', 'unknown_model'),
+            # Fix: args.data is a dict which causes formatting issues later. Use data_path or dataset.
+            getattr(args, 'data_path', 'data'),
+            getattr(args, 'features', 'S'),
+            getattr(args, 'seq_len', 0),
+            getattr(args, 'label_len', 0),
+            getattr(args, 'pred_len', 0),
+            getattr(args, 'd_model', 0),
+            getattr(args, 'n_heads', 0),
+            getattr(args, 'e_layers', 0),
+            getattr(args, 'd_layers', 0),
+            getattr(args, 'd_ff', 0),
+            getattr(args, 'factor', 0),
+            getattr(args, 'embed', 'FIX'),
+            getattr(args, 'distil', True),
+            getattr(args, 'des', 'Exp')) # A default description for the experiment
+        print(f"DEBUG: Base setting string constructed: {base_setting_string}", flush=True)
+    except Exception as e:
+        print(f"DEBUG: Error constructing setting string: {e}")
+        base_setting_string = 'fallback_setting'
 
     # Unique run ID for checkpoints
     ii = 0
@@ -140,16 +149,25 @@ def main():
     # The format call here will only operate on the _ii{} part.
     checkpoint_path_base = os.path.join(getattr(args, 'checkpoints', './checkpoints'), base_setting_string)
     checkpoint_full_path_template = checkpoint_path_base + '_ii{}' # Add the unique ID placeholder here
+    
+    print(f"DEBUG: Checking checkpoints at {checkpoint_path_base}...", flush=True)
 
+    loop_count = 0
     while os.path.exists(checkpoint_full_path_template.format(ii)):
         ii += 1
+        loop_count += 1
+        if loop_count % 1000 == 0:
+             print(f"DEBUG: Checked {loop_count} checkpoint paths...", flush=True)
     
+    print(f"DEBUG: Found unique ID: {ii}", flush=True)
+
     # Final setting string for Exp_Long_Term_Forecast
     setting = checkpoint_full_path_template.format(ii) # Apply unique run ID to the final setting string
 
-    print(f"Using setting: {setting}")
+    print(f"Using setting: {setting}", flush=True)
     
     # Call the train method of the experiment
+    print(f"DEBUG: Calling exp.train({setting})...", flush=True)
     exp.train(setting)
     
     # Call the test method of the experiment

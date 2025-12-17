@@ -1,0 +1,59 @@
+# Use ROCm PyTorch base image
+FROM rocm/pytorch:latest
+
+# Set working directory
+WORKDIR /workspace
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    vim \
+    graphviz \
+    libfreetype6-dev \
+    libpng-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file
+COPY requirements.txt /workspace/requirements.txt
+
+# 1. Install PyG dependencies
+# For ROCm, we can often install from source or use specific wheels.
+# Using standard pip install for PyG often works if torch is already installed with ROCm support.
+# We will rely on pip finding the compatible versions.
+# If wheels are needed, we might need: --extra-index-url https://data.pyg.org/whl/torch-2.1.0+rocm5.6.html
+# Let's try standard install first, as newer PyG versions support ROCm better.
+
+# 2. Install PyG dependencies with --no-build-isolation to use system torch (avoids ModuleNotFoundError: torch)
+RUN pip install --no-cache-dir --no-build-isolation \
+    torch-scatter \
+    torch-sparse \
+    torch-cluster \
+    torch-spline-conv \
+    torch-geometric
+
+# 3. Install remaining dependencies
+# - Relax numpy
+# - Remove torch variants (use base image)
+# - Remove PyG variants (already installed)
+RUN sed -i 's/numpy>=2,<2.6/numpy<2/g' requirements.txt && \
+    sed -i '/^torch[>=<]/d' requirements.txt && \
+    sed -i '/^torchvision[>=<]/d' requirements.txt && \
+    sed -i '/^torchaudio[>=<]/d' requirements.txt && \
+    sed -i '/^torch-geometric/d' requirements.txt && \
+    sed -i '/^torch-scatter/d' requirements.txt && \
+    sed -i '/^torch-sparse/d' requirements.txt && \
+    sed -i '/^torch-cluster/d' requirements.txt && \
+    sed -i '/^torch-spline-conv/d' requirements.txt && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application
+COPY . /workspace
+
+# Set Python path
+ENV PYTHONPATH="${PYTHONPATH}:/workspace"
+
+# Default command
+CMD ["/bin/bash"]
