@@ -16,10 +16,21 @@ from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureD
 
 # Fixed DecoderLayer implementation with proper dimension handling
 class DecoderLayer(nn.Module):
-    """Fixed DecoderLayer implementation with proper dimension handling"""
-    def __init__(self, d_model, n_heads, dropout=0.1):
+    """Fixed DecoderLayer with proper initialization and fail-fast logic"""
+    def __init__(self, d_model, n_heads, dropout=0.1, dim_enc=None, dim_dec=None):
         super().__init__()
         self.d_model = d_model
+        
+        # Initialize dimension adapters if input dimensions differ from d_model
+        # Use ModuleDict or helper to keep it clean, but direct Init is safer for now
+        self.enc_adapter = None
+        if dim_enc is not None and dim_enc != d_model:
+            self.enc_adapter = nn.Linear(dim_enc, d_model)
+            
+        self.dec_adapter = None
+        if dim_dec is not None and dim_dec != d_model:
+            self.dec_adapter = nn.Linear(dim_dec, d_model)
+
         self.self_attention = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
         self.cross_attention = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
         self.feed_forward = nn.Sequential(
@@ -32,75 +43,35 @@ class DecoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
         self.norm3 = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
-        
-        # Add dimension adaptation layers
-        self.enc_adapter = None
-        self.dec_adapter = None
-        
-    def _adapt_dimensions(self, dec_input, enc_output):
-        """Adapt encoder and decoder dimensions if needed"""
-        batch_size_dec, seq_len_dec, dim_dec = dec_input.shape
-        batch_size_enc, seq_len_enc, dim_enc = enc_output.shape
-        
-        # Ensure batch sizes match
-        if batch_size_dec != batch_size_enc:
-            raise ValueError(f"Batch size mismatch: dec={batch_size_dec}, enc={batch_size_enc}")
-        
-        # Adapt encoder output dimension if needed
-        if dim_enc != self.d_model:
-            if self.enc_adapter is None:
-                self.enc_adapter = nn.Linear(dim_enc, self.d_model).to(enc_output.device)
+
+    def forward(self, dec_input, enc_output):
+        # Adapt dimensions if adapters exist (initialized in __init__)
+        if self.dec_adapter is not None:
+            dec_input = self.dec_adapter(dec_input)
+            
+        if self.enc_adapter is not None:
             enc_output = self.enc_adapter(enc_output)
         
-        # Adapt decoder input dimension if needed  
-        if dim_dec != self.d_model:
-            if self.dec_adapter is None:
-                self.dec_adapter = nn.Linear(dim_dec, self.d_model).to(dec_input.device)
-            dec_input = self.dec_adapter(dec_input)
-        
-        return dec_input, enc_output
-        
-    def forward(self, dec_input, enc_output):
-        # Adapt dimensions if necessary
-        dec_input_adapted, enc_output_adapted = self._adapt_dimensions(dec_input, enc_output)
-        
         # Self-attention on decoder input
-        try:
-            attn_output, _ = self.self_attention(dec_input_adapted, dec_input_adapted, dec_input_adapted)
-            dec_input_adapted = self.norm1(dec_input_adapted + self.dropout(attn_output))
-        except Exception as e:
-            print(f"Self-attention failed: {e}")
-            print(f"Dec input shape: {dec_input_adapted.shape}")
-            # Skip self-attention if it fails
-            pass
+        # REMOVED try-except: We want to fail fast if dimensions are wrong!
+        attn_output, _ = self.self_attention(dec_input, dec_input, dec_input)
+        dec_input = self.norm1(dec_input + self.dropout(attn_output))
         
         # Cross-attention with encoder output
-        try:
-            attn_output, _ = self.cross_attention(dec_input_adapted, enc_output_adapted, enc_output_adapted)
-            dec_input_adapted = self.norm2(dec_input_adapted + self.dropout(attn_output))
-        except Exception as e:
-            print(f"Cross-attention failed: {e}")
-            print(f"Dec input shape: {dec_input_adapted.shape}")
-            print(f"Enc output shape: {enc_output_adapted.shape}")
-            # Skip cross-attention if it fails - just use decoder input
-            pass
+        attn_output, _ = self.cross_attention(dec_input, enc_output, enc_output)
+        dec_input = self.norm2(dec_input + self.dropout(attn_output))
         
         # Feed forward
-        try:
-            ff_output = self.feed_forward(dec_input_adapted)
-            dec_input_adapted = self.norm3(dec_input_adapted + self.dropout(ff_output))
-        except Exception as e:
-            print(f"Feed forward failed: {e}")
-            print(f"Input shape: {dec_input_adapted.shape}")
-            # Return input if feed forward fails
-            pass
+        ff_output = self.feed_forward(dec_input)
+        dec_input = self.norm3(dec_input + self.dropout(ff_output))
         
-        return dec_input_adapted
+        return dec_input
 
 class DecoderModule(nn.Module):
     def __init__(self, config: CelestialPGATConfig):
         super().__init__()
         self.config = config
+        self.stochastic_mode_enabled = True # Default to enabled, controlled by parent
         
         # FIX ISSUE #3: Enforce single probabilistic head selection - fail loudly on conflicts
         probabilistic_heads_enabled = [
@@ -347,4 +318,14 @@ class DecoderModule(nn.Module):
         else:
             predictions = self.projection(prediction_features)
         
+
         return predictions, aux_loss, mdn_components
+
+    def set_stochastic_mode(self, enabled: bool):
+        """Enable or disable stochastic noise/components (for warmup)."""
+        self.stochastic_mode_enabled = enabled
+        # Future-proofing: Propagate to sub-modules if they implementation stochastic control
+        if self.mdn_decoder is not None and hasattr(self.mdn_decoder, 'set_stochastic_mode'):
+             self.mdn_decoder.set_stochastic_mode(enabled)
+        if self.mixture_decoder is not None and hasattr(self.mixture_decoder, 'set_stochastic_mode'):
+             self.mixture_decoder.set_stochastic_mode(enabled)

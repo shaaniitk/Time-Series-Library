@@ -175,6 +175,15 @@ class Model(nn.Module):
                 "⏳ Stochastic warmup: epoch %d/%d (noise disabled)",
                 epoch, self.stochastic_warmup_epochs
             )
+        
+        # Propagate stochastic mode to sub-modules
+        stochastic_enabled = (epoch >= self.stochastic_warmup_epochs)
+        
+        if self.graph_module is not None and hasattr(self.graph_module, 'set_stochastic_mode'):
+            self.graph_module.set_stochastic_mode(stochastic_enabled)
+            
+        if self.decoder_module is not None and hasattr(self.decoder_module, 'set_stochastic_mode'):
+            self.decoder_module.set_stochastic_mode(stochastic_enabled)
     
     def _setup_efficient_covariate_interaction(self):
         """Setup efficient covariate interaction components."""

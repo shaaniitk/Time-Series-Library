@@ -21,6 +21,8 @@ class GraphModule(nn.Module):
         super().__init__()
         self.config = config
         self.latest_stochastic_loss = 0.0
+        self.stochastic_mode_enabled = True # Default to enabled, controlled by parent
+
 
         if not config.use_celestial_graph:
             return
@@ -238,12 +240,12 @@ class GraphModule(nn.Module):
         # Reshape to apply the learner to each time step
         enc_out_flat = enc_out.reshape(batch_size * seq_len, d_model)
         
-        if self.config.use_stochastic_learner and self.stochastic_learner is not None:
-            # Use enhanced stochastic graph learner
+        if self.config.use_stochastic_learner and self.stochastic_learner is not None and self.stochastic_mode_enabled:
+            # Use enhanced stochastic graph learner (ONLY if enabled)
             adj_flat, kl_loss = self.stochastic_learner(enc_out_flat)
             self.latest_stochastic_loss = kl_loss
         else:
-            # Deterministic graph learning
+            # Deterministic graph learning (Fallback if stochastic is disabled or not configured)
             adj_flat = self.traditional_graph_learner(enc_out_flat)
             self.latest_stochastic_loss = 0.0
         
@@ -474,3 +476,7 @@ class GraphModule(nn.Module):
         
         # Reshape back to the expected [batch, seq_len, d_model]
         return final_features_per_node.view(batch_size, seq_len, self.config.d_model)
+
+    def set_stochastic_mode(self, enabled: bool):
+        """Enable or disable stochastic noise (e.g., for warmup)."""
+        self.stochastic_mode_enabled = enabled

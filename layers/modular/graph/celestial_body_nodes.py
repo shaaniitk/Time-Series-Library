@@ -170,45 +170,48 @@ class CelestialBodyNodes(nn.Module):
     def compute_dynamic_aspects(self, enc_out: torch.Tensor) -> torch.Tensor:
         """
         Compute dynamic aspect strengths for each time step based on encoder output.
-        
-        Args:
-            enc_out: [batch_size, seq_len, d_model] full encoder output
-            
-        Returns:
-            torch.Tensor: [batch_size, seq_len, num_bodies, num_bodies] dynamic adjacency
+        Optimized with vectorization to avoid O(N^2) Python loops.
         """
         batch_size, seq_len, _ = enc_out.shape
         device = enc_out.device
         
-        # Encode market conditions for each time step
+        # Encode market conditions: [batch*seq_len, d_model]
         enc_out_flat = enc_out.reshape(batch_size * seq_len, self.d_model)
-        market_encoded = self.market_encoder(enc_out_flat)  # [batch*seq_len, d_model]
+        market_encoded = self.market_encoder(enc_out_flat)
         
-        # Compute pairwise aspect strengths
+        # Prepare context-aware body embeddings using broadcasting
+        # body_embeddings: [num_bodies, d_model] -> [1, num_bodies, d_model]
+        # market_encoded: [B*S, d_model] -> [B*S, 1, d_model]
+        # Result: [B*S, num_bodies, d_model]
+        contextualized_bodies = self.body_embeddings.unsqueeze(0) + market_encoded.unsqueeze(1)
+        
+        # Generate indices for upper triangle pairs (i < j)
+        rows, cols = torch.triu_indices(self.num_bodies, self.num_bodies, offset=1, device=device)
+        
+        # Gather embeddings for all pairs in parallel
+        # body_i_all: [B*S, num_pairs, d_model]
+        body_i_all = contextualized_bodies[:, rows, :]
+        body_j_all = contextualized_bodies[:, cols, :]
+        
+        # Create pairwise input for the network
+        # [B*S, num_pairs, 2*d_model]
+        aspect_input = torch.cat([body_i_all, body_j_all], dim=-1)
+        
+        # Compute strengths for all pairs in one heavy batch operation
+        # [B*S, num_pairs, 1] -> squeeze -> [B*S, num_pairs]
+        strengths = self.aspect_strength_net(aspect_input).squeeze(-1)
+        
+        # Map back to adjacency matrix structure
         dynamic_adj_flat = torch.zeros(batch_size * seq_len, self.num_bodies, self.num_bodies, device=device)
         
-        for i in range(self.num_bodies):
-            for j in range(i + 1, self.num_bodies):
-                # Get body embeddings
-                body_i = self.body_embeddings[i]  # [d_model]
-                body_j = self.body_embeddings[j]  # [d_model]
-                
-                # Combine with market context for each time step
-                combined_i = body_i + market_encoded  # [batch*seq_len, d_model]
-                combined_j = body_j + market_encoded  # [batch*seq_len, d_model]
-                
-                # Compute aspect strength
-                aspect_input = torch.cat([combined_i, combined_j], dim=-1)  # [batch*seq_len, 2*d_model]
-                strength = self.aspect_strength_net(aspect_input).squeeze(-1)  # [batch*seq_len]
-                
-                # Apply to adjacency matrix
-                dynamic_adj_flat[:, i, j] = strength
-                dynamic_adj_flat[:, j, i] = strength  # Symmetric
+        # Fill symmetric pairs
+        dynamic_adj_flat[:, rows, cols] = strengths
+        dynamic_adj_flat[:, cols, rows] = strengths
         
-        # Add self-connections
+        # Fill diagonal with 1.0 (self-influence)
         dynamic_adj_flat.diagonal(dim1=-2, dim2=-1).fill_(1.0)
         
-        # Reshape to [batch, seq_len, num_bodies, num_bodies]
+        # Reshape to 4D tensor: [batch, seq_len, num_bodies, num_bodies]
         return dynamic_adj_flat.view(batch_size, seq_len, self.num_bodies, self.num_bodies)
     
     def get_celestial_features(self, enc_out: torch.Tensor) -> torch.Tensor:

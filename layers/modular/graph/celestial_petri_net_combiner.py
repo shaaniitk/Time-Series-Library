@@ -285,23 +285,50 @@ class CelestialPetriNetCombiner(nn.Module):
         # Re-broadcast context (re-computed during backward if checkpointed)
         batch_size, seq_len, d_model = enc_out.shape
         
-        # Broadcast context to all edges
-        context_broadcast = enc_out.unsqueeze(2).unsqueeze(3).expand(
-            -1, -1, num_nodes, num_nodes, -1
-        )
+        # MEMORY OPTIMIZATION: Avoid 5D tensor expansion of d_model (512)
+        # Instead of cat(ctx, edge) -> Linear -> Output
+        # We process Linear(ctx) and Linear(edge) separately and add them.
+        # This avoids materializing [Batch, Seq, N, N, D_model] which is huge.
         
-        # Fuse context with edge features
-        context_edge_combined = torch.cat([
-            context_broadcast,
-            edge_features
-        ], dim=-1).reshape(-1, self.d_model + self.edge_feature_dim)
+        # 1. Project Context (once per timestep, not per edge)
+        # The first layer of context_edge_fusion is Linear(d_model + edge_dim, edge_dim * 2)
+        # We split this into Linear(d_model, edge_dim*2) and Linear(edge_dim, edge_dim*2)
         
-        enriched_edge_features = self.context_edge_fusion(context_edge_combined)
-        enriched_edge_features = enriched_edge_features.reshape(
-            edge_features.shape[0], edge_features.shape[1], num_nodes, num_nodes, self.edge_feature_dim
-        )
+        # Access the weights of the first layer
+        full_linear_layer = self.context_edge_fusion[0]
+        full_weights = full_linear_layer.weight
+        full_bias = full_linear_layer.bias
         
-        # Initialize node states
+        # Split weights
+        target_dim = self.edge_feature_dim * 2
+        
+        # W_context: [target_dim, d_model]
+        w_context = full_weights[:, :d_model]
+        # W_edge: [target_dim, edge_feature_dim]
+        w_edge = full_weights[:, d_model:]
+        
+        # 2. Compute Context Projection
+        # [B, S, D] @ [D, 2E] -> [B, S, 2E]
+        ctx_proj = F.linear(enc_out, w_context) 
+        # Reshape for broadcasting: [B, S, 1, 1, 2E]
+        ctx_proj = ctx_proj.unsqueeze(2).unsqueeze(3)
+        
+        # 3. Compute Edge Projection
+        # [B, S, N, N, E] @ [E, 2E] -> [B, S, N, N, 2E]
+        edge_proj = F.linear(edge_features, w_edge)
+        
+        # 4. Fuse (Add) - extremely memory efficient broadcasting
+        # Bias is added once
+        fusion_hidden = ctx_proj + edge_proj + full_bias
+        
+        # 5. Apply Activation and Second Layer
+        # GELU
+        fusion_hidden = self.context_edge_fusion[1](fusion_hidden)
+        # Linear(2E, E)
+        enriched_edge_features = self.context_edge_fusion[2](fusion_hidden)
+        
+        # Initialize node states (still need expansion here but node_dim is same as d_model)
+        # Node states are [B, S, N, D], much smaller than Edges [B, S, N, N, D]
         node_states = enc_out.unsqueeze(2).expand(-1, -1, num_nodes, -1).contiguous()
         
         mp_metadata = []

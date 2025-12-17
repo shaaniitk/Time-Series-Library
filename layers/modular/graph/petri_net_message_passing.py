@@ -239,15 +239,19 @@ class PetriNetMessagePassing(nn.Module):
             updated_state = self.node_norm(updated_state)
             
             new_node_states.append(updated_state)
-            message_strengths_all.append(transition_strengths.mean().item())
+            # OPTIMIZATION: Keep as tensor on GPU to avoid sync - do not call .item() here!
+            message_strengths_all.append(transition_strengths.mean())
         
         # Stack all updated node states
         new_node_states = torch.stack(new_node_states, dim=2)
         # Shape: [batch, seq_len, num_nodes, node_dim]
         
         # Collect metadata
+        # OPTIMIZATION: Compute mean on GPU and sync once (1 sync instead of 13)
+        avg_strength = torch.stack(message_strengths_all).mean()
+        
         metadata = {
-            'avg_transition_strength': sum(message_strengths_all) / len(message_strengths_all),
+            'avg_transition_strength': avg_strength.item(),
             'num_nodes': num_nodes,
             'message_passing_type': 'local_aggregation',
             'edge_features_preserved': True,
