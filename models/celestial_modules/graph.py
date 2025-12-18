@@ -14,7 +14,13 @@ from layers.modular.graph.celestial_body_nodes import CelestialBodyNodes
 from layers.modular.graph.celestial_petri_net_combiner import CelestialPetriNetCombiner
 from layers.modular.graph.celestial_graph_combiner import CelestialGraphCombiner
 from layers.modular.graph.gated_graph_combiner import GatedGraphCombiner
+from layers.modular.graph.gated_graph_combiner import GatedGraphCombiner
 from layers.modular.graph.stochastic_learner import StochasticGraphLearner
+
+try:
+    from .diagnostics import ModelDiagnostics
+except ImportError:
+    ModelDiagnostics = None
 
 class GraphModule(nn.Module):
     def __init__(self, config: CelestialPGATConfig):
@@ -22,6 +28,15 @@ class GraphModule(nn.Module):
         self.config = config
         self.latest_stochastic_loss = 0.0
         self.stochastic_mode_enabled = True # Default to enabled, controlled by parent
+        
+        # Initialize diagnostics
+        self.logger = torch.backends.cudnn.__module__ # Dummy logger fallback
+        if ModelDiagnostics:
+            import logging
+            self.logger = logging.getLogger(__name__)
+            self.diagnostics = ModelDiagnostics(config, self.logger)
+        else:
+            self.diagnostics = None
 
 
         if not config.use_celestial_graph:
@@ -253,6 +268,10 @@ class GraphModule(nn.Module):
                 adj_flat, kl_loss = self.stochastic_learner(enc_out_flat)
             
             self.latest_stochastic_loss = kl_loss
+            
+            # Diagnostic: Check Stochastic Learner Output
+            if self.diagnostics:
+                self.diagnostics.check_tensor_health("graph_stochastic_adj_flat", adj_flat)
         else:
             # Deterministic graph learning (Fallback if stochastic is disabled or not configured)
             # Traditional learner works on global context -> adjacency
@@ -322,6 +341,12 @@ class GraphModule(nn.Module):
         # Use normalized enc_out for fusion to maintain balanced gradients
         celestial_influence = fusion_gate * fused_output
         enhanced_enc_out = enc_out_normalized + celestial_influence
+        
+        # Diagnostic: Check Fusion Health
+        if self.diagnostics:
+            self.diagnostics.check_tensor_health("graph_celestial_influence", celestial_influence)
+            self.diagnostics.check_tensor_health("graph_fusion_gate", fusion_gate)
+        
         
         if self.config.collect_diagnostics:
             metadata['celestial_attention_weights'] = (

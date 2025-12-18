@@ -13,6 +13,10 @@ from layers.modular.decoder.target_autocorrelation_module import DualStreamDecod
 from layers.modular.graph.celestial_to_target_attention import CelestialToTargetAttention
 from layers.modular.decoder.mdn_decoder import MDNDecoder
 from layers.modular.decoder.sequential_mixture_decoder import SequentialMixtureDensityDecoder
+try:
+    from .diagnostics import ModelDiagnostics
+except ImportError:
+    ModelDiagnostics = None
 
 # Fixed DecoderLayer implementation with proper dimension handling
 class DecoderLayer(nn.Module):
@@ -72,6 +76,15 @@ class DecoderModule(nn.Module):
         super().__init__()
         self.config = config
         self.stochastic_mode_enabled = True # Default to enabled, controlled by parent
+        
+        # Initialize diagnostics
+        self.logger = torch.backends.cudnn.__module__ # Dummy logger fallback
+        if ModelDiagnostics:
+            import logging
+            self.logger = logging.getLogger(__name__)
+            self.diagnostics = ModelDiagnostics(config, self.logger)
+        else:
+            self.diagnostics = None
         
         # FIX ISSUE #3: Enforce single probabilistic head selection - fail loudly on conflicts
         probabilistic_heads_enabled = [
@@ -164,6 +177,10 @@ class DecoderModule(nn.Module):
                 continue
 
         # 2. Target Autocorrelation
+        # Diagnostic: Check Decoder Layer Stack Output
+        if self.diagnostics:
+            self.diagnostics.check_tensor_health("decoder_stack_output", decoder_features)
+
         if self.config.use_target_autocorrelation and self.dual_stream_decoder is not None:
             decoder_features = self.dual_stream_decoder(decoder_features, graph_features)
             
@@ -318,6 +335,10 @@ class DecoderModule(nn.Module):
         else:
             predictions = self.projection(prediction_features)
         
+
+        # Diagnostic: Check Final Decoder Output
+        if self.diagnostics:
+            self.diagnostics.check_tensor_health("decoder_final_predictions", predictions)
 
         return predictions, aux_loss, mdn_components
 

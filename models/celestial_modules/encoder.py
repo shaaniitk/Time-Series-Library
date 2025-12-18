@@ -13,11 +13,25 @@ from layers.modular.embedding.hierarchical_mapper import HierarchicalTemporalSpa
 from layers.modular.encoder.spatiotemporal_encoding import JointSpatioTemporalEncoding, DynamicJointSpatioTemporalEncoding
 from layers.modular.graph.adjacency_aware_attention import EdgeConditionedGraphAttention, AdjacencyAwareGraphAttention
 
+try:
+    from .diagnostics import ModelDiagnostics
+except ImportError:
+    ModelDiagnostics = None
+
 class EncoderModule(nn.Module):
     def __init__(self, config: CelestialPGATConfig):
         super().__init__()
         self.config = config
 
+        # Initialize diagnostics
+        self.logger = torch.backends.cudnn.__module__ # Dummy logger fallback
+        if ModelDiagnostics:
+            import logging
+            self.logger = logging.getLogger(__name__)
+            self.diagnostics = ModelDiagnostics(config, self.logger)
+        else:
+            self.diagnostics = None
+            
         # FIX ISSUE #2: Initialize blend gate in __init__ for proper parameter registration
         if config.use_petri_net_combiner and config.bypass_spatiotemporal_with_petri:
             # Blend gate for soft blending between Petri input and spatiotemporal features
@@ -87,6 +101,10 @@ class EncoderModule(nn.Module):
             return enc_out
 
     def forward(self, enc_out, combined_adj, rich_edge_features):
+        # Diagnostic: Check Encoder Input
+        if self.diagnostics:
+            self.diagnostics.check_tensor_health("encoder_input_enc_out", enc_out)
+
         # 1. Hierarchical Mapping
         if self.config.use_hierarchical_mapping and hasattr(self, 'hierarchical_mapper'):
             try:
@@ -140,6 +158,10 @@ class EncoderModule(nn.Module):
         else:
             # No Petri or bypass disabled: use spatiotemporal output directly
             encoded_features = spatiotemporal_features
+
+        # Diagnostic: Check Spatiotemporal Features
+        if self.diagnostics:
+            self.diagnostics.check_tensor_health("encoder_spatiotemporal_features", spatiotemporal_features)
         
         # 3. Graph Attention Processing
         graph_features = encoded_features

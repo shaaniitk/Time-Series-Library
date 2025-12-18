@@ -23,6 +23,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, Tuple, Optional
 import logging
+import sys
+import os
+
+# Try to import ModelDiagnostics cleanly
+try:
+    from models.celestial_modules.diagnostics import ModelDiagnostics
+except ImportError:
+    try:
+         # Fallback for relative path if models is top level
+        from ...models.celestial_modules.diagnostics import ModelDiagnostics
+    except ImportError:
+        ModelDiagnostics = None
 
 
 class CelestialToTargetAttention(nn.Module):
@@ -70,6 +82,22 @@ class CelestialToTargetAttention(nn.Module):
         self.edge_bias_scale = edge_bias_scale
         
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+        # Initialize diagnostics
+        if ModelDiagnostics and enable_diagnostics:
+            # Create a minimal config object if needed, or pass None if diagnostics handles it.
+            # ModelDiagnostics requires a config with 'collect_diagnostics'.
+            # We can mock it or assume it's set.
+            from types import SimpleNamespace
+            diag_config = SimpleNamespace(
+                collect_diagnostics=True,
+                enable_fusion_diagnostics=False, # Default to False for C2T internal diagnostics
+                fusion_diag_batches=10
+            )
+            self.diagnostics = ModelDiagnostics(diag_config, self.logger)
+        else:
+            self.diagnostics = None
+
         
         # Use provided celestial_dim or default to d_model
         self.input_celestial_dim = celestial_dim if celestial_dim is not None else d_model
@@ -164,6 +192,9 @@ class CelestialToTargetAttention(nn.Module):
                 - Enhanced target features [batch, pred_len, num_targets, d_model]
                 - Optional diagnostics dict with attention weights and gate stats
         """
+        if self.diagnostics:
+             self.diagnostics.check_tensor_health("c2t_input_features", target_features)
+
         batch_size, pred_len, num_targets_in, d_model = target_features.shape
         batch_size_cel, seq_len, num_celestial_in, d_model_cel = celestial_features.shape
         
@@ -325,6 +356,9 @@ class CelestialToTargetAttention(nn.Module):
             self.latest_attention_weights = attention_weights_dict
             self.latest_gate_values = gate_values_dict
         
+        if self.diagnostics:
+             self.diagnostics.check_tensor_health("c2t_enhanced_targets", enhanced_target_features)
+
         # Prepare diagnostics output
         diagnostics = None
         if return_diagnostics and self.enable_diagnostics:
