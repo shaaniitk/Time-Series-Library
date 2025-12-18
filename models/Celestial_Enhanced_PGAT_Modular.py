@@ -28,7 +28,8 @@ except ImportError:
 
 try:
     from .celestial_modules.diagnostics import ModelDiagnostics
-except ImportError:
+except ImportError as e:
+    print(f"⚠️ WARNING: ModelDiagnostics import failed: {e}")
     ModelDiagnostics = None
 
 class ModularModelError(Exception):
@@ -315,6 +316,11 @@ class Model(nn.Module):
             x_enc, x_mark_enc, x_dec, x_mark_dec
         )
         
+        # Deep Scan: Check Embeddings
+        if self.diagnostics is not None:
+            self.diagnostics.check_tensor_health("enc_out", enc_out)
+            self.diagnostics.check_tensor_health("dec_out", dec_out)
+        
         # --- Stage 2: Enhanced Context Fusion ---
         context_diagnostics = {}
         
@@ -492,8 +498,13 @@ class Model(nn.Module):
         # Returning tuple of length 3 or 2 depending on MDN.
         
         if mdn_components is not None:
+            # Deep Scan: Check Predictions
+            if self.diagnostics is not None:
+                 self.diagnostics.check_tensor_health("predictions", predictions)
             return (predictions, aux_loss, mdn_components)
         else:
+            if self.diagnostics is not None:
+                 self.diagnostics.check_tensor_health("predictions", predictions)
             return (predictions, aux_loss)
 
     def _efficient_graph_processing(self, encoded_features, combined_adj):
@@ -600,6 +611,12 @@ class Model(nn.Module):
         """Increment the batch counter for fusion diagnostics."""
         if self.diagnostics is not None:
             self.diagnostics.increment_fusion_diagnostics_batch()
+            
+    def log_gradients(self):
+        """Log gradient statistics (Deep Scan)."""
+        if self.diagnostics is not None:
+            return self.diagnostics.log_gradient_stats(self)
+        return {}
     
     def print_celestial_target_diagnostics(self):
         """Print celestial-to-target attention diagnostics."""

@@ -82,6 +82,75 @@ class ModelDiagnostics:
         from .utils import ModelUtils
         return ModelUtils.move_to_cpu(fusion_metadata)
     
+    def log_gradient_stats(self, model: torch.nn.Module) -> Dict[str, float]:
+        """
+        Log gradient statistics for the entire model.
+        Useful for detecting vanishing/exploding gradients.
+        
+        Returns:
+            Dict with 'total_grad_norm', 'max_grad_norm', and per-component norms.
+        """
+        if not self.config.collect_diagnostics:
+             return {}
+        
+        # DEBUG: Verify we are here
+        # print("DEBUG: Inside log_gradient_stats", flush=True)
+
+        total_norm = 0.0
+        max_norm = 0.0
+        stats = {}
+        
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                param_norm = param.grad.data.norm(2).item()
+                total_norm += param_norm ** 2
+                max_norm = max(max_norm, param_norm)
+                
+                # Log critical components specifically
+                if 'graph_module' in name or 'decoder_module' in name:
+                    # Keep hierarchy simple
+                    short_name = name.split('.')[0] + "_" + name.split('.')[-1]
+                    stats[f"grad_norm/{short_name}"] = param_norm
+        
+        total_norm = total_norm ** 0.5
+        stats['grad_norm/total'] = total_norm
+        stats['grad_norm/max'] = max_norm
+        
+        # Log to logger info if values are suspicious
+        if total_norm < 1e-6:
+             self.logger.warning(f"⚠️ Vanishing Gradient detected! Total Norm: {total_norm:.2e}")
+        elif total_norm > 10.0:
+             self.logger.warning(f"⚠️ Exploding Gradient detected! Total Norm: {total_norm:.2f}")
+             
+        return stats
+
+    def check_tensor_health(self, name: str, tensor: torch.Tensor) -> Dict[str, float]:
+        """
+        Check tensor for anomalies (NaN, Inf) and health stats (Mean, Std).
+        
+        Args:
+            name: Label for the tensor
+            tensor: The tensor to check
+        """
+        if not self.config.collect_diagnostics:
+            return {}
+
+        if tensor is None:
+            return {}
+            
+        # Anomaly Detection
+        if torch.isnan(tensor).any():
+            self.logger.error(f"❌ NaN detected in {name}!")
+        if torch.isinf(tensor).any():
+            self.logger.error(f"❌ Inf detected in {name}!")
+            
+        stats = {
+            f"{name}/mean": tensor.mean().item(),
+            f"{name}/std": tensor.std().item(),
+            f"{name}/scale": tensor.abs().mean().item()
+        }
+        return stats
+        
     def prepare_final_metadata(self, wave_metadata: Dict[str, Any], 
                               celestial_metadata: Dict[str, Any],
                               fusion_metadata: Dict[str, Any],

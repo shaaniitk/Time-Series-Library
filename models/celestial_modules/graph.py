@@ -96,7 +96,7 @@ class GraphModule(nn.Module):
         adj_output_dim = config.num_graph_nodes * config.num_graph_nodes
         self.traditional_graph_learner = nn.Sequential(
             nn.Linear(config.d_model, config.d_model), nn.GELU(),
-            nn.Linear(config.d_model, adj_output_dim), nn.Tanh()
+            nn.Linear(config.d_model, adj_output_dim), nn.Sigmoid()
         )
         
         # Enhanced Stochastic Graph Learner
@@ -233,7 +233,7 @@ class GraphModule(nn.Module):
         identity = torch.eye(num_nodes, device=device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
         return identity.expand(batch_size, seq_len, num_nodes, num_nodes)
 
-    def _learn_data_driven_graph(self, enc_out):
+    def _learn_data_driven_graph(self, enc_out, celestial_features=None):
         """Learn a dynamic data-driven graph from encoded features for each time step."""
         batch_size, seq_len, d_model = enc_out.shape
         
@@ -242,10 +242,20 @@ class GraphModule(nn.Module):
         
         if self.config.use_stochastic_learner and self.stochastic_learner is not None and self.stochastic_mode_enabled:
             # Use enhanced stochastic graph learner (ONLY if enabled)
-            adj_flat, kl_loss = self.stochastic_learner(enc_out_flat)
+            # PASSING NODE FEATURES IS CRITICAL for structure learning
+            if celestial_features is not None:
+                # Shape: [batch, seq_len, num_nodes, d_model] -> [batch * seq_len, num_nodes, d_model]
+                celestial_features_flat = celestial_features.reshape(batch_size * seq_len, -1, d_model)
+                adj_flat, kl_loss = self.stochastic_learner(celestial_features_flat)
+            else:
+                # Fallback to enc_out (will produce uniform adjacency if learner handles 2D input poorly)
+                # But better to just run the stochastic learner on global context if explicit nodes aren't available
+                adj_flat, kl_loss = self.stochastic_learner(enc_out_flat)
+            
             self.latest_stochastic_loss = kl_loss
         else:
             # Deterministic graph learning (Fallback if stochastic is disabled or not configured)
+            # Traditional learner works on global context -> adjacency
             adj_flat = self.traditional_graph_learner(enc_out_flat)
             self.latest_stochastic_loss = 0.0
         
@@ -338,7 +348,7 @@ class GraphModule(nn.Module):
         enhanced_enc_out = celestial_results['enhanced_enc_out']
 
         # 2. Learn data-driven graph
-        learned_adj = self._learn_data_driven_graph(enc_out)
+        learned_adj = self._learn_data_driven_graph(enc_out, celestial_features)
 
         # 2.5. Validate adjacency dimensions for safety and debugging
         self._validate_adjacency_dimensions(astronomical_adj, learned_adj, dynamic_adj, enc_out)

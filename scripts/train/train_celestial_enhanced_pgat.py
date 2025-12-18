@@ -39,6 +39,8 @@ def main():
     parser = argparse.ArgumentParser(description='Train Celestial Enhanced PGAT')
     parser.add_argument('--config', type=str, default='configs/celestial_enhanced_pgat.yaml',
                        help='Path to configuration file')
+    parser.add_argument('--collect_diagnostics', action='store_true',
+                       help='Enable deep diagnostic logging (gradients, activations, anomalies)')
     
     args = parser.parse_args()
     

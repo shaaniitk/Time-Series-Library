@@ -30,9 +30,9 @@ dropout: 0.1
 
 learning_rate: 0.0001
 factor: 0.3
-patience: 2
+patience: 100 # Increased to disable early stopping as requested
 train_epochs: 10
-lradj: type1  # Added to fix AttributeError
+lradj: type4  # Changed to "type4" (decay every 3 epochs) to fix stagnation
 loss: mixture
 mixture_components: 5
 

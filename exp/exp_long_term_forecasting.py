@@ -633,9 +633,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     scaler_amp.scale(loss_train).backward()
                     
                     # Gradient Clipping with AMP
-                    if hasattr(self.args, 'clip_grad_norm') and self.args.clip_grad_norm > 0:
+                    clip_val = getattr(self.args, 'gradient_clip_val', 0)
+                    if clip_val > 0:
                         scaler_amp.unscale_(model_optim)
-                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip_grad_norm)
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip_val)
                         
                     scaler_amp.step(model_optim)
                     scaler_amp.update()
@@ -643,9 +644,21 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     loss_train.backward()
                     
                     # Gradient Clipping
-                    if hasattr(self.args, 'clip_grad_norm') and self.args.clip_grad_norm > 0:
-                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.clip_grad_norm)
+                    clip_val = getattr(self.args, 'gradient_clip_val', 0)
+                    if clip_val > 0:
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip_val)
                         
+                    # Deep Scan: Log Gradients
+                    if getattr(self.args, 'collect_diagnostics', False) and (i + 1) % 100 == 0:
+                         grad_stats = {}
+                         if hasattr(self.model, 'log_gradients'):
+                             grad_stats = self.model.log_gradients()
+                         elif hasattr(self.model, 'module') and hasattr(self.model.module, 'log_gradients'):
+                             grad_stats = self.model.module.log_gradients()
+                         
+                         if grad_stats:
+                             logger.info(f"Step {i+1} Gradients: Total={grad_stats.get('grad_norm/total', 0):.4f}, Max={grad_stats.get('grad_norm/max', 0):.4f}")
+
                     model_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
