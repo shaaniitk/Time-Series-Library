@@ -588,6 +588,8 @@ class Model(nn.Module):
         if (self.graph_module is not None and 
             hasattr(self.graph_module, 'latest_stochastic_loss')):
             loss += self.graph_module.latest_stochastic_loss
+        if isinstance(loss, torch.Tensor):
+            return loss
         return torch.tensor(loss, device=next(self.parameters()).device)
     
     def get_point_prediction(self, forward_output):

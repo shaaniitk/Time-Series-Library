@@ -246,7 +246,7 @@ class DecoderModule(nn.Module):
                 
                 # FIX ISSUE #6: Add gate entropy regularization loss
                 if isinstance(gate_entropy_loss, torch.Tensor):
-                    aux_loss += gate_entropy_loss.item()
+                    aux_loss += gate_entropy_loss  # Keep as tensor for backprop
                 elif isinstance(gate_entropy_loss, (int, float)):
                     aux_loss += gate_entropy_loss
                 
@@ -269,7 +269,7 @@ class DecoderModule(nn.Module):
                             uniform_prior = torch.ones_like(attn_mean) / attn_mean.size(-1)
                             attn_clamped = attn_mean.clamp_min(1e-8)
                             kl = (attn_clamped * (attn_clamped.log() - (uniform_prior + 1e-8).log())).sum(dim=-1)
-                            aux_loss += float(self.config.c2t_aux_rel_loss_weight) * float(kl.mean().item())
+                            aux_loss += self.config.c2t_aux_rel_loss_weight * kl.mean()
                     except Exception:
                         pass  # Ignore auxiliary loss computation errors
                 
