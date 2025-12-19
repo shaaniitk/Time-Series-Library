@@ -15,7 +15,7 @@ label_len: 48
 pred_len: 20
 validation_length: 1000
 test_length: 1000
-batch_size: 4
+batch_size: 8
 num_workers: 0
 
 enc_in: 118
@@ -25,13 +25,13 @@ d_model: 520
 n_heads: 8
 e_layers: 3
 d_layers: 2
-d_ff: 1024
+d_ff: 2080
 dropout: 0.1
 
 learning_rate: 0.0001
 factor: 0.3
 patience: 100 # Increased to disable early stopping as requested
-train_epochs: 10
+train_epochs: 30
 lradj: type4  # Changed to "type4" (decay every 3 epochs) to fix stagnation
 loss: mixture
 mixture_components: 5
