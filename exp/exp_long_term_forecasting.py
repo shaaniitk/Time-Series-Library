@@ -663,6 +663,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss_avg = np.average(train_loss_epoch_list)
+            
+            # Clear cache to prevent OOM during validation (critical for deep scan)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
             vali_loss = self.vali(vali_loader, criterion)
             test_loss = self.vali(test_loader, criterion) # Using vali for test as placeholder
 

@@ -2,6 +2,8 @@
 
 import logging
 import torch
+import os
+import time
 from typing import Any, Dict, Optional
 from utils.fusion_diagnostics import FusionDiagnostics
 
@@ -12,8 +14,21 @@ class ModelDiagnostics:
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         
+        # Setup diagnostics directory
+        self.diagnostics_dir = "diagnostics"
+        if hasattr(config, "diagnostics_dir"):
+            self.diagnostics_dir = config.diagnostics_dir
+        
+        if config.collect_diagnostics:
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            self.run_dir = os.path.join(self.diagnostics_dir, f"run_{timestamp}")
+            os.makedirs(self.run_dir, exist_ok=True)
+            self.logger.info(f"📁 Diagnostics will be streamed to: {self.run_dir}")
+        else:
+            self.run_dir = None
+
         # Initialize fusion diagnostics
-        if config.enable_fusion_diagnostics:
+        if getattr(config, 'enable_fusion_diagnostics', False):
             self.fusion_diagnostics = FusionDiagnostics(
                 enabled=True,
                 log_first_n_batches=config.fusion_diag_batches
@@ -149,7 +164,43 @@ class ModelDiagnostics:
             f"{name}/std": tensor.std().item(),
             f"{name}/scale": tensor.abs().mean().item()
         }
+        stats = {
+            f"{name}/mean": tensor.mean().item(),
+            f"{name}/std": tensor.std().item(),
+            f"{name}/scale": tensor.abs().mean().item()
+        }
         return stats
+
+    def save_tensor_snapshot(self, step: int, name: str, tensor: torch.Tensor, subsample_rate: int = 100):
+        """
+        Save a tensor snapshot to disk.
+        
+        Args:
+           step: Current training step (or batch index)
+           name: Name of the tensor (e.g. 'c2t_attention_weights')
+           tensor: The tensor to save
+           subsample_rate: Only save every N steps to avoid disk spam
+        """
+        if not self.config.collect_diagnostics or self.run_dir is None:
+            return
+
+        if step % subsample_rate != 0:
+            return
+
+        try:
+            filename = f"{name}_step_{step}.pt"
+            filepath = os.path.join(self.run_dir, filename)
+            
+            # Detach and move to CPU before saving
+            data_to_save = tensor.detach().cpu()
+            torch.save(data_to_save, filepath)
+            
+            # Identify specific useful snapshots log
+            if step % (subsample_rate * 10) == 0:
+                 self.logger.info(f"💾 Snapshot saved: {filepath}")
+                 
+        except Exception as e:
+            self.logger.warning(f"Failed to save diagnostic snapshot {name}: {e}")
         
     def prepare_final_metadata(self, wave_metadata: Dict[str, Any], 
                               celestial_metadata: Dict[str, Any],

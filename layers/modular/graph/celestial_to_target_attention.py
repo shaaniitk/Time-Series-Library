@@ -167,8 +167,9 @@ class CelestialToTargetAttention(nn.Module):
         ])
         
         # Diagnostic storage
-        self.latest_attention_weights: Optional[Dict[str, torch.Tensor]] = None
-        self.latest_gate_values: Optional[Dict[str, torch.Tensor]] = None
+        # Optimized: No longer storing full history in RAM.
+        # Use ModelDiagnostics streaming to save to disk.
+        self.step_counter = 0
         
     def forward(
         self,
@@ -327,8 +328,13 @@ class CelestialToTargetAttention(nn.Module):
                 celestial_influence_gated = fusion_gate * celestial_influence
                 
                 # Store gate values for diagnostics
-                if self.enable_diagnostics:
-                    gate_values_dict[f'target_{target_idx}_gate'] = fusion_gate.detach()
+                if self.diagnostics:
+                     self.diagnostics.save_tensor_snapshot(
+                         step=self.step_counter,
+                         name=f"c2t_gate_target_{target_idx}",
+                         tensor=fusion_gate,
+                         subsample_rate=10
+                     )
             else:
                 celestial_influence_gated = celestial_influence
             
@@ -344,17 +350,22 @@ class CelestialToTargetAttention(nn.Module):
             enhanced_targets.append(enhanced_target)
             
             # Store attention weights for diagnostics
-            if self.enable_diagnostics:
-                attention_weights_dict[f'target_{target_idx}_attn'] = attn_weights.detach()
+            if self.diagnostics:
+                 self.diagnostics.save_tensor_snapshot(
+                     step=self.step_counter,
+                     name=f"c2t_attn_target_{target_idx}",
+                     tensor=attn_weights,
+                     subsample_rate=10
+                 )
         
         # Stack enhanced targets
         enhanced_target_features = torch.stack(enhanced_targets, dim=2)
         # Shape: [batch, pred_len, num_targets, d_model]
         
-        # Store latest diagnostics
-        if self.enable_diagnostics:
-            self.latest_attention_weights = attention_weights_dict
-            self.latest_gate_values = gate_values_dict
+        
+        # Increment internal step counter
+        if self.training:
+            self.step_counter += 1
         
         if self.diagnostics:
              self.diagnostics.check_tensor_health("c2t_enhanced_targets", enhanced_target_features)
@@ -420,12 +431,12 @@ class CelestialToTargetAttention(nn.Module):
         return entropy
     
     def get_attention_diagnostics(self) -> Optional[Dict[str, torch.Tensor]]:
-        """Get latest attention weights (for external analysis)"""
-        return self.latest_attention_weights
+        """Get latest attention weights (deprecated in favor of disk streaming)"""
+        return None
     
     def get_gate_diagnostics(self) -> Optional[Dict[str, torch.Tensor]]:
-        """Get latest gate values (for external analysis)"""
-        return self.latest_gate_values
+        """Get latest gate values (deprecated in favor of disk streaming)"""
+        return None
     
     def print_diagnostics_summary(self):
         """Print human-readable diagnostics summary"""
