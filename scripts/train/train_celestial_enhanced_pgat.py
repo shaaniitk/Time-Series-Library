@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/kalki/Documents/workspace/Time-Series-Library/tsl-env/bin/python3
 """
 Training Script for Celestial Enhanced PGAT
 Revolutionary Astrological AI for Financial Time Series Forecasting
@@ -60,6 +60,11 @@ def main():
              setattr(args, key, value) 
         else:
              setattr(args, key, value)
+    
+    print(f"DEBUG: Loaded config from {args.config}")
+    print(f"DEBUG: YAML e_layers: {config_dict.get('e_layers', 'NOT FOUND')}")
+    print(f"DEBUG: args.e_layers: {getattr(args, 'e_layers', 'NOT SET')}")
+
 
     # HACK: Force CPU if CUDA is not available or compiled with torch
     if not torch.cuda.is_available(): 
@@ -122,12 +127,10 @@ def main():
 
     # Construct a base setting string that does *not* include the unique ID placeholder yet
     try:
-        base_setting_string = '{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}'.format(
+        base_setting_string = '{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}'.format(
             getattr(args, 'model', 'unknown_model'),
-            getattr(args, 'model', 'unknown_model'),
-            # Fix: args.data is a dict which causes formatting issues later. Use data_path or dataset.
             getattr(args, 'data_path', 'data'),
-            getattr(args, 'features', 'S'),
+            getattr(args, 'features', 'M'),
             getattr(args, 'seq_len', 0),
             getattr(args, 'label_len', 0),
             getattr(args, 'pred_len', 0),
@@ -137,9 +140,9 @@ def main():
             getattr(args, 'd_layers', 0),
             getattr(args, 'd_ff', 0),
             getattr(args, 'factor', 0),
-            getattr(args, 'embed', 'FIX'),
+            getattr(args, 'embed', 'timeF'),
             getattr(args, 'distil', True),
-            getattr(args, 'des', 'Exp')) # A default description for the experiment
+            getattr(args, 'des', 'Exp'))
         print(f"DEBUG: Base setting string constructed: {base_setting_string}", flush=True)
     except Exception as e:
         print(f"DEBUG: Error constructing setting string: {e}")

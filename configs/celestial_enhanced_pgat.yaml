@@ -10,31 +10,32 @@ data:
   freq: d
   scaler_type: robust
 
-seq_len: 750
+seq_len: 336
 label_len: 48
-pred_len: 20
+pred_len: 24
 validation_length: 1000
 test_length: 1000
-batch_size: 8
+batch_size: 16
 num_workers: 0
 
 enc_in: 118
 dec_in: 118
 c_out: 4
-d_model: 520
-n_heads: 8
-e_layers: 3
+d_model: 156
+n_heads: 4
+e_layers: 4
 d_layers: 2
-d_ff: 2080
-dropout: 0.1
+d_ff: 624
+dropout: 0.3
 
-learning_rate: 0.0001
-factor: 0.3
-patience: 100 # Increased to disable early stopping as requested
+learning_rate: 0.0005
+factor: 3
+patience: 10
 train_epochs: 30
-lradj: type4  # Changed to "type4" (decay every 3 epochs) to fix stagnation
+lradj: type3
 loss: mixture
-mixture_components: 5
+mixture_components: 3
+des: DeepPGAT
 
 use_gpu: True
 gpu: 0
