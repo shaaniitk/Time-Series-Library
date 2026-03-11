@@ -67,9 +67,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 true = batch_y.detach()
 
                 loss = criterion(pred, true)
+                if not torch.isfinite(loss):
+                    print(f"[vali] Non-finite loss at batch {i}; skipping batch.")
+                    continue
 
                 total_loss.append(loss.item())
-        total_loss = np.average(total_loss)
+            total_loss = np.average(total_loss) if total_loss else float('nan')
         self.model.train()
         return total_loss
 
@@ -120,6 +123,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         outputs = outputs[:, -self.args.pred_len:, f_dim:]
                         batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                         loss = criterion(outputs, batch_y)
+                        if not torch.isfinite(loss):
+                            raise RuntimeError(f"Non-finite training loss at epoch {epoch + 1}, batch {i + 1}")
                         train_loss.append(loss.item())
                 else:
                     outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
@@ -128,6 +133,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     loss = criterion(outputs, batch_y)
+                    if not torch.isfinite(loss):
+                        raise RuntimeError(f"Non-finite training loss at epoch {epoch + 1}, batch {i + 1}")
                     train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:

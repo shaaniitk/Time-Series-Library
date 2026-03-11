@@ -5,6 +5,7 @@ from layers.Embed import DataEmbedding, TemporalEmbedding
 from torch import Tensor
 from typing import Optional
 from collections import namedtuple
+import warnings
 
 # static: time-independent features
 # observed: time features of the past(e.g. predicted targets)
@@ -13,8 +14,67 @@ TypePos = namedtuple('TypePos', ['static', 'observed'])
 
 # When you want to use new dataset, please add the index of 'static, observed' columns here.
 # 'known' columns needn't be added, because 'known' inputs are automatically judged and provided by the program.
-datatype_dict = {'ETTh1': TypePos([], [x for x in range(7)]),
-                 'ETTm1': TypePos([], [x for x in range(7)])}
+datatype_dict = {
+    'ETTh1': TypePos([], [x for x in range(7)]),
+    'ETTh2': TypePos([], [x for x in range(7)]),
+    'ETTm1': TypePos([], [x for x in range(7)]),
+    'ETTm2': TypePos([], [x for x in range(7)]),
+}
+
+
+def get_typepos(configs) -> TypePos:
+    if configs.data in datatype_dict:
+        return datatype_dict[configs.data]
+
+    observed_pos = getattr(configs, 'tft_observed_pos', None)
+    static_pos = getattr(configs, 'tft_static_pos', None)
+    if observed_pos is None:
+        raise KeyError(
+            f"Dataset '{configs.data}' is not registered in datatype_dict. "
+            "You must provide tft_observed_pos explicitly."
+        )
+
+    if static_pos is None:
+        static_pos = []
+
+    if not isinstance(observed_pos, (list, tuple)) or len(observed_pos) == 0:
+        raise ValueError("tft_observed_pos must be a non-empty list/tuple of feature indices.")
+    if not isinstance(static_pos, (list, tuple)):
+        raise ValueError("tft_static_pos must be a list/tuple of feature indices.")
+
+    if any((not isinstance(v, int) or v < 0) for v in observed_pos):
+        raise ValueError("tft_observed_pos must contain non-negative integers only.")
+    if any((not isinstance(v, int) or v < 0) for v in static_pos):
+        raise ValueError("tft_static_pos must contain non-negative integers only.")
+
+    if len(set(observed_pos)) != len(observed_pos):
+        raise ValueError("tft_observed_pos contains duplicated indices.")
+    if len(set(static_pos)) != len(static_pos):
+        raise ValueError("tft_static_pos contains duplicated indices.")
+
+    return TypePos(list(static_pos), list(observed_pos))
+
+
+def get_target_pos(configs) -> list:
+    if not hasattr(configs, 'enc_in') or not hasattr(configs, 'c_out'):
+        raise KeyError("configs must define enc_in and c_out for TFT target mapping.")
+
+    target_pos = getattr(configs, 'tft_target_pos', None)
+    if target_pos is None:
+        if configs.c_out == configs.enc_in:
+            return [x for x in range(configs.c_out)]
+        raise KeyError(
+            "tft_target_pos is required when c_out != enc_in. "
+            "Provide explicit source indices in encoder features for each target channel."
+        )
+
+    if not isinstance(target_pos, (list, tuple)) or len(target_pos) != configs.c_out:
+        raise ValueError(f"tft_target_pos must be a list/tuple of length c_out={configs.c_out}.")
+    if any((not isinstance(v, int) or v < 0 or v >= configs.enc_in) for v in target_pos):
+        raise ValueError(f"tft_target_pos values must be integer indices in [0, {configs.enc_in - 1}].")
+    if len(set(target_pos)) != len(target_pos):
+        raise ValueError("tft_target_pos contains duplicated indices.")
+    return list(target_pos)
 
 
 def get_known_len(embed_type, freq):
@@ -61,8 +121,9 @@ class TFTEmbedding(nn.Module):
     def __init__(self, configs):
         super(TFTEmbedding, self).__init__()
         self.pred_len = configs.pred_len
-        self.static_pos = datatype_dict[configs.data].static
-        self.observed_pos = datatype_dict[configs.data].observed
+        typepos = get_typepos(configs)
+        self.static_pos = typepos.static
+        self.observed_pos = typepos.observed
         self.static_len = len(self.static_pos)
         self.observed_len = len(self.observed_pos)
 
@@ -143,7 +204,7 @@ class VariableSelectionNetwork(nn.Module):
         self.joint_grn = GRN(d_model * variable_num, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout)
         self.variable_grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout) for _ in range(variable_num)])
 
-    def forward(self, x: Tensor, context: Optional[Tensor] = None):
+    def forward(self, x: Tensor, context: Optional[Tensor] = None, return_weights: bool = False):
         # x: [B,T,C,d] or [B,C,d]
         # selection_weights: [B,T,C] or [B,C]
         # x_processed: [B,T,d,C] or [B,d,C]
@@ -155,6 +216,8 @@ class VariableSelectionNetwork(nn.Module):
         x_processed = torch.stack([grn(x[...,i,:]) for i, grn in enumerate(self.variable_grns)], dim=-1)
 
         selection_result = torch.matmul(x_processed, selection_weights.unsqueeze(-1)).squeeze(-1)
+        if return_weights:
+            return selection_result, selection_weights
         return selection_result
 
 
@@ -164,12 +227,17 @@ class StaticCovariateEncoder(nn.Module):
         self.static_vsn = VariableSelectionNetwork(d_model, static_len) if static_len else None
         self.grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout) for _ in range(4)])
 
-    def forward(self, static_input):
+    def forward(self, static_input, return_weights: bool = False):
         # static_input: [B,C,d]
         if static_input is not None:
+            if return_weights:
+                static_features, static_weights = self.static_vsn(static_input, return_weights=True)
+                return [grn(static_features) for grn in self.grns], static_weights
             static_features = self.static_vsn(static_input)
             return [grn(static_features) for grn in self.grns]
         else:
+            if return_weights:
+                return [None] * 4, None
             return [None] * 4
 
 
@@ -183,10 +251,10 @@ class InterpretableMultiHeadAttention(nn.Module):
         self.out_projection = nn.Linear(self.d_head, configs.d_model, bias=False)
         self.out_dropout = nn.Dropout(configs.dropout)
         self.scale = self.d_head ** -0.5
-        example_len = configs.seq_len + configs.pred_len
-        self.register_buffer("mask", torch.triu(torch.full((example_len, example_len), float('-inf')), 1))
+    def _causal_mask(self, seq_len: int, device, dtype):
+        return torch.triu(torch.full((seq_len, seq_len), float('-inf'), device=device, dtype=dtype), 1)
 
-    def forward(self, x):
+    def forward(self, x, return_attention: bool = False):
         # Q,K,V are all from x
         B, T, d_model = x.shape
         qkv = self.qkv_linears(x)
@@ -197,13 +265,20 @@ class InterpretableMultiHeadAttention(nn.Module):
 
         attention_score = torch.matmul(q.permute((0, 2, 1, 3)), k.permute((0, 2, 3, 1)))  # [B,n,T,T]
         attention_score.mul_(self.scale)
-        attention_score = attention_score + self.mask
+        attention_score = torch.clamp(attention_score, min=-1e4, max=1e4)
+        if not torch.isfinite(attention_score).all():
+            raise ValueError("Unmasked attention scores contain NaN/Inf values.")
+        attention_score = attention_score + self._causal_mask(T, attention_score.device, attention_score.dtype)
         attention_prob = F.softmax(attention_score, dim=3)  # [B,n,T,T]
+        if not torch.isfinite(attention_prob).all():
+            raise ValueError("Attention probabilities contain NaN/Inf values.")
 
         attention_out = torch.matmul(attention_prob, v.unsqueeze(1))  # [B,n,T,d]
         attention_out = torch.mean(attention_out, dim=1)  # [B,T,d]
         out = self.out_projection(attention_out)
         out = self.out_dropout(out)  # [B,T,d]
+        if return_attention:
+            return out, attention_prob
         return out
 
 
@@ -222,7 +297,7 @@ class TemporalFusionDecoder(nn.Module):
         self.gate_final = GateAddNorm(configs.d_model, configs.d_model)
         self.out_projection = nn.Linear(configs.d_model, configs.c_out)
 
-    def forward(self, history_input, future_input, c_c, c_h, c_e):
+    def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
         # history_input, future_input: [B,T,d]
         # c_c, c_h, c_e: [B,d]
         # LSTM
@@ -239,7 +314,10 @@ class TemporalFusionDecoder(nn.Module):
         enriched_features = self.enrichment_grn(temporal_features, c_e)  # [B,T,d]
 
         # Temporal self-attention
-        attention_out = self.attention(enriched_features)  # [B,T,d]
+        if return_attention:
+            attention_out, attention_prob = self.attention(enriched_features, return_attention=True)  # [B,T,d]
+        else:
+            attention_out = self.attention(enriched_features)  # [B,T,d]
         # Don't compute historical loss
         attention_out = self.gate_after_attention(attention_out[:,-self.pred_len:], enriched_features[:,-self.pred_len:])
 
@@ -248,7 +326,10 @@ class TemporalFusionDecoder(nn.Module):
 
         # Final skip connection
         out = self.gate_final(out, temporal_features[:,-self.pred_len:])
-        return self.out_projection(out)
+        projected = self.out_projection(out)
+        if return_attention:
+            return projected, attention_prob
+        return projected
 
 
 class Model(nn.Module):
@@ -261,8 +342,10 @@ class Model(nn.Module):
         self.pred_len = configs.pred_len
 
         # Number of variables
-        self.static_len = len(datatype_dict[configs.data].static)
-        self.observed_len = len(datatype_dict[configs.data].observed)
+        typepos = get_typepos(configs)
+        self.static_len = len(typepos.static)
+        self.observed_len = len(typepos.observed)
+        self.target_pos = get_target_pos(configs)
         self.known_len = get_known_len(configs.embed, configs.freq)
 
         self.embedding = TFTEmbedding(configs)
@@ -271,11 +354,37 @@ class Model(nn.Module):
         self.future_vsn = VariableSelectionNetwork(configs.d_model, self.known_len)
         self.temporal_fusion_decoder = TemporalFusionDecoder(configs)
 
-    def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+    def _validate_inputs(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        if x_enc.ndim != 3 or x_mark_enc.ndim != 3 or x_dec.ndim != 3 or x_mark_dec.ndim != 3:
+            raise ValueError("All TFT inputs must be rank-3 tensors [B,T,D].")
+        if x_enc.shape[0] != x_mark_enc.shape[0] or x_enc.shape[0] != x_dec.shape[0] or x_enc.shape[0] != x_mark_dec.shape[0]:
+            raise ValueError("Batch size mismatch across encoder/decoder inputs.")
+        if x_enc.shape[1] != self.seq_len:
+            raise ValueError(f"x_enc time length must equal seq_len={self.seq_len}, got {x_enc.shape[1]}.")
+        if x_enc.shape[2] != self.configs.enc_in:
+            raise ValueError(f"x_enc feature length must equal enc_in={self.configs.enc_in}, got {x_enc.shape[2]}.")
+        expected_dec_len = self.label_len + self.pred_len
+        if x_dec.shape[1] != expected_dec_len or x_mark_dec.shape[1] != expected_dec_len:
+            raise ValueError(
+                f"Decoder lengths must equal label_len+pred_len={expected_dec_len}, got x_dec={x_dec.shape[1]}, x_mark_dec={x_mark_dec.shape[1]}."
+            )
+        if x_dec.shape[2] != self.configs.c_out:
+            raise ValueError(f"x_dec feature length must equal c_out={self.configs.c_out}, got {x_dec.shape[2]}.")
+        if x_mark_enc.shape[2] != self.known_len:
+            raise ValueError(f"x_mark_enc feature length must equal known_len={self.known_len}, got {x_mark_enc.shape[2]}.")
+        if x_mark_dec.shape[2] != self.known_len:
+            raise ValueError(f"x_mark_dec feature length must equal known_len={self.known_len}, got {x_mark_dec.shape[2]}.")
+        if not torch.isfinite(x_enc).all() or not torch.isfinite(x_mark_enc).all() or not torch.isfinite(x_dec).all() or not torch.isfinite(x_mark_dec).all():
+            raise ValueError("TFT inputs contain NaN/Inf values.")
+
+    def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation: bool = False):
         # Normalization from Non-stationary Transformer
         means = x_enc.mean(1, keepdim=True).detach()
         x_enc = x_enc - means
-        stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
+        var = torch.var(x_enc, dim=1, keepdim=True, unbiased=False)
+        if (var < 1e-8).any():
+            warnings.warn("Near-constant channels detected; normalization may amplify noise.")
+        stdev = torch.sqrt(torch.clamp(var, min=1e-10) + 1e-5)
         x_enc /= stdev
 
         # Data embedding
@@ -284,26 +393,71 @@ class Model(nn.Module):
 
         # Static context
         # c_s,...,c_e: [B,d]
-        c_s, c_c, c_h, c_e = self.static_encoder(static_input)
+        if return_interpretation:
+            static_contexts, static_weights = self.static_encoder(static_input, return_weights=True)
+            c_s, c_c, c_h, c_e = static_contexts
+        else:
+            c_s, c_c, c_h, c_e = self.static_encoder(static_input)
 
         # Temporal input Selection
         history_input = torch.cat([observed_input, known_input[:,:self.seq_len]], dim=-2)
         future_input = known_input[:,self.seq_len:]
-        history_input = self.history_vsn(history_input, c_s)
-        future_input = self.future_vsn(future_input, c_s)
+        if return_interpretation:
+            history_input, history_weights = self.history_vsn(history_input, c_s, return_weights=True)
+            future_input, future_weights = self.future_vsn(future_input, c_s, return_weights=True)
+        else:
+            history_input = self.history_vsn(history_input, c_s)
+            future_input = self.future_vsn(future_input, c_s)
 
         # TFT main procedure after variable selection
         # history_input: [B,T,d], future_input: [B,T,d]
-        dec_out = self.temporal_fusion_decoder(history_input, future_input, c_c, c_h, c_e)
+        if return_interpretation:
+            dec_out, attention_weights = self.temporal_fusion_decoder(
+                history_input,
+                future_input,
+                c_c,
+                c_h,
+                c_e,
+                return_attention=True,
+            )
+        else:
+            dec_out = self.temporal_fusion_decoder(history_input, future_input, c_c, c_h, c_e)
 
         # De-Normalization from Non-stationary Transformer
-        dec_out = dec_out * (stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
-        dec_out = dec_out + (means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
+        target_pos = torch.as_tensor(self.target_pos, device=x_enc.device, dtype=torch.long)
+        target_stdev = stdev[:, 0, :].index_select(-1, target_pos).unsqueeze(1).repeat(1, self.pred_len, 1)
+        target_means = means[:, 0, :].index_select(-1, target_pos).unsqueeze(1).repeat(1, self.pred_len, 1)
+        dec_out = dec_out * target_stdev
+        dec_out = dec_out + target_means
+        if return_interpretation:
+            return {
+                'predictions': dec_out,
+                'attention_weights': attention_weights,
+                'history_vsn_weights': history_weights,
+                'future_vsn_weights': future_weights,
+                'static_vsn_weights': static_weights,
+                'static_context': {'c_s': c_s, 'c_c': c_c, 'c_h': c_h, 'c_e': c_e},
+            }
         return dec_out
 
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation: bool = False):
+        self._validate_inputs(x_enc, x_mark_enc, x_dec, x_mark_dec)
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
-            dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)  # [B,pred_len,C]
-            dec_out = torch.cat([torch.zeros_like(x_enc), dec_out], dim=1)
+            if return_interpretation:
+                payload = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation=True)
+                dec_out = payload['predictions']
+            else:
+                dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)  # [B,pred_len,C]
+            history_pad = torch.zeros(
+                x_enc.shape[0],
+                x_enc.shape[1],
+                self.configs.c_out,
+                device=x_enc.device,
+                dtype=x_enc.dtype,
+            )
+            dec_out = torch.cat([history_pad, dec_out], dim=1)
+            if return_interpretation:
+                payload['predictions_full'] = dec_out
+                return payload
             return dec_out  # [B, T, D]
         return None

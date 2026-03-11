@@ -5,6 +5,7 @@ import torch.backends
 from utils.print_args import print_args
 import random
 import numpy as np
+import sys
 
 if __name__ == '__main__':
     fix_seed = 2021
@@ -147,6 +148,14 @@ if __name__ == '__main__':
     parser.add_argument('--individual', action='store_true', default=False,
                         help='DLinear: a linear layer for each variate(channel) individually')
 
+    # TFT strict schema controls
+    parser.add_argument('--tft_observed_pos', type=str, default='',
+                        help='Comma-separated observed feature indices for TFT when dataset key is not pre-registered.')
+    parser.add_argument('--tft_static_pos', type=str, default='',
+                        help='Comma-separated static feature indices for TFT.')
+    parser.add_argument('--tft_target_pos', type=str, default='',
+                        help='Comma-separated source feature indices (in encoder features) mapped to output target channels.')
+
     # TimeFilter
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')
     parser.add_argument('--top_p', type=float, default=0.5, help='Dynamic Routing in MoE')
@@ -169,8 +178,38 @@ if __name__ == '__main__':
         args.device_ids = [int(id_) for id_ in device_ids]
         args.gpu = args.device_ids[0]
 
+    def _parse_int_list(value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            if value == '':
+                return None
+            return [int(v.strip()) for v in value.split(',') if v.strip() != '']
+        return value
+
+    args.tft_observed_pos = _parse_int_list(args.tft_observed_pos)
+    args.tft_static_pos = _parse_int_list(args.tft_static_pos)
+    args.tft_target_pos = _parse_int_list(args.tft_target_pos)
+
     print('Args in experiment:')
     print_args(args)
+
+    if args.model == 'TemporalFusionTransformer':
+        from models.TemporalFusionTransformer import datatype_dict
+        if args.data not in datatype_dict and args.tft_observed_pos is None:
+            print(
+                f"ERROR: Dataset '{args.data}' is not registered for TemporalFusionTransformer. "
+                "Provide --tft_observed_pos explicitly."
+            )
+            print(f"Registered datasets: {list(datatype_dict.keys())}")
+            sys.exit(1)
+        if args.c_out != args.enc_in and args.tft_target_pos is None:
+            print(
+                "ERROR: For TemporalFusionTransformer with c_out != enc_in, "
+                "you must provide --tft_target_pos."
+            )
+            sys.exit(1)
 
 
     if args.task_name == 'long_term_forecast':
