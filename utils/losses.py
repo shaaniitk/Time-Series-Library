@@ -19,7 +19,6 @@ Loss functions for PyTorch.
 import torch as t
 import torch.nn as nn
 import numpy as np
-import pdb
 
 
 def divide_no_nan(a, b):
@@ -30,6 +29,17 @@ def divide_no_nan(a, b):
     result[result != result] = .0
     result[result == np.inf] = .0
     return result
+
+
+def canonicalize_quantiles(quantiles):
+    if not isinstance(quantiles, (list, tuple)) or len(quantiles) == 0:
+        raise ValueError("quantiles must be a non-empty list/tuple.")
+    normalized = tuple(sorted(float(q) for q in quantiles))
+    if any(q <= 0.0 or q >= 1.0 for q in normalized):
+        raise ValueError("quantiles must be strictly between 0 and 1.")
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("quantiles must not contain duplicates.")
+    return normalized
 
 
 class mape_loss(nn.Module):
@@ -87,3 +97,53 @@ class mase_loss(nn.Module):
         masep = t.mean(t.abs(insample[:, freq:] - insample[:, :-freq]), dim=1)
         masked_masep_inv = divide_no_nan(mask, masep[:, None])
         return t.mean(t.abs(target - forecast) * masked_masep_inv)
+
+
+class QuantileLoss(nn.Module):
+    def __init__(self, quantiles):
+        super(QuantileLoss, self).__init__()
+        self.quantiles = list(canonicalize_quantiles(quantiles))
+
+    def forward(
+        self,
+        forecast: t.Tensor,
+        target: t.Tensor,
+        valid_mask: t.Tensor | None = None,
+    ) -> t.Tensor:
+        if forecast.ndim != 4:
+            raise ValueError(f"Quantile forecast must have shape [B,T,Q,C], got {tuple(forecast.shape)}.")
+        if target.ndim != 3:
+            raise ValueError(f"Quantile target must have shape [B,T,C], got {tuple(target.shape)}.")
+        if forecast.shape[2] != len(self.quantiles):
+            raise ValueError(
+                f"Quantile forecast Q dimension ({forecast.shape[2]}) must match configured quantiles ({len(self.quantiles)})."
+            )
+        errors = target.unsqueeze(2) - forecast
+        quantiles = forecast.new_tensor(self.quantiles).view(1, 1, -1, 1)
+        loss = t.maximum(quantiles * errors, (quantiles - 1.0) * errors)
+        if valid_mask is not None:
+            if valid_mask.dtype != t.bool:
+                raise TypeError("Quantile valid_mask must have boolean dtype.")
+            if valid_mask.ndim != 2 or tuple(valid_mask.shape) != tuple(target.shape[:2]):
+                raise ValueError(
+                    "Quantile valid_mask must have shape [B,T] matching target."
+                )
+            mask = valid_mask.to(device=loss.device).unsqueeze(-1).unsqueeze(-1)
+            mask = mask.expand_as(loss)
+            if not bool(mask.any()):
+                raise ValueError("Quantile loss requires a valid forecast token.")
+            safe_errors = t.where(
+                mask,
+                target.unsqueeze(2) - forecast,
+                t.zeros_like(loss),
+            )
+            loss = t.maximum(
+                quantiles * safe_errors,
+                (quantiles - 1.0) * safe_errors,
+            )
+            return loss.sum() / mask.sum()
+        return loss.mean()
+
+
+class quantile_loss(QuantileLoss):
+    pass

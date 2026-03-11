@@ -1,7 +1,7 @@
 from data_provider.data_factory import data_provider
 from data_provider.m4 import M4Meta
 from exp.exp_basic import Exp_Basic
-from utils.tools import EarlyStopping, adjust_learning_rate, visual
+from utils.tools import EarlyStopping, adjust_learning_rate, combine_primary_and_aux_loss, get_auxiliary_loss, visual
 from utils.losses import mape_loss, mase_loss, smape_loss
 from utils.m4_summary import M4Summary
 import torch
@@ -50,6 +50,9 @@ class Exp_Short_Term_Forecast(Exp_Basic):
         elif loss_name == 'SMAPE':
             return smape_loss()
 
+    def _get_aux_loss_coeff(self):
+        return float(getattr(self.args, 'tft_moe_aux_loss_coeff', 0.0))
+
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
@@ -95,6 +98,8 @@ class Exp_Short_Term_Forecast(Exp_Basic):
                 loss_value = criterion(batch_x, self.args.frequency_map, outputs, batch_y, batch_y_mark)
                 loss_sharpness = mse((outputs[:, 1:, :] - outputs[:, :-1, :]), (batch_y[:, 1:, :] - batch_y[:, :-1, :]))
                 loss = loss_value  # + loss_sharpness * 1e-5
+                aux_loss = get_auxiliary_loss(self.model)
+                loss = combine_primary_and_aux_loss(loss, aux_loss, self._get_aux_loss_coeff())
                 train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -153,6 +158,8 @@ class Exp_Short_Term_Forecast(Exp_Basic):
             batch_y_mark = torch.ones(true.shape)
 
             loss = criterion(x.detach().cpu()[:, :, 0], self.args.frequency_map, pred[:, :, 0], true, batch_y_mark)
+            aux_loss = get_auxiliary_loss(self.model)
+            loss = combine_primary_and_aux_loss(loss, aux_loss, self._get_aux_loss_coeff())
 
         self.model.train()
         return loss
