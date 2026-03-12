@@ -173,6 +173,10 @@ class Model(nn.Module):
             windows_batch_size=configs.batch_size
         )
         
+        self.c_out = configs.c_out
+        if self.c_out > 1:
+            self.cross_channel_mixer = nn.Linear(self.c_out, self.c_out)
+        
         # Patching Nixtla with our custom enhancements
         self._inject_enhanced_blocks(self.nixtla_tft)
 
@@ -232,6 +236,11 @@ class Model(nn.Module):
         }
         y_hat = self.nixtla_tft(windows_batch)
         y_hat = y_hat.squeeze(-1).view(B, C, self.pred_len).permute(0, 2, 1)
+        
+        # Post-Mixer cross-channel restoration
+        if hasattr(self, 'cross_channel_mixer'):
+            y_hat = self.cross_channel_mixer(y_hat)
+            
         return y_hat
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None, **kwargs):
