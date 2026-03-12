@@ -155,6 +155,14 @@ if __name__ == '__main__':
                         help='Comma-separated static feature indices for TFT.')
     parser.add_argument('--tft_target_pos', type=str, default='',
                         help='Comma-separated source feature indices (in encoder features) mapped to output target channels.')
+    parser.add_argument('--tft_use_swiglu', action='store_true', default=False,
+                        help='Use SwiGLU instead of GLU for TFT gating networks.')
+    parser.add_argument('--tft_full_attention', action='store_true', default=False,
+                        help='Use full standard MultiHeadAttention instead of Interpretable Attention in TFT.')
+    parser.add_argument('--tft_cross_variable_mixing', action='store_true', default=False,
+                        help='Apply Cross-Variable Attention mixing before VSN in TFT.')
+    parser.add_argument('--tft_allow_custom_known', action='store_true', default=False,
+                        help='Relax rigid known_len timestamp count validations in TFT inputs.')
 
     # TimeFilter
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')

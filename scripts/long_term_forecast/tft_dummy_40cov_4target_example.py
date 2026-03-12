@@ -42,6 +42,10 @@ def build_model_config():
         dropout=0.1,
         embed="timeF",
         freq="h",
+        e_layers=2,
+        tft_use_swiglu=True,
+        tft_full_attention=True,
+        tft_cross_variable_mixing=True,
         # Required for unregistered datasets (no fallbacks allowed)
         tft_observed_pos=list(range(40)),
         tft_static_pos=[],

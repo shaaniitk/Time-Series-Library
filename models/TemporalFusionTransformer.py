@@ -163,10 +163,23 @@ class GLU(nn.Module):
         return self.glu(torch.cat([a, b], dim=-1))
 
 
-class GateAddNorm(nn.Module):
+class SwiGLU(nn.Module):
     def __init__(self, input_size, output_size):
+        super().__init__()
+        self.fc1 = nn.Linear(input_size, output_size)
+        self.fc2 = nn.Linear(input_size, output_size)
+
+    def forward(self, x):
+        return F.silu(self.fc1(x)) * self.fc2(x)
+
+
+class GateAddNorm(nn.Module):
+    def __init__(self, input_size, output_size, use_swiglu=False):
         super(GateAddNorm, self).__init__()
-        self.glu = GLU(input_size, input_size)
+        if use_swiglu:
+            self.glu = SwiGLU(input_size, input_size)
+        else:
+            self.glu = GLU(input_size, input_size)
         self.projection = nn.Linear(input_size, output_size) if input_size != output_size else nn.Identity()
         self.layer_norm = nn.LayerNorm(output_size)
 
@@ -177,7 +190,7 @@ class GateAddNorm(nn.Module):
 
 
 class GRN(nn.Module):
-    def __init__(self, input_size, output_size, hidden_size=None, context_size=None, dropout=0.0):
+    def __init__(self, input_size, output_size, hidden_size=None, context_size=None, dropout=0.0, use_swiglu=False):
         super(GRN, self).__init__()
         hidden_size = input_size if hidden_size is None else hidden_size
         self.lin_a = nn.Linear(input_size, hidden_size)
@@ -185,26 +198,53 @@ class GRN(nn.Module):
         self.lin_i = nn.Linear(hidden_size, hidden_size)
         self.dropout = nn.Dropout(dropout)
         self.project_a = nn.Linear(input_size, hidden_size) if hidden_size != input_size else nn.Identity()
-        self.gate = GateAddNorm(hidden_size, output_size)
+        self.gate = GateAddNorm(hidden_size, output_size, use_swiglu=use_swiglu)
+        self.use_swiglu = use_swiglu
 
     def forward(self, a: Tensor, c: Optional[Tensor] = None):
         # a: [B,T,d], c: [B,d]
         x = self.lin_a(a)
         if c is not None:
             x = x + self.lin_c(c).unsqueeze(1)
-        x = F.elu(x)
+        if self.use_swiglu:
+            x = F.silu(x)
+        else:
+            x = F.elu(x)
         x = self.lin_i(x)
         x = self.dropout(x)
         return self.gate(x, self.project_a(a))
 
 
+class CrossVariableAttention(nn.Module):
+    def __init__(self, d_model, n_heads, dropout=0.0):
+        super(CrossVariableAttention, self).__init__()
+        self.mha = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
+        self.layer_norm = nn.LayerNorm(d_model)
+
+    def forward(self, x):
+        # x: [B,T,C,d] or [B,C,d]
+        if x.ndim == 4:
+            B, T, C, d = x.shape
+            x_flat = x.reshape(B * T, C, d)
+            attn_out, _ = self.mha(x_flat, x_flat, x_flat, need_weights=False)
+            out = self.layer_norm(x_flat + attn_out)
+            return out.reshape(B, T, C, d)
+        elif x.ndim == 3:
+            attn_out, _ = self.mha(x, x, x, need_weights=False)
+            return self.layer_norm(x + attn_out)
+        return x
+
+
 class VariableSelectionNetwork(nn.Module):
-    def __init__(self, d_model, variable_num, dropout=0.0):
+    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4):
         super(VariableSelectionNetwork, self).__init__()
-        self.joint_grn = GRN(d_model * variable_num, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout)
-        self.variable_grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout) for _ in range(variable_num)])
+        self.cross_mixing = CrossVariableAttention(d_model, n_heads, dropout) if cross_variable_mixing else None
+        self.joint_grn = GRN(d_model * variable_num, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout, use_swiglu=use_swiglu)
+        self.variable_grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(variable_num)])
 
     def forward(self, x: Tensor, context: Optional[Tensor] = None, return_weights: bool = False):
+        if self.cross_mixing is not None:
+            x = self.cross_mixing(x)
         # x: [B,T,C,d] or [B,C,d]
         # selection_weights: [B,T,C] or [B,C]
         # x_processed: [B,T,d,C] or [B,d,C]
@@ -222,10 +262,10 @@ class VariableSelectionNetwork(nn.Module):
 
 
 class StaticCovariateEncoder(nn.Module):
-    def __init__(self, d_model, static_len, dropout=0.0):
+    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4):
         super(StaticCovariateEncoder, self).__init__()
-        self.static_vsn = VariableSelectionNetwork(d_model, static_len) if static_len else None
-        self.grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout) for _ in range(4)])
+        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads) if static_len else None
+        self.grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(4)])
 
     def forward(self, static_input, return_weights: bool = False):
         # static_input: [B,C,d]
@@ -282,53 +322,91 @@ class InterpretableMultiHeadAttention(nn.Module):
         return out
 
 
-class TemporalFusionDecoder(nn.Module):
+class TemporalFusionDecoderLayer(nn.Module):
     def __init__(self, configs):
-        super(TemporalFusionDecoder, self).__init__()
+        super(TemporalFusionDecoderLayer, self).__init__()
         self.pred_len = configs.pred_len
+        self.use_swiglu = getattr(configs, 'tft_use_swiglu', False)
+        self.full_attention = getattr(configs, 'tft_full_attention', False)
 
         self.history_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
         self.future_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
-        self.gate_after_lstm = GateAddNorm(configs.d_model, configs.d_model)
-        self.enrichment_grn = GRN(configs.d_model, configs.d_model, context_size=configs.d_model, dropout=configs.dropout)
-        self.attention = InterpretableMultiHeadAttention(configs)
-        self.gate_after_attention = GateAddNorm(configs.d_model, configs.d_model)
-        self.position_wise_grn = GRN(configs.d_model, configs.d_model, dropout=configs.dropout)
-        self.gate_final = GateAddNorm(configs.d_model, configs.d_model)
-        self.out_projection = nn.Linear(configs.d_model, configs.c_out)
+        self.gate_after_lstm = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
+        self.enrichment_grn = GRN(configs.d_model, configs.d_model, context_size=configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu)
+        if self.full_attention:
+            self.attention = nn.MultiheadAttention(configs.d_model, configs.n_heads, dropout=configs.dropout, batch_first=True)
+        else:
+            self.attention = InterpretableMultiHeadAttention(configs)
+        self.gate_after_attention = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
+        self.position_wise_grn = GRN(configs.d_model, configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu)
+        self.gate_final = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
+
+    def _causal_mask(self, seq_len: int, device, dtype):
+        return torch.triu(torch.full((seq_len, seq_len), float('-inf'), device=device, dtype=dtype), 1)
 
     def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
-        # history_input, future_input: [B,T,d]
-        # c_c, c_h, c_e: [B,d]
-        # LSTM
         c = (c_c.unsqueeze(0), c_h.unsqueeze(0)) if c_c is not None and c_h is not None else None
         historical_features, state = self.history_encoder(history_input, c)
         future_features, _ = self.future_encoder(future_input, state)
 
-        # Skip connection
         temporal_input = torch.cat([history_input, future_input], dim=1)
         temporal_features = torch.cat([historical_features, future_features], dim=1)
-        temporal_features = self.gate_after_lstm(temporal_features, temporal_input)  # [B,T,d]
+        temporal_features = self.gate_after_lstm(temporal_features, temporal_input)
 
-        # Static enrichment
-        enriched_features = self.enrichment_grn(temporal_features, c_e)  # [B,T,d]
+        enriched_features = self.enrichment_grn(temporal_features, c_e)
 
-        # Temporal self-attention
-        if return_attention:
-            attention_out, attention_prob = self.attention(enriched_features, return_attention=True)  # [B,T,d]
+        if self.full_attention:
+            # Match standard TFT causal masking
+            seq_len = enriched_features.shape[1]
+            attn_mask = self._causal_mask(seq_len, enriched_features.device, enriched_features.dtype)
+            
+            # average_attn_weights=False ensures we get [B, n_heads, T, T] to match Interpretable API
+            attention_out, attention_prob = self.attention(
+                enriched_features, enriched_features, enriched_features, 
+                need_weights=return_attention, attn_mask=attn_mask, average_attn_weights=False
+            )
         else:
-            attention_out = self.attention(enriched_features)  # [B,T,d]
-        # Don't compute historical loss
-        attention_out = self.gate_after_attention(attention_out[:,-self.pred_len:], enriched_features[:,-self.pred_len:])
+            if return_attention:
+                attention_out, attention_prob = self.attention(enriched_features, return_attention=True)
+            else:
+                attention_out = self.attention(enriched_features)
+                attention_prob = None
 
-        # Position-wise feed-forward
-        out = self.position_wise_grn(attention_out)  # [B,T,d]
-
-        # Final skip connection
-        out = self.gate_final(out, temporal_features[:,-self.pred_len:])
-        projected = self.out_projection(out)
+        attention_out = self.gate_after_attention(attention_out, enriched_features)
+        out = self.position_wise_grn(attention_out)
+        out = self.gate_final(out, temporal_features)
         if return_attention:
-            return projected, attention_prob
+            return out, attention_prob
+        return out
+
+
+class TemporalFusionDecoder(nn.Module):
+    def __init__(self, configs):
+        super(TemporalFusionDecoder, self).__init__()
+        self.e_layers = getattr(configs, 'e_layers', 1)
+        self.pred_len = configs.pred_len
+        self.layers = nn.ModuleList([TemporalFusionDecoderLayer(configs) for _ in range(self.e_layers)])
+        self.out_projection = nn.Linear(configs.d_model, configs.c_out)
+
+    def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
+        attention_probs = []
+        curr_history = history_input
+        curr_future = future_input
+        
+        for layer in self.layers:
+            if return_attention:
+                out, attention_prob = layer(curr_history, curr_future, c_c, c_h, c_e, return_attention=True)
+                attention_probs.append(attention_prob)
+            else:
+                out = layer(curr_history, curr_future, c_c, c_h, c_e)
+            curr_history = out[:, :history_input.shape[1], :]
+            curr_future = out[:, history_input.shape[1]:, :]
+        
+        dec_out = out[:, -self.pred_len:, :]
+        projected = self.out_projection(dec_out)
+        
+        if return_attention:
+            return projected, attention_probs[-1] if attention_probs else None
         return projected
 
 
@@ -349,9 +427,23 @@ class Model(nn.Module):
         self.known_len = get_known_len(configs.embed, configs.freq)
 
         self.embedding = TFTEmbedding(configs)
-        self.static_encoder = StaticCovariateEncoder(configs.d_model, self.static_len)
-        self.history_vsn = VariableSelectionNetwork(configs.d_model, self.observed_len + self.known_len)
-        self.future_vsn = VariableSelectionNetwork(configs.d_model, self.known_len)
+        
+        self.use_swiglu = getattr(configs, 'tft_use_swiglu', False)
+        self.cross_mix = getattr(configs, 'tft_cross_variable_mixing', False)
+        self.n_heads = getattr(configs, 'n_heads', 4)
+
+        self.static_encoder = StaticCovariateEncoder(
+            configs.d_model, self.static_len, dropout=configs.dropout, 
+            use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads
+        )
+        self.history_vsn = VariableSelectionNetwork(
+            configs.d_model, self.observed_len + self.known_len, dropout=configs.dropout,
+            use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads
+        )
+        self.future_vsn = VariableSelectionNetwork(
+            configs.d_model, self.known_len, dropout=configs.dropout,
+            use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads
+        )
         self.temporal_fusion_decoder = TemporalFusionDecoder(configs)
 
     def _validate_inputs(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
@@ -370,10 +462,13 @@ class Model(nn.Module):
             )
         if x_dec.shape[2] != self.configs.c_out:
             raise ValueError(f"x_dec feature length must equal c_out={self.configs.c_out}, got {x_dec.shape[2]}.")
-        if x_mark_enc.shape[2] != self.known_len:
-            raise ValueError(f"x_mark_enc feature length must equal known_len={self.known_len}, got {x_mark_enc.shape[2]}.")
-        if x_mark_dec.shape[2] != self.known_len:
-            raise ValueError(f"x_mark_dec feature length must equal known_len={self.known_len}, got {x_mark_dec.shape[2]}.")
+        
+        if not getattr(self.configs, 'tft_allow_custom_known', False):
+            if x_mark_enc.shape[2] != self.known_len:
+                raise ValueError(f"x_mark_enc feature length must equal known_len={self.known_len}, got {x_mark_enc.shape[2]}.")
+            if x_mark_dec.shape[2] != self.known_len:
+                raise ValueError(f"x_mark_dec feature length must equal known_len={self.known_len}, got {x_mark_dec.shape[2]}.")
+                
         if not torch.isfinite(x_enc).all() or not torch.isfinite(x_mark_enc).all() or not torch.isfinite(x_dec).all() or not torch.isfinite(x_mark_dec).all():
             raise ValueError("TFT inputs contain NaN/Inf values.")
 
