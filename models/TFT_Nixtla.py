@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple
-import neuralforecast
 from neuralforecast.models.tft import TFT, GRN, VariableSelectionNetwork, TFTEmbedding, InterpretableMultiHeadAttention
 from utils.timefeatures import time_features
 
@@ -99,7 +98,8 @@ class DualInterpretableMultiHeadAttention(nn.Module):
         fusion_alpha = torch.sigmoid(self.attention_fusion_logit)
         blended_out = fusion_alpha * full_out + (1.0 - fusion_alpha) * interpretable_out
         
-        return blended_out, interpretable_weights
+        # Pack weights and alpha into a tuple matching advanced style payload
+        return blended_out, (interpretable_weights, full_weights, fusion_alpha)
 
 
 class ContinuousTFTEmbedding(nn.Module):
@@ -140,6 +140,12 @@ class Model(nn.Module):
     """
     Wrapper for Nixtla's Temporal Fusion Transformer (`neuralforecast>=1.7.0`).
     Incorporates ALL custom TSL enhancements via PyTorch Proxy patching.
+    
+    NOTE ON MODELING: This wrapper utilizes a strictly univariate backend (Nixtla). 
+    To support multivariate payloads [B, T, C], we reshape to [B*C, T]. 
+    This flattens channels into the batch dimension (Channel Independence).
+    This intrinsically removes any cross-target interaction modeling compared to 
+    the native Time-Series-Library TemporalFusionTransformer that processes [B, T, C] jointly.
     """
     def __init__(self, configs):
         super(Model, self).__init__()
@@ -177,29 +183,41 @@ class Model(nn.Module):
             if isinstance(child, VariableSelectionNetwork):
                 if len(child.var_grns) > 0:
                     setattr(module, name, EnhancedVSN(child.joint_grn.lin_a.out_features, len(child.var_grns), child.var_grns[0].dropout.p))
-                    # Recover exact Nixtla joint_grn dimensions
+                    # Recover exact Nixtla joint_grn dimensions safely
+                    out_proj_size = child.joint_grn.out_proj.out_features if getattr(child.joint_grn, 'out_proj', None) is not None else None
+                    lin_c_size = child.joint_grn.lin_c.in_features if getattr(child.joint_grn, 'lin_c', None) is not None else None
+                    
                     getattr(module, name).vsn.joint_grn = EnhancedGRN(
                         input_size=child.joint_grn.lin_a.in_features,
                         hidden_size=child.joint_grn.lin_a.out_features,
-                        output_size=child.joint_grn.out_proj.out_features if child.joint_grn.out_proj else None,
-                        context_hidden_size=child.joint_grn.lin_c.in_features if hasattr(child.joint_grn, 'lin_c') else None,
+                        output_size=out_proj_size,
+                        context_hidden_size=lin_c_size,
                     )
             # Replace basic GRN
             elif isinstance(child, GRN):
                 # Ensure we skip if it's already an EnhancedGRN. Joint GRN output size is sometimes different.
-                out_size = child.out_proj.out_features if child.out_proj is not None else None
-                ctx_size = child.lin_c.in_features if hasattr(child, 'lin_c') else None
+                out_size = child.out_proj.out_features if getattr(child, 'out_proj', None) is not None else None
+                ctx_size = child.lin_c.in_features if getattr(child, 'lin_c', None) is not None else None
                 setattr(module, name, EnhancedGRN(child.lin_a.in_features, child.lin_i.in_features, out_size, ctx_size, child.dropout.p))
             # Replace TFTEmbedding with Custom Continuous embedding
             elif isinstance(child, TFTEmbedding):
                 setattr(module, name, ContinuousTFTEmbedding(child.hidden_size, child.stat_input_size, child.futr_input_size, child.hist_input_size, child.tgt_size))
             # Replace Interpretable Attention with Dual Attention Fusion
             elif isinstance(child, InterpretableMultiHeadAttention):
-                setattr(module, name, DualInterpretableMultiHeadAttention(child.n_head, child.qkv_linears.in_features, child._mask.shape[-1], child.attn_dropout.p, child.out_dropout.p))
+                # Deriving sequence_length safely instead of relying on private `child._mask`
+                seq_len = self.seq_len + self.pred_len
+                setattr(module, name, DualInterpretableMultiHeadAttention(child.n_head, child.qkv_linears.in_features, seq_len, child.attn_dropout.p, child.out_dropout.p))
             else:
                 self._inject_enhanced_blocks(child)
         
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec, **kwargs):
+        # Explicit ValueError checking for provided covariates matching the expected Nixtla configured size
+        if x_mark_enc.shape[-1] != self.time_features_dim:
+            raise ValueError(f"Provided encoder temporal features size {x_mark_enc.shape[-1]} != expected configuration {self.time_features_dim}")
+        
+        if x_mark_dec.shape[-1] != self.time_features_dim:
+            raise ValueError(f"Provided decoder temporal features size {x_mark_dec.shape[-1]} != expected configuration {self.time_features_dim}")
+
         B, T, C = x_enc.shape
         insample_y = x_enc.permute(0, 2, 1).reshape(B * C, T)
         future_marks = x_mark_dec[:, -self.pred_len:, :]
