@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from types import SimpleNamespace
+import argparse
 import sys
 from pathlib import Path
 
@@ -10,6 +11,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from models.TemporalFusionTransformer import Model
+
+
+def set_seed(seed: int = 42):
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def make_dummy_batch(batch_size, seq_len, label_len, pred_len, enc_in, c_out, known_len, device):
@@ -37,14 +44,15 @@ def build_model_config():
         enc_in=40,
         dec_in=4,
         c_out=4,
-        d_model=128,
+        d_model=64,
         n_heads=8,
         dropout=0.1,
         embed="timeF",
         freq="h",
-        e_layers=2,
+        e_layers=1,
         tft_use_swiglu=True,
         tft_full_attention=True,
+        tft_dual_attention_fusion=True,
         tft_cross_variable_mixing=True,
         tft_vsn_residual_bypass=True,
         tft_allow_custom_known=True,
@@ -57,9 +65,38 @@ def build_model_config():
     )
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Dummy TFT run for smoke testing and wiring checks.")
+    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--samples", type=int, default=16)
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    parser.add_argument("--quick", action="store_true", help="Use very small settings suitable for automated tests.")
+    return parser.parse_args()
+
+
+def resolve_device(device_arg: str):
+    if device_arg == "cpu":
+        return torch.device("cpu")
+    if device_arg == "cuda":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 def main():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    args = parse_args()
+    set_seed(args.seed)
+    device = resolve_device(args.device)
     cfg = build_model_config()
+
+    epochs = args.epochs
+    samples = args.samples
+    batch_size = args.batch_size
+    if args.quick:
+        epochs = min(epochs, 1)
+        samples = min(samples, 8)
+        batch_size = min(batch_size, 4)
 
     model = Model(cfg).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -79,7 +116,7 @@ def main():
             known_len=known_len,
             device=torch.device("cpu"),
         )
-        for _ in range(64)
+        for _ in range(samples)
     ]
 
     x_enc = torch.cat([item[0] for item in all_tensors], dim=0)
@@ -88,10 +125,10 @@ def main():
     x_mark_dec = torch.cat([item[3] for item in all_tensors], dim=0)
     y_future = torch.cat([item[4] for item in all_tensors], dim=0)
 
-    loader = DataLoader(TensorDataset(x_enc, x_mark_enc, x_dec, x_mark_dec, y_future), batch_size=8, shuffle=True)
+    loader = DataLoader(TensorDataset(x_enc, x_mark_enc, x_dec, x_mark_dec, y_future), batch_size=batch_size, shuffle=True)
 
     model.train()
-    for epoch in range(3):
+    for epoch in range(epochs):
         running_loss = 0.0
         for bx, bxm, bd, bdm, by in loader:
             bx = bx.to(device)
@@ -124,6 +161,10 @@ def main():
         print("predictions_full shape:", tuple(payload["predictions_full"].shape))
         print("predictions shape:", tuple(payload["predictions"].shape))
         print("attention_weights shape:", tuple(payload["attention_weights"].shape))
+        if payload["attention_weights_full"] is not None:
+            print("attention_weights_full shape:", tuple(payload["attention_weights_full"].shape))
+        if payload["attention_fusion_alpha"] is not None:
+            print("attention_fusion_alpha:", float(payload["attention_fusion_alpha"]))
         print("history_vsn_weights shape:", tuple(payload["history_vsn_weights"].shape))
 
 

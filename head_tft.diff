@@ -1,0 +1,155 @@
+diff --git a/models/TemporalFusionTransformer.py b/models/TemporalFusionTransformer.py
+index 80fbfe5..463b4b1 100644
+--- a/models/TemporalFusionTransformer.py
++++ b/models/TemporalFusionTransformer.py
+@@ -117,10 +117,34 @@ class TFTTimeFeatureEmbedding(nn.Module):
+         return torch.stack([embed(x[:,:,i].unsqueeze(-1)) for i, embed in enumerate(self.embed)], dim=-2)
+ 
+ 
++class TFTCustomKnownEmbedding(nn.Module):
++    def __init__(self, d_model, max_channels=512):
++        super(TFTCustomKnownEmbedding, self).__init__()
++        self.value_projection = nn.Linear(1, d_model, bias=False)
++        self.channel_embedding = nn.Embedding(max_channels, d_model)
++        self.max_channels = max_channels
++
++    def forward(self, x):
++        # x: [B,T,C]
++        if x.ndim != 3:
++            raise ValueError("Custom known features must be rank-3 [B,T,C].")
++        c = x.shape[-1]
++        if c > self.max_channels:
++            raise ValueError(
++                f"Known feature channels ({c}) exceed tft_known_max_channels={self.max_channels}."
++            )
++
++        values = self.value_projection(x.unsqueeze(-1))
++        channel_ids = torch.arange(c, device=x.device)
++        channel_bias = self.channel_embedding(channel_ids).unsqueeze(0).unsqueeze(0)
++        return values + channel_bias
++
++
+ class TFTEmbedding(nn.Module):
+     def __init__(self, configs):
+         super(TFTEmbedding, self).__init__()
+         self.pred_len = configs.pred_len
++        self.allow_custom_known = getattr(configs, 'tft_allow_custom_known', False)
+         typepos = get_typepos(configs)
+         self.static_pos = typepos.static
+         self.observed_pos = typepos.observed
+@@ -130,8 +154,12 @@ class TFTEmbedding(nn.Module):
+         self.static_embedding = nn.ModuleList([DataEmbedding(1,configs.d_model,dropout=configs.dropout) for _ in range(self.static_len)]) \
+             if self.static_len else None
+         self.observed_embedding = nn.ModuleList([DataEmbedding(1,configs.d_model,dropout=configs.dropout) for _ in range(self.observed_len)])
+-        self.known_embedding = TFTTemporalEmbedding(configs.d_model, configs.embed, configs.freq) \
+-            if configs.embed != 'timeF' else TFTTimeFeatureEmbedding(configs.d_model, configs.embed, configs.freq)
++        if self.allow_custom_known:
++            max_known_channels = getattr(configs, 'tft_known_max_channels', 512)
++            self.known_embedding = TFTCustomKnownEmbedding(configs.d_model, max_channels=max_known_channels)
++        else:
++            self.known_embedding = TFTTemporalEmbedding(configs.d_model, configs.embed, configs.freq) \
++                if configs.embed != 'timeF' else TFTTimeFeatureEmbedding(configs.d_model, configs.embed, configs.freq)
+ 
+     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+         if self.static_len:
+@@ -236,11 +264,14 @@ class CrossVariableAttention(nn.Module):
+ 
+ 
+ class VariableSelectionNetwork(nn.Module):
+-    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4):
++    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True):
+         super(VariableSelectionNetwork, self).__init__()
+         self.cross_mixing = CrossVariableAttention(d_model, n_heads, dropout) if cross_variable_mixing else None
+         self.joint_grn = GRN(d_model * variable_num, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout, use_swiglu=use_swiglu)
+         self.variable_grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(variable_num)])
++        self.use_residual_bypass = residual_bypass
++        self.residual_projection = nn.Linear(d_model * variable_num, d_model)
++        self.residual_gate = nn.Parameter(torch.tensor(0.0))
+ 
+     def forward(self, x: Tensor, context: Optional[Tensor] = None, return_weights: bool = False):
+         if self.cross_mixing is not None:
+@@ -256,15 +287,18 @@ class VariableSelectionNetwork(nn.Module):
+         x_processed = torch.stack([grn(x[...,i,:]) for i, grn in enumerate(self.variable_grns)], dim=-1)
+ 
+         selection_result = torch.matmul(x_processed, selection_weights.unsqueeze(-1)).squeeze(-1)
++        if self.use_residual_bypass:
++            residual = self.residual_projection(x_flattened)
++            selection_result = selection_result + torch.tanh(self.residual_gate) * residual
+         if return_weights:
+             return selection_result, selection_weights
+         return selection_result
+ 
+ 
+ class StaticCovariateEncoder(nn.Module):
+-    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4):
++    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True):
+         super(StaticCovariateEncoder, self).__init__()
+-        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads) if static_len else None
++        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass) if static_len else None
+         self.grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(4)])
+ 
+     def forward(self, static_input, return_weights: bool = False):
+@@ -327,7 +361,7 @@ class TemporalFusionDecoderLayer(nn.Module):
+         super(TemporalFusionDecoderLayer, self).__init__()
+         self.pred_len = configs.pred_len
+         self.use_swiglu = getattr(configs, 'tft_use_swiglu', False)
+-        self.full_attention = getattr(configs, 'tft_full_attention', False)
++        self.full_attention = getattr(configs, 'tft_full_attention', True)
+ 
+         self.history_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
+         self.future_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
+@@ -424,25 +458,37 @@ class Model(nn.Module):
+         self.static_len = len(typepos.static)
+         self.observed_len = len(typepos.observed)
+         self.target_pos = get_target_pos(configs)
+-        self.known_len = get_known_len(configs.embed, configs.freq)
++        self.allow_custom_known = getattr(configs, 'tft_allow_custom_known', False)
++        if self.allow_custom_known:
++            if not hasattr(configs, 'tft_known_len'):
++                raise KeyError("tft_known_len is required when tft_allow_custom_known=True.")
++            self.known_len = int(configs.tft_known_len)
++            if self.known_len <= 0:
++                raise ValueError("tft_known_len must be a positive integer.")
++        else:
++            self.known_len = get_known_len(configs.embed, configs.freq)
+ 
+         self.embedding = TFTEmbedding(configs)
+         
+         self.use_swiglu = getattr(configs, 'tft_use_swiglu', False)
+         self.cross_mix = getattr(configs, 'tft_cross_variable_mixing', False)
++        self.vsn_residual_bypass = getattr(configs, 'tft_vsn_residual_bypass', True)
+         self.n_heads = getattr(configs, 'n_heads', 4)
+ 
+         self.static_encoder = StaticCovariateEncoder(
+             configs.d_model, self.static_len, dropout=configs.dropout, 
+-            use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads
++            use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
++            residual_bypass=self.vsn_residual_bypass
+         )
+         self.history_vsn = VariableSelectionNetwork(
+             configs.d_model, self.observed_len + self.known_len, dropout=configs.dropout,
+-            use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads
++            use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
++            residual_bypass=self.vsn_residual_bypass
+         )
+         self.future_vsn = VariableSelectionNetwork(
+             configs.d_model, self.known_len, dropout=configs.dropout,
+-            use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads
++            use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
++            residual_bypass=self.vsn_residual_bypass
+         )
+         self.temporal_fusion_decoder = TemporalFusionDecoder(configs)
+ 
+@@ -468,6 +514,12 @@ class Model(nn.Module):
+                 raise ValueError(f"x_mark_enc feature length must equal known_len={self.known_len}, got {x_mark_enc.shape[2]}.")
+             if x_mark_dec.shape[2] != self.known_len:
+                 raise ValueError(f"x_mark_dec feature length must equal known_len={self.known_len}, got {x_mark_dec.shape[2]}.")
++        else:
++            if x_mark_enc.shape[2] != self.known_len or x_mark_dec.shape[2] != self.known_len:
++                raise ValueError(
++                    f"With tft_allow_custom_known=True, x_mark_* feature length must equal tft_known_len={self.known_len}. "
++                    f"Got x_mark_enc={x_mark_enc.shape[2]}, x_mark_dec={x_mark_dec.shape[2]}."
++                )
+                 
+         if not torch.isfinite(x_enc).all() or not torch.isfinite(x_mark_enc).all() or not torch.isfinite(x_dec).all() or not torch.isfinite(x_mark_dec).all():
+             raise ValueError("TFT inputs contain NaN/Inf values.")
