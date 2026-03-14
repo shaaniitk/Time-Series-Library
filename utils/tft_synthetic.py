@@ -108,18 +108,29 @@ def make_multiscale_tft_tensors(
     phase_difference_drive = torch.sin(delta_lm) * torch.cos(delta_lh)
     velocity_ratio_drive = torch.tanh(ratio_hm - 2.0) + 0.5 * torch.tanh(ratio_ml - 3.5)
     high_burst_gate = torch.sigmoid(4.0 * (torch.cos(delta_lh) + 0.35 * torch.tanh(ratio_hl - 6.0)))
+    regime_score = 1.1 * torch.cos(delta_lm) + 0.8 * torch.sin(delta_mh) + 0.5 * torch.tanh(ratio_hm - 2.0)
+    regime_low = torch.sigmoid(-3.0 * regime_score)
+    regime_mid = torch.sigmoid(3.0 * (regime_score + 0.35)) * torch.sigmoid(3.0 * (0.35 - regime_score))
+    regime_high = torch.sigmoid(3.0 * regime_score)
+    regime_normalizer = regime_low + regime_mid + regime_high + 1e-6
+    regime_low = regime_low / regime_normalizer
+    regime_mid = regime_mid / regime_normalizer
+    regime_high = regime_high / regime_normalizer
+    regime_burst_gate = regime_low * (0.25 + 0.35 * high_burst_gate) + regime_mid * (0.60 + 0.25 * high_burst_gate) + regime_high * (0.95 + 0.45 * high_burst_gate)
 
     interaction_full = low_full * medium_full
     harmonic_full = medium_full * high_full
+    regime_interaction = regime_low * low_full + regime_mid * interaction_full + regime_high * harmonic_full
     target_full = (
         0.42 * low_full
         + 0.16 * medium_full
-        + 0.08 * high_burst_gate * high_full
+        + 0.08 * regime_burst_gate * high_full
         + 0.10 * interaction_full
         + 0.06 * harmonic_full
         + 0.08 * phase_alignment
         + 0.06 * phase_difference_drive
         + 0.07 * velocity_ratio_drive * high_full
+        + 0.06 * regime_interaction
     )
 
     shared_phase = 2.0 * math.pi * torch.rand(n_samples, 1, 1, device=device)
@@ -162,6 +173,15 @@ def make_multiscale_tft_tensors(
     known_phase_alignment = torch.cos(known_delta_lm) + torch.sin(known_delta_mh)
     known_velocity_ratio = torch.tanh(known_ratio_ml - 3.5) + torch.tanh(known_ratio_hm - 2.0)
     known_burst_gate = torch.sigmoid(4.0 * (torch.cos(_wrap_phase(known_low_phase - known_high_phase)) + 0.25 * known_velocity_ratio))
+    known_regime_score = 1.1 * torch.cos(known_delta_lm) + 0.8 * torch.sin(known_delta_mh) + 0.5 * torch.tanh(known_ratio_hm - 2.0)
+    known_regime_low = torch.sigmoid(-3.0 * known_regime_score)
+    known_regime_mid = torch.sigmoid(3.0 * (known_regime_score + 0.35)) * torch.sigmoid(3.0 * (0.35 - known_regime_score))
+    known_regime_high = torch.sigmoid(3.0 * known_regime_score)
+    known_regime_norm = known_regime_low + known_regime_mid + known_regime_high + 1e-6
+    known_regime_low = known_regime_low / known_regime_norm
+    known_regime_mid = known_regime_mid / known_regime_norm
+    known_regime_high = known_regime_high / known_regime_norm
+    known_regime_gate = known_regime_low * 0.35 + known_regime_mid * 0.70 + known_regime_high * 1.10
     known_trend_full = full_time.view(1, -1, 1).expand(n_samples, -1, 1) / max(float(seq_len + pred_len - 1), 1.0)
     known_mix_full = known_low_full + known_medium_full + known_high_full
 
@@ -176,6 +196,7 @@ def make_multiscale_tft_tensors(
         + 0.15 * known_projection
         + 0.09 * ratio_projection
         + 0.06 * phase_projection * target_full[:, -pred_len:, :]
+        + 0.05 * known_regime_gate[:, -pred_len:, :].expand(-1, -1, c_out)
     )
     y_future = y_future + noise_std * torch.randn_like(y_future)
 
@@ -188,8 +209,12 @@ def make_multiscale_tft_tensors(
     phase_alignment_history = phase_alignment[:, :seq_len, :]
     velocity_ratio_history = velocity_ratio_drive[:, :seq_len, :]
     burst_gate_history = high_burst_gate[:, :seq_len, :]
+    regime_gate_history = regime_burst_gate[:, :seq_len, :]
+    regime_low_history = regime_low[:, :seq_len, :]
+    regime_mid_history = regime_mid[:, :seq_len, :]
+    regime_high_history = regime_high[:, :seq_len, :]
     residual_history = history_target - (
-        0.42 * low_history + 0.16 * medium_history + 0.08 * burst_gate_history * high_history
+        0.42 * low_history + 0.16 * medium_history + 0.08 * regime_gate_history * high_history
     )
 
     x_enc = _build_feature_tensor(
@@ -203,6 +228,10 @@ def make_multiscale_tft_tensors(
             phase_alignment_history,
             velocity_ratio_history,
             burst_gate_history,
+            regime_gate_history,
+            regime_low_history,
+            regime_mid_history,
+            regime_high_history,
             residual_history,
         ],
         enc_in,
@@ -218,6 +247,10 @@ def make_multiscale_tft_tensors(
             known_phase_alignment[:, :seq_len, :],
             known_velocity_ratio[:, :seq_len, :],
             known_burst_gate[:, :seq_len, :],
+            known_regime_gate[:, :seq_len, :],
+            known_regime_low[:, :seq_len, :],
+            known_regime_mid[:, :seq_len, :],
+            known_regime_high[:, :seq_len, :],
             known_mix_full[:, :seq_len, :],
             known_trend_full[:, :seq_len, :],
         ],
@@ -233,6 +266,10 @@ def make_multiscale_tft_tensors(
             known_phase_alignment[:, seq_len - label_len:seq_len + pred_len, :],
             known_velocity_ratio[:, seq_len - label_len:seq_len + pred_len, :],
             known_burst_gate[:, seq_len - label_len:seq_len + pred_len, :],
+            known_regime_gate[:, seq_len - label_len:seq_len + pred_len, :],
+            known_regime_low[:, seq_len - label_len:seq_len + pred_len, :],
+            known_regime_mid[:, seq_len - label_len:seq_len + pred_len, :],
+            known_regime_high[:, seq_len - label_len:seq_len + pred_len, :],
             known_mix_full[:, seq_len - label_len:seq_len + pred_len, :],
             known_trend_full[:, seq_len - label_len:seq_len + pred_len, :],
         ],
@@ -261,6 +298,10 @@ def make_multiscale_tft_tensors(
             "phase_difference_medium_high": delta_mh,
             "phase_velocity_ratio_medium_low": ratio_ml,
             "phase_velocity_ratio_high_medium": ratio_hm,
+            "regime_low": regime_low,
+            "regime_mid": regime_mid,
+            "regime_high": regime_high,
+            "regime_burst_gate": regime_burst_gate,
         },
     }
 
