@@ -5,7 +5,15 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
+from layers.DynamicGraph import DynamicGraphLearner
+from layers.TemporalFusion_layers import (
+    HigherOrderInteractionBlock,
+    MultiScaleLagAttention,
+    RegimeAwareSparseMoE,
+)
 from models import TemporalFusionTransformer as tsl_tft
+from utils.tft_synthetic import make_multiscale_tft_dataset
+from utils.tools import combine_primary_and_aux_loss, get_auxiliary_loss
 
 try:
     from models import TFT_Nixtla as nixtla_tft
@@ -36,10 +44,23 @@ def build_tsl_config():
         dropout=0.1,
         embed="timeF",
         freq="h",
-        e_layers=1,
+        e_layers=2,
         tft_use_swiglu=True,
         tft_full_attention=True,
         tft_dual_attention_fusion=True,
+        tft_use_lag_attention=True,
+        tft_lag_scales=[1, 2, 4],
+        tft_use_higher_order=True,
+        tft_interaction_order=2,
+        tft_interaction_rank=12,
+        tft_use_regime_moe=True,
+        tft_num_regimes=3,
+        tft_num_moe_experts=4,
+        tft_moe_top_k=2,
+        tft_moe_hidden_size=64,
+        tft_moe_noise_epsilon=1e-2,
+        tft_moe_aux_loss_coeff=0.05,
+        tft_payload_stack_layers=True,
         tft_cross_variable_mixing=True,
         tft_vsn_residual_bypass=True,
         tft_allow_custom_known=True,
@@ -52,18 +73,16 @@ def build_tsl_config():
 
 
 def make_tsl_dataset(cfg, n_samples=48):
-    x_enc = torch.randn(n_samples, cfg.seq_len, cfg.enc_in)
-    x_mark_enc = torch.randn(n_samples, cfg.seq_len, cfg.tft_known_len)
-    x_dec = torch.randn(n_samples, cfg.label_len + cfg.pred_len, cfg.c_out)
-    x_mark_dec = torch.randn(n_samples, cfg.label_len + cfg.pred_len, cfg.tft_known_len)
-
-    # Learnable target from both history and known future covariates.
-    recent = x_enc[:, -cfg.pred_len:, : cfg.c_out]
-    futr = x_mark_dec[:, -cfg.pred_len:, : cfg.c_out]
-    y = 0.65 * recent + 0.35 * futr
-    y = y + 0.01 * torch.randn_like(y)
-
-    return TensorDataset(x_enc, x_mark_enc, x_dec, x_mark_dec, y)
+    return make_multiscale_tft_dataset(
+        seq_len=cfg.seq_len,
+        label_len=cfg.label_len,
+        pred_len=cfg.pred_len,
+        enc_in=cfg.enc_in,
+        c_out=cfg.c_out,
+        known_len=cfg.tft_known_len,
+        n_samples=n_samples,
+        noise_std=0.01,
+    )
 
 
 def train_tsl_once(model, loader, cfg, lr=3e-3, epochs=4):
@@ -78,6 +97,9 @@ def train_tsl_once(model, loader, cfg, lr=3e-3, epochs=4):
             out_full = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
             pred = out_full[:, -cfg.pred_len :, :]
             loss = criterion(pred, y)
+            aux_loss = getattr(model, "last_moe_aux_loss", None)
+            if torch.is_tensor(aux_loss):
+                loss = loss + getattr(cfg, "tft_moe_aux_loss_coeff", 0.0) * aux_loss
             loss.backward()
             opt.step()
             running += loss.item()
@@ -90,8 +112,86 @@ class TestTFTComprehensive(unittest.TestCase):
     def setUp(self):
         set_seed(42)
 
+    def test_higher_order_interaction_component(self):
+        cfg = build_tsl_config()
+        interaction_block = HigherOrderInteractionBlock(
+            d_model=cfg.d_model,
+            interaction_order=cfg.tft_interaction_order,
+            interaction_rank=cfg.tft_interaction_rank,
+            dropout=0.0,
+        )
+        x = torch.randn(2, cfg.seq_len + cfg.pred_len, cfg.d_model)
+        out, payload = interaction_block(x, return_payload=True)
+        self.assertEqual(tuple(out.shape), tuple(x.shape))
+        self.assertEqual(tuple(payload["interaction_contribution"].shape), tuple(x.shape))
+        self.assertEqual(tuple(payload["interaction_gates"].shape), (2, cfg.seq_len + cfg.pred_len, cfg.tft_interaction_order))
+        self.assertTrue(torch.isfinite(payload["interaction_contribution"]).all())
+        self.assertTrue(torch.allclose(payload["interaction_gates"].sum(dim=-1), torch.ones_like(payload["interaction_gates"].sum(dim=-1)), atol=1e-6))
+
+    def test_multiscale_lag_attention_component(self):
+        cfg = build_tsl_config()
+        lag_attention = MultiScaleLagAttention(
+            d_model=cfg.d_model,
+            n_heads=cfg.n_heads,
+            lag_scales=cfg.tft_lag_scales,
+            dropout=0.0,
+        )
+        x = torch.randn(2, cfg.seq_len + cfg.pred_len, cfg.d_model)
+        out, payload = lag_attention(x, return_attention=True)
+        self.assertEqual(tuple(out.shape), tuple(x.shape))
+        self.assertEqual(tuple(payload["lag_attention"].shape), (2, cfg.n_heads, cfg.seq_len + cfg.pred_len, cfg.seq_len + cfg.pred_len, len(cfg.tft_lag_scales)))
+        self.assertEqual(tuple(payload["lag_scale_weights"].shape), (len(cfg.tft_lag_scales),))
+        self.assertTrue(torch.allclose(payload["lag_scale_weights"].sum(), torch.tensor(1.0), atol=1e-6))
+
+        future_mask = torch.triu(torch.ones(cfg.seq_len + cfg.pred_len, cfg.seq_len + cfg.pred_len, dtype=torch.bool), diagonal=1)
+        masked_values = payload["lag_attention"].masked_select(future_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1))
+        self.assertTrue(torch.allclose(masked_values, torch.zeros_like(masked_values), atol=1e-6))
+
+    def test_regime_moe_component(self):
+        cfg = build_tsl_config()
+        moe = RegimeAwareSparseMoE(
+            d_model=cfg.d_model,
+            num_experts=cfg.tft_num_moe_experts,
+            top_k=cfg.tft_moe_top_k,
+            num_regimes=cfg.tft_num_regimes,
+            hidden_size=cfg.tft_moe_hidden_size,
+            dropout=0.0,
+            noise_epsilon=cfg.tft_moe_noise_epsilon,
+        )
+        x = torch.randn(2, cfg.seq_len + cfg.pred_len, cfg.d_model)
+        context = torch.randn(2, cfg.d_model)
+        out, aux_loss, payload = moe(x, context=context, return_payload=True)
+        self.assertEqual(tuple(out.shape), tuple(x.shape))
+        self.assertEqual(tuple(payload["expert_routing"].shape), (2, cfg.seq_len + cfg.pred_len, cfg.tft_num_moe_experts))
+        self.assertEqual(tuple(payload["regime_probabilities"].shape), (2, cfg.tft_num_regimes))
+        self.assertTrue(torch.allclose(payload["expert_routing"].sum(dim=-1), torch.ones_like(payload["expert_routing"].sum(dim=-1)), atol=1e-6))
+        self.assertTrue(torch.allclose(payload["regime_probabilities"].sum(dim=-1), torch.ones_like(payload["regime_probabilities"].sum(dim=-1)), atol=1e-6))
+        self.assertGreaterEqual(float(aux_loss), 0.0)
+
+    def test_auxiliary_loss_helpers(self):
+        primary = torch.tensor(2.0)
+        aux = torch.tensor(0.5)
+        combined = combine_primary_and_aux_loss(primary, aux, coeff=0.2)
+        self.assertAlmostEqual(float(combined), 2.1, places=6)
+
+        model_holder = SimpleNamespace(last_moe_aux_loss=aux)
+        wrapped = SimpleNamespace(module=model_holder)
+        self.assertEqual(float(get_auxiliary_loss(model_holder)), 0.5)
+        self.assertEqual(float(get_auxiliary_loss(wrapped)), 0.5)
+
     def test_tsl_component_contracts_and_payload(self):
         cfg = build_tsl_config()
+
+        graph = DynamicGraphLearner(cfg.d_model, cfg.n_heads, dropout=0.1, output_attention=True)
+        graph_x = torch.randn(2, cfg.seq_len, 8, cfg.d_model)
+        graph_out = graph(graph_x, return_attention=False)
+        self.assertTrue(torch.is_tensor(graph_out))
+        self.assertEqual(tuple(graph_out.shape), tuple(graph_x.shape))
+        graph_out_attn, graph_attn = graph(graph_x, return_attention=True)
+        self.assertEqual(tuple(graph_out_attn.shape), tuple(graph_x.shape))
+        self.assertEqual(tuple(graph_attn.shape), (2, cfg.seq_len, cfg.n_heads, 8, 8))
+        self.assertTrue(torch.isfinite(graph_out_attn).all())
+        self.assertTrue(torch.isfinite(graph_attn).all())
 
         emb = tsl_tft.TFTCustomKnownEmbedding(cfg.d_model, max_channels=32)
         known = torch.randn(3, 10, 12)
@@ -109,9 +209,12 @@ class TestTFTComprehensive(unittest.TestCase):
         )
         x = torch.randn(2, cfg.seq_len, 8, cfg.d_model)
         context = torch.randn(2, cfg.d_model)
-        selected, weights = vsn(x, context=context, return_weights=True)
+        selected, weight_payload = vsn(x, context=context, return_weights=True)
+        weights = weight_payload["selection"]
+        graph_weights = weight_payload["graph_attention"]
         self.assertEqual(tuple(selected.shape), (2, cfg.seq_len, cfg.d_model))
         self.assertEqual(tuple(weights.shape), (2, cfg.seq_len, 8))
+        self.assertEqual(tuple(graph_weights.shape), (2, cfg.seq_len, cfg.n_heads, 8, 8))
         self.assertTrue(torch.allclose(weights.sum(dim=-1), torch.ones_like(weights.sum(dim=-1)), atol=1e-5))
 
         model = tsl_tft.Model(cfg)
@@ -129,8 +232,37 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertIn("attention_weights", payload)
         self.assertIn("attention_weights_full", payload)
         self.assertIn("attention_fusion_alpha", payload)
+        self.assertIn("attention_branch_weights", payload)
+        self.assertIn("lag_attention_weights", payload)
+        self.assertIn("lag_scale_weights", payload)
+        self.assertIn("interaction_contribution", payload)
+        self.assertIn("interaction_gates", payload)
+        self.assertIn("expert_routing", payload)
+        self.assertIn("regime_probabilities", payload)
+        self.assertIn("moe_aux_loss", payload)
+        self.assertIn("decoder_layer_payloads", payload)
+        self.assertIn("decoder_num_layers", payload)
+        self.assertIn("history_graph_attention", payload)
+        self.assertIn("future_graph_attention", payload)
+        self.assertIn("static_graph_attention", payload)
         self.assertEqual(tuple(payload["predictions"].shape), (1, cfg.pred_len, cfg.c_out))
         self.assertEqual(tuple(payload["predictions_full"].shape), (1, cfg.seq_len + cfg.pred_len, cfg.c_out))
+        self.assertEqual(tuple(payload["attention_branch_weights"].shape), (3,))
+        self.assertEqual(tuple(payload["lag_scale_weights"].shape), (len(cfg.tft_lag_scales),))
+        self.assertEqual(payload["lag_attention_weights"].shape[-1], len(cfg.tft_lag_scales))
+        self.assertEqual(tuple(payload["interaction_contribution"].shape), (1, cfg.seq_len + cfg.pred_len, cfg.d_model))
+        self.assertEqual(tuple(payload["interaction_gates"].shape), (1, cfg.seq_len + cfg.pred_len, cfg.tft_interaction_order))
+        self.assertEqual(tuple(payload["expert_routing"].shape), (1, cfg.seq_len + cfg.pred_len, cfg.tft_num_moe_experts))
+        self.assertEqual(tuple(payload["regime_probabilities"].shape), (1, cfg.tft_num_regimes))
+        self.assertGreaterEqual(float(payload["moe_aux_loss"]), 0.0)
+        self.assertEqual(payload["decoder_num_layers"], cfg.e_layers)
+        self.assertIn("attention_branch_weights", payload["decoder_layer_payloads"])
+        self.assertEqual(tuple(payload["decoder_layer_payloads"]["attention_branch_weights"].shape), (cfg.e_layers, 3))
+        self.assertEqual(tuple(payload["decoder_layer_payloads"]["lag_scale_weights"].shape), (cfg.e_layers, len(cfg.tft_lag_scales)))
+        self.assertEqual(payload["decoder_layer_payloads"]["expert_routing"].shape[0], cfg.e_layers)
+        self.assertEqual(payload["history_graph_attention"].shape[:3], (1, cfg.seq_len, cfg.n_heads))
+        self.assertEqual(payload["future_graph_attention"].shape[:3], (1, cfg.pred_len, cfg.n_heads))
+        self.assertIsNone(payload["static_graph_attention"])
 
     def test_tsl_model_learns_structured_signal(self):
         cfg = build_tsl_config()
@@ -146,6 +278,16 @@ class TestTFTComprehensive(unittest.TestCase):
         gate_grad = model.history_vsn.residual_gate.grad
         self.assertIsNotNone(gate_grad)
         self.assertGreater(gate_grad.abs().sum().item(), 0.0)
+        self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].attention_fusion_logits.grad)
+        self.assertGreater(model.temporal_fusion_decoder.layers[0].attention_fusion_logits.grad.abs().sum().item(), 0.0)
+        self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].lag_attention_module.scale_logits.grad)
+        self.assertGreater(model.temporal_fusion_decoder.layers[0].lag_attention_module.scale_logits.grad.abs().sum().item(), 0.0)
+        self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].higher_order_block.gate_projection.weight.grad)
+        self.assertGreater(model.temporal_fusion_decoder.layers[0].higher_order_block.gate_projection.weight.grad.abs().sum().item(), 0.0)
+        self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].regime_moe.gate.weight.grad)
+        self.assertGreater(model.temporal_fusion_decoder.layers[0].regime_moe.gate.weight.grad.abs().sum().item(), 0.0)
+        self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].regime_moe.regime_detector[0].weight.grad)
+        self.assertGreater(model.temporal_fusion_decoder.layers[0].regime_moe.regime_detector[0].weight.grad.abs().sum().item(), 0.0)
 
     def test_nixtla_components_and_model_behavior(self):
         cfg = SimpleNamespace(

@@ -39,6 +39,19 @@ def print_args(args):
     print(f'  {"Embed:":<20}{args.embed:<20}{"Activation:":<20}{args.activation:<20}')
     print()
 
+    if hasattr(args, 'tft_use_lag_attention'):
+        print("\033[1m" + "TFT Upgrades" + "\033[0m")
+        print(f'  {"TFT SwiGLU:":<20}{args.tft_use_swiglu!s:<20}{"TFT Full Attn:":<20}{args.tft_full_attention!s:<20}')
+        print(f'  {"TFT Dual Attn:":<20}{args.tft_dual_attention_fusion!s:<20}{"TFT Cross Mix:":<20}{args.tft_cross_variable_mixing!s:<20}')
+        print(f'  {"VSN Bypass:":<20}{args.tft_vsn_residual_bypass!s:<20}{"Custom Known:":<20}{args.tft_allow_custom_known!s:<20}')
+        print(f'  {"Lag Attention:":<20}{args.tft_use_lag_attention!s:<20}{"Lag Scales:":<20}{str(args.tft_lag_scales):<20}')
+        print(f'  {"Higher Order:":<20}{args.tft_use_higher_order!s:<20}{"Interaction Ord:":<20}{args.tft_interaction_order:<20}')
+        print(f'  {"Interaction Rank:":<20}{str(args.tft_interaction_rank):<20}{"Regime MoE:":<20}{args.tft_use_regime_moe!s:<20}')
+        print(f'  {"MoE Experts:":<20}{args.tft_num_moe_experts:<20}{"MoE Top-k:":<20}{args.tft_moe_top_k:<20}')
+        print(f'  {"MoE Regimes:":<20}{args.tft_num_regimes:<20}{"MoE Hidden:":<20}{str(args.tft_moe_hidden_size):<20}')
+        print(f'  {"MoE Aux Coeff:":<20}{args.tft_moe_aux_loss_coeff:<20}{"Payload Stack:":<20}{args.tft_payload_stack_layers!s:<20}')
+        print()
+
     print("\033[1m" + "Run Parameters" + "\033[0m")
     print(f'  {"Num Workers:":<20}{args.num_workers:<20}{"Itr:":<20}{args.itr:<20}')
     print(f'  {"Train Epochs:":<20}{args.train_epochs:<20}{"Batch Size:":<20}{args.batch_size:<20}')

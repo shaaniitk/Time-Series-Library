@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from models.TemporalFusionTransformer import Model
+from utils.tft_synthetic import make_multiscale_tft_tensors
 
 
 def set_seed(seed: int = 42):
@@ -20,16 +21,18 @@ def set_seed(seed: int = 42):
 
 
 def make_dummy_batch(batch_size, seq_len, label_len, pred_len, enc_in, c_out, known_len, device):
-    x_enc = torch.randn(batch_size, seq_len, enc_in, device=device)
-    x_mark_enc = torch.randn(batch_size, seq_len, known_len, device=device)
-
-    # Decoder input is shaped like target channels (c_out), matching framework usage.
-    x_dec = torch.randn(batch_size, label_len + pred_len, c_out, device=device)
-    x_mark_dec = torch.randn(batch_size, label_len + pred_len, known_len, device=device)
-
-    # Synthetic target for the prediction horizon.
-    y_future = torch.randn(batch_size, pred_len, c_out, device=device)
-    return x_enc, x_mark_enc, x_dec, x_mark_dec, y_future
+    tensors = make_multiscale_tft_tensors(
+        seq_len=seq_len,
+        label_len=label_len,
+        pred_len=pred_len,
+        enc_in=enc_in,
+        c_out=c_out,
+        known_len=known_len,
+        n_samples=batch_size,
+        device=device,
+        noise_std=0.01,
+    )
+    return tensors["x_enc"], tensors["x_mark_enc"], tensors["x_dec"], tensors["x_mark_dec"], tensors["y_future"]
 
 
 def build_model_config():

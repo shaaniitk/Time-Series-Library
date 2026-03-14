@@ -1,6 +1,6 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from utils.tools import EarlyStopping, adjust_learning_rate, visual
+from utils.tools import EarlyStopping, adjust_learning_rate, combine_primary_and_aux_loss, get_auxiliary_loss, visual
 from utils.metrics import metric
 import torch
 import torch.nn as nn
@@ -37,6 +37,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
     def _select_criterion(self):
         criterion = nn.MSELoss()
         return criterion
+
+    def _get_aux_loss_coeff(self):
+        return float(getattr(self.args, 'tft_moe_aux_loss_coeff', 0.0))
  
 
     def vali(self, vali_data, vali_loader, criterion):
@@ -67,6 +70,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 true = batch_y.detach()
 
                 loss = criterion(pred, true)
+                aux_loss = get_auxiliary_loss(self.model)
+                loss = combine_primary_and_aux_loss(loss, aux_loss, self._get_aux_loss_coeff())
                 if not torch.isfinite(loss):
                     print(f"[vali] Non-finite loss at batch {i}; skipping batch.")
                     continue
@@ -123,6 +128,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         outputs = outputs[:, -self.args.pred_len:, f_dim:]
                         batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                         loss = criterion(outputs, batch_y)
+                        aux_loss = get_auxiliary_loss(self.model)
+                        loss = combine_primary_and_aux_loss(loss, aux_loss, self._get_aux_loss_coeff())
                         if not torch.isfinite(loss):
                             raise RuntimeError(f"Non-finite training loss at epoch {epoch + 1}, batch {i + 1}")
                         train_loss.append(loss.item())
@@ -133,6 +140,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     loss = criterion(outputs, batch_y)
+                    aux_loss = get_auxiliary_loss(self.model)
+                    loss = combine_primary_and_aux_loss(loss, aux_loss, self._get_aux_loss_coeff())
                     if not torch.isfinite(loss):
                         raise RuntimeError(f"Non-finite training loss at epoch {epoch + 1}, batch {i + 1}")
                     train_loss.append(loss.item())

@@ -2,6 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from layers.Embed import DataEmbedding, TemporalEmbedding
+from layers.DynamicGraph import DynamicGraphLearner
+from layers.TemporalFusion_layers import (
+    HigherOrderInteractionBlock,
+    MultiScaleLagAttention,
+    RegimeAwareSparseMoE,
+    build_causal_mask,
+)
 from torch import Tensor
 from typing import Optional
 from collections import namedtuple
@@ -243,30 +250,10 @@ class GRN(nn.Module):
         return self.gate(x, self.project_a(a))
 
 
-class CrossVariableAttention(nn.Module):
-    def __init__(self, d_model, n_heads, dropout=0.0):
-        super(CrossVariableAttention, self).__init__()
-        self.mha = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
-        self.layer_norm = nn.LayerNorm(d_model)
-
-    def forward(self, x):
-        # x: [B,T,C,d] or [B,C,d]
-        if x.ndim == 4:
-            B, T, C, d = x.shape
-            x_flat = x.reshape(B * T, C, d)
-            attn_out, _ = self.mha(x_flat, x_flat, x_flat, need_weights=False)
-            out = self.layer_norm(x_flat + attn_out)
-            return out.reshape(B, T, C, d)
-        elif x.ndim == 3:
-            attn_out, _ = self.mha(x, x, x, need_weights=False)
-            return self.layer_norm(x + attn_out)
-        return x
-
-
 class VariableSelectionNetwork(nn.Module):
     def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True):
         super(VariableSelectionNetwork, self).__init__()
-        self.cross_mixing = CrossVariableAttention(d_model, n_heads, dropout) if cross_variable_mixing else None
+        self.cross_mixing = DynamicGraphLearner(d_model, n_heads, dropout, output_attention=True) if cross_variable_mixing else None
         self.joint_grn = GRN(d_model * variable_num, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout, use_swiglu=use_swiglu)
         self.variable_grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(variable_num)])
         self.use_residual_bypass = residual_bypass
@@ -274,12 +261,27 @@ class VariableSelectionNetwork(nn.Module):
         self.residual_gate = nn.Parameter(torch.tensor(0.0))
 
     def forward(self, x: Tensor, context: Optional[Tensor] = None, return_weights: bool = False):
+        graph_attention = None
         if self.cross_mixing is not None:
-            x = self.cross_mixing(x)
+            cross_output = self.cross_mixing(x, return_attention=return_weights)
+            if return_weights:
+                if not isinstance(cross_output, tuple) or len(cross_output) != 2:
+                    raise RuntimeError("Dynamic graph mixing must return (features, attention_weights) when return_weights=True.")
+                x, graph_attention = cross_output
+            else:
+                if isinstance(cross_output, tuple):
+                    raise RuntimeError("Dynamic graph mixing returned attention weights when return_weights=False.")
+                x = cross_output
         # x: [B,T,C,d] or [B,C,d]
         # selection_weights: [B,T,C] or [B,C]
         # x_processed: [B,T,d,C] or [B,d,C]
         # selection_result: [B,T,d] or [B,d]
+        if x.ndim not in (3, 4):
+            raise ValueError(f"VSN expects rank-3 or rank-4 input after cross mixing, got shape {tuple(x.shape)}.")
+        if x.shape[-2] != len(self.variable_grns):
+            raise ValueError(
+                f"VSN variable dimension mismatch: expected {len(self.variable_grns)}, got {x.shape[-2]}."
+            )
         x_flattened = torch.flatten(x, start_dim=-2)
         selection_weights = self.joint_grn(x_flattened, context)
         selection_weights = F.softmax(selection_weights, dim=-1)
@@ -291,7 +293,10 @@ class VariableSelectionNetwork(nn.Module):
             residual = self.residual_projection(x_flattened)
             selection_result = selection_result + torch.tanh(self.residual_gate) * residual
         if return_weights:
-            return selection_result, selection_weights
+            return selection_result, {
+                'selection': selection_weights,
+                'graph_attention': graph_attention,
+            }
         return selection_result
 
 
@@ -363,27 +368,56 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.use_swiglu = getattr(configs, 'tft_use_swiglu', False)
         self.full_attention = getattr(configs, 'tft_full_attention', True)
         self.dual_attention_fusion = getattr(configs, 'tft_dual_attention_fusion', False)
+        self.use_lag_attention = getattr(configs, 'tft_use_lag_attention', False)
+        self.lag_scales = list(getattr(configs, 'tft_lag_scales', [1, 2, 4, 8]))
+        self.use_higher_order = getattr(configs, 'tft_use_higher_order', False)
+        self.interaction_order = int(getattr(configs, 'tft_interaction_order', 2))
+        self.interaction_rank = getattr(configs, 'tft_interaction_rank', None)
+        self.use_regime_moe = getattr(configs, 'tft_use_regime_moe', False)
+        self.num_regimes = int(getattr(configs, 'tft_num_regimes', 4))
+        self.num_moe_experts = int(getattr(configs, 'tft_num_moe_experts', 4))
+        self.moe_top_k = int(getattr(configs, 'tft_moe_top_k', 2))
+        self.moe_hidden_size = getattr(configs, 'tft_moe_hidden_size', configs.d_model)
+        self.moe_noise_epsilon = float(getattr(configs, 'tft_moe_noise_epsilon', 1e-2))
 
         self.history_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
         self.future_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
         self.gate_after_lstm = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.enrichment_grn = GRN(configs.d_model, configs.d_model, context_size=configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu)
+        self.lag_attention_module = MultiScaleLagAttention(configs.d_model, configs.n_heads, self.lag_scales, dropout=configs.dropout) if self.use_lag_attention else None
+        self.higher_order_block = HigherOrderInteractionBlock(
+            configs.d_model,
+            interaction_order=self.interaction_order,
+            interaction_rank=self.interaction_rank,
+            dropout=configs.dropout,
+        ) if self.use_higher_order else None
+        self.regime_moe = RegimeAwareSparseMoE(
+            configs.d_model,
+            num_experts=self.num_moe_experts,
+            top_k=self.moe_top_k,
+            num_regimes=self.num_regimes,
+            hidden_size=self.moe_hidden_size,
+            dropout=configs.dropout,
+            noise_epsilon=self.moe_noise_epsilon,
+        ) if self.use_regime_moe else None
         if self.dual_attention_fusion:
             self.full_attention_module = nn.MultiheadAttention(configs.d_model, configs.n_heads, dropout=configs.dropout, batch_first=True)
             self.interpretable_attention_module = InterpretableMultiHeadAttention(configs)
-            self.attention_fusion_logit = nn.Parameter(torch.tensor(0.0))
         elif self.full_attention:
             self.attention = nn.MultiheadAttention(configs.d_model, configs.n_heads, dropout=configs.dropout, batch_first=True)
         else:
             self.attention = InterpretableMultiHeadAttention(configs)
+        branch_count = 2 if self.dual_attention_fusion else 1
+        if self.use_lag_attention:
+            branch_count += 1
+        self.attention_fusion_logits = nn.Parameter(torch.zeros(branch_count)) if branch_count > 1 else None
         self.gate_after_attention = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.position_wise_grn = GRN(configs.d_model, configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu)
         self.gate_final = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
-
-    def _causal_mask(self, seq_len: int, device, dtype):
-        return torch.triu(torch.full((seq_len, seq_len), float('-inf'), device=device, dtype=dtype), 1)
+        self.last_moe_aux_loss = None
 
     def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
+        self.last_moe_aux_loss = None
         c = (c_c.unsqueeze(0), c_h.unsqueeze(0)) if c_c is not None and c_h is not None else None
         historical_features, state = self.history_encoder(history_input, c)
         future_features, _ = self.future_encoder(future_input, state)
@@ -393,10 +427,12 @@ class TemporalFusionDecoderLayer(nn.Module):
         temporal_features = self.gate_after_lstm(temporal_features, temporal_input)
 
         enriched_features = self.enrichment_grn(temporal_features, c_e)
+        seq_len = enriched_features.shape[1]
+        attn_mask = build_causal_mask(seq_len, enriched_features.device, enriched_features.dtype)
+        attention_branches = []
+        attention_payload = {}
 
         if self.dual_attention_fusion:
-            seq_len = enriched_features.shape[1]
-            attn_mask = self._causal_mask(seq_len, enriched_features.device, enriched_features.dtype)
             full_out, full_attention_prob = self.full_attention_module(
                 enriched_features,
                 enriched_features,
@@ -414,35 +450,72 @@ class TemporalFusionDecoderLayer(nn.Module):
                 interpretable_out = self.interpretable_attention_module(enriched_features)
                 interpretable_attention_prob = None
 
-            fusion_alpha = torch.sigmoid(self.attention_fusion_logit)
-            attention_out = fusion_alpha * full_out + (1.0 - fusion_alpha) * interpretable_out
+            attention_branches.extend([full_out, interpretable_out])
             if return_attention:
-                attention_prob = {
-                    'interpretable': interpretable_attention_prob,
-                    'full': full_attention_prob,
-                    'fusion_alpha': fusion_alpha.detach(),
-                }
-            else:
-                attention_prob = None
+                attention_payload['interpretable'] = interpretable_attention_prob
+                attention_payload['full'] = full_attention_prob
         elif self.full_attention:
-            # Match standard TFT causal masking
-            seq_len = enriched_features.shape[1]
-            attn_mask = self._causal_mask(seq_len, enriched_features.device, enriched_features.dtype)
-            
-            # average_attn_weights=False ensures we get [B, n_heads, T, T] to match Interpretable API
             attention_out, attention_prob = self.attention(
                 enriched_features, enriched_features, enriched_features, 
                 need_weights=return_attention, attn_mask=attn_mask, average_attn_weights=False
             )
+            attention_branches.append(attention_out)
+            if return_attention:
+                attention_payload['full'] = attention_prob
         else:
             if return_attention:
                 attention_out, attention_prob = self.attention(enriched_features, return_attention=True)
             else:
                 attention_out = self.attention(enriched_features)
                 attention_prob = None
+            attention_branches.append(attention_out)
+            if return_attention:
+                attention_payload['interpretable'] = attention_prob
+
+        if self.use_lag_attention:
+            if return_attention:
+                lag_out, lag_payload = self.lag_attention_module(enriched_features, return_attention=True)
+                attention_payload.update(lag_payload)
+            else:
+                lag_out = self.lag_attention_module(enriched_features)
+            attention_branches.append(lag_out)
+
+        if len(attention_branches) == 1:
+            attention_out = attention_branches[0]
+            branch_weights = None
+        else:
+            branch_weights = torch.softmax(self.attention_fusion_logits, dim=0)
+            attention_out = sum(weight * branch for weight, branch in zip(branch_weights, attention_branches))
+
+        if return_attention:
+            if branch_weights is not None:
+                attention_payload['attention_branch_weights'] = branch_weights.detach()
+                if self.dual_attention_fusion and not self.use_lag_attention and branch_weights.numel() == 2:
+                    attention_payload['fusion_alpha'] = branch_weights[0].detach()
+                else:
+                    attention_payload['fusion_alpha'] = branch_weights.detach()
+            else:
+                attention_payload['fusion_alpha'] = None
+            attention_prob = attention_payload
 
         attention_out = self.gate_after_attention(attention_out, enriched_features)
-        out = self.position_wise_grn(attention_out)
+        if self.use_higher_order:
+            if return_attention:
+                attention_out, interaction_payload = self.higher_order_block(attention_out, return_payload=True)
+                attention_prob.update(interaction_payload)
+            else:
+                attention_out = self.higher_order_block(attention_out)
+        if self.use_regime_moe:
+            if return_attention:
+                attention_out, moe_aux_loss, moe_payload = self.regime_moe(attention_out, context=c_e, return_payload=True)
+                attention_prob.update(moe_payload)
+                attention_prob['moe_aux_loss'] = moe_aux_loss.detach()
+            else:
+                attention_out, moe_aux_loss = self.regime_moe(attention_out, context=c_e)
+            self.last_moe_aux_loss = moe_aux_loss
+            out = attention_out
+        else:
+            out = self.position_wise_grn(attention_out)
         out = self.gate_final(out, temporal_features)
         if return_attention:
             return out, attention_prob
@@ -454,11 +527,42 @@ class TemporalFusionDecoder(nn.Module):
         super(TemporalFusionDecoder, self).__init__()
         self.e_layers = getattr(configs, 'e_layers', 1)
         self.pred_len = configs.pred_len
+        self.stack_payload_layers = getattr(configs, 'tft_payload_stack_layers', True)
         self.layers = nn.ModuleList([TemporalFusionDecoderLayer(configs) for _ in range(self.e_layers)])
         self.out_projection = nn.Linear(configs.d_model, configs.c_out)
+        self.last_moe_aux_loss = None
+
+    def _aggregate_attention_payloads(self, payloads):
+        if not payloads:
+            return None
+        final_payload = payloads[-1]
+        if not isinstance(final_payload, dict):
+            return final_payload
+
+        merged_payload = dict(final_payload)
+        merged_payload['decoder_num_layers'] = len(payloads)
+        if not self.stack_payload_layers:
+            return merged_payload
+
+        layerwise = {}
+        keys = set().union(*(payload.keys() for payload in payloads if isinstance(payload, dict)))
+        for key in keys:
+            values = [payload.get(key) if isinstance(payload, dict) else None for payload in payloads]
+            if all(value is None for value in values):
+                layerwise[key] = None
+            elif all(torch.is_tensor(value) for value in values):
+                try:
+                    layerwise[key] = torch.stack(values, dim=0)
+                except RuntimeError:
+                    layerwise[key] = values
+            else:
+                layerwise[key] = values
+        merged_payload['decoder_layer_payloads'] = layerwise
+        return merged_payload
 
     def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
         attention_payloads = []
+        moe_aux_losses = []
         curr_history = history_input
         curr_future = future_input
         
@@ -468,14 +572,18 @@ class TemporalFusionDecoder(nn.Module):
                 attention_payloads.append(attention_prob)
             else:
                 out = layer(curr_history, curr_future, c_c, c_h, c_e)
+            if layer.last_moe_aux_loss is not None:
+                moe_aux_losses.append(layer.last_moe_aux_loss)
             curr_history = out[:, :history_input.shape[1], :]
             curr_future = out[:, history_input.shape[1]:, :]
+
+        self.last_moe_aux_loss = torch.stack(moe_aux_losses).mean() if moe_aux_losses else None
         
         dec_out = out[:, -self.pred_len:, :]
         projected = self.out_projection(dec_out)
         
         if return_attention:
-            return projected, attention_payloads[-1] if attention_payloads else None
+            return projected, self._aggregate_attention_payloads(attention_payloads)
         return projected
 
 
@@ -509,6 +617,7 @@ class Model(nn.Module):
         self.cross_mix = getattr(configs, 'tft_cross_variable_mixing', False)
         self.vsn_residual_bypass = getattr(configs, 'tft_vsn_residual_bypass', True)
         self.n_heads = getattr(configs, 'n_heads', 4)
+        self.last_moe_aux_loss = None
 
         self.static_encoder = StaticCovariateEncoder(
             configs.d_model, self.static_len, dropout=configs.dropout, 
@@ -559,6 +668,12 @@ class Model(nn.Module):
         if not torch.isfinite(x_enc).all() or not torch.isfinite(x_mark_enc).all() or not torch.isfinite(x_dec).all() or not torch.isfinite(x_mark_dec).all():
             raise ValueError("TFT inputs contain NaN/Inf values.")
 
+    @staticmethod
+    def _split_vsn_weight_payload(weight_payload):
+        if isinstance(weight_payload, dict):
+            return weight_payload.get('selection'), weight_payload.get('graph_attention')
+        return weight_payload, None
+
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation: bool = False):
         # Normalization from Non-stationary Transformer
         means = x_enc.mean(1, keepdim=True).detach()
@@ -576,8 +691,9 @@ class Model(nn.Module):
         # Static context
         # c_s,...,c_e: [B,d]
         if return_interpretation:
-            static_contexts, static_weights = self.static_encoder(static_input, return_weights=True)
+            static_contexts, static_weight_payload = self.static_encoder(static_input, return_weights=True)
             c_s, c_c, c_h, c_e = static_contexts
+            static_weights, static_graph_attention = self._split_vsn_weight_payload(static_weight_payload)
         else:
             c_s, c_c, c_h, c_e = self.static_encoder(static_input)
 
@@ -585,8 +701,10 @@ class Model(nn.Module):
         history_input = torch.cat([observed_input, known_input[:,:self.seq_len]], dim=-2)
         future_input = known_input[:,self.seq_len:]
         if return_interpretation:
-            history_input, history_weights = self.history_vsn(history_input, c_s, return_weights=True)
-            future_input, future_weights = self.future_vsn(future_input, c_s, return_weights=True)
+            history_input, history_weight_payload = self.history_vsn(history_input, c_s, return_weights=True)
+            future_input, future_weight_payload = self.future_vsn(future_input, c_s, return_weights=True)
+            history_weights, history_graph_attention = self._split_vsn_weight_payload(history_weight_payload)
+            future_weights, future_graph_attention = self._split_vsn_weight_payload(future_weight_payload)
         else:
             history_input = self.history_vsn(history_input, c_s)
             future_input = self.future_vsn(future_input, c_s)
@@ -604,6 +722,7 @@ class Model(nn.Module):
             )
         else:
             dec_out = self.temporal_fusion_decoder(history_input, future_input, c_c, c_h, c_e)
+        self.last_moe_aux_loss = self.temporal_fusion_decoder.last_moe_aux_loss
 
         # De-Normalization from Non-stationary Transformer
         target_pos = torch.as_tensor(self.target_pos, device=x_enc.device, dtype=torch.long)
@@ -614,18 +733,51 @@ class Model(nn.Module):
         if return_interpretation:
             attention_weights_full = None
             attention_fusion_alpha = None
+            lag_attention_weights = None
+            lag_scale_weights = None
+            attention_branch_weights = None
+            interaction_contribution = None
+            interaction_gates = None
+            expert_routing = None
+            regime_probabilities = None
+            moe_aux_loss = self.last_moe_aux_loss.detach() if torch.is_tensor(self.last_moe_aux_loss) else self.last_moe_aux_loss
+            decoder_layer_payloads = None
+            decoder_num_layers = None
             if isinstance(attention_weights, dict):
                 attention_weights_full = attention_weights.get('full')
                 attention_fusion_alpha = attention_weights.get('fusion_alpha')
+                lag_attention_weights = attention_weights.get('lag_attention')
+                lag_scale_weights = attention_weights.get('lag_scale_weights')
+                attention_branch_weights = attention_weights.get('attention_branch_weights')
+                interaction_contribution = attention_weights.get('interaction_contribution')
+                interaction_gates = attention_weights.get('interaction_gates')
+                expert_routing = attention_weights.get('expert_routing')
+                regime_probabilities = attention_weights.get('regime_probabilities')
+                moe_aux_loss = attention_weights.get('moe_aux_loss', moe_aux_loss)
+                decoder_layer_payloads = attention_weights.get('decoder_layer_payloads')
+                decoder_num_layers = attention_weights.get('decoder_num_layers')
                 attention_weights = attention_weights.get('interpretable')
             return {
                 'predictions': dec_out,
                 'attention_weights': attention_weights,
                 'attention_weights_full': attention_weights_full,
                 'attention_fusion_alpha': attention_fusion_alpha,
+                'attention_branch_weights': attention_branch_weights,
+                'lag_attention_weights': lag_attention_weights,
+                'lag_scale_weights': lag_scale_weights,
+                'interaction_contribution': interaction_contribution,
+                'interaction_gates': interaction_gates,
+                'expert_routing': expert_routing,
+                'regime_probabilities': regime_probabilities,
+                'moe_aux_loss': moe_aux_loss,
+                'decoder_layer_payloads': decoder_layer_payloads,
+                'decoder_num_layers': decoder_num_layers,
                 'history_vsn_weights': history_weights,
+                'history_graph_attention': history_graph_attention,
                 'future_vsn_weights': future_weights,
+                'future_graph_attention': future_graph_attention,
                 'static_vsn_weights': static_weights,
+                'static_graph_attention': static_graph_attention,
                 'static_context': {'c_s': c_s, 'c_c': c_c, 'c_h': c_h, 'c_e': c_e},
             }
         return dec_out

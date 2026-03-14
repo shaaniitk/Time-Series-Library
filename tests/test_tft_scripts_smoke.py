@@ -42,8 +42,12 @@ class TestTFTScriptsSmoke(unittest.TestCase):
             Path("scripts/long_term_forecast/tft_ablation_full_attention_vs_vsn_bypass.py"),
             ["--quick", "--device", "cpu", "--seeds", "123,456"],
         )
-        self.assertIn("Ablation: full attention x VSN residual bypass", output)
+        self.assertIn("Ablation: TFT dependency-upgrade matrix", output)
         self.assertIn("Best config by mean loss", output)
+        self.assertIn("all_upgrades", output)
+        self.assertIn("graph", output)
+        self.assertIn("interaction", output)
+        self.assertIn("moe", output)
 
     def test_ablation_overfit_signal_present(self):
         output = self._run_script(

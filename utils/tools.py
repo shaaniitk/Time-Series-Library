@@ -118,3 +118,22 @@ def adjustment(gt, pred):
 
 def cal_accuracy(y_pred, y_true):
     return np.mean(y_pred == y_true)
+
+
+def unwrap_model(model):
+    return model.module if hasattr(model, 'module') else model
+
+
+def get_auxiliary_loss(model, attr_name='last_moe_aux_loss'):
+    unwrapped_model = unwrap_model(model)
+    return getattr(unwrapped_model, attr_name, None)
+
+
+def combine_primary_and_aux_loss(primary_loss, aux_loss, coeff=0.0):
+    if not torch.is_tensor(primary_loss):
+        raise TypeError(f"primary_loss must be a torch.Tensor, got {type(primary_loss)}.")
+    if coeff == 0.0 or aux_loss is None:
+        return primary_loss
+    if not torch.is_tensor(aux_loss):
+        raise TypeError(f"aux_loss must be a torch.Tensor when provided, got {type(aux_loss)}.")
+    return primary_loss + coeff * aux_loss

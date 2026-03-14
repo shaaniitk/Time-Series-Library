@@ -163,6 +163,36 @@ if __name__ == '__main__':
                         help='Apply Cross-Variable Attention mixing before VSN in TFT.')
     parser.add_argument('--tft_allow_custom_known', action='store_true', default=False,
                         help='Relax rigid known_len timestamp count validations in TFT inputs.')
+    parser.add_argument('--tft_vsn_residual_bypass', action='store_true', default=False,
+                        help='Enable residual bypass in TFT variable selection networks.')
+    parser.add_argument('--tft_dual_attention_fusion', action='store_true', default=False,
+                        help='Fuse full and interpretable attention branches in TFT decoder.')
+    parser.add_argument('--tft_use_lag_attention', action='store_true', default=False,
+                        help='Enable reusable multi-scale lag attention branch in TFT decoder.')
+    parser.add_argument('--tft_lag_scales', type=str, default='1,2,4',
+                        help='Comma-separated lag scales for TFT lag attention.')
+    parser.add_argument('--tft_use_higher_order', action='store_true', default=False,
+                        help='Enable reusable higher-order interaction block in TFT decoder.')
+    parser.add_argument('--tft_interaction_order', type=int, default=2,
+                        help='Higher-order interaction order for TFT decoder block (2 or 3).')
+    parser.add_argument('--tft_interaction_rank', type=int, default=0,
+                        help='Low-rank dimension for TFT higher-order interaction block; 0 uses the model default.')
+    parser.add_argument('--tft_use_regime_moe', action='store_true', default=False,
+                        help='Enable regime-aware sparse MoE in TFT decoder.')
+    parser.add_argument('--tft_num_regimes', type=int, default=4,
+                        help='Number of regimes for TFT regime-aware MoE.')
+    parser.add_argument('--tft_num_moe_experts', type=int, default=4,
+                        help='Number of experts for TFT regime-aware MoE.')
+    parser.add_argument('--tft_moe_top_k', type=int, default=2,
+                        help='Top-k experts to route to per timestep in TFT MoE.')
+    parser.add_argument('--tft_moe_hidden_size', type=int, default=0,
+                        help='Hidden size for TFT MoE experts; 0 uses d_model.')
+    parser.add_argument('--tft_moe_noise_epsilon', type=float, default=1e-2,
+                        help='Noise epsilon for TFT MoE noisy routing.')
+    parser.add_argument('--tft_moe_aux_loss_coeff', type=float, default=0.0,
+                        help='Coefficient applied to TFT MoE auxiliary routing loss during training/validation.')
+    parser.add_argument('--tft_payload_stack_layers', action='store_true', default=False,
+                        help='Stack layer-wise TFT decoder interpretation payloads when return_interpretation=True.')
 
     # TimeFilter
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')
@@ -199,6 +229,11 @@ if __name__ == '__main__':
     args.tft_observed_pos = _parse_int_list(args.tft_observed_pos)
     args.tft_static_pos = _parse_int_list(args.tft_static_pos)
     args.tft_target_pos = _parse_int_list(args.tft_target_pos)
+    args.tft_lag_scales = _parse_int_list(args.tft_lag_scales)
+    if args.tft_interaction_rank == 0:
+        args.tft_interaction_rank = None
+    if args.tft_moe_hidden_size == 0:
+        args.tft_moe_hidden_size = None
 
     print('Args in experiment:')
     print_args(args)
