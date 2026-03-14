@@ -116,6 +116,15 @@ def build_tft_args(checkpoint_dir):
         tft_allow_custom_known=True,
         tft_vsn_residual_bypass=True,
         tft_dual_attention_fusion=True,
+        tft_use_explicit_cross_attention=True,
+        tft_cross_attention_type="interpretable",
+        tft_attention_position_bias="rope",
+        tft_rope_base=10000.0,
+        tft_alibi_scale=1.0,
+        tft_use_revin=True,
+        tft_revin_affine=True,
+        tft_use_quantile_head=True,
+        tft_output_quantiles=[0.1, 0.5, 0.9],
         tft_use_lag_attention=True,
         tft_lag_scales=[1, 2, 4],
         tft_use_higher_order=True,
@@ -186,7 +195,11 @@ class TestTFTInterpretationAndExp(unittest.TestCase):
 
             summary = summarize_tft_interpretation(payload, top_k=2)
             self.assertEqual(summary["prediction_shape"], [2, args.pred_len, args.c_out])
+            self.assertEqual(summary["quantile_prediction_shape"], [2, args.pred_len, 3, args.c_out])
+            self.assertEqual(summary["position_bias_type"], "rope")
+            self.assertTrue(summary["has_quantile_predictions"])
             self.assertTrue(summary["has_graph_attention"])
+            self.assertTrue(summary["has_cross_attention"])
             self.assertTrue(summary["has_lag_attention"])
             self.assertTrue(summary["has_higher_order"])
             self.assertTrue(summary["has_regime_moe"])

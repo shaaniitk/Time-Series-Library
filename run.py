@@ -179,6 +179,24 @@ if __name__ == '__main__':
                         help='Low-rank dimension for TFT higher-order interaction block; 0 uses the model default.')
     parser.add_argument('--tft_use_regime_moe', action='store_true', default=False,
                         help='Enable regime-aware sparse MoE in TFT decoder.')
+    parser.add_argument('--tft_use_explicit_cross_attention', action='store_true', default=False,
+                        help='Enable explicit future-to-history cross-attention in TFT decoder layers.')
+    parser.add_argument('--tft_cross_attention_type', type=str, default='full', choices=['full', 'interpretable'],
+                        help='Type of explicit TFT cross-attention to use when enabled.')
+    parser.add_argument('--tft_attention_position_bias', type=str, default='none', choices=['none', 'rope', 'alibi'],
+                        help='Temporal positional biasing strategy for TFT attention blocks.')
+    parser.add_argument('--tft_rope_base', type=float, default=10000.0,
+                        help='Base period used when TFT attention positional bias is set to rope.')
+    parser.add_argument('--tft_alibi_scale', type=float, default=1.0,
+                        help='Scale factor applied to ALiBi slopes when TFT attention positional bias is set to alibi.')
+    parser.add_argument('--tft_use_revin', action='store_true', default=False,
+                        help='Enable RevIN normalization/denormalization in TFT.')
+    parser.add_argument('--tft_revin_affine', action='store_true', default=False,
+                        help='Enable learnable affine parameters in TFT RevIN normalization.')
+    parser.add_argument('--tft_use_quantile_head', action='store_true', default=False,
+                        help='Enable a TFT quantile prediction head in addition to the point forecast head.')
+    parser.add_argument('--tft_output_quantiles', type=str, default='0.1,0.5,0.9',
+                        help='Comma-separated quantile levels for TFT quantile head, e.g. 0.1,0.5,0.9.')
     parser.add_argument('--tft_num_regimes', type=int, default=4,
                         help='Number of regimes for TFT regime-aware MoE.')
     parser.add_argument('--tft_num_moe_experts', type=int, default=4,
@@ -226,10 +244,21 @@ if __name__ == '__main__':
             return [int(v.strip()) for v in value.split(',') if v.strip() != '']
         return value
 
+    def _parse_float_list(value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            if value == '':
+                return None
+            return [float(v.strip()) for v in value.split(',') if v.strip() != '']
+        return value
+
     args.tft_observed_pos = _parse_int_list(args.tft_observed_pos)
     args.tft_static_pos = _parse_int_list(args.tft_static_pos)
     args.tft_target_pos = _parse_int_list(args.tft_target_pos)
     args.tft_lag_scales = _parse_int_list(args.tft_lag_scales)
+    args.tft_output_quantiles = _parse_float_list(args.tft_output_quantiles)
     if args.tft_interaction_rank == 0:
         args.tft_interaction_rank = None
     if args.tft_moe_hidden_size == 0:

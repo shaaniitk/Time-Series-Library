@@ -58,6 +58,18 @@ class TestTFTScriptsSmoke(unittest.TestCase):
         self.assertRegex(output, re.compile(r"\byes\b"))
         self.assertIn("overfit_ratio", output)
 
+    def test_cross_revin_regime_ablation_quick(self):
+        output = self._run_script(
+            Path("scripts/long_term_forecast/tft_ablation_cross_revin_regime.py"),
+            ["--quick", "--device", "cpu", "--seeds", "123"],
+            timeout=300,
+        )
+        self.assertIn("Ablation: TFT cross-attention + RevIN + timestep regime routing", output)
+        self.assertIn("all_three", output)
+        self.assertIn("cross_only", output)
+        self.assertIn("revin_only", output)
+        self.assertIn("regime_only", output)
+
 
 if __name__ == "__main__":
     unittest.main()

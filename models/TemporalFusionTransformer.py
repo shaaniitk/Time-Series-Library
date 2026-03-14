@@ -3,11 +3,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers.Embed import DataEmbedding, TemporalEmbedding
 from layers.DynamicGraph import DynamicGraphLearner
+from layers.StandardNorm import Normalize
 from layers.TemporalFusion_layers import (
     HigherOrderInteractionBlock,
+    InterpretableCrossAttention,
     MultiScaleLagAttention,
+    PositionalMultiHeadAttention,
     RegimeAwareSparseMoE,
+    apply_rotary_embedding,
     build_causal_mask,
+    build_alibi_bias,
 )
 from torch import Tensor
 from typing import Optional
@@ -326,6 +331,9 @@ class InterpretableMultiHeadAttention(nn.Module):
         self.n_heads = configs.n_heads
         assert configs.d_model % configs.n_heads == 0
         self.d_head = configs.d_model // configs.n_heads
+        self.position_bias_type = getattr(configs, 'tft_attention_position_bias', 'none')
+        self.rope_base = float(getattr(configs, 'tft_rope_base', 10000.0))
+        self.alibi_scale = float(getattr(configs, 'tft_alibi_scale', 1.0))
         self.qkv_linears = nn.Linear(configs.d_model, (2 * self.n_heads + 1) * self.d_head, bias=False)
         self.out_projection = nn.Linear(self.d_head, configs.d_model, bias=False)
         self.out_dropout = nn.Dropout(configs.dropout)
@@ -338,15 +346,30 @@ class InterpretableMultiHeadAttention(nn.Module):
         B, T, d_model = x.shape
         qkv = self.qkv_linears(x)
         q, k, v = qkv.split((self.n_heads * self.d_head, self.n_heads * self.d_head, self.d_head), dim=-1)
-        q = q.view(B, T, self.n_heads, self.d_head)
-        k = k.view(B, T, self.n_heads, self.d_head)
+        q = q.view(B, T, self.n_heads, self.d_head).permute(0, 2, 1, 3)
+        k = k.view(B, T, self.n_heads, self.d_head).permute(0, 2, 1, 3)
         v = v.view(B, T, self.d_head)
 
-        attention_score = torch.matmul(q.permute((0, 2, 1, 3)), k.permute((0, 2, 3, 1)))  # [B,n,T,T]
+        if self.position_bias_type == 'rope':
+            q, k = apply_rotary_embedding(q, k, base=self.rope_base)
+
+        attention_score = torch.matmul(q, k.transpose(-2, -1))  # [B,n,T,T]
         attention_score.mul_(self.scale)
-        attention_score = torch.clamp(attention_score, min=-1e4, max=1e4)
+        if self.position_bias_type == 'alibi':
+            attention_score = attention_score + build_alibi_bias(
+                self.n_heads,
+                T,
+                T,
+                x.device,
+                attention_score.dtype,
+                scale=self.alibi_scale,
+            )
         if not torch.isfinite(attention_score).all():
             raise ValueError("Unmasked attention scores contain NaN/Inf values.")
+        clamp_limit = 1e4
+        if (attention_score.abs() > clamp_limit).any():
+            warnings.warn("Attention scores exceeded the stability clamp threshold; values were clipped.")
+            attention_score = attention_score.clamp(min=-clamp_limit, max=clamp_limit)
         attention_score = attention_score + self._causal_mask(T, attention_score.device, attention_score.dtype)
         attention_prob = F.softmax(attention_score, dim=3)  # [B,n,T,T]
         if not torch.isfinite(attention_prob).all():
@@ -368,6 +391,11 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.use_swiglu = getattr(configs, 'tft_use_swiglu', False)
         self.full_attention = getattr(configs, 'tft_full_attention', True)
         self.dual_attention_fusion = getattr(configs, 'tft_dual_attention_fusion', False)
+        self.use_explicit_cross_attention = getattr(configs, 'tft_use_explicit_cross_attention', False)
+        self.cross_attention_type = getattr(configs, 'tft_cross_attention_type', 'full')
+        self.position_bias_type = getattr(configs, 'tft_attention_position_bias', 'none')
+        self.rope_base = float(getattr(configs, 'tft_rope_base', 10000.0))
+        self.alibi_scale = float(getattr(configs, 'tft_alibi_scale', 1.0))
         self.use_lag_attention = getattr(configs, 'tft_use_lag_attention', False)
         self.lag_scales = list(getattr(configs, 'tft_lag_scales', [1, 2, 4, 8]))
         self.use_higher_order = getattr(configs, 'tft_use_higher_order', False)
@@ -384,7 +412,37 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.future_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
         self.gate_after_lstm = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.enrichment_grn = GRN(configs.d_model, configs.d_model, context_size=configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu)
-        self.lag_attention_module = MultiScaleLagAttention(configs.d_model, configs.n_heads, self.lag_scales, dropout=configs.dropout) if self.use_lag_attention else None
+        if self.use_explicit_cross_attention:
+            if self.cross_attention_type == 'interpretable':
+                self.cross_attention = InterpretableCrossAttention(
+                    configs.d_model,
+                    configs.n_heads,
+                    dropout=configs.dropout,
+                    position_bias_type=self.position_bias_type,
+                    rope_base=self.rope_base,
+                    alibi_scale=self.alibi_scale,
+                )
+            else:
+                self.cross_attention = PositionalMultiHeadAttention(
+                    configs.d_model,
+                    configs.n_heads,
+                    dropout=configs.dropout,
+                    position_bias_type=self.position_bias_type,
+                    rope_base=self.rope_base,
+                    alibi_scale=self.alibi_scale,
+                )
+        else:
+            self.cross_attention = None
+        self.gate_after_cross_attention = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu) if self.use_explicit_cross_attention else None
+        self.lag_attention_module = MultiScaleLagAttention(
+            configs.d_model,
+            configs.n_heads,
+            self.lag_scales,
+            dropout=configs.dropout,
+            position_bias_type=self.position_bias_type,
+            rope_base=self.rope_base,
+            alibi_scale=self.alibi_scale,
+        ) if self.use_lag_attention else None
         self.higher_order_block = HigherOrderInteractionBlock(
             configs.d_model,
             interaction_order=self.interaction_order,
@@ -401,10 +459,24 @@ class TemporalFusionDecoderLayer(nn.Module):
             noise_epsilon=self.moe_noise_epsilon,
         ) if self.use_regime_moe else None
         if self.dual_attention_fusion:
-            self.full_attention_module = nn.MultiheadAttention(configs.d_model, configs.n_heads, dropout=configs.dropout, batch_first=True)
+            self.full_attention_module = PositionalMultiHeadAttention(
+                configs.d_model,
+                configs.n_heads,
+                dropout=configs.dropout,
+                position_bias_type=self.position_bias_type,
+                rope_base=self.rope_base,
+                alibi_scale=self.alibi_scale,
+            )
             self.interpretable_attention_module = InterpretableMultiHeadAttention(configs)
         elif self.full_attention:
-            self.attention = nn.MultiheadAttention(configs.d_model, configs.n_heads, dropout=configs.dropout, batch_first=True)
+            self.attention = PositionalMultiHeadAttention(
+                configs.d_model,
+                configs.n_heads,
+                dropout=configs.dropout,
+                position_bias_type=self.position_bias_type,
+                rope_base=self.rope_base,
+                alibi_scale=self.alibi_scale,
+            )
         else:
             self.attention = InterpretableMultiHeadAttention(configs)
         branch_count = 2 if self.dual_attention_fusion else 1
@@ -412,7 +484,7 @@ class TemporalFusionDecoderLayer(nn.Module):
             branch_count += 1
         self.attention_fusion_logits = nn.Parameter(torch.zeros(branch_count)) if branch_count > 1 else None
         self.gate_after_attention = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
-        self.position_wise_grn = GRN(configs.d_model, configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu)
+        self.position_wise_grn = GRN(configs.d_model, configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu) if not self.use_regime_moe else None
         self.gate_final = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.last_moe_aux_loss = None
 
@@ -427,20 +499,75 @@ class TemporalFusionDecoderLayer(nn.Module):
         temporal_features = self.gate_after_lstm(temporal_features, temporal_input)
 
         enriched_features = self.enrichment_grn(temporal_features, c_e)
+        history_len = history_input.shape[1]
+        output_payload = {} if return_attention else None
+        if self.use_explicit_cross_attention:
+            enriched_history = enriched_features[:, :history_len, :]
+            enriched_future = enriched_features[:, history_len:, :]
+            history_positions = torch.arange(history_len, device=enriched_features.device)
+            future_positions = torch.arange(history_len, history_len + enriched_future.shape[1], device=enriched_features.device)
+            if self.cross_attention_type == 'interpretable':
+                if return_attention:
+                    cross_out, cross_attention_prob = self.cross_attention(
+                        enriched_future,
+                        enriched_history,
+                        return_attention=True,
+                        query_positions=future_positions,
+                        key_positions=history_positions,
+                    )
+                else:
+                    cross_out = self.cross_attention(
+                        enriched_future,
+                        enriched_history,
+                        query_positions=future_positions,
+                        key_positions=history_positions,
+                    )
+                    cross_attention_prob = None
+            else:
+                if return_attention:
+                    cross_out, cross_attention_prob = self.cross_attention(
+                        enriched_future,
+                        enriched_history,
+                        enriched_history,
+                        return_attention=True,
+                        query_positions=future_positions,
+                        key_positions=history_positions,
+                    )
+                else:
+                    cross_out = self.cross_attention(
+                        enriched_future,
+                        enriched_history,
+                        enriched_history,
+                        query_positions=future_positions,
+                        key_positions=history_positions,
+                    )
+                    cross_attention_prob = None
+            enriched_future = self.gate_after_cross_attention(cross_out, enriched_future)
+            enriched_features = torch.cat([enriched_history, enriched_future], dim=1)
+            if return_attention:
+                output_payload['cross_attention'] = cross_attention_prob
+                output_payload['cross_attention_type'] = self.cross_attention_type
         seq_len = enriched_features.shape[1]
         attn_mask = build_causal_mask(seq_len, enriched_features.device, enriched_features.dtype)
         attention_branches = []
-        attention_payload = {}
 
         if self.dual_attention_fusion:
-            full_out, full_attention_prob = self.full_attention_module(
-                enriched_features,
-                enriched_features,
-                enriched_features,
-                need_weights=return_attention,
-                attn_mask=attn_mask,
-                average_attn_weights=False,
-            )
+            if return_attention:
+                full_out, full_attention_prob = self.full_attention_module(
+                    enriched_features,
+                    enriched_features,
+                    enriched_features,
+                    return_attention=True,
+                    attn_mask=attn_mask,
+                )
+            else:
+                full_out = self.full_attention_module(
+                    enriched_features,
+                    enriched_features,
+                    enriched_features,
+                    attn_mask=attn_mask,
+                )
+                full_attention_prob = None
 
             if return_attention:
                 interpretable_out, interpretable_attention_prob = self.interpretable_attention_module(
@@ -452,16 +579,28 @@ class TemporalFusionDecoderLayer(nn.Module):
 
             attention_branches.extend([full_out, interpretable_out])
             if return_attention:
-                attention_payload['interpretable'] = interpretable_attention_prob
-                attention_payload['full'] = full_attention_prob
+                output_payload['interpretable'] = interpretable_attention_prob
+                output_payload['full'] = full_attention_prob
         elif self.full_attention:
-            attention_out, attention_prob = self.attention(
-                enriched_features, enriched_features, enriched_features, 
-                need_weights=return_attention, attn_mask=attn_mask, average_attn_weights=False
-            )
+            if return_attention:
+                attention_out, attention_prob = self.attention(
+                    enriched_features,
+                    enriched_features,
+                    enriched_features,
+                    return_attention=True,
+                    attn_mask=attn_mask,
+                )
+            else:
+                attention_out = self.attention(
+                    enriched_features,
+                    enriched_features,
+                    enriched_features,
+                    attn_mask=attn_mask,
+                )
+                attention_prob = None
             attention_branches.append(attention_out)
             if return_attention:
-                attention_payload['full'] = attention_prob
+                output_payload['full'] = attention_prob
         else:
             if return_attention:
                 attention_out, attention_prob = self.attention(enriched_features, return_attention=True)
@@ -470,12 +609,12 @@ class TemporalFusionDecoderLayer(nn.Module):
                 attention_prob = None
             attention_branches.append(attention_out)
             if return_attention:
-                attention_payload['interpretable'] = attention_prob
+                output_payload['interpretable'] = attention_prob
 
         if self.use_lag_attention:
             if return_attention:
                 lag_out, lag_payload = self.lag_attention_module(enriched_features, return_attention=True)
-                attention_payload.update(lag_payload)
+                output_payload.update(lag_payload)
             else:
                 lag_out = self.lag_attention_module(enriched_features)
             attention_branches.append(lag_out)
@@ -488,28 +627,28 @@ class TemporalFusionDecoderLayer(nn.Module):
             attention_out = sum(weight * branch for weight, branch in zip(branch_weights, attention_branches))
 
         if return_attention:
+            output_payload['position_bias_type'] = self.position_bias_type
             if branch_weights is not None:
-                attention_payload['attention_branch_weights'] = branch_weights.detach()
+                output_payload['attention_branch_weights'] = branch_weights.detach()
                 if self.dual_attention_fusion and not self.use_lag_attention and branch_weights.numel() == 2:
-                    attention_payload['fusion_alpha'] = branch_weights[0].detach()
+                    output_payload['fusion_alpha'] = branch_weights[0].detach()
                 else:
-                    attention_payload['fusion_alpha'] = branch_weights.detach()
+                    output_payload['fusion_alpha'] = branch_weights.detach()
             else:
-                attention_payload['fusion_alpha'] = None
-            attention_prob = attention_payload
+                output_payload['fusion_alpha'] = None
 
         attention_out = self.gate_after_attention(attention_out, enriched_features)
         if self.use_higher_order:
             if return_attention:
                 attention_out, interaction_payload = self.higher_order_block(attention_out, return_payload=True)
-                attention_prob.update(interaction_payload)
+                output_payload.update(interaction_payload)
             else:
                 attention_out = self.higher_order_block(attention_out)
         if self.use_regime_moe:
             if return_attention:
                 attention_out, moe_aux_loss, moe_payload = self.regime_moe(attention_out, context=c_e, return_payload=True)
-                attention_prob.update(moe_payload)
-                attention_prob['moe_aux_loss'] = moe_aux_loss.detach()
+                output_payload.update(moe_payload)
+                output_payload['moe_aux_loss'] = moe_aux_loss.detach()
             else:
                 attention_out, moe_aux_loss = self.regime_moe(attention_out, context=c_e)
             self.last_moe_aux_loss = moe_aux_loss
@@ -518,7 +657,7 @@ class TemporalFusionDecoderLayer(nn.Module):
             out = self.position_wise_grn(attention_out)
         out = self.gate_final(out, temporal_features)
         if return_attention:
-            return out, attention_prob
+            return out, output_payload
         return out
 
 
@@ -531,6 +670,7 @@ class TemporalFusionDecoder(nn.Module):
         self.layers = nn.ModuleList([TemporalFusionDecoderLayer(configs) for _ in range(self.e_layers)])
         self.out_projection = nn.Linear(configs.d_model, configs.c_out)
         self.last_moe_aux_loss = None
+        self.last_hidden_state = None
 
     def _aggregate_attention_payloads(self, payloads):
         if not payloads:
@@ -580,6 +720,7 @@ class TemporalFusionDecoder(nn.Module):
         self.last_moe_aux_loss = torch.stack(moe_aux_losses).mean() if moe_aux_losses else None
         
         dec_out = out[:, -self.pred_len:, :]
+        self.last_hidden_state = dec_out
         projected = self.out_projection(dec_out)
         
         if return_attention:
@@ -602,6 +743,12 @@ class Model(nn.Module):
         self.observed_len = len(typepos.observed)
         self.target_pos = get_target_pos(configs)
         self.allow_custom_known = getattr(configs, 'tft_allow_custom_known', False)
+        self.use_revin = getattr(configs, 'tft_use_revin', False)
+        self.revin_affine = getattr(configs, 'tft_revin_affine', True)
+        self.use_quantile_head = getattr(configs, 'tft_use_quantile_head', False)
+        self.position_bias_type = getattr(configs, 'tft_attention_position_bias', 'none')
+        quantiles = getattr(configs, 'tft_output_quantiles', [0.1, 0.5, 0.9])
+        self.quantiles = None
         if self.allow_custom_known:
             if not hasattr(configs, 'tft_known_len'):
                 raise KeyError("tft_known_len is required when tft_allow_custom_known=True.")
@@ -612,6 +759,7 @@ class Model(nn.Module):
             self.known_len = get_known_len(configs.embed, configs.freq)
 
         self.embedding = TFTEmbedding(configs)
+        self.revin = Normalize(configs.enc_in, affine=self.revin_affine) if self.use_revin else None
         
         self.use_swiglu = getattr(configs, 'tft_use_swiglu', False)
         self.cross_mix = getattr(configs, 'tft_cross_variable_mixing', False)
@@ -635,6 +783,17 @@ class Model(nn.Module):
             residual_bypass=self.vsn_residual_bypass
         )
         self.temporal_fusion_decoder = TemporalFusionDecoder(configs)
+        if self.use_quantile_head:
+            if not isinstance(quantiles, (list, tuple)) or len(quantiles) == 0:
+                raise ValueError("tft_output_quantiles must be a non-empty list/tuple when tft_use_quantile_head=True.")
+            normalized_quantiles = sorted(float(q) for q in quantiles)
+            if any(q <= 0.0 or q >= 1.0 for q in normalized_quantiles):
+                raise ValueError("tft_output_quantiles must be strictly between 0 and 1.")
+            self.quantiles = normalized_quantiles
+            self.quantile_projection = nn.Linear(configs.d_model, configs.c_out * len(self.quantiles))
+        else:
+            self.quantile_projection = None
+        self.last_quantile_predictions = None
 
     def _validate_inputs(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         if x_enc.ndim != 3 or x_mark_enc.ndim != 3 or x_dec.ndim != 3 or x_mark_dec.ndim != 3:
@@ -675,14 +834,20 @@ class Model(nn.Module):
         return weight_payload, None
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation: bool = False):
+        self.last_quantile_predictions = None
         # Normalization from Non-stationary Transformer
-        means = x_enc.mean(1, keepdim=True).detach()
-        x_enc = x_enc - means
         var = torch.var(x_enc, dim=1, keepdim=True, unbiased=False)
         if (var < 1e-8).any():
             warnings.warn("Near-constant channels detected; normalization may amplify noise.")
-        stdev = torch.sqrt(torch.clamp(var, min=1e-10) + 1e-5)
-        x_enc /= stdev
+        if self.use_revin:
+            x_enc = self.revin(x_enc, 'norm')
+            means = None
+            stdev = None
+        else:
+            means = x_enc.mean(1, keepdim=True).detach()
+            x_enc = x_enc - means
+            stdev = torch.sqrt(torch.clamp(var, min=1e-10) + 1e-5)
+            x_enc = x_enc / stdev
 
         # Data embedding
         # static_input: [B,C,d], observed_input:[B,T,C,d], known_input: [B,T,C,d]
@@ -723,39 +888,90 @@ class Model(nn.Module):
         else:
             dec_out = self.temporal_fusion_decoder(history_input, future_input, c_c, c_h, c_e)
         self.last_moe_aux_loss = self.temporal_fusion_decoder.last_moe_aux_loss
+        if self.use_quantile_head:
+            decoder_hidden = self.temporal_fusion_decoder.last_hidden_state
+            quantile_out = self.quantile_projection(decoder_hidden)
+            quantile_out = quantile_out.view(decoder_hidden.shape[0], self.pred_len, len(self.quantiles), self.configs.c_out)
+        else:
+            quantile_out = None
 
         # De-Normalization from Non-stationary Transformer
         target_pos = torch.as_tensor(self.target_pos, device=x_enc.device, dtype=torch.long)
-        target_stdev = stdev[:, 0, :].index_select(-1, target_pos).unsqueeze(1).repeat(1, self.pred_len, 1)
-        target_means = means[:, 0, :].index_select(-1, target_pos).unsqueeze(1).repeat(1, self.pred_len, 1)
-        dec_out = dec_out * target_stdev
-        dec_out = dec_out + target_means
+        if self.use_revin:
+            full_dec = torch.zeros(
+                dec_out.shape[0],
+                self.pred_len,
+                self.configs.enc_in,
+                device=dec_out.device,
+                dtype=dec_out.dtype,
+            )
+            full_dec.scatter_(
+                -1,
+                target_pos.view(1, 1, -1).expand(dec_out.shape[0], self.pred_len, -1),
+                dec_out,
+            )
+            full_dec = self.revin(full_dec, 'denorm')
+            dec_out = full_dec.index_select(-1, target_pos)
+            if quantile_out is not None:
+                full_quantile = torch.zeros(
+                    quantile_out.shape[0],
+                    self.pred_len,
+                    quantile_out.shape[2],
+                    self.configs.enc_in,
+                    device=quantile_out.device,
+                    dtype=quantile_out.dtype,
+                )
+                full_quantile.scatter_(
+                    -1,
+                    target_pos.view(1, 1, 1, -1).expand(quantile_out.shape[0], self.pred_len, quantile_out.shape[2], -1),
+                    quantile_out,
+                )
+                full_quantile = full_quantile.reshape(full_quantile.shape[0], -1, full_quantile.shape[-1])
+                full_quantile = self.revin(full_quantile, 'denorm')
+                full_quantile = full_quantile.view(quantile_out.shape[0], self.pred_len, quantile_out.shape[2], self.configs.enc_in)
+                quantile_out = full_quantile.index_select(-1, target_pos)
+        else:
+            target_stdev = stdev[:, 0, :].index_select(-1, target_pos).unsqueeze(1).repeat(1, self.pred_len, 1)
+            target_means = means[:, 0, :].index_select(-1, target_pos).unsqueeze(1).repeat(1, self.pred_len, 1)
+            dec_out = dec_out * target_stdev
+            dec_out = dec_out + target_means
+            if quantile_out is not None:
+                quantile_out = quantile_out * target_stdev.unsqueeze(2)
+                quantile_out = quantile_out + target_means.unsqueeze(2)
+        self.last_quantile_predictions = quantile_out
         if return_interpretation:
             attention_weights_full = None
             attention_fusion_alpha = None
             lag_attention_weights = None
             lag_scale_weights = None
             attention_branch_weights = None
+            cross_attention_weights = None
             interaction_contribution = None
             interaction_gates = None
             expert_routing = None
             regime_probabilities = None
+            regime_probabilities_pooled = None
+            quantile_predictions = self.last_quantile_predictions
             moe_aux_loss = self.last_moe_aux_loss.detach() if torch.is_tensor(self.last_moe_aux_loss) else self.last_moe_aux_loss
             decoder_layer_payloads = None
             decoder_num_layers = None
+            position_bias_type = self.position_bias_type
             if isinstance(attention_weights, dict):
                 attention_weights_full = attention_weights.get('full')
                 attention_fusion_alpha = attention_weights.get('fusion_alpha')
                 lag_attention_weights = attention_weights.get('lag_attention')
                 lag_scale_weights = attention_weights.get('lag_scale_weights')
                 attention_branch_weights = attention_weights.get('attention_branch_weights')
+                cross_attention_weights = attention_weights.get('cross_attention')
                 interaction_contribution = attention_weights.get('interaction_contribution')
                 interaction_gates = attention_weights.get('interaction_gates')
                 expert_routing = attention_weights.get('expert_routing')
                 regime_probabilities = attention_weights.get('regime_probabilities')
+                regime_probabilities_pooled = attention_weights.get('regime_probabilities_pooled')
                 moe_aux_loss = attention_weights.get('moe_aux_loss', moe_aux_loss)
                 decoder_layer_payloads = attention_weights.get('decoder_layer_payloads')
                 decoder_num_layers = attention_weights.get('decoder_num_layers')
+                position_bias_type = attention_weights.get('position_bias_type', position_bias_type)
                 attention_weights = attention_weights.get('interpretable')
             return {
                 'predictions': dec_out,
@@ -763,15 +979,20 @@ class Model(nn.Module):
                 'attention_weights_full': attention_weights_full,
                 'attention_fusion_alpha': attention_fusion_alpha,
                 'attention_branch_weights': attention_branch_weights,
+                'cross_attention_weights': cross_attention_weights,
                 'lag_attention_weights': lag_attention_weights,
                 'lag_scale_weights': lag_scale_weights,
                 'interaction_contribution': interaction_contribution,
                 'interaction_gates': interaction_gates,
                 'expert_routing': expert_routing,
                 'regime_probabilities': regime_probabilities,
+                'regime_probabilities_pooled': regime_probabilities_pooled,
+                'quantile_predictions': quantile_predictions,
+                'quantiles': self.quantiles,
                 'moe_aux_loss': moe_aux_loss,
                 'decoder_layer_payloads': decoder_layer_payloads,
                 'decoder_num_layers': decoder_num_layers,
+                'position_bias_type': position_bias_type,
                 'history_vsn_weights': history_weights,
                 'history_graph_attention': history_graph_attention,
                 'future_vsn_weights': future_weights,
@@ -779,6 +1000,7 @@ class Model(nn.Module):
                 'static_vsn_weights': static_weights,
                 'static_graph_attention': static_graph_attention,
                 'static_context': {'c_s': c_s, 'c_c': c_c, 'c_h': c_h, 'c_e': c_e},
+                'use_revin': self.use_revin,
             }
         return dec_out
 

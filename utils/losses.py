@@ -87,3 +87,21 @@ class mase_loss(nn.Module):
         masep = t.mean(t.abs(insample[:, freq:] - insample[:, :-freq]), dim=1)
         masked_masep_inv = divide_no_nan(mask, masep[:, None])
         return t.mean(t.abs(target - forecast) * masked_masep_inv)
+
+
+class quantile_loss(nn.Module):
+    def __init__(self, quantiles):
+        super(quantile_loss, self).__init__()
+        if not isinstance(quantiles, (list, tuple)) or len(quantiles) == 0:
+            raise ValueError("quantiles must be a non-empty list/tuple.")
+        self.quantiles = [float(q) for q in quantiles]
+
+    def forward(self, forecast: t.Tensor, target: t.Tensor) -> t.Tensor:
+        if forecast.ndim != 4:
+            raise ValueError(f"Quantile forecast must have shape [B,T,Q,C], got {tuple(forecast.shape)}.")
+        if target.ndim != 3:
+            raise ValueError(f"Quantile target must have shape [B,T,C], got {tuple(target.shape)}.")
+        errors = target.unsqueeze(2) - forecast
+        quantiles = forecast.new_tensor(self.quantiles).view(1, 1, -1, 1)
+        loss = t.maximum(quantiles * errors, (quantiles - 1.0) * errors)
+        return loss.mean()
