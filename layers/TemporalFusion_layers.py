@@ -318,6 +318,8 @@ class SpectralBranch(nn.Module):
             return torch.arange(k, device=x_ft.device)
         else:
             # top_amplitude: pick modes with highest average energy
+            # NOTE: topk selection is non-differentiable — the model learns what to
+            # do with selected modes but cannot learn *which* modes to select.
             amplitudes = x_ft.abs().mean(dim=(0, 1))  # [n_freqs]
             _, indices = torch.topk(amplitudes, k)
             indices, _ = indices.sort()
@@ -353,7 +355,7 @@ class SpectralBranch(nn.Module):
         x_reconstructed = torch.fft.irfft(out_ft, n=L)  # [B, D, L]
         x_reconstructed = x_reconstructed.permute(0, 2, 1)  # [B, L, D]
 
-        return self.layer_norm(self.dropout(self.out_projection(x_reconstructed)))
+        return self.layer_norm(x + self.dropout(self.out_projection(x_reconstructed)))
 
 
 class MultiScaleLagAttention(nn.Module):

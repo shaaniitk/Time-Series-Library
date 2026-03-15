@@ -779,6 +779,9 @@ class TemporalFusionDecoder(nn.Module):
         curr_future = future_input
         num_layers = len(self.layers)
 
+        def _layer_forward(layer_module, h, f, cc, ch, ce):
+            return layer_module(h, f, cc, ch, ce)
+
         for layer_idx, layer in enumerate(self.layers):
             # Stochastic depth: skip layers with linearly increasing probability
             if self.training and self.stochastic_depth_rate > 0.0 and num_layers > 1 and layer_idx > 0:
@@ -792,8 +795,6 @@ class TemporalFusionDecoder(nn.Module):
 
             # Gradient checkpointing: trade memory for compute during training
             if self.gradient_checkpointing and self.training and not return_attention:
-                def _layer_forward(layer_module, h, f, cc, ch, ce):
-                    return layer_module(h, f, cc, ch, ce)
                 out = torch.utils.checkpoint.checkpoint(
                     _layer_forward, layer, curr_history, curr_future, c_c, c_h, c_e,
                     use_reentrant=False,
