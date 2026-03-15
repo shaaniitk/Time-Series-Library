@@ -285,6 +285,77 @@ class HybridTemporalBackbone(nn.Module):
         return self.layer_norm(fused), next_state
 
 
+class SpectralBranch(nn.Module):
+    """Parallel frequency-domain processing branch for TFT.
+
+    Applies learnable complex-valued linear transform on selected FFT modes,
+    then projects back to time domain.  Designed to run alongside a temporal
+    backbone and be fused via a learned gate.
+    """
+
+    def __init__(self, d_model: int, modes: int = 32, mode_select: str = 'low', dropout: float = 0.0):
+        super(SpectralBranch, self).__init__()
+        if modes < 1:
+            raise ValueError("tft_fft_modes must be >= 1.")
+        if mode_select not in ('low', 'top_amplitude'):
+            raise ValueError("tft_fft_mode_select must be 'low' or 'top_amplitude'.")
+        self.d_model = d_model
+        self.modes = modes
+        self.mode_select = mode_select
+        # Learnable complex weights: [d_model, modes] real + imaginary
+        self.weight_real = nn.Parameter(torch.empty(d_model, modes))
+        self.weight_imag = nn.Parameter(torch.empty(d_model, modes))
+        nn.init.xavier_uniform_(self.weight_real)
+        nn.init.xavier_uniform_(self.weight_imag)
+        self.out_projection = nn.Linear(d_model, d_model)
+        self.layer_norm = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(dropout)
+
+    def _select_modes(self, x_ft, n_freqs: int):
+        """Return indices of frequency modes to process."""
+        k = min(self.modes, n_freqs)
+        if self.mode_select == 'low':
+            return torch.arange(k, device=x_ft.device)
+        else:
+            # top_amplitude: pick modes with highest average energy
+            amplitudes = x_ft.abs().mean(dim=(0, 1))  # [n_freqs]
+            _, indices = torch.topk(amplitudes, k)
+            indices, _ = indices.sort()
+            return indices
+
+    def forward(self, x):
+        """x: [B, L, d_model] -> [B, L, d_model]"""
+        B, L, D = x.shape
+        # Permute to [B, D, L] for FFT along temporal axis
+        x_perm = x.permute(0, 2, 1)  # [B, D, L]
+        x_ft = torch.fft.rfft(x_perm, dim=-1)  # [B, D, n_freqs] complex
+        n_freqs = x_ft.shape[-1]
+
+        mode_indices = self._select_modes(x_ft, n_freqs)
+        k = mode_indices.shape[0]
+
+        # Extract selected modes: [B, D, k]
+        selected = x_ft[:, :, mode_indices]
+
+        # Learnable complex multiply: weights are [D, modes] -> use first k
+        w_real = self.weight_real[:, :k]  # [D, k]
+        w_imag = self.weight_imag[:, :k]  # [D, k]
+        w_complex = torch.complex(w_real, w_imag)  # [D, k]
+
+        # Element-wise complex multiplication: [B, D, k] * [D, k] -> [B, D, k]
+        transformed = selected * w_complex.unsqueeze(0)
+
+        # Put transformed modes back into full spectrum
+        out_ft = torch.zeros_like(x_ft)
+        out_ft[:, :, mode_indices] = transformed
+
+        # Inverse FFT back to time domain: [B, D, L]
+        x_reconstructed = torch.fft.irfft(out_ft, n=L)  # [B, D, L]
+        x_reconstructed = x_reconstructed.permute(0, 2, 1)  # [B, L, D]
+
+        return self.layer_norm(self.dropout(self.out_projection(x_reconstructed)))
+
+
 class MultiScaleLagAttention(nn.Module):
     def __init__(self, d_model, n_heads, lag_scales, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact'):
         super(MultiScaleLagAttention, self).__init__()

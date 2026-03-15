@@ -14,6 +14,7 @@ from layers.TemporalFusion_layers import (
     MultiScaleLagAttention,
     PositionalMultiHeadAttention,
     RegimeAwareSparseMoE,
+    SpectralBranch,
     build_causal_mask,
 )
 from models import TemporalFusionTransformer as tsl_tft
@@ -586,6 +587,209 @@ class TestTFTComprehensive(unittest.TestCase):
         backbone = model.temporal_fusion_decoder.layers[0].temporal_backbone
         self.assertIsNotNone(backbone.fusion_gate.weight.grad)
         self.assertGreater(backbone.fusion_gate.weight.grad.abs().sum().item(), 0.0)
+
+    # ---------- SpectralBranch component tests ----------
+
+    def test_spectral_branch_component_shape_and_gradient(self):
+        cfg = build_tsl_config()
+        for mode_select in ("low", "top_amplitude"):
+            branch = SpectralBranch(
+                d_model=cfg.d_model, modes=16, mode_select=mode_select, dropout=0.0,
+            )
+            x = torch.randn(2, cfg.seq_len + cfg.pred_len, cfg.d_model, requires_grad=True)
+            out = branch(x)
+            self.assertEqual(tuple(out.shape), tuple(x.shape))
+            self.assertTrue(torch.isfinite(out).all())
+            out.sum().backward()
+            self.assertIsNotNone(x.grad)
+            self.assertTrue(torch.isfinite(x.grad).all())
+            self.assertIsNotNone(branch.weight_real.grad)
+            self.assertGreater(branch.weight_real.grad.abs().sum().item(), 0.0)
+
+    def test_spectral_branch_modes_clamped(self):
+        branch = SpectralBranch(d_model=32, modes=999, mode_select='low', dropout=0.0)
+        x = torch.randn(2, 8, 32)
+        out = branch(x)
+        self.assertEqual(tuple(out.shape), (2, 8, 32))
+
+    # ---------- FFT branch integration tests ----------
+
+    def test_tsl_fft_branch_forward_all_backbones(self):
+        for backbone_type in ("lstm", "gated_tcn", "hybrid_tcn_lstm"):
+            cfg = build_tsl_config()
+            cfg.tft_temporal_backbone = backbone_type
+            cfg.tft_use_fft_branch = True
+            cfg.tft_fft_modes = 16
+            cfg.tft_fft_mode_select = "low"
+            model = tsl_tft.Model(cfg)
+            ds = make_tsl_dataset(cfg, n_samples=4)
+            x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+            payload = model(
+                x_enc.unsqueeze(0), x_mark_enc.unsqueeze(0),
+                x_dec.unsqueeze(0), x_mark_dec.unsqueeze(0),
+                return_interpretation=True,
+            )
+            self.assertEqual(tuple(payload["predictions"].shape), (1, cfg.pred_len, cfg.c_out))
+            self.assertTrue(torch.isfinite(payload["predictions"]).all())
+            self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].fft_branch)
+            self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].fft_fusion_gate)
+
+    def test_tsl_fft_branch_interpretation_payload(self):
+        cfg = build_tsl_config()
+        cfg.tft_use_fft_branch = True
+        cfg.tft_fft_modes = 16
+        cfg.tft_fft_mode_select = "top_amplitude"
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        payload = model(
+            x_enc.unsqueeze(0), x_mark_enc.unsqueeze(0),
+            x_dec.unsqueeze(0), x_mark_dec.unsqueeze(0),
+            return_interpretation=True,
+        )
+        # fft_gate_mean is in the decoder layer payloads (aggregated)
+        self.assertIn("fft_gate_mean", payload)
+        fft_gate = payload["fft_gate_mean"]
+        # With e_layers > 1 and payload stacking, fft_gate_mean is a stacked tensor
+        self.assertTrue(torch.is_tensor(fft_gate))
+        # Gate values from sigmoid are in [0, 1]
+        self.assertTrue((fft_gate >= 0.0).all() and (fft_gate <= 1.0).all())
+
+    def test_tsl_fft_branch_learns_structured_signal(self):
+        cfg = build_tsl_config()
+        cfg.tft_use_fft_branch = True
+        cfg.tft_fft_modes = 16
+        cfg.tft_fft_mode_select = "low"
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=48)
+        loader = DataLoader(ds, batch_size=8, shuffle=True)
+        losses = train_tsl_once(model, loader, cfg, lr=3e-3, epochs=4)
+        self.assertGreater(losses[0], losses[-1], "FFT-branch TFT did not improve training loss.")
+        self.assertLess(losses[-1], losses[0] * 0.90, "FFT-branch TFT loss reduction is too weak.")
+        branch = model.temporal_fusion_decoder.layers[0].fft_branch
+        self.assertIsNotNone(branch.weight_real.grad)
+        self.assertGreater(branch.weight_real.grad.abs().sum().item(), 0.0)
+        gate = model.temporal_fusion_decoder.layers[0].fft_fusion_gate
+        self.assertIsNotNone(gate.weight.grad)
+        self.assertGreater(gate.weight.grad.abs().sum().item(), 0.0)
+
+    # ---------- Stochastic depth tests ----------
+
+    def test_stochastic_depth_rate_zero_is_deterministic(self):
+        cfg = build_tsl_config()
+        cfg.e_layers = 3
+        cfg.tft_stochastic_depth_rate = 0.0
+        model = tsl_tft.Model(cfg)
+        model.eval()
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        inp = (x_enc.unsqueeze(0), x_mark_enc.unsqueeze(0), x_dec.unsqueeze(0), x_mark_dec.unsqueeze(0))
+        with torch.no_grad():
+            out1 = model(*inp)
+            out2 = model(*inp)
+        self.assertTrue(torch.allclose(out1, out2, atol=1e-6))
+
+    def test_stochastic_depth_nonzero_backward_works(self):
+        cfg = build_tsl_config()
+        cfg.e_layers = 4
+        cfg.tft_stochastic_depth_rate = 0.5
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=8)
+        loader = DataLoader(ds, batch_size=4, shuffle=True)
+        model.train()
+        opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+        criterion = nn.MSELoss()
+        for x_enc, x_mark_enc, x_dec, x_mark_dec, y in loader:
+            opt.zero_grad()
+            out = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            loss = criterion(out[:, -cfg.pred_len:, :], y)
+            loss.backward()
+            opt.step()
+            self.assertTrue(torch.isfinite(loss))
+            break
+
+    def test_stochastic_depth_eval_is_deterministic(self):
+        cfg = build_tsl_config()
+        cfg.e_layers = 4
+        cfg.tft_stochastic_depth_rate = 0.5
+        model = tsl_tft.Model(cfg)
+        model.eval()
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        inp = (x_enc.unsqueeze(0), x_mark_enc.unsqueeze(0), x_dec.unsqueeze(0), x_mark_dec.unsqueeze(0))
+        with torch.no_grad():
+            out1 = model(*inp)
+            out2 = model(*inp)
+        self.assertTrue(torch.allclose(out1, out2, atol=1e-6))
+
+    # ---------- Gradient checkpointing tests ----------
+
+    def test_gradient_checkpointing_eval_parity(self):
+        cfg = build_tsl_config()
+        cfg.e_layers = 2
+        model = tsl_tft.Model(cfg)
+        model.eval()
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        inp = (x_enc.unsqueeze(0), x_mark_enc.unsqueeze(0), x_dec.unsqueeze(0), x_mark_dec.unsqueeze(0))
+        with torch.no_grad():
+            model.temporal_fusion_decoder.gradient_checkpointing = False
+            out_no_ckpt = model(*inp)
+            model.temporal_fusion_decoder.gradient_checkpointing = True
+            out_ckpt = model(*inp)
+        self.assertTrue(torch.allclose(out_no_ckpt, out_ckpt, atol=1e-6),
+                        "Checkpointed and non-checkpointed eval outputs differ.")
+
+    def test_gradient_checkpointing_backward_succeeds(self):
+        cfg = build_tsl_config()
+        cfg.e_layers = 2
+        cfg.tft_gradient_checkpointing = True
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=8)
+        loader = DataLoader(ds, batch_size=4, shuffle=True)
+        model.train()
+        opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+        criterion = nn.MSELoss()
+        for x_enc, x_mark_enc, x_dec, x_mark_dec, y in loader:
+            opt.zero_grad()
+            out = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            loss = criterion(out[:, -cfg.pred_len:, :], y)
+            loss.backward()
+            opt.step()
+            self.assertTrue(torch.isfinite(loss))
+            break
+
+    def test_gradient_checkpointing_moe_aux_loss_preserved(self):
+        cfg = build_tsl_config()
+        cfg.e_layers = 2
+        cfg.tft_gradient_checkpointing = True
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=8)
+        loader = DataLoader(ds, batch_size=4, shuffle=True)
+        model.train()
+        for x_enc, x_mark_enc, x_dec, x_mark_dec, y in loader:
+            _ = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            aux = model.temporal_fusion_decoder.last_moe_aux_loss
+            self.assertIsNotNone(aux, "MoE aux loss should be populated through gradient checkpointing.")
+            self.assertTrue(torch.isfinite(aux))
+            break
+
+    def test_gradient_checkpointing_with_attention_returns_payload(self):
+        cfg = build_tsl_config()
+        cfg.e_layers = 2
+        cfg.tft_gradient_checkpointing = True
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        model.eval()
+        payload = model(
+            x_enc.unsqueeze(0), x_mark_enc.unsqueeze(0),
+            x_dec.unsqueeze(0), x_mark_dec.unsqueeze(0),
+            return_interpretation=True,
+        )
+        self.assertIsNotNone(payload)
+        self.assertIn("predictions", payload)
+        self.assertTrue(torch.isfinite(payload["predictions"]).all())
 
     def test_nixtla_components_and_model_behavior(self):
         cfg = SimpleNamespace(

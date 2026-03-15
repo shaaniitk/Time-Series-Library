@@ -221,6 +221,16 @@ if __name__ == '__main__':
                         help='Coefficient applied to TFT MoE auxiliary routing loss during training/validation.')
     parser.add_argument('--tft_payload_stack_layers', action='store_true', default=False,
                         help='Stack layer-wise TFT decoder interpretation payloads when return_interpretation=True.')
+    parser.add_argument('--tft_use_fft_branch', action='store_true', default=False,
+                        help='Enable parallel FFT spectral processing branch in TFT temporal backbone.')
+    parser.add_argument('--tft_fft_modes', type=int, default=32,
+                        help='Number of frequency modes to retain in TFT FFT branch.')
+    parser.add_argument('--tft_fft_mode_select', type=str, default='low', choices=['low', 'top_amplitude'],
+                        help='Frequency mode selection strategy for TFT FFT branch.')
+    parser.add_argument('--tft_stochastic_depth_rate', type=float, default=0.0,
+                        help='Stochastic depth drop rate for TFT decoder layers (0.0 = disabled).')
+    parser.add_argument('--tft_gradient_checkpointing', action='store_true', default=False,
+                        help='Enable gradient checkpointing for TFT decoder layers to save memory.')
 
     # TimeFilter
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')

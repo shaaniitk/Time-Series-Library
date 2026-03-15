@@ -12,6 +12,7 @@ from layers.TemporalFusion_layers import (
     MultiScaleLagAttention,
     PositionalMultiHeadAttention,
     RegimeAwareSparseMoE,
+    SpectralBranch,
     apply_rotary_embedding,
     build_causal_mask,
     build_alibi_bias,
@@ -414,6 +415,9 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.moe_top_k = int(getattr(configs, 'tft_moe_top_k', 2))
         self.moe_hidden_size = getattr(configs, 'tft_moe_hidden_size', configs.d_model)
         self.moe_noise_epsilon = float(getattr(configs, 'tft_moe_noise_epsilon', 1e-2))
+        self.use_fft_branch = getattr(configs, 'tft_use_fft_branch', False)
+        self.fft_modes = int(getattr(configs, 'tft_fft_modes', 32))
+        self.fft_mode_select = getattr(configs, 'tft_fft_mode_select', 'low')
 
         if self.temporal_backbone_type == 'lstm':
             self.history_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
@@ -441,6 +445,17 @@ class TemporalFusionDecoderLayer(nn.Module):
             )
         else:
             raise ValueError("tft_temporal_backbone must be one of: lstm, gated_tcn, hybrid_tcn_lstm.")
+        if self.use_fft_branch:
+            self.fft_branch = SpectralBranch(
+                configs.d_model,
+                modes=self.fft_modes,
+                mode_select=self.fft_mode_select,
+                dropout=configs.dropout,
+            )
+            self.fft_fusion_gate = nn.Linear(configs.d_model * 2, configs.d_model)
+        else:
+            self.fft_branch = None
+            self.fft_fusion_gate = None
         self.gate_after_lstm = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.enrichment_grn = GRN(configs.d_model, configs.d_model, context_size=configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu)
         if self.use_explicit_cross_attention:
@@ -525,6 +540,7 @@ class TemporalFusionDecoderLayer(nn.Module):
 
     def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
         self.last_moe_aux_loss = None
+        output_payload = {} if return_attention else None
         temporal_input = torch.cat([history_input, future_input], dim=1)
         if self.temporal_backbone_type == 'lstm':
             c = (c_c.unsqueeze(0), c_h.unsqueeze(0)) if c_c is not None and c_h is not None else None
@@ -536,11 +552,19 @@ class TemporalFusionDecoderLayer(nn.Module):
         else:
             c = (c_c.unsqueeze(0), c_h.unsqueeze(0)) if c_c is not None and c_h is not None else None
             temporal_features, _ = self.temporal_backbone(temporal_input, state=c)
+        # FFT spectral branch: parallel to temporal backbone, fused via learned gate
+        if self.use_fft_branch:
+            fft_features = self.fft_branch(temporal_input)
+            fft_gate = torch.sigmoid(self.fft_fusion_gate(
+                torch.cat([temporal_features, fft_features], dim=-1)
+            ))
+            temporal_features = fft_gate * temporal_features + (1.0 - fft_gate) * fft_features
+            if return_attention:
+                output_payload['fft_gate_mean'] = fft_gate.mean(dim=(1, 2)).detach()
         temporal_features = self.gate_after_lstm(temporal_features, temporal_input)
 
         enriched_features = self.enrichment_grn(temporal_features, c_e)
         history_len = history_input.shape[1]
-        output_payload = {} if return_attention else None
         if self.use_explicit_cross_attention:
             enriched_history = enriched_features[:, :history_len, :]
             enriched_future = enriched_features[:, history_len:, :]
@@ -714,6 +738,8 @@ class TemporalFusionDecoder(nn.Module):
         self.e_layers = getattr(configs, 'e_layers', 1)
         self.pred_len = configs.pred_len
         self.stack_payload_layers = getattr(configs, 'tft_payload_stack_layers', True)
+        self.stochastic_depth_rate = float(getattr(configs, 'tft_stochastic_depth_rate', 0.0))
+        self.gradient_checkpointing = getattr(configs, 'tft_gradient_checkpointing', False)
         self.layers = nn.ModuleList([TemporalFusionDecoderLayer(configs) for _ in range(self.e_layers)])
         self.out_projection = nn.Linear(configs.d_model, configs.c_out)
         self.last_moe_aux_loss = None
@@ -751,13 +777,33 @@ class TemporalFusionDecoder(nn.Module):
         moe_aux_losses = []
         curr_history = history_input
         curr_future = future_input
-        
-        for layer in self.layers:
-            if return_attention:
+        num_layers = len(self.layers)
+
+        for layer_idx, layer in enumerate(self.layers):
+            # Stochastic depth: skip layers with linearly increasing probability
+            if self.training and self.stochastic_depth_rate > 0.0 and num_layers > 1 and layer_idx > 0:
+                drop_prob = layer_idx / (num_layers - 1) * self.stochastic_depth_rate
+                if torch.rand(1).item() < drop_prob:
+                    # Identity pass-through: recombine curr_history/curr_future as out for next split
+                    out = torch.cat([curr_history, curr_future], dim=1)
+                    if return_attention:
+                        attention_payloads.append({})
+                    continue
+
+            # Gradient checkpointing: trade memory for compute during training
+            if self.gradient_checkpointing and self.training and not return_attention:
+                def _layer_forward(layer_module, h, f, cc, ch, ce):
+                    return layer_module(h, f, cc, ch, ce)
+                out = torch.utils.checkpoint.checkpoint(
+                    _layer_forward, layer, curr_history, curr_future, c_c, c_h, c_e,
+                    use_reentrant=False,
+                )
+            elif return_attention:
                 out, attention_prob = layer(curr_history, curr_future, c_c, c_h, c_e, return_attention=True)
                 attention_payloads.append(attention_prob)
             else:
                 out = layer(curr_history, curr_future, c_c, c_h, c_e)
+
             if layer.last_moe_aux_loss is not None:
                 moe_aux_losses.append(layer.last_moe_aux_loss)
             curr_history = out[:, :history_input.shape[1], :]
@@ -1032,6 +1078,7 @@ class Model(nn.Module):
             attention_backend_config = self.attention_backend
             attention_backend_used = None
             cross_attention_backend_used = None
+            fft_gate_mean = None
             if isinstance(attention_weights, dict):
                 attention_weights_full = attention_weights.get('full')
                 attention_fusion_alpha = attention_weights.get('fusion_alpha')
@@ -1052,6 +1099,7 @@ class Model(nn.Module):
                 attention_backend_config = attention_weights.get('attention_backend_config', attention_backend_config)
                 attention_backend_used = attention_weights.get('attention_backend_used')
                 cross_attention_backend_used = attention_weights.get('cross_attention_backend_used')
+                fft_gate_mean = attention_weights.get('fft_gate_mean')
                 attention_weights = attention_weights.get('interpretable')
             return {
                 'predictions': dec_out,
@@ -1077,6 +1125,7 @@ class Model(nn.Module):
                 'attention_backend_config': attention_backend_config,
                 'attention_backend_used': attention_backend_used,
                 'cross_attention_backend_used': cross_attention_backend_used,
+                'fft_gate_mean': fft_gate_mean,
                 'history_vsn_weights': history_weights,
                 'history_graph_attention': history_graph_attention,
                 'future_vsn_weights': future_weights,

@@ -57,6 +57,14 @@ def print_args(args):
         print(f'  {"MoE Regimes:":<20}{args.tft_num_regimes:<20}{"MoE Hidden:":<20}{str(args.tft_moe_hidden_size):<20}')
         print(f'  {"MoE Aux Coeff:":<20}{args.tft_moe_aux_loss_coeff:<20}{"Payload Stack:":<20}{args.tft_payload_stack_layers!s:<20}')
         print(f'  {"RevIN Affine:":<20}{args.tft_revin_affine!s:<20}{"Quantiles:":<20}{str(args.tft_output_quantiles):<20}')
+        fft_branch = getattr(args, 'tft_use_fft_branch', False)
+        if fft_branch:
+            print(f'  {"FFT Branch:":<20}{fft_branch!s:<20}{"FFT Modes:":<20}{getattr(args, "tft_fft_modes", 32):<20}')
+            print(f'  {"FFT Select:":<20}{getattr(args, "tft_fft_mode_select", "low"):<20}')
+        sd_rate = getattr(args, 'tft_stochastic_depth_rate', 0.0)
+        gc = getattr(args, 'tft_gradient_checkpointing', False)
+        if sd_rate > 0.0 or gc:
+            print(f'  {"Stoch Depth:":<20}{sd_rate:<20}{"Grad Ckpt:":<20}{gc!s:<20}')
         print()
 
     print("\033[1m" + "Run Parameters" + "\033[0m")
