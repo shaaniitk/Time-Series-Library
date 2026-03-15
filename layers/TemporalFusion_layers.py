@@ -433,7 +433,7 @@ class TemporalCompression(nn.Module):
 
 
 class MultiScaleLagAttention(nn.Module):
-    def __init__(self, d_model, n_heads, lag_scales, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact'):
+    def __init__(self, d_model, n_heads, lag_scales, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact', max_seq_len=None):
         super(MultiScaleLagAttention, self).__init__()
         if not isinstance(lag_scales, (list, tuple)) or len(lag_scales) == 0:
             raise ValueError("tft_lag_scales must be a non-empty list/tuple of positive integers.")
@@ -461,6 +461,10 @@ class MultiScaleLagAttention(nn.Module):
         self.scale_logits = nn.Parameter(torch.zeros(len(self.lag_scales)))
         self.out_projection = nn.Linear(d_model, d_model)
         self.out_dropout = nn.Dropout(dropout)
+        if max_seq_len is not None:
+            self.register_buffer('_causal_mask_buf', build_causal_mask(max_seq_len, torch.device('cpu'), torch.float32), persistent=False)
+        else:
+            self._causal_mask_buf = None
 
     def _shift_sequence(self, x, lag: int):
         shifted = torch.zeros_like(x)
@@ -475,7 +479,10 @@ class MultiScaleLagAttention(nn.Module):
             raise ValueError("Lag attention input contains NaN/Inf values.")
 
         seq_len = x.shape[1]
-        attn_mask = build_causal_mask(seq_len, x.device, x.dtype)
+        if self._causal_mask_buf is not None and seq_len <= self._causal_mask_buf.shape[0]:
+            attn_mask = self._causal_mask_buf[:seq_len, :seq_len].to(x.dtype)
+        else:
+            attn_mask = build_causal_mask(seq_len, x.device, x.dtype)
         branch_outputs = []
         branch_weights = []
         for lag, attention_layer in zip(self.lag_scales, self.attention_layers):
@@ -663,15 +670,16 @@ class RegimeAwareSparseMoE(nn.Module):
         self.gate = nn.Linear(d_model, num_experts, bias=False)
         self.noise = nn.Linear(d_model, num_experts, bias=False)
         self.regime_expert_bias = nn.Parameter(torch.zeros(num_regimes, num_experts))
-        self.experts = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(d_model, hidden_size),
-                nn.GELU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size, d_model),
-            )
-            for _ in range(num_experts)
-        ])
+        # Fused expert parameters for batched computation (no sequential loop)
+        self.expert_w1 = nn.Parameter(torch.empty(num_experts, d_model, hidden_size))
+        self.expert_b1 = nn.Parameter(torch.zeros(num_experts, hidden_size))
+        self.expert_w2 = nn.Parameter(torch.empty(num_experts, hidden_size, d_model))
+        self.expert_b2 = nn.Parameter(torch.zeros(num_experts, d_model))
+        for i in range(num_experts):
+            nn.init.xavier_uniform_(self.expert_w1.data[i])
+            nn.init.xavier_uniform_(self.expert_w2.data[i])
+        self.expert_activation = nn.GELU()
+        self.expert_dropout = nn.Dropout(dropout)
         self.out_dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(d_model)
 
@@ -718,7 +726,13 @@ class RegimeAwareSparseMoE(nn.Module):
         regime_probs = self.softmax(regime_logits)
         pooled_regime_probs = regime_probs.mean(dim=1)
         routing, aux_loss = self._compute_sparse_routing(x, regime_probs)
-        expert_outputs = torch.stack([expert(x) for expert in self.experts], dim=-2)
+        # Batched expert evaluation: all experts in parallel via fused parameters
+        # x: [B,T,D], expert_w1: [E,D,H] -> hidden: [B,T,E,H]
+        hidden = torch.einsum('btd,edh->bteh', x, self.expert_w1) + self.expert_b1
+        hidden = self.expert_activation(hidden)
+        hidden = self.expert_dropout(hidden)
+        # hidden: [B,T,E,H], expert_w2: [E,H,D] -> expert_outputs: [B,T,E,D]
+        expert_outputs = torch.einsum('bteh,ehd->bted', hidden, self.expert_w2) + self.expert_b2
         mixed = torch.sum(routing.unsqueeze(-1) * expert_outputs, dim=-2)
         out = self.layer_norm(x + self.out_dropout(mixed))
         if not torch.isfinite(out).all():

@@ -69,6 +69,12 @@ def print_args(args):
         if tc:
             print(f'  {"Temporal Compress:":<20}{tc!s:<20}{"TC Stride:":<20}{getattr(args, "tft_tc_stride", 2):<20}')
             print(f'  {"TC Threshold:":<20}{getattr(args, "tft_tc_threshold", 256):<20}')
+        vsn_sh = getattr(args, 'tft_vsn_n_selection_heads', 1)
+        if vsn_sh > 1:
+            print(f'  {"VSN Sel Heads:":<20}{vsn_sh:<20}')
+        mlp_qp = getattr(args, 'tft_mlp_quantile_projection', False)
+        if mlp_qp:
+            print(f'  {"MLP Quantile Proj:":<20}{mlp_qp!s:<20}{"Q Proj FF Size:":<20}{getattr(args, "tft_quantile_projection_ff_size", 0):<20}')
         print()
 
     print("\033[1m" + "Run Parameters" + "\033[0m")

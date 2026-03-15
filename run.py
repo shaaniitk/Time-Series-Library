@@ -237,6 +237,12 @@ if __name__ == '__main__':
                         help='Compression stride for temporal compression (2 = halve history length).')
     parser.add_argument('--tft_tc_threshold', type=int, default=256,
                         help='Minimum history length to activate temporal compression; no-op below this.')
+    parser.add_argument('--tft_vsn_n_selection_heads', type=int, default=1,
+                        help='Number of selection heads in TFT Variable Selection Networks (1 = original behavior).')
+    parser.add_argument('--tft_mlp_quantile_projection', action='store_true', default=False,
+                        help='Use a 2-layer MLP instead of single Linear for TFT quantile projection head.')
+    parser.add_argument('--tft_quantile_projection_ff_size', type=int, default=0,
+                        help='Hidden size for MLP quantile projection; 0 uses d_model.')
 
     # TimeFilter
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')

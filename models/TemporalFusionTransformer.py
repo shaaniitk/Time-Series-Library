@@ -260,10 +260,19 @@ class GRN(nn.Module):
 
 
 class VariableSelectionNetwork(nn.Module):
-    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True):
+    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1):
         super(VariableSelectionNetwork, self).__init__()
+        self.n_selection_heads = n_selection_heads
+        if n_selection_heads > 1:
+            assert d_model % n_selection_heads == 0, (
+                f"d_model ({d_model}) must be divisible by n_selection_heads ({n_selection_heads})."
+            )
         self.cross_mixing = DynamicGraphLearner(d_model, n_heads, dropout, output_attention=True) if cross_variable_mixing else None
-        self.joint_grn = GRN(d_model * variable_num, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout, use_swiglu=use_swiglu)
+        # Multi-head selection: each head learns independent variable importance weights
+        self.head_grns = nn.ModuleList([
+            GRN(d_model * variable_num, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout, use_swiglu=use_swiglu)
+            for _ in range(n_selection_heads)
+        ])
         self.variable_grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(variable_num)])
         self.use_residual_bypass = residual_bypass
         self.residual_projection = nn.Linear(d_model * variable_num, d_model)
@@ -282,9 +291,6 @@ class VariableSelectionNetwork(nn.Module):
                     raise RuntimeError("Dynamic graph mixing returned attention weights when return_weights=False.")
                 x = cross_output
         # x: [B,T,C,d] or [B,C,d]
-        # selection_weights: [B,T,C] or [B,C]
-        # x_processed: [B,T,d,C] or [B,d,C]
-        # selection_result: [B,T,d] or [B,d]
         if x.ndim not in (3, 4):
             raise ValueError(f"VSN expects rank-3 or rank-4 input after cross mixing, got shape {tuple(x.shape)}.")
         if x.shape[-2] != len(self.variable_grns):
@@ -292,12 +298,33 @@ class VariableSelectionNetwork(nn.Module):
                 f"VSN variable dimension mismatch: expected {len(self.variable_grns)}, got {x.shape[-2]}."
             )
         x_flattened = torch.flatten(x, start_dim=-2)
-        selection_weights = self.joint_grn(x_flattened, context)
-        selection_weights = F.softmax(selection_weights, dim=-1)
 
+        # x_processed: [B,T,d,C] or [B,d,C]
         x_processed = torch.stack([grn(x[...,i,:]) for i, grn in enumerate(self.variable_grns)], dim=-1)
 
-        selection_result = torch.matmul(x_processed, selection_weights.unsqueeze(-1)).squeeze(-1)
+        K = self.n_selection_heads
+        if K == 1:
+            # Original single-head path (backward-compatible)
+            selection_weights = self.head_grns[0](x_flattened, context)
+            selection_weights = F.softmax(selection_weights, dim=-1)
+            selection_result = torch.matmul(x_processed, selection_weights.unsqueeze(-1)).squeeze(-1)
+        else:
+            # Multi-head: split d dimension into K chunks, each head selects independently
+            d_head = x_processed.shape[-2] // K  # d_model // K
+            head_results = []
+            all_head_weights = []
+            for k in range(K):
+                head_weights = self.head_grns[k](x_flattened, context)
+                head_weights = F.softmax(head_weights, dim=-1)  # [..., C]
+                all_head_weights.append(head_weights)
+                # Slice processed variables on d dimension for this head's subspace
+                chunk = x_processed[..., k * d_head:(k + 1) * d_head, :]  # [..., d_head, C]
+                head_result = torch.matmul(chunk, head_weights.unsqueeze(-1)).squeeze(-1)  # [..., d_head]
+                head_results.append(head_result)
+            selection_result = torch.cat(head_results, dim=-1)  # [..., d_model]
+            # Stack per-head weights for interpretation: [..., K, C]
+            selection_weights = torch.stack(all_head_weights, dim=-2)
+
         if self.use_residual_bypass:
             residual = self.residual_projection(x_flattened)
             selection_result = selection_result + torch.tanh(self.residual_gate) * residual
@@ -310,9 +337,9 @@ class VariableSelectionNetwork(nn.Module):
 
 
 class StaticCovariateEncoder(nn.Module):
-    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True):
+    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1):
         super(StaticCovariateEncoder, self).__init__()
-        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass) if static_len else None
+        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass, n_selection_heads=n_selection_heads) if static_len else None
         self.grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(4)])
 
     def forward(self, static_input, return_weights: bool = False):
@@ -358,7 +385,7 @@ class InterpretableMultiHeadAttention(nn.Module):
             q, k = apply_rotary_embedding(q, k, base=self.rope_base)
 
         attention_score = torch.matmul(q, k.transpose(-2, -1))  # [B,n,T,T]
-        attention_score.mul_(self.scale)
+        attention_score = attention_score * self.scale
         if self.position_bias_type == 'alibi':
             attention_score = attention_score + build_alibi_bias(
                 self.n_heads,
@@ -504,6 +531,7 @@ class TemporalFusionDecoderLayer(nn.Module):
             rope_base=self.rope_base,
             alibi_scale=self.alibi_scale,
             attention_backend=self.attention_backend,
+            max_seq_len=configs.seq_len + configs.pred_len,
         ) if self.use_lag_attention else None
         self.higher_order_block = HigherOrderInteractionBlock(
             configs.d_model,
@@ -551,6 +579,9 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.position_wise_grn = GRN(configs.d_model, configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu) if not self.use_regime_moe else None
         self.gate_final = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.last_moe_aux_loss = None
+        # Pre-build causal mask at max sequence length to avoid re-creation each forward
+        max_len = configs.seq_len + configs.pred_len
+        self.register_buffer('_causal_mask_buf', build_causal_mask(max_len, torch.device('cpu'), torch.float32), persistent=False)
 
     def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
         self.last_moe_aux_loss = None
@@ -645,7 +676,10 @@ class TemporalFusionDecoderLayer(nn.Module):
                 output_payload['cross_attention'] = cross_attention_prob
                 output_payload['cross_attention_type'] = self.cross_attention_type
         seq_len = enriched_features.shape[1]
-        attn_mask = build_causal_mask(seq_len, enriched_features.device, enriched_features.dtype)
+        if seq_len <= self._causal_mask_buf.shape[0]:
+            attn_mask = self._causal_mask_buf[:seq_len, :seq_len].to(enriched_features.dtype)
+        else:
+            attn_mask = build_causal_mask(seq_len, enriched_features.device, enriched_features.dtype)
         attention_branches = []
 
         if self.dual_attention_fusion:
@@ -817,6 +851,7 @@ class TemporalFusionDecoder(nn.Module):
         curr_history = history_input
         curr_future = future_input
         num_layers = len(self.layers)
+        out = torch.cat([curr_history, curr_future], dim=1)
 
         def _layer_forward(layer_module, h, f, cc, ch, ce):
             return layer_module(h, f, cc, ch, ce)
@@ -877,6 +912,7 @@ class Model(nn.Module):
         self.static_len = len(typepos.static)
         self.observed_len = len(typepos.observed)
         self.target_pos = get_target_pos(configs)
+        self.register_buffer('target_pos_buf', torch.tensor(self.target_pos, dtype=torch.long), persistent=False)
         self.allow_custom_known = getattr(configs, 'tft_allow_custom_known', False)
         self.use_revin = getattr(configs, 'tft_use_revin', False)
         self.revin_affine = getattr(configs, 'tft_revin_affine', True)
@@ -902,22 +938,23 @@ class Model(nn.Module):
         self.cross_mix = getattr(configs, 'tft_cross_variable_mixing', False)
         self.vsn_residual_bypass = getattr(configs, 'tft_vsn_residual_bypass', True)
         self.n_heads = getattr(configs, 'n_heads', 4)
+        self.n_selection_heads = int(getattr(configs, 'tft_vsn_n_selection_heads', 1))
         self.last_moe_aux_loss = None
 
         self.static_encoder = StaticCovariateEncoder(
             configs.d_model, self.static_len, dropout=configs.dropout, 
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
-            residual_bypass=self.vsn_residual_bypass
+            residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads
         )
         self.history_vsn = VariableSelectionNetwork(
             configs.d_model, self.observed_len + self.known_len, dropout=configs.dropout,
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
-            residual_bypass=self.vsn_residual_bypass
+            residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads
         )
         self.future_vsn = VariableSelectionNetwork(
             configs.d_model, self.known_len, dropout=configs.dropout,
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
-            residual_bypass=self.vsn_residual_bypass
+            residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads
         )
         self.temporal_fusion_decoder = TemporalFusionDecoder(configs)
         if self.use_quantile_head:
@@ -927,7 +964,19 @@ class Model(nn.Module):
             if any(q <= 0.0 or q >= 1.0 for q in normalized_quantiles):
                 raise ValueError("tft_output_quantiles must be strictly between 0 and 1.")
             self.quantiles = normalized_quantiles
-            self.quantile_projection = nn.Linear(configs.d_model, configs.c_out * len(self.quantiles))
+            q_out_dim = configs.c_out * len(self.quantiles)
+            use_mlp_quantile = getattr(configs, 'tft_mlp_quantile_projection', False)
+            if use_mlp_quantile:
+                q_ff_size = getattr(configs, 'tft_quantile_projection_ff_size', None)
+                q_ff_size = configs.d_model if q_ff_size is None or q_ff_size <= 0 else int(q_ff_size)
+                self.quantile_projection = nn.Sequential(
+                    nn.Linear(configs.d_model, q_ff_size),
+                    nn.GELU(),
+                    nn.Dropout(configs.dropout),
+                    nn.Linear(q_ff_size, q_out_dim),
+                )
+            else:
+                self.quantile_projection = nn.Linear(configs.d_model, q_out_dim)
         else:
             self.quantile_projection = None
         self.last_quantile_predictions = None
@@ -1054,7 +1103,7 @@ class Model(nn.Module):
             quantile_out = None
 
         # De-Normalization from Non-stationary Transformer
-        target_pos = torch.as_tensor(self.target_pos, device=x_enc.device, dtype=torch.long)
+        target_pos = self.target_pos_buf
         if self.use_revin:
             full_dec = torch.zeros(
                 dec_out.shape[0],
@@ -1089,8 +1138,8 @@ class Model(nn.Module):
                 full_quantile = full_quantile.view(quantile_out.shape[0], self.pred_len, quantile_out.shape[2], self.configs.enc_in)
                 quantile_out = full_quantile.index_select(-1, target_pos)
         else:
-            target_stdev = stdev[:, 0, :].index_select(-1, target_pos).unsqueeze(1).repeat(1, self.pred_len, 1)
-            target_means = means[:, 0, :].index_select(-1, target_pos).unsqueeze(1).repeat(1, self.pred_len, 1)
+            target_stdev = stdev[:, 0, :].index_select(-1, target_pos).unsqueeze(1).expand(-1, self.pred_len, -1)
+            target_means = means[:, 0, :].index_select(-1, target_pos).unsqueeze(1).expand(-1, self.pred_len, -1)
             dec_out = dec_out * target_stdev
             dec_out = dec_out + target_means
             if quantile_out is not None:

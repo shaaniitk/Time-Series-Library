@@ -1038,6 +1038,180 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertGreater(losses[0], losses[-1],
                            "Loss should decrease with temporal compression enabled")
 
+    # ── Multi-Head Variable Selection Tests ──
+    def test_vsn_multi_head_selection(self):
+        """Multi-head VSN produces correct shapes and per-head softmax sums to 1."""
+        cfg = build_tsl_config()
+        K = 2
+        C = 8
+        vsn = tsl_tft.VariableSelectionNetwork(
+            d_model=cfg.d_model,
+            variable_num=C,
+            dropout=0.1,
+            use_swiglu=False,
+            cross_variable_mixing=False,
+            n_heads=cfg.n_heads,
+            residual_bypass=True,
+            n_selection_heads=K,
+        )
+        x = torch.randn(2, cfg.seq_len, C, cfg.d_model)
+        context = torch.randn(2, cfg.d_model)
+        selected, weight_payload = vsn(x, context=context, return_weights=True)
+        weights = weight_payload["selection"]
+        # Output shape: [B, T, d_model]
+        self.assertEqual(tuple(selected.shape), (2, cfg.seq_len, cfg.d_model))
+        # Weight shape: [B, T, K, C] for multi-head
+        self.assertEqual(tuple(weights.shape), (2, cfg.seq_len, K, C))
+        # Each head's weights should sum to 1 across variables
+        for k in range(K):
+            head_sum = weights[:, :, k, :].sum(dim=-1)
+            self.assertTrue(torch.allclose(head_sum, torch.ones_like(head_sum), atol=1e-5),
+                            f"Selection head {k} weights do not sum to 1")
+
+    def test_vsn_single_head_backward_compat(self):
+        """n_selection_heads=1 produces same weight shape [B,T,C] as original."""
+        cfg = build_tsl_config()
+        vsn = tsl_tft.VariableSelectionNetwork(
+            d_model=cfg.d_model,
+            variable_num=6,
+            dropout=0.0,
+            n_selection_heads=1,
+        )
+        x = torch.randn(2, cfg.seq_len, 6, cfg.d_model)
+        context = torch.randn(2, cfg.d_model)
+        selected, weight_payload = vsn(x, context=context, return_weights=True)
+        weights = weight_payload["selection"]
+        self.assertEqual(tuple(selected.shape), (2, cfg.seq_len, cfg.d_model))
+        # Single-head: weights are [B, T, C], NOT [B, T, 1, C]
+        self.assertEqual(tuple(weights.shape), (2, cfg.seq_len, 6))
+        self.assertTrue(torch.allclose(weights.sum(dim=-1), torch.ones_like(weights.sum(dim=-1)), atol=1e-5))
+
+    def test_vsn_multi_head_gradient_flow(self):
+        """Gradients flow to all K head GRNs in multi-head VSN."""
+        cfg = build_tsl_config()
+        K = 4
+        vsn = tsl_tft.VariableSelectionNetwork(
+            d_model=cfg.d_model,
+            variable_num=8,
+            dropout=0.0,
+            n_selection_heads=K,
+        )
+        x = torch.randn(2, cfg.seq_len, 8, cfg.d_model)
+        context = torch.randn(2, cfg.d_model)
+        selected = vsn(x, context=context)
+        loss = selected.sum()
+        loss.backward()
+        for k, head_grn in enumerate(vsn.head_grns):
+            for name, param in head_grn.named_parameters():
+                self.assertIsNotNone(param.grad, f"head_grns[{k}].{name} has no gradient")
+                self.assertTrue(param.grad.abs().sum() > 0, f"head_grns[{k}].{name} has zero gradient")
+
+    # ── MLP Quantile Projection Tests ──
+    def test_mlp_quantile_projection_shape(self):
+        """MLP quantile projection produces correct output shape."""
+        cfg = build_tsl_config()
+        cfg.tft_use_quantile_head = True
+        cfg.tft_output_quantiles = [0.1, 0.5, 0.9]
+        cfg.tft_mlp_quantile_projection = True
+        cfg.tft_quantile_projection_ff_size = cfg.d_model
+        model = tsl_tft.Model(cfg)
+        # Verify it's a Sequential (MLP), not a plain Linear
+        self.assertIsInstance(model.quantile_projection, nn.Sequential)
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        payload = model(
+            x_enc.unsqueeze(0),
+            x_mark_enc.unsqueeze(0),
+            x_dec.unsqueeze(0),
+            x_mark_dec.unsqueeze(0),
+            return_interpretation=True,
+        )
+        self.assertEqual(payload["quantiles"], [0.1, 0.5, 0.9])
+        self.assertEqual(tuple(payload["quantile_predictions"].shape), (1, cfg.pred_len, 3, cfg.c_out))
+        self.assertTrue(torch.isfinite(payload["quantile_predictions"]).all())
+
+    def test_mlp_quantile_projection_disabled(self):
+        """Disabled MLP quantile projection uses plain Linear."""
+        cfg = build_tsl_config()
+        cfg.tft_use_quantile_head = True
+        cfg.tft_output_quantiles = [0.1, 0.5, 0.9]
+        cfg.tft_mlp_quantile_projection = False
+        model = tsl_tft.Model(cfg)
+        self.assertIsInstance(model.quantile_projection, nn.Linear)
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        payload = model(
+            x_enc.unsqueeze(0),
+            x_mark_enc.unsqueeze(0),
+            x_dec.unsqueeze(0),
+            x_mark_dec.unsqueeze(0),
+            return_interpretation=True,
+        )
+        self.assertEqual(tuple(payload["quantile_predictions"].shape), (1, cfg.pred_len, 3, cfg.c_out))
+
+    # ── Holistic Integration Test ──
+    def test_multi_head_vsn_and_mlp_quantile_holistic(self):
+        """Both multi-head VSN and MLP quantile projection enabled together: forward, backward, interpretation, and learning."""
+        cfg = build_tsl_config()
+        cfg.tft_vsn_n_selection_heads = 2
+        cfg.tft_use_quantile_head = True
+        cfg.tft_output_quantiles = [0.1, 0.5, 0.9]
+        cfg.tft_mlp_quantile_projection = True
+        cfg.tft_quantile_projection_ff_size = cfg.d_model
+        model = tsl_tft.Model(cfg)
+
+        # Verify structural expectations
+        self.assertEqual(model.history_vsn.n_selection_heads, 2)
+        self.assertEqual(model.future_vsn.n_selection_heads, 2)
+        self.assertEqual(len(model.history_vsn.head_grns), 2)
+        self.assertIsInstance(model.quantile_projection, nn.Sequential)
+
+        # Forward + interpretation
+        ds = make_tsl_dataset(cfg, n_samples=8)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        payload = model(
+            x_enc.unsqueeze(0),
+            x_mark_enc.unsqueeze(0),
+            x_dec.unsqueeze(0),
+            x_mark_dec.unsqueeze(0),
+            return_interpretation=True,
+        )
+        dec_out = payload["predictions"]
+        self.assertEqual(tuple(dec_out.shape), (1, cfg.pred_len, cfg.c_out))
+        self.assertTrue(torch.isfinite(dec_out).all())
+
+        # Multi-head VSN weights should have head dimension
+        hist_w = payload["history_vsn_weights"]
+        future_w = payload["future_vsn_weights"]
+        K = 2
+        expected_hist_vars = cfg.enc_in + cfg.tft_known_len  # observed + known
+        expected_future_vars = cfg.tft_known_len  # known only
+        self.assertEqual(hist_w.shape[-2], K)
+        self.assertEqual(hist_w.shape[-1], expected_hist_vars)
+        self.assertEqual(future_w.shape[-2], K)
+        self.assertEqual(future_w.shape[-1], expected_future_vars)
+
+        # Quantile predictions
+        qp = payload["quantile_predictions"]
+        self.assertEqual(tuple(qp.shape), (1, cfg.pred_len, 3, cfg.c_out))
+        self.assertTrue(torch.isfinite(qp).all())
+
+        # Backward succeeds — most trainable params should receive gradients
+        # (static_encoder and context-projection layers without static input won't)
+        loss = dec_out.sum() + qp.sum()
+        loss.backward()
+        graded = sum(1 for _, p in model.named_parameters() if p.requires_grad and p.grad is not None)
+        total = sum(1 for _, p in model.named_parameters() if p.requires_grad)
+        self.assertGreater(graded / total, 0.8,
+                           f"Only {graded}/{total} params received gradients")
+
+        # Learning: loss decreases over a few epochs
+        model.zero_grad()
+        loader = DataLoader(ds, batch_size=4, shuffle=True)
+        losses = train_tsl_once(model, loader, cfg, lr=3e-3, epochs=4)
+        self.assertGreater(losses[0], losses[-1],
+                           "Loss should decrease with multi-head VSN + MLP quantile projection")
+
 
 if __name__ == "__main__":
     unittest.main()
