@@ -66,6 +66,8 @@ def summarize_tft_interpretation(payload, top_k=3):
         "cross_attention_backend_used": payload.get("cross_attention_backend_used"),
         "fft_branch_active": payload.get("fft_gate_mean") is not None,
         "fft_gate_mean": payload.get("fft_gate_mean").detach().float().cpu().tolist() if torch.is_tensor(payload.get("fft_gate_mean")) else None,
+        "tc_active": payload.get("tc_active", False),
+        "tc_compressed_history_len": payload.get("tc_compressed_history_len"),
         "has_graph_attention": payload.get("history_graph_attention") is not None,
         "has_cross_attention": payload.get("cross_attention_weights") is not None,
         "has_lag_attention": payload.get("lag_attention_weights") is not None,

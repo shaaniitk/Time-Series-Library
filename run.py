@@ -231,6 +231,12 @@ if __name__ == '__main__':
                         help='Stochastic depth drop rate for TFT decoder layers (0.0 = disabled).')
     parser.add_argument('--tft_gradient_checkpointing', action='store_true', default=False,
                         help='Enable gradient checkpointing for TFT decoder layers to save memory.')
+    parser.add_argument('--tft_use_temporal_compression', action='store_true', default=False,
+                        help='Enable learned temporal compression of history before attention (long sequences).')
+    parser.add_argument('--tft_tc_stride', type=int, default=2,
+                        help='Compression stride for temporal compression (2 = halve history length).')
+    parser.add_argument('--tft_tc_threshold', type=int, default=256,
+                        help='Minimum history length to activate temporal compression; no-op below this.')
 
     # TimeFilter
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')

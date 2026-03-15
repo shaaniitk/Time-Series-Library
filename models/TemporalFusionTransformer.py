@@ -13,6 +13,7 @@ from layers.TemporalFusion_layers import (
     PositionalMultiHeadAttention,
     RegimeAwareSparseMoE,
     SpectralBranch,
+    TemporalCompression,
     apply_rotary_embedding,
     build_causal_mask,
     build_alibi_bias,
@@ -418,6 +419,9 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.use_fft_branch = getattr(configs, 'tft_use_fft_branch', False)
         self.fft_modes = int(getattr(configs, 'tft_fft_modes', 32))
         self.fft_mode_select = getattr(configs, 'tft_fft_mode_select', 'low')
+        self.use_temporal_compression = getattr(configs, 'tft_use_temporal_compression', False)
+        self.tc_stride = int(getattr(configs, 'tft_tc_stride', 2))
+        self.tc_threshold = int(getattr(configs, 'tft_tc_threshold', 256))
 
         if self.temporal_backbone_type == 'lstm':
             self.history_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
@@ -456,6 +460,16 @@ class TemporalFusionDecoderLayer(nn.Module):
         else:
             self.fft_branch = None
             self.fft_fusion_gate = None
+        # TEMPORAL COMPRESSION (optional, learned stride for long sequences)
+        if self.use_temporal_compression:
+            self.temporal_compression = TemporalCompression(
+                configs.d_model,
+                stride=self.tc_stride,
+                threshold=self.tc_threshold,
+                dropout=configs.dropout,
+            )
+        else:
+            self.temporal_compression = None
         self.gate_after_lstm = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.enrichment_grn = GRN(configs.d_model, configs.d_model, context_size=configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu)
         if self.use_explicit_cross_attention:
@@ -563,13 +577,32 @@ class TemporalFusionDecoderLayer(nn.Module):
                 output_payload['fft_gate_mean'] = fft_gate.mean(dim=(1, 2)).detach()
         temporal_features = self.gate_after_lstm(temporal_features, temporal_input)
 
-        enriched_features = self.enrichment_grn(temporal_features, c_e)
+        # TEMPORAL COMPRESSION: compress history portion for long sequences
         history_len = history_input.shape[1]
+        _tc_active = (self.temporal_compression is not None
+                      and self.temporal_compression.should_compress(history_len))
+        if _tc_active:
+            hist_feats = temporal_features[:, :history_len, :]
+            fut_feats = temporal_features[:, history_len:, :]
+            hist_compressed, _tc_orig_len = self.temporal_compression.compress(hist_feats)
+            # Recombine with full-resolution future
+            temporal_features_for_attn = torch.cat([hist_compressed, fut_feats], dim=1)
+            compressed_history_len = hist_compressed.shape[1]
+            if return_attention:
+                output_payload['tc_active'] = True
+                output_payload['tc_compressed_history_len'] = compressed_history_len
+        else:
+            temporal_features_for_attn = temporal_features
+            compressed_history_len = history_len
+            if return_attention and self.temporal_compression is not None:
+                output_payload['tc_active'] = False
+
+        enriched_features = self.enrichment_grn(temporal_features_for_attn, c_e)
         if self.use_explicit_cross_attention:
-            enriched_history = enriched_features[:, :history_len, :]
-            enriched_future = enriched_features[:, history_len:, :]
-            history_positions = torch.arange(history_len, device=enriched_features.device)
-            future_positions = torch.arange(history_len, history_len + enriched_future.shape[1], device=enriched_features.device)
+            enriched_history = enriched_features[:, :compressed_history_len, :]
+            enriched_future = enriched_features[:, compressed_history_len:, :]
+            history_positions = torch.arange(compressed_history_len, device=enriched_features.device)
+            future_positions = torch.arange(compressed_history_len, compressed_history_len + enriched_future.shape[1], device=enriched_features.device)
             if self.cross_attention_type == 'interpretable':
                 if return_attention:
                     cross_out, cross_attention_prob = self.cross_attention(
@@ -709,6 +742,12 @@ class TemporalFusionDecoderLayer(nn.Module):
                 output_payload['fusion_alpha'] = None
 
         attention_out = self.gate_after_attention(attention_out, enriched_features)
+        # TEMPORAL DECOMPRESSION: restore history to original length
+        if _tc_active:
+            compressed_hist_out = attention_out[:, :compressed_history_len, :]
+            fut_out = attention_out[:, compressed_history_len:, :]
+            hist_restored = self.temporal_compression.decompress_to(compressed_hist_out, _tc_orig_len)
+            attention_out = torch.cat([hist_restored, fut_out], dim=1)
         if self.use_higher_order:
             if return_attention:
                 attention_out, interaction_payload = self.higher_order_block(attention_out, return_payload=True)
@@ -1080,6 +1119,8 @@ class Model(nn.Module):
             attention_backend_used = None
             cross_attention_backend_used = None
             fft_gate_mean = None
+            tc_active = False
+            tc_compressed_history_len = None
             if isinstance(attention_weights, dict):
                 attention_weights_full = attention_weights.get('full')
                 attention_fusion_alpha = attention_weights.get('fusion_alpha')
@@ -1101,6 +1142,8 @@ class Model(nn.Module):
                 attention_backend_used = attention_weights.get('attention_backend_used')
                 cross_attention_backend_used = attention_weights.get('cross_attention_backend_used')
                 fft_gate_mean = attention_weights.get('fft_gate_mean')
+                tc_active = attention_weights.get('tc_active', False)
+                tc_compressed_history_len = attention_weights.get('tc_compressed_history_len')
                 attention_weights = attention_weights.get('interpretable')
             return {
                 'predictions': dec_out,
@@ -1127,6 +1170,8 @@ class Model(nn.Module):
                 'attention_backend_used': attention_backend_used,
                 'cross_attention_backend_used': cross_attention_backend_used,
                 'fft_gate_mean': fft_gate_mean,
+                'tc_active': tc_active,
+                'tc_compressed_history_len': tc_compressed_history_len,
                 'history_vsn_weights': history_weights,
                 'history_graph_attention': history_graph_attention,
                 'future_vsn_weights': future_weights,

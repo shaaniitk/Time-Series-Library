@@ -65,6 +65,10 @@ def print_args(args):
         gc = getattr(args, 'tft_gradient_checkpointing', False)
         if sd_rate > 0.0 or gc:
             print(f'  {"Stoch Depth:":<20}{sd_rate:<20}{"Grad Ckpt:":<20}{gc!s:<20}')
+        tc = getattr(args, 'tft_use_temporal_compression', False)
+        if tc:
+            print(f'  {"Temporal Compress:":<20}{tc!s:<20}{"TC Stride:":<20}{getattr(args, "tft_tc_stride", 2):<20}')
+            print(f'  {"TC Threshold:":<20}{getattr(args, "tft_tc_threshold", 256):<20}')
         print()
 
     print("\033[1m" + "Run Parameters" + "\033[0m")

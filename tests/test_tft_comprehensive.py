@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 from layers.DynamicGraph import DynamicGraphLearner
@@ -15,6 +16,7 @@ from layers.TemporalFusion_layers import (
     PositionalMultiHeadAttention,
     RegimeAwareSparseMoE,
     SpectralBranch,
+    TemporalCompression,
     build_causal_mask,
 )
 from models import TemporalFusionTransformer as tsl_tft
@@ -868,6 +870,173 @@ class TestTFTComprehensive(unittest.TestCase):
 
         self.assertIsNotNone(model.cross_channel_mixer.weight.grad)
         self.assertGreater(model.cross_channel_mixer.weight.grad.abs().sum().item(), 0.0)
+
+    # ------------------------------------------------------------------ #
+    #  Temporal Compression (Learned Sequence Compression)
+    # ------------------------------------------------------------------ #
+
+    def test_temporal_compression_component_shape_and_gradient(self):
+        """Compress and decompress roundtrip preserves shape; gradients flow."""
+        for stride in (2, 4):
+            tc = TemporalCompression(d_model=32, stride=stride, threshold=0, dropout=0.0)
+            x = torch.randn(2, 64, 32, requires_grad=True)
+
+            self.assertTrue(tc.should_compress(64))
+            compressed, orig_len = tc.compress(x)
+            expected_approx = 64 // stride
+            # Allow ±1 due to conv padding arithmetic
+            self.assertAlmostEqual(compressed.shape[1], expected_approx, delta=2,
+                                   msg=f"stride={stride}: compressed length {compressed.shape[1]} "
+                                       f"not near {expected_approx}")
+            self.assertEqual(compressed.shape[0], 2)
+            self.assertEqual(compressed.shape[2], 32)
+
+            restored = tc.decompress_to(compressed, orig_len)
+            self.assertEqual(restored.shape, (2, 64, 32),
+                             f"stride={stride}: decompress did not restore shape")
+
+            # Gradient flow
+            loss = restored.sum()
+            loss.backward()
+            self.assertIsNotNone(x.grad)
+            self.assertGreater(x.grad.abs().sum().item(), 0.0)
+
+    def test_temporal_compression_threshold_noop(self):
+        """should_compress returns False when seq_len <= threshold."""
+        tc = TemporalCompression(d_model=32, stride=2, threshold=256, dropout=0.0)
+        self.assertFalse(tc.should_compress(256))
+        self.assertFalse(tc.should_compress(128))
+        self.assertTrue(tc.should_compress(257))
+
+    def test_temporal_compression_stride_1_noop(self):
+        """stride=1 should never activate compression."""
+        tc = TemporalCompression(d_model=32, stride=1, threshold=0, dropout=0.0)
+        self.assertFalse(tc.should_compress(512))
+
+    def test_tsl_temporal_compression_active_long_sequence(self):
+        """Model with temporal compression produces correct output shape for long sequences."""
+        set_seed(42)
+        cfg = build_tsl_config()
+        # Long sequence to trigger compression (threshold=64 for testing)
+        cfg.seq_len = 128
+        cfg.label_len = 64
+        cfg.pred_len = 16
+        cfg.tft_use_temporal_compression = True
+        cfg.tft_tc_stride = 2
+        cfg.tft_tc_threshold = 64  # Low threshold so seq_len=128 triggers it
+        cfg.tft_use_higher_order = False
+        cfg.tft_use_regime_moe = False
+        cfg.tft_use_lag_attention = False
+        cfg.tft_dual_attention_fusion = False
+        cfg.tft_use_explicit_cross_attention = False
+        cfg.tft_use_fft_branch = False
+        cfg.e_layers = 1
+
+        model = tsl_tft.Model(cfg).float().eval()
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        loader = DataLoader(ds, batch_size=2)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, y = next(iter(loader))
+
+        with torch.no_grad():
+            payload = model(x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation=True)
+        pred = payload["predictions"]
+        self.assertEqual(pred.shape, (2, cfg.pred_len, cfg.c_out))
+        # Verify compression was active in payload
+        self.assertTrue(payload.get("tc_active", False),
+                        "Temporal compression should be active for seq_len=128, threshold=64")
+
+    def test_tsl_temporal_compression_inactive_short_sequence(self):
+        """Compression is no-op when seq_len <= threshold."""
+        set_seed(42)
+        cfg = build_tsl_config()
+        cfg.seq_len = 24
+        cfg.label_len = 12
+        cfg.pred_len = 4
+        cfg.tft_use_temporal_compression = True
+        cfg.tft_tc_stride = 2
+        cfg.tft_tc_threshold = 256  # Short seq < threshold -> no-op
+        cfg.tft_use_higher_order = False
+        cfg.tft_use_regime_moe = False
+        cfg.tft_use_lag_attention = False
+        cfg.tft_dual_attention_fusion = False
+        cfg.tft_use_explicit_cross_attention = False
+        cfg.tft_use_fft_branch = False
+        cfg.e_layers = 1
+
+        model = tsl_tft.Model(cfg).float().eval()
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        loader = DataLoader(ds, batch_size=2)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, y = next(iter(loader))
+
+        with torch.no_grad():
+            payload = model(x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation=True)
+        pred = payload["predictions"]
+        self.assertEqual(pred.shape, (2, cfg.pred_len, cfg.c_out))
+        self.assertFalse(payload.get("tc_active", True),
+                         "Temporal compression should be inactive for short sequences")
+
+    def test_tsl_temporal_compression_backward_succeeds(self):
+        """Backward pass works with temporal compression active."""
+        set_seed(42)
+        cfg = build_tsl_config()
+        cfg.seq_len = 128
+        cfg.label_len = 64
+        cfg.pred_len = 16
+        cfg.tft_use_temporal_compression = True
+        cfg.tft_tc_stride = 2
+        cfg.tft_tc_threshold = 64
+        cfg.tft_use_higher_order = False
+        cfg.tft_use_regime_moe = False
+        cfg.tft_use_lag_attention = False
+        cfg.tft_dual_attention_fusion = False
+        cfg.tft_use_explicit_cross_attention = False
+        cfg.tft_use_fft_branch = False
+        cfg.e_layers = 2
+
+        model = tsl_tft.Model(cfg).float().train()
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        loader = DataLoader(ds, batch_size=2)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, y = next(iter(loader))
+
+        out = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
+        pred = out[:, -cfg.pred_len:, :]
+        loss = F.mse_loss(pred, y)
+        loss.backward()
+
+        # Check gradients flow to compression parameters
+        for name, p in model.named_parameters():
+            if 'temporal_compression' in name and p.requires_grad:
+                self.assertIsNotNone(p.grad, f"No gradient for {name}")
+                break
+        else:
+            self.fail("No temporal_compression parameters found in model")
+
+    def test_tsl_temporal_compression_learns_with_long_signal(self):
+        """Loss decreases over epochs with temporal compression on long sequences."""
+        set_seed(42)
+        cfg = build_tsl_config()
+        cfg.seq_len = 128
+        cfg.label_len = 64
+        cfg.pred_len = 16
+        cfg.tft_use_temporal_compression = True
+        cfg.tft_tc_stride = 2
+        cfg.tft_tc_threshold = 64
+        cfg.tft_use_higher_order = False
+        cfg.tft_use_regime_moe = False
+        cfg.tft_use_lag_attention = False
+        cfg.tft_dual_attention_fusion = False
+        cfg.tft_use_explicit_cross_attention = False
+        cfg.tft_use_fft_branch = False
+        cfg.e_layers = 1
+
+        model = tsl_tft.Model(cfg).float()
+        ds = make_tsl_dataset(cfg, n_samples=32)
+        loader = DataLoader(ds, batch_size=8, shuffle=True)
+        opt = torch.optim.Adam(model.parameters(), lr=3e-3)
+
+        losses = train_tsl_once(model, loader, cfg, lr=3e-3, epochs=4)
+        self.assertGreater(losses[0], losses[-1],
+                           "Loss should decrease with temporal compression enabled")
 
 
 if __name__ == "__main__":

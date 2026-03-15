@@ -358,6 +358,80 @@ class SpectralBranch(nn.Module):
         return self.layer_norm(x + self.dropout(self.out_projection(x_reconstructed)))
 
 
+class TemporalCompression(nn.Module):
+    """Learned strided temporal reduction for sequence compression.
+
+    Compresses a sequence from length T to T // stride using a depthwise-separable
+    strided convolution, and decompresses back via transposed convolution.
+    Acts as a no-op when the input length is at or below *threshold*.
+
+    Designed to reduce the O(T^2) cost of downstream attention branches by
+    compressing the history portion of the sequence before attention.
+    """
+
+    def __init__(self, d_model: int, stride: int = 2, threshold: int = 256,
+                 kernel_size: int | None = None, dropout: float = 0.0):
+        super().__init__()
+        if stride < 1:
+            raise ValueError("stride must be >= 1.")
+        self.d_model = d_model
+        self.stride = stride
+        self.threshold = threshold
+        # Default kernel = 2 * stride (covers one full stride window on each side)
+        self.kernel_size = kernel_size if kernel_size is not None else 2 * stride
+        padding = (self.kernel_size - 1) // 2
+
+        # Compress: depthwise-separable strided conv  (groups=d_model → depthwise)
+        self.compress_dw = nn.Conv1d(
+            d_model, d_model, kernel_size=self.kernel_size, stride=stride,
+            padding=padding, groups=d_model, bias=False,
+        )
+        self.compress_pw = nn.Conv1d(d_model, d_model, kernel_size=1, bias=True)
+        self.compress_norm = nn.LayerNorm(d_model)
+        self.compress_act = nn.GELU()
+        self.compress_drop = nn.Dropout(dropout)
+
+        # Decompress: transposed conv (mirrors compress)
+        self.decompress = nn.ConvTranspose1d(
+            d_model, d_model, kernel_size=self.kernel_size, stride=stride,
+            padding=padding, groups=d_model, bias=False,
+        )
+        self.decompress_pw = nn.Conv1d(d_model, d_model, kernel_size=1, bias=True)
+        self.decompress_norm = nn.LayerNorm(d_model)
+        self.decompress_drop = nn.Dropout(dropout)
+
+    def should_compress(self, seq_len: int) -> bool:
+        """Return True when compression is beneficial (long sequences)."""
+        return self.stride > 1 and seq_len > self.threshold
+
+    def compress(self, x: torch.Tensor) -> tuple[torch.Tensor, int]:
+        """Compress [B, T, D] -> [B, T', D] where T' ≈ T // stride.
+
+        Returns (compressed, original_length) so decompress can restore size.
+        """
+        original_len = x.shape[1]
+        # Conv1d expects [B, D, T]
+        h = x.permute(0, 2, 1)
+        h = self.compress_pw(self.compress_dw(h))  # [B, D, T']
+        h = h.permute(0, 2, 1)  # [B, T', D]
+        h = self.compress_drop(self.compress_act(self.compress_norm(h)))
+        return h, original_len
+
+    def decompress_to(self, x: torch.Tensor, target_len: int) -> torch.Tensor:
+        """Decompress [B, T', D] -> [B, target_len, D]."""
+        h = x.permute(0, 2, 1)  # [B, D, T']
+        h = self.decompress_pw(self.decompress(h))  # [B, D, ~T]
+        h = h.permute(0, 2, 1)  # [B, ~T, D]
+        # Transposed conv output may differ from target_len by ±1; trim or pad
+        curr_len = h.shape[1]
+        if curr_len > target_len:
+            h = h[:, :target_len, :]
+        elif curr_len < target_len:
+            h = F.pad(h, (0, 0, 0, target_len - curr_len))
+        h = self.decompress_drop(self.decompress_norm(h))
+        return h
+
+
 class MultiScaleLagAttention(nn.Module):
     def __init__(self, d_model, n_heads, lag_scales, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact'):
         super(MultiScaleLagAttention, self).__init__()
