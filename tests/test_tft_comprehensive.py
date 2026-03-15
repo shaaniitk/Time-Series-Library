@@ -18,7 +18,7 @@ from layers.TemporalFusion_layers import (
 )
 from models import TemporalFusionTransformer as tsl_tft
 from utils.tft_synthetic import make_multiscale_tft_dataset
-from utils.losses import quantile_loss
+from utils.losses import QuantileLoss
 from utils.tools import combine_primary_and_aux_loss, get_auxiliary_loss
 
 try:
@@ -314,11 +314,12 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertEqual(float(get_auxiliary_loss(wrapped)), 0.5)
 
     def test_quantile_loss(self):
-        criterion = quantile_loss([0.1, 0.5, 0.9])
+        criterion = QuantileLoss([0.1, 0.5, 0.9])
         forecast = torch.tensor([[[[1.0], [2.0], [3.0]]]])
         target = torch.tensor([[[2.5]]])
         loss = criterion(forecast, target)
         self.assertGreater(float(loss), 0.0)
+        self.assertAlmostEqual(float(loss), float(QuantileLoss([0.1, 0.5, 0.9])(forecast, target)), places=6)
 
     def test_tsl_component_contracts_and_payload(self):
         cfg = build_tsl_config()

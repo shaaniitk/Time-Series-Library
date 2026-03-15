@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
+from utils.losses import QuantileLoss
 from utils.tft_interpretation import export_tft_interpretation_summary, summarize_tft_interpretation
 from utils.tft_synthetic import make_multiscale_tft_tensors
 
@@ -218,6 +219,14 @@ class TestTFTInterpretationAndExp(unittest.TestCase):
             self.assertTrue(output_path.exists())
             on_disk = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(on_disk["decoder_num_layers"], args.e_layers)
+
+    def test_quantile_loss_is_selectable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = build_tft_args(tmpdir)
+            args.loss = "Quantile"
+            exp = TinyLongForecastExp(args, {})
+            criterion = exp._select_criterion()
+            self.assertIsInstance(criterion, QuantileLoss)
 
     def test_exp_long_term_train_smoke(self):
         with tempfile.TemporaryDirectory() as tmpdir:

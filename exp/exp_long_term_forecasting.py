@@ -2,7 +2,7 @@ from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from utils.tools import EarlyStopping, adjust_learning_rate, combine_primary_and_aux_loss, get_auxiliary_loss, visual
 from utils.metrics import metric
-from utils.losses import quantile_loss
+from utils.losses import QuantileLoss
 import torch
 import torch.nn as nn
 from torch import optim
@@ -40,7 +40,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             quantiles = getattr(self.args, 'tft_output_quantiles', None)
             if not getattr(self.args, 'tft_use_quantile_head', False):
                 raise ValueError("loss=Quantile requires tft_use_quantile_head=True.")
-            return quantile_loss(quantiles)
+            return QuantileLoss(quantiles)
         criterion = nn.MSELoss()
         return criterion
 
@@ -76,7 +76,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 true = batch_y.detach()
 
                 quantile_outputs = get_auxiliary_loss(self.model, 'last_quantile_predictions')
-                if isinstance(criterion, quantile_loss):
+                if isinstance(criterion, QuantileLoss):
                     if quantile_outputs is None:
                         raise RuntimeError("Quantile loss selected but model did not populate last_quantile_predictions.")
                     loss = criterion(quantile_outputs.detach(), true)
@@ -140,7 +140,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         outputs = outputs[:, -self.args.pred_len:, f_dim:]
                         batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                         quantile_outputs = get_auxiliary_loss(self.model, 'last_quantile_predictions')
-                        if isinstance(criterion, quantile_loss):
+                        if isinstance(criterion, QuantileLoss):
                             if quantile_outputs is None:
                                 raise RuntimeError("Quantile loss selected but model did not populate last_quantile_predictions.")
                             loss = criterion(quantile_outputs, batch_y)
@@ -158,7 +158,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     quantile_outputs = get_auxiliary_loss(self.model, 'last_quantile_predictions')
-                    if isinstance(criterion, quantile_loss):
+                    if isinstance(criterion, QuantileLoss):
                         if quantile_outputs is None:
                             raise RuntimeError("Quantile loss selected but model did not populate last_quantile_predictions.")
                         loss = criterion(quantile_outputs, batch_y)

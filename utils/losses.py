@@ -89,9 +89,9 @@ class mase_loss(nn.Module):
         return t.mean(t.abs(target - forecast) * masked_masep_inv)
 
 
-class quantile_loss(nn.Module):
+class QuantileLoss(nn.Module):
     def __init__(self, quantiles):
-        super(quantile_loss, self).__init__()
+        super(QuantileLoss, self).__init__()
         if not isinstance(quantiles, (list, tuple)) or len(quantiles) == 0:
             raise ValueError("quantiles must be a non-empty list/tuple.")
         self.quantiles = [float(q) for q in quantiles]
@@ -105,3 +105,7 @@ class quantile_loss(nn.Module):
         quantiles = forecast.new_tensor(self.quantiles).view(1, 1, -1, 1)
         loss = t.maximum(quantiles * errors, (quantiles - 1.0) * errors)
         return loss.mean()
+
+
+class quantile_loss(QuantileLoss):
+    pass

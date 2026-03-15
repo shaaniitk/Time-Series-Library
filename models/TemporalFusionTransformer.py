@@ -717,7 +717,6 @@ class TemporalFusionDecoder(nn.Module):
         self.layers = nn.ModuleList([TemporalFusionDecoderLayer(configs) for _ in range(self.e_layers)])
         self.out_projection = nn.Linear(configs.d_model, configs.c_out)
         self.last_moe_aux_loss = None
-        self.last_hidden_state = None
 
     def _aggregate_attention_payloads(self, payloads):
         if not payloads:
@@ -747,7 +746,7 @@ class TemporalFusionDecoder(nn.Module):
         merged_payload['decoder_layer_payloads'] = layerwise
         return merged_payload
 
-    def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
+    def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False, return_decoder_hidden: bool = False):
         attention_payloads = []
         moe_aux_losses = []
         curr_history = history_input
@@ -765,13 +764,16 @@ class TemporalFusionDecoder(nn.Module):
             curr_future = out[:, history_input.shape[1]:, :]
 
         self.last_moe_aux_loss = torch.stack(moe_aux_losses).mean() if moe_aux_losses else None
-        
-        dec_out = out[:, -self.pred_len:, :]
-        self.last_hidden_state = dec_out
-        projected = self.out_projection(dec_out)
-        
+        decoder_hidden = out[:, -self.pred_len:, :]
+        projected = self.out_projection(decoder_hidden)
+
         if return_attention:
-            return projected, self._aggregate_attention_payloads(attention_payloads)
+            payload = self._aggregate_attention_payloads(attention_payloads)
+            if return_decoder_hidden:
+                return projected, payload, decoder_hidden
+            return projected, payload
+        if return_decoder_hidden:
+            return projected, decoder_hidden
         return projected
 
 
@@ -925,20 +927,41 @@ class Model(nn.Module):
 
         # TFT main procedure after variable selection
         # history_input: [B,T,d], future_input: [B,T,d]
-        if return_interpretation:
-            dec_out, attention_weights = self.temporal_fusion_decoder(
-                history_input,
-                future_input,
-                c_c,
-                c_h,
-                c_e,
-                return_attention=True,
-            )
+        if self.use_quantile_head:
+            if return_interpretation:
+                dec_out, attention_weights, decoder_hidden = self.temporal_fusion_decoder(
+                    history_input,
+                    future_input,
+                    c_c,
+                    c_h,
+                    c_e,
+                    return_attention=True,
+                    return_decoder_hidden=True,
+                )
+            else:
+                dec_out, decoder_hidden = self.temporal_fusion_decoder(
+                    history_input,
+                    future_input,
+                    c_c,
+                    c_h,
+                    c_e,
+                    return_decoder_hidden=True,
+                )
         else:
-            dec_out = self.temporal_fusion_decoder(history_input, future_input, c_c, c_h, c_e)
+            decoder_hidden = None
+            if return_interpretation:
+                dec_out, attention_weights = self.temporal_fusion_decoder(
+                    history_input,
+                    future_input,
+                    c_c,
+                    c_h,
+                    c_e,
+                    return_attention=True,
+                )
+            else:
+                dec_out = self.temporal_fusion_decoder(history_input, future_input, c_c, c_h, c_e)
         self.last_moe_aux_loss = self.temporal_fusion_decoder.last_moe_aux_loss
         if self.use_quantile_head:
-            decoder_hidden = self.temporal_fusion_decoder.last_hidden_state
             quantile_out = self.quantile_projection(decoder_hidden)
             quantile_out = quantile_out.view(decoder_hidden.shape[0], self.pred_len, len(self.quantiles), self.configs.c_out)
         else:
