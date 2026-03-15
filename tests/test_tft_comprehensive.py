@@ -7,7 +7,9 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from layers.DynamicGraph import DynamicGraphLearner
 from layers.TemporalFusion_layers import (
+    GatedDilatedTemporalBackbone,
     HigherOrderInteractionBlock,
+    HybridTemporalBackbone,
     InterpretableCrossAttention,
     MultiScaleLagAttention,
     PositionalMultiHeadAttention,
@@ -55,6 +57,7 @@ def build_tsl_config():
         tft_use_explicit_cross_attention=True,
         tft_cross_attention_type="full",
         tft_attention_position_bias="none",
+        tft_attention_backend="exact",
         tft_rope_base=10000.0,
         tft_alibi_scale=1.0,
         tft_use_revin=True,
@@ -63,6 +66,10 @@ def build_tsl_config():
         tft_output_quantiles=[0.1, 0.5, 0.9],
         tft_use_lag_attention=True,
         tft_lag_scales=[1, 2, 4],
+        tft_temporal_backbone="lstm",
+        tft_temporal_backbone_layers=3,
+        tft_temporal_kernel_size=3,
+        tft_temporal_hidden_size=64,
         tft_use_higher_order=True,
         tft_interaction_order=2,
         tft_interaction_rank=12,
@@ -160,6 +167,39 @@ class TestTFTComprehensive(unittest.TestCase):
         masked_values = payload["lag_attention"].masked_select(future_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1))
         self.assertTrue(torch.allclose(masked_values, torch.zeros_like(masked_values), atol=1e-6))
 
+    def test_gated_temporal_backbone_component(self):
+        cfg = build_tsl_config()
+        backbone = GatedDilatedTemporalBackbone(
+            d_model=cfg.d_model,
+            num_layers=cfg.tft_temporal_backbone_layers,
+            kernel_size=cfg.tft_temporal_kernel_size,
+            hidden_size=cfg.tft_temporal_hidden_size,
+            dropout=0.0,
+        )
+        x = torch.randn(2, cfg.seq_len + cfg.pred_len, cfg.d_model)
+        out = backbone(x)
+        self.assertEqual(tuple(out.shape), tuple(x.shape))
+        self.assertEqual(len(backbone.blocks), cfg.tft_temporal_backbone_layers)
+        self.assertTrue(torch.isfinite(out).all())
+
+    def test_hybrid_temporal_backbone_component(self):
+        cfg = build_tsl_config()
+        backbone = HybridTemporalBackbone(
+            d_model=cfg.d_model,
+            num_layers=cfg.tft_temporal_backbone_layers,
+            kernel_size=cfg.tft_temporal_kernel_size,
+            hidden_size=cfg.tft_temporal_hidden_size,
+            dropout=0.0,
+        )
+        x = torch.randn(2, cfg.seq_len + cfg.pred_len, cfg.d_model)
+        c0 = torch.randn(1, 2, cfg.d_model)
+        h0 = torch.randn(1, 2, cfg.d_model)
+        out, next_state = backbone(x, state=(c0, h0))
+        self.assertEqual(tuple(out.shape), tuple(x.shape))
+        self.assertEqual(tuple(next_state[0].shape), (1, 2, cfg.d_model))
+        self.assertEqual(tuple(next_state[1].shape), (1, 2, cfg.d_model))
+        self.assertTrue(torch.isfinite(out).all())
+
     def test_positional_multihead_attention_component(self):
         cfg = build_tsl_config()
         x = torch.randn(2, cfg.seq_len + cfg.pred_len, cfg.d_model)
@@ -194,6 +234,40 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertTrue(torch.allclose(alibi_attn.masked_select(future_mask.unsqueeze(0).unsqueeze(0)), torch.zeros_like(alibi_attn.masked_select(future_mask.unsqueeze(0).unsqueeze(0))), atol=1e-6))
         self.assertFalse(torch.allclose(base_out, rope_out))
         self.assertFalse(torch.allclose(base_out, alibi_out))
+
+    def test_sdpa_attention_backend_matches_exact(self):
+        cfg = build_tsl_config()
+        x = torch.randn(2, cfg.seq_len + cfg.pred_len, cfg.d_model)
+        attn_mask = build_causal_mask(x.shape[1], x.device, x.dtype)
+        for position_bias_type in ("none", "rope", "alibi"):
+            exact = PositionalMultiHeadAttention(
+                cfg.d_model,
+                cfg.n_heads,
+                dropout=0.0,
+                position_bias_type=position_bias_type,
+                rope_base=cfg.tft_rope_base,
+                alibi_scale=cfg.tft_alibi_scale,
+                attention_backend="exact",
+            )
+            sdpa = PositionalMultiHeadAttention(
+                cfg.d_model,
+                cfg.n_heads,
+                dropout=0.0,
+                position_bias_type=position_bias_type,
+                rope_base=cfg.tft_rope_base,
+                alibi_scale=cfg.tft_alibi_scale,
+                attention_backend="sdpa",
+            )
+            sdpa.load_state_dict(exact.state_dict())
+
+            exact_out = exact(x, x, x, attn_mask=attn_mask)
+            sdpa_out = sdpa(x, x, x, attn_mask=attn_mask)
+            self.assertTrue(torch.allclose(exact_out, sdpa_out, atol=1e-5, rtol=1e-4))
+            self.assertEqual(sdpa.last_attention_backend, "sdpa")
+
+            _, exact_attn = sdpa(x, x, x, return_attention=True, attn_mask=attn_mask)
+            self.assertEqual(sdpa.last_attention_backend, "exact")
+            self.assertEqual(tuple(exact_attn.shape), (2, cfg.n_heads, x.shape[1], x.shape[1]))
 
     def test_interpretable_cross_attention_component(self):
         cfg = build_tsl_config()
@@ -288,6 +362,7 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertTrue(model.use_revin)
         self.assertIsNotNone(model.revin)
         self.assertIsNone(model.temporal_fusion_decoder.layers[0].position_wise_grn)
+        self.assertEqual(model.temporal_fusion_decoder.layers[0].temporal_backbone_type, "lstm")
         ds = make_tsl_dataset(cfg, n_samples=8)
         x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
         payload = model(
@@ -314,6 +389,9 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertIn("moe_aux_loss", payload)
         self.assertIn("decoder_layer_payloads", payload)
         self.assertIn("decoder_num_layers", payload)
+        self.assertIn("temporal_backbone_type", payload)
+        self.assertIn("attention_backend_config", payload)
+        self.assertIn("attention_backend_used", payload)
         self.assertIn("history_graph_attention", payload)
         self.assertIn("future_graph_attention", payload)
         self.assertIn("static_graph_attention", payload)
@@ -330,6 +408,9 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertEqual(tuple(payload["regime_probabilities_pooled"].shape), (1, cfg.tft_num_regimes))
         self.assertGreaterEqual(float(payload["moe_aux_loss"]), 0.0)
         self.assertEqual(payload["decoder_num_layers"], cfg.e_layers)
+        self.assertEqual(payload["temporal_backbone_type"], "lstm")
+        self.assertEqual(payload["attention_backend_config"], "exact")
+        self.assertEqual(payload["attention_backend_used"], "exact")
         self.assertIn("attention_branch_weights", payload["decoder_layer_payloads"])
         self.assertIn("cross_attention", payload["decoder_layer_payloads"])
         self.assertEqual(tuple(payload["decoder_layer_payloads"]["attention_branch_weights"].shape), (cfg.e_layers, 3))
@@ -381,6 +462,70 @@ class TestTFTComprehensive(unittest.TestCase):
             self.assertTrue(torch.isfinite(payload["predictions"]).all())
             self.assertEqual(model.temporal_fusion_decoder.layers[0].cross_attention_type, cross_attention_type)
 
+    def test_tsl_gated_tcn_backbone_mode(self):
+        cfg = build_tsl_config()
+        cfg.tft_temporal_backbone = "gated_tcn"
+        model = tsl_tft.Model(cfg)
+        self.assertIsNone(model.temporal_fusion_decoder.layers[0].history_encoder)
+        self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].temporal_backbone)
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        payload = model(
+            x_enc.unsqueeze(0),
+            x_mark_enc.unsqueeze(0),
+            x_dec.unsqueeze(0),
+            x_mark_dec.unsqueeze(0),
+            return_interpretation=True,
+        )
+        self.assertEqual(payload["temporal_backbone_type"], "gated_tcn")
+        self.assertEqual(tuple(payload["predictions"].shape), (1, cfg.pred_len, cfg.c_out))
+        self.assertTrue(torch.isfinite(payload["predictions"]).all())
+
+    def test_tsl_hybrid_backbone_mode(self):
+        cfg = build_tsl_config()
+        cfg.tft_temporal_backbone = "hybrid_tcn_lstm"
+        model = tsl_tft.Model(cfg)
+        self.assertIsInstance(model.temporal_fusion_decoder.layers[0].temporal_backbone, HybridTemporalBackbone)
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+        payload = model(
+            x_enc.unsqueeze(0),
+            x_mark_enc.unsqueeze(0),
+            x_dec.unsqueeze(0),
+            x_mark_dec.unsqueeze(0),
+            return_interpretation=True,
+        )
+        self.assertEqual(payload["temporal_backbone_type"], "hybrid_tcn_lstm")
+        self.assertTrue(torch.isfinite(payload["predictions"]).all())
+
+    def test_tsl_sdpa_attention_backend_mode(self):
+        cfg = build_tsl_config()
+        cfg.tft_attention_backend = "sdpa"
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=4)
+        x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
+
+        forward_out = model(
+            x_enc.unsqueeze(0),
+            x_mark_enc.unsqueeze(0),
+            x_dec.unsqueeze(0),
+            x_mark_dec.unsqueeze(0),
+        )
+        self.assertTrue(torch.isfinite(forward_out).all())
+        self.assertEqual(model.temporal_fusion_decoder.layers[0].full_attention_module.last_attention_backend, "sdpa")
+        self.assertEqual(model.temporal_fusion_decoder.layers[0].cross_attention.last_attention_backend, "sdpa")
+
+        payload = model(
+            x_enc.unsqueeze(0),
+            x_mark_enc.unsqueeze(0),
+            x_dec.unsqueeze(0),
+            x_mark_dec.unsqueeze(0),
+            return_interpretation=True,
+        )
+        self.assertEqual(payload["attention_backend_config"], "sdpa")
+        self.assertEqual(payload["attention_backend_used"], "exact")
+        self.assertEqual(payload["cross_attention_backend_used"], "exact")
+
     def test_tsl_model_learns_structured_signal(self):
         cfg = build_tsl_config()
         model = tsl_tft.Model(cfg)
@@ -412,6 +557,34 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertGreater(cross_grad.abs().sum().item(), 0.0)
         self.assertIsNotNone(model.revin.affine_weight.grad)
         self.assertGreater(model.revin.affine_weight.grad.abs().sum().item(), 0.0)
+
+    def test_tsl_gated_tcn_model_learns_structured_signal(self):
+        cfg = build_tsl_config()
+        cfg.tft_temporal_backbone = "gated_tcn"
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=48)
+        loader = DataLoader(ds, batch_size=8, shuffle=True)
+
+        losses = train_tsl_once(model, loader, cfg, lr=3e-3, epochs=4)
+        self.assertGreater(losses[0], losses[-1], "Gated-TCN TFT did not improve training loss.")
+        self.assertLess(losses[-1], losses[0] * 0.90, "Gated-TCN TFT loss reduction is too weak for a learnable target.")
+        block = model.temporal_fusion_decoder.layers[0].temporal_backbone.blocks[0]
+        self.assertIsNotNone(block.filter_conv.conv.weight.grad)
+        self.assertGreater(block.filter_conv.conv.weight.grad.abs().sum().item(), 0.0)
+
+    def test_tsl_hybrid_backbone_model_learns_structured_signal(self):
+        cfg = build_tsl_config()
+        cfg.tft_temporal_backbone = "hybrid_tcn_lstm"
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=48)
+        loader = DataLoader(ds, batch_size=8, shuffle=True)
+
+        losses = train_tsl_once(model, loader, cfg, lr=3e-3, epochs=4)
+        self.assertGreater(losses[0], losses[-1], "Hybrid TFT did not improve training loss.")
+        self.assertLess(losses[-1], losses[0] * 0.90, "Hybrid TFT loss reduction is too weak for a learnable target.")
+        backbone = model.temporal_fusion_decoder.layers[0].temporal_backbone
+        self.assertIsNotNone(backbone.fusion_gate.weight.grad)
+        self.assertGreater(backbone.fusion_gate.weight.grad.abs().sum().item(), 0.0)
 
     def test_nixtla_components_and_model_behavior(self):
         cfg = SimpleNamespace(

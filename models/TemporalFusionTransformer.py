@@ -5,7 +5,9 @@ from layers.Embed import DataEmbedding, TemporalEmbedding
 from layers.DynamicGraph import DynamicGraphLearner
 from layers.StandardNorm import Normalize
 from layers.TemporalFusion_layers import (
+    GatedDilatedTemporalBackbone,
     HigherOrderInteractionBlock,
+    HybridTemporalBackbone,
     InterpretableCrossAttention,
     MultiScaleLagAttention,
     PositionalMultiHeadAttention,
@@ -394,10 +396,15 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.use_explicit_cross_attention = getattr(configs, 'tft_use_explicit_cross_attention', False)
         self.cross_attention_type = getattr(configs, 'tft_cross_attention_type', 'full')
         self.position_bias_type = getattr(configs, 'tft_attention_position_bias', 'none')
+        self.attention_backend = getattr(configs, 'tft_attention_backend', 'exact')
         self.rope_base = float(getattr(configs, 'tft_rope_base', 10000.0))
         self.alibi_scale = float(getattr(configs, 'tft_alibi_scale', 1.0))
         self.use_lag_attention = getattr(configs, 'tft_use_lag_attention', False)
         self.lag_scales = list(getattr(configs, 'tft_lag_scales', [1, 2, 4, 8]))
+        self.temporal_backbone_type = getattr(configs, 'tft_temporal_backbone', 'lstm')
+        self.temporal_backbone_layers = int(getattr(configs, 'tft_temporal_backbone_layers', 3))
+        self.temporal_kernel_size = int(getattr(configs, 'tft_temporal_kernel_size', 3))
+        self.temporal_hidden_size = getattr(configs, 'tft_temporal_hidden_size', configs.d_model)
         self.use_higher_order = getattr(configs, 'tft_use_higher_order', False)
         self.interaction_order = int(getattr(configs, 'tft_interaction_order', 2))
         self.interaction_rank = getattr(configs, 'tft_interaction_rank', None)
@@ -408,8 +415,32 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.moe_hidden_size = getattr(configs, 'tft_moe_hidden_size', configs.d_model)
         self.moe_noise_epsilon = float(getattr(configs, 'tft_moe_noise_epsilon', 1e-2))
 
-        self.history_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
-        self.future_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
+        if self.temporal_backbone_type == 'lstm':
+            self.history_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
+            self.future_encoder = nn.LSTM(configs.d_model, configs.d_model, batch_first=True)
+            self.temporal_backbone = None
+        elif self.temporal_backbone_type == 'gated_tcn':
+            self.history_encoder = None
+            self.future_encoder = None
+            self.temporal_backbone = GatedDilatedTemporalBackbone(
+                configs.d_model,
+                num_layers=self.temporal_backbone_layers,
+                kernel_size=self.temporal_kernel_size,
+                hidden_size=self.temporal_hidden_size,
+                dropout=configs.dropout,
+            )
+        elif self.temporal_backbone_type == 'hybrid_tcn_lstm':
+            self.history_encoder = None
+            self.future_encoder = None
+            self.temporal_backbone = HybridTemporalBackbone(
+                configs.d_model,
+                num_layers=self.temporal_backbone_layers,
+                kernel_size=self.temporal_kernel_size,
+                hidden_size=self.temporal_hidden_size,
+                dropout=configs.dropout,
+            )
+        else:
+            raise ValueError("tft_temporal_backbone must be one of: lstm, gated_tcn, hybrid_tcn_lstm.")
         self.gate_after_lstm = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.enrichment_grn = GRN(configs.d_model, configs.d_model, context_size=configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu)
         if self.use_explicit_cross_attention:
@@ -430,6 +461,7 @@ class TemporalFusionDecoderLayer(nn.Module):
                     position_bias_type=self.position_bias_type,
                     rope_base=self.rope_base,
                     alibi_scale=self.alibi_scale,
+                    attention_backend=self.attention_backend,
                 )
         else:
             self.cross_attention = None
@@ -442,6 +474,7 @@ class TemporalFusionDecoderLayer(nn.Module):
             position_bias_type=self.position_bias_type,
             rope_base=self.rope_base,
             alibi_scale=self.alibi_scale,
+            attention_backend=self.attention_backend,
         ) if self.use_lag_attention else None
         self.higher_order_block = HigherOrderInteractionBlock(
             configs.d_model,
@@ -466,6 +499,7 @@ class TemporalFusionDecoderLayer(nn.Module):
                 position_bias_type=self.position_bias_type,
                 rope_base=self.rope_base,
                 alibi_scale=self.alibi_scale,
+                attention_backend=self.attention_backend,
             )
             self.interpretable_attention_module = InterpretableMultiHeadAttention(configs)
         elif self.full_attention:
@@ -476,6 +510,7 @@ class TemporalFusionDecoderLayer(nn.Module):
                 position_bias_type=self.position_bias_type,
                 rope_base=self.rope_base,
                 alibi_scale=self.alibi_scale,
+                attention_backend=self.attention_backend,
             )
         else:
             self.attention = InterpretableMultiHeadAttention(configs)
@@ -490,12 +525,17 @@ class TemporalFusionDecoderLayer(nn.Module):
 
     def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
         self.last_moe_aux_loss = None
-        c = (c_c.unsqueeze(0), c_h.unsqueeze(0)) if c_c is not None and c_h is not None else None
-        historical_features, state = self.history_encoder(history_input, c)
-        future_features, _ = self.future_encoder(future_input, state)
-
         temporal_input = torch.cat([history_input, future_input], dim=1)
-        temporal_features = torch.cat([historical_features, future_features], dim=1)
+        if self.temporal_backbone_type == 'lstm':
+            c = (c_c.unsqueeze(0), c_h.unsqueeze(0)) if c_c is not None and c_h is not None else None
+            historical_features, state = self.history_encoder(history_input, c)
+            future_features, _ = self.future_encoder(future_input, state)
+            temporal_features = torch.cat([historical_features, future_features], dim=1)
+        elif self.temporal_backbone_type == 'gated_tcn':
+            temporal_features = self.temporal_backbone(temporal_input)
+        else:
+            c = (c_c.unsqueeze(0), c_h.unsqueeze(0)) if c_c is not None and c_h is not None else None
+            temporal_features, _ = self.temporal_backbone(temporal_input, state=c)
         temporal_features = self.gate_after_lstm(temporal_features, temporal_input)
 
         enriched_features = self.enrichment_grn(temporal_features, c_e)
@@ -627,7 +667,14 @@ class TemporalFusionDecoderLayer(nn.Module):
             attention_out = sum(weight * branch for weight, branch in zip(branch_weights, attention_branches))
 
         if return_attention:
+            output_payload['temporal_backbone_type'] = self.temporal_backbone_type
             output_payload['position_bias_type'] = self.position_bias_type
+            output_payload['attention_backend_config'] = self.attention_backend
+            if self.full_attention:
+                attention_backend_used = self.full_attention_module.last_attention_backend if self.dual_attention_fusion else self.attention.last_attention_backend
+                output_payload['attention_backend_used'] = attention_backend_used
+            if self.use_explicit_cross_attention and hasattr(self.cross_attention, 'last_attention_backend'):
+                output_payload['cross_attention_backend_used'] = self.cross_attention.last_attention_backend
             if branch_weights is not None:
                 output_payload['attention_branch_weights'] = branch_weights.detach()
                 if self.dual_attention_fusion and not self.use_lag_attention and branch_weights.numel() == 2:
@@ -747,6 +794,8 @@ class Model(nn.Module):
         self.revin_affine = getattr(configs, 'tft_revin_affine', True)
         self.use_quantile_head = getattr(configs, 'tft_use_quantile_head', False)
         self.position_bias_type = getattr(configs, 'tft_attention_position_bias', 'none')
+        self.temporal_backbone_type = getattr(configs, 'tft_temporal_backbone', 'lstm')
+        self.attention_backend = getattr(configs, 'tft_attention_backend', 'exact')
         quantiles = getattr(configs, 'tft_output_quantiles', [0.1, 0.5, 0.9])
         self.quantiles = None
         if self.allow_custom_known:
@@ -956,6 +1005,10 @@ class Model(nn.Module):
             decoder_layer_payloads = None
             decoder_num_layers = None
             position_bias_type = self.position_bias_type
+            temporal_backbone_type = self.temporal_backbone_type
+            attention_backend_config = self.attention_backend
+            attention_backend_used = None
+            cross_attention_backend_used = None
             if isinstance(attention_weights, dict):
                 attention_weights_full = attention_weights.get('full')
                 attention_fusion_alpha = attention_weights.get('fusion_alpha')
@@ -972,6 +1025,10 @@ class Model(nn.Module):
                 decoder_layer_payloads = attention_weights.get('decoder_layer_payloads')
                 decoder_num_layers = attention_weights.get('decoder_num_layers')
                 position_bias_type = attention_weights.get('position_bias_type', position_bias_type)
+                temporal_backbone_type = attention_weights.get('temporal_backbone_type', temporal_backbone_type)
+                attention_backend_config = attention_weights.get('attention_backend_config', attention_backend_config)
+                attention_backend_used = attention_weights.get('attention_backend_used')
+                cross_attention_backend_used = attention_weights.get('cross_attention_backend_used')
                 attention_weights = attention_weights.get('interpretable')
             return {
                 'predictions': dec_out,
@@ -993,6 +1050,10 @@ class Model(nn.Module):
                 'decoder_layer_payloads': decoder_layer_payloads,
                 'decoder_num_layers': decoder_num_layers,
                 'position_bias_type': position_bias_type,
+                'temporal_backbone_type': temporal_backbone_type,
+                'attention_backend_config': attention_backend_config,
+                'attention_backend_used': attention_backend_used,
+                'cross_attention_backend_used': cross_attention_backend_used,
                 'history_vsn_weights': history_weights,
                 'history_graph_attention': history_graph_attention,
                 'future_vsn_weights': future_weights,

@@ -70,6 +70,27 @@ class TestTFTScriptsSmoke(unittest.TestCase):
         self.assertIn("revin_only", output)
         self.assertIn("regime_only", output)
 
+    def test_attention_backend_benchmark_quick(self):
+        output = self._run_script(
+            Path("scripts/long_term_forecast/tft_attention_backend_benchmark.py"),
+            ["--quick", "--device", "cpu"],
+            timeout=300,
+        )
+        self.assertIn("Benchmark: TFT exact vs SDPA attention backend", output)
+        self.assertIn("exact", output)
+        self.assertIn("sdpa", output)
+
+    def test_backbone_harsh_ablation_quick(self):
+        output = self._run_script(
+            Path("scripts/long_term_forecast/tft_backbone_harsh_signal_ablation.py"),
+            ["--quick", "--device", "cpu", "--seeds", "123"],
+            timeout=300,
+        )
+        self.assertIn("Ablation: TFT temporal backbone on harsh synthetic signal", output)
+        self.assertIn("lstm", output)
+        self.assertIn("gated_tcn", output)
+        self.assertIn("hybrid_tcn_lstm", output)
+
 
 if __name__ == "__main__":
     unittest.main()

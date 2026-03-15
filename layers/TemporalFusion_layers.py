@@ -70,24 +70,48 @@ def build_alibi_bias(num_heads, query_len, key_len, device, dtype, query_positio
 
 
 class PositionalMultiHeadAttention(nn.Module):
-    def __init__(self, d_model, n_heads, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0):
+    def __init__(self, d_model, n_heads, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact'):
         super(PositionalMultiHeadAttention, self).__init__()
         if d_model % n_heads != 0:
             raise ValueError("d_model must be divisible by n_heads for PositionalMultiHeadAttention.")
         if position_bias_type not in {'none', 'rope', 'alibi'}:
             raise ValueError("position_bias_type must be one of: none, rope, alibi.")
+        if attention_backend not in {'exact', 'sdpa'}:
+            raise ValueError("attention_backend must be one of: exact, sdpa.")
 
         self.n_heads = n_heads
         self.d_head = d_model // n_heads
         self.position_bias_type = position_bias_type
         self.rope_base = float(rope_base)
         self.alibi_scale = float(alibi_scale)
+        self.attention_backend = attention_backend
+        self.last_attention_backend = None
         self.q_linear = nn.Linear(d_model, d_model, bias=False)
         self.k_linear = nn.Linear(d_model, d_model, bias=False)
         self.v_linear = nn.Linear(d_model, d_model, bias=False)
         self.out_projection = nn.Linear(d_model, d_model, bias=False)
         self.out_dropout = nn.Dropout(dropout)
         self.scale = self.d_head ** -0.5
+
+    def _build_attention_bias(self, query, query_len, key_len, attn_mask=None, query_positions=None, key_positions=None):
+        attention_bias = None
+        if self.position_bias_type == 'alibi':
+            attention_bias = build_alibi_bias(
+                self.n_heads,
+                query_len,
+                key_len,
+                query.device,
+                query.dtype,
+                query_positions=query_positions,
+                key_positions=key_positions,
+                scale=self.alibi_scale,
+            )
+        if attn_mask is not None:
+            if attn_mask.ndim != 2:
+                raise ValueError(f"attn_mask must be rank-2 [T,S], got shape {tuple(attn_mask.shape)}.")
+            attn_mask = attn_mask.unsqueeze(0).unsqueeze(0)
+            attention_bias = attn_mask if attention_bias is None else attention_bias + attn_mask
+        return attention_bias
 
     def forward(
         self,
@@ -112,33 +136,50 @@ class PositionalMultiHeadAttention(nn.Module):
         if self.position_bias_type == 'rope':
             q, k = apply_rotary_embedding(q, k, query_positions=query_positions, key_positions=key_positions, base=self.rope_base)
 
-        attention_score = torch.matmul(q, k.transpose(-2, -1)) * self.scale
-        if self.position_bias_type == 'alibi':
-            attention_score = attention_score + build_alibi_bias(
-                self.n_heads,
-                query_len,
-                key_len,
-                query.device,
-                attention_score.dtype,
-                query_positions=query_positions,
-                key_positions=key_positions,
-                scale=self.alibi_scale,
+        if not torch.isfinite(q).all() or not torch.isfinite(k).all() or not torch.isfinite(v).all():
+            raise ValueError("Attention projections contain NaN/Inf values.")
+
+        attention_bias = self._build_attention_bias(
+            query,
+            query_len,
+            key_len,
+            attn_mask=attn_mask,
+            query_positions=query_positions,
+            key_positions=key_positions,
+        )
+
+        if self.attention_backend == 'sdpa' and not return_attention:
+            attention_out = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=attention_bias,
+                dropout_p=0.0,
+                is_causal=False,
             )
+            self.last_attention_backend = 'sdpa'
+            attention_out = attention_out.permute(0, 2, 1, 3).contiguous().view(batch_size, query_len, self.n_heads * self.d_head)
+            out = self.out_projection(attention_out)
+            out = self.out_dropout(out)
+            return out
 
+        attention_score = torch.matmul(q, k.transpose(-2, -1)) * self.scale
         if not torch.isfinite(attention_score).all():
-            raise ValueError("Attention scores contain NaN/Inf values before masking.")
+            raise ValueError("Attention scores contain NaN/Inf values before biasing.")
+        if attention_bias is not None:
+            attention_score = attention_score + attention_bias.to(dtype=attention_score.dtype)
+        if torch.isnan(attention_score).any():
+            raise ValueError("Attention scores contain NaN values after biasing.")
         clamp_limit = 1e4
-        if (attention_score.abs() > clamp_limit).any():
-            attention_score = attention_score.clamp(min=-clamp_limit, max=clamp_limit)
-
-        if attn_mask is not None:
-            if attn_mask.ndim != 2:
-                raise ValueError(f"attn_mask must be rank-2 [T,S], got shape {tuple(attn_mask.shape)}.")
-            attention_score = attention_score + attn_mask.unsqueeze(0).unsqueeze(0)
+        finite_mask = torch.isfinite(attention_score)
+        if finite_mask.any() and (attention_score.masked_select(finite_mask).abs() > clamp_limit).any():
+            clamped = attention_score.clamp(min=-clamp_limit, max=clamp_limit)
+            attention_score = torch.where(finite_mask, clamped, attention_score)
         attention_prob = F.softmax(attention_score, dim=-1)
         if not torch.isfinite(attention_prob).all():
             raise ValueError("Attention probabilities contain NaN/Inf values.")
 
+        self.last_attention_backend = 'exact'
         attention_out = torch.matmul(attention_prob, v)
         attention_out = attention_out.permute(0, 2, 1, 3).contiguous().view(batch_size, query_len, self.n_heads * self.d_head)
         out = self.out_projection(attention_out)
@@ -148,8 +189,104 @@ class PositionalMultiHeadAttention(nn.Module):
         return out
 
 
+class CausalConv1d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, dilation=1, bias=True):
+        super(CausalConv1d, self).__init__()
+        if kernel_size <= 0:
+            raise ValueError("kernel_size must be positive for CausalConv1d.")
+        if dilation <= 0:
+            raise ValueError("dilation must be positive for CausalConv1d.")
+        self.left_padding = (kernel_size - 1) * dilation
+        self.conv = nn.Conv1d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            dilation=dilation,
+            bias=bias,
+        )
+
+    def forward(self, x):
+        if x.ndim != 3:
+            raise ValueError(f"CausalConv1d expects rank-3 [B,C,T] input, got shape {tuple(x.shape)}.")
+        x = F.pad(x, (self.left_padding, 0))
+        return self.conv(x)
+
+
+class GatedDilatedTemporalBlock(nn.Module):
+    def __init__(self, d_model, hidden_size=None, kernel_size=3, dilation=1, dropout=0.0):
+        super(GatedDilatedTemporalBlock, self).__init__()
+        hidden_size = d_model if hidden_size is None else hidden_size
+        if hidden_size <= 0:
+            raise ValueError("hidden_size must be positive for GatedDilatedTemporalBlock.")
+        self.filter_conv = CausalConv1d(d_model, hidden_size, kernel_size=kernel_size, dilation=dilation)
+        self.gate_conv = CausalConv1d(d_model, hidden_size, kernel_size=kernel_size, dilation=dilation)
+        self.out_projection = nn.Conv1d(hidden_size, d_model, kernel_size=1)
+        self.dropout = nn.Dropout(dropout)
+        self.layer_norm = nn.LayerNorm(d_model)
+
+    def forward(self, x):
+        if x.ndim != 3:
+            raise ValueError(f"GatedDilatedTemporalBlock expects rank-3 [B,T,D] input, got shape {tuple(x.shape)}.")
+        if not torch.isfinite(x).all():
+            raise ValueError("Temporal block input contains NaN/Inf values.")
+        x_conv = x.transpose(1, 2)
+        filtered = torch.tanh(self.filter_conv(x_conv))
+        gated = torch.sigmoid(self.gate_conv(x_conv))
+        mixed = self.out_projection(self.dropout(filtered * gated)).transpose(1, 2)
+        out = self.layer_norm(x + mixed)
+        if not torch.isfinite(out).all():
+            raise ValueError("Temporal block output contains NaN/Inf values.")
+        return out
+
+
+class GatedDilatedTemporalBackbone(nn.Module):
+    def __init__(self, d_model, num_layers=3, kernel_size=3, hidden_size=None, dropout=0.0):
+        super(GatedDilatedTemporalBackbone, self).__init__()
+        if num_layers <= 0:
+            raise ValueError("num_layers must be positive for GatedDilatedTemporalBackbone.")
+        self.blocks = nn.ModuleList([
+            GatedDilatedTemporalBlock(
+                d_model,
+                hidden_size=hidden_size,
+                kernel_size=kernel_size,
+                dilation=2 ** idx,
+                dropout=dropout,
+            )
+            for idx in range(num_layers)
+        ])
+
+    def forward(self, x):
+        for block in self.blocks:
+            x = block(x)
+        return x
+
+
+class HybridTemporalBackbone(nn.Module):
+    def __init__(self, d_model, num_layers=3, kernel_size=3, hidden_size=None, dropout=0.0):
+        super(HybridTemporalBackbone, self).__init__()
+        self.tcn_backbone = GatedDilatedTemporalBackbone(
+            d_model,
+            num_layers=num_layers,
+            kernel_size=kernel_size,
+            hidden_size=hidden_size,
+            dropout=dropout,
+        )
+        self.recurrent_backbone = nn.LSTM(d_model, d_model, batch_first=True)
+        self.fusion_gate = nn.Linear(d_model * 2, d_model)
+        self.layer_norm = nn.LayerNorm(d_model)
+
+    def forward(self, x, state=None):
+        if x.ndim != 3:
+            raise ValueError(f"HybridTemporalBackbone expects rank-3 [B,T,D] input, got shape {tuple(x.shape)}.")
+        tcn_features = self.tcn_backbone(x)
+        recurrent_features, next_state = self.recurrent_backbone(tcn_features, state)
+        gate = torch.sigmoid(self.fusion_gate(torch.cat([tcn_features, recurrent_features], dim=-1)))
+        fused = gate * recurrent_features + (1.0 - gate) * tcn_features
+        return self.layer_norm(fused), next_state
+
+
 class MultiScaleLagAttention(nn.Module):
-    def __init__(self, d_model, n_heads, lag_scales, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0):
+    def __init__(self, d_model, n_heads, lag_scales, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact'):
         super(MultiScaleLagAttention, self).__init__()
         if not isinstance(lag_scales, (list, tuple)) or len(lag_scales) == 0:
             raise ValueError("tft_lag_scales must be a non-empty list/tuple of positive integers.")
@@ -170,6 +307,7 @@ class MultiScaleLagAttention(nn.Module):
                 position_bias_type=position_bias_type,
                 rope_base=rope_base,
                 alibi_scale=alibi_scale,
+                attention_backend=attention_backend,
             )
             for _ in self.lag_scales
         ])

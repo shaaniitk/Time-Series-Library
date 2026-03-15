@@ -171,6 +171,14 @@ if __name__ == '__main__':
                         help='Enable reusable multi-scale lag attention branch in TFT decoder.')
     parser.add_argument('--tft_lag_scales', type=str, default='1,2,4',
                         help='Comma-separated lag scales for TFT lag attention.')
+    parser.add_argument('--tft_temporal_backbone', type=str, default='lstm', choices=['lstm', 'gated_tcn', 'hybrid_tcn_lstm'],
+                        help='Temporal backbone used before TFT enrichment and attention blocks.')
+    parser.add_argument('--tft_temporal_backbone_layers', type=int, default=3,
+                        help='Number of layers in the TFT gated TCN temporal backbone.')
+    parser.add_argument('--tft_temporal_kernel_size', type=int, default=3,
+                        help='Kernel size for the TFT gated TCN temporal backbone.')
+    parser.add_argument('--tft_temporal_hidden_size', type=int, default=0,
+                        help='Hidden size for the TFT gated TCN temporal backbone; 0 uses d_model.')
     parser.add_argument('--tft_use_higher_order', action='store_true', default=False,
                         help='Enable reusable higher-order interaction block in TFT decoder.')
     parser.add_argument('--tft_interaction_order', type=int, default=2,
@@ -185,6 +193,8 @@ if __name__ == '__main__':
                         help='Type of explicit TFT cross-attention to use when enabled.')
     parser.add_argument('--tft_attention_position_bias', type=str, default='none', choices=['none', 'rope', 'alibi'],
                         help='Temporal positional biasing strategy for TFT attention blocks.')
+    parser.add_argument('--tft_attention_backend', type=str, default='exact', choices=['exact', 'sdpa'],
+                        help='Backend for TFT full-attention branches; sdpa falls back to exact when attention weights are requested.')
     parser.add_argument('--tft_rope_base', type=float, default=10000.0,
                         help='Base period used when TFT attention positional bias is set to rope.')
     parser.add_argument('--tft_alibi_scale', type=float, default=1.0,
@@ -261,6 +271,8 @@ if __name__ == '__main__':
     args.tft_output_quantiles = _parse_float_list(args.tft_output_quantiles)
     if args.tft_interaction_rank == 0:
         args.tft_interaction_rank = None
+    if args.tft_temporal_hidden_size == 0:
+        args.tft_temporal_hidden_size = None
     if args.tft_moe_hidden_size == 0:
         args.tft_moe_hidden_size = None
 

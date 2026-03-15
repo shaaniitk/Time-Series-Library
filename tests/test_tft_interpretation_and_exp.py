@@ -119,6 +119,7 @@ def build_tft_args(checkpoint_dir):
         tft_use_explicit_cross_attention=True,
         tft_cross_attention_type="interpretable",
         tft_attention_position_bias="rope",
+        tft_attention_backend="sdpa",
         tft_rope_base=10000.0,
         tft_alibi_scale=1.0,
         tft_use_revin=True,
@@ -127,6 +128,10 @@ def build_tft_args(checkpoint_dir):
         tft_output_quantiles=[0.1, 0.5, 0.9],
         tft_use_lag_attention=True,
         tft_lag_scales=[1, 2, 4],
+        tft_temporal_backbone="hybrid_tcn_lstm",
+        tft_temporal_backbone_layers=2,
+        tft_temporal_kernel_size=3,
+        tft_temporal_hidden_size=32,
         tft_use_higher_order=True,
         tft_interaction_order=2,
         tft_interaction_rank=8,
@@ -197,6 +202,9 @@ class TestTFTInterpretationAndExp(unittest.TestCase):
             self.assertEqual(summary["prediction_shape"], [2, args.pred_len, args.c_out])
             self.assertEqual(summary["quantile_prediction_shape"], [2, args.pred_len, 3, args.c_out])
             self.assertEqual(summary["position_bias_type"], "rope")
+            self.assertEqual(summary["temporal_backbone_type"], "hybrid_tcn_lstm")
+            self.assertEqual(summary["attention_backend_config"], "sdpa")
+            self.assertEqual(summary["attention_backend_used"], "exact")
             self.assertTrue(summary["has_quantile_predictions"])
             self.assertTrue(summary["has_graph_attention"])
             self.assertTrue(summary["has_cross_attention"])
