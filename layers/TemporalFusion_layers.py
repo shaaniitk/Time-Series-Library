@@ -215,7 +215,7 @@ class CausalConv1d(nn.Module):
 class GatedDilatedTemporalBlock(nn.Module):
     def __init__(self, d_model, hidden_size=None, kernel_size=3, dilation=1, dropout=0.0):
         super(GatedDilatedTemporalBlock, self).__init__()
-        hidden_size = d_model if hidden_size is None else hidden_size
+        hidden_size = d_model if not hidden_size or hidden_size <= 0 else hidden_size
         if hidden_size <= 0:
             raise ValueError("hidden_size must be positive for GatedDilatedTemporalBlock.")
         self.filter_conv = CausalConv1d(d_model, hidden_size, kernel_size=kernel_size, dilation=dilation)
@@ -653,7 +653,7 @@ class RegimeAwareSparseMoE(nn.Module):
             raise ValueError("tft_num_regimes must be positive.")
         if top_k <= 0 or top_k > num_experts:
             raise ValueError("tft_moe_top_k must be in [1, tft_num_moe_experts].")
-        hidden_size = d_model if hidden_size is None else hidden_size
+        hidden_size = d_model if not hidden_size or hidden_size <= 0 else hidden_size
 
         self.num_experts = num_experts
         self.top_k = top_k

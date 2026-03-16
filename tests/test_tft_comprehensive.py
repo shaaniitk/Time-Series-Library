@@ -649,13 +649,12 @@ class TestTFTComprehensive(unittest.TestCase):
             x_dec.unsqueeze(0), x_mark_dec.unsqueeze(0),
             return_interpretation=True,
         )
-        # fft_gate_mean is in the decoder layer payloads (aggregated)
+        # fft_gate_mean is a scalar float from sigmoid gate [0, 1]
         self.assertIn("fft_gate_mean", payload)
         fft_gate = payload["fft_gate_mean"]
-        # With e_layers > 1 and payload stacking, fft_gate_mean is a stacked tensor
-        self.assertTrue(torch.is_tensor(fft_gate))
-        # Gate values from sigmoid are in [0, 1]
-        self.assertTrue((fft_gate >= 0.0).all() and (fft_gate <= 1.0).all())
+        self.assertIsInstance(fft_gate, float)
+        self.assertGreaterEqual(fft_gate, 0.0)
+        self.assertLessEqual(fft_gate, 1.0)
 
     def test_tsl_fft_branch_learns_structured_signal(self):
         cfg = build_tsl_config()

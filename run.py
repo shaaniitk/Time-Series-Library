@@ -171,7 +171,7 @@ if __name__ == '__main__':
                         help='Enable reusable multi-scale lag attention branch in TFT decoder.')
     parser.add_argument('--tft_lag_scales', type=str, default='1,2,4',
                         help='Comma-separated lag scales for TFT lag attention.')
-    parser.add_argument('--tft_temporal_backbone', type=str, default='lstm', choices=['lstm', 'gated_tcn', 'hybrid_tcn_lstm'],
+    parser.add_argument('--tft_temporal_backbone', type=str, default='hybrid_tcn_lstm', choices=['lstm', 'gated_tcn', 'hybrid_tcn_lstm'],
                         help='Temporal backbone used before TFT enrichment and attention blocks.')
     parser.add_argument('--tft_temporal_backbone_layers', type=int, default=3,
                         help='Number of layers in the TFT gated TCN temporal backbone.')

@@ -369,8 +369,9 @@ class InterpretableMultiHeadAttention(nn.Module):
         self.out_projection = nn.Linear(self.d_head, configs.d_model, bias=False)
         self.out_dropout = nn.Dropout(configs.dropout)
         self.scale = self.d_head ** -0.5
-    def _causal_mask(self, seq_len: int, device, dtype):
-        return torch.triu(torch.full((seq_len, seq_len), float('-inf'), device=device, dtype=dtype), 1)
+        # Pre-build causal mask at max sequence length to avoid re-creation each forward
+        max_len = configs.seq_len + configs.pred_len
+        self.register_buffer('_causal_mask_buf', build_causal_mask(max_len, torch.device('cpu'), torch.float32), persistent=False)
 
     def forward(self, x, return_attention: bool = False):
         # Q,K,V are all from x
@@ -401,7 +402,11 @@ class InterpretableMultiHeadAttention(nn.Module):
         if (attention_score.abs() > clamp_limit).any():
             warnings.warn("Attention scores exceeded the stability clamp threshold; values were clipped.")
             attention_score = attention_score.clamp(min=-clamp_limit, max=clamp_limit)
-        attention_score = attention_score + self._causal_mask(T, attention_score.device, attention_score.dtype)
+        if T <= self._causal_mask_buf.shape[0]:
+            causal_mask = self._causal_mask_buf[:T, :T].to(attention_score.dtype)
+        else:
+            causal_mask = build_causal_mask(T, attention_score.device, attention_score.dtype)
+        attention_score = attention_score + causal_mask
         attention_prob = F.softmax(attention_score, dim=3)  # [B,n,T,T]
         if not torch.isfinite(attention_prob).all():
             raise ValueError("Attention probabilities contain NaN/Inf values.")
@@ -430,18 +435,18 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.alibi_scale = float(getattr(configs, 'tft_alibi_scale', 1.0))
         self.use_lag_attention = getattr(configs, 'tft_use_lag_attention', False)
         self.lag_scales = list(getattr(configs, 'tft_lag_scales', [1, 2, 4, 8]))
-        self.temporal_backbone_type = getattr(configs, 'tft_temporal_backbone', 'lstm')
+        self.temporal_backbone_type = getattr(configs, 'tft_temporal_backbone', 'hybrid_tcn_lstm')
         self.temporal_backbone_layers = int(getattr(configs, 'tft_temporal_backbone_layers', 3))
         self.temporal_kernel_size = int(getattr(configs, 'tft_temporal_kernel_size', 3))
-        self.temporal_hidden_size = getattr(configs, 'tft_temporal_hidden_size', configs.d_model)
+        self.temporal_hidden_size = getattr(configs, 'tft_temporal_hidden_size', 0) or configs.d_model
         self.use_higher_order = getattr(configs, 'tft_use_higher_order', False)
         self.interaction_order = int(getattr(configs, 'tft_interaction_order', 2))
-        self.interaction_rank = getattr(configs, 'tft_interaction_rank', None)
+        self.interaction_rank = getattr(configs, 'tft_interaction_rank', 0) or None
         self.use_regime_moe = getattr(configs, 'tft_use_regime_moe', False)
         self.num_regimes = int(getattr(configs, 'tft_num_regimes', 4))
         self.num_moe_experts = int(getattr(configs, 'tft_num_moe_experts', 4))
         self.moe_top_k = int(getattr(configs, 'tft_moe_top_k', 2))
-        self.moe_hidden_size = getattr(configs, 'tft_moe_hidden_size', configs.d_model)
+        self.moe_hidden_size = getattr(configs, 'tft_moe_hidden_size', 0) or configs.d_model
         self.moe_noise_epsilon = float(getattr(configs, 'tft_moe_noise_epsilon', 1e-2))
         self.use_fft_branch = getattr(configs, 'tft_use_fft_branch', False)
         self.fft_modes = int(getattr(configs, 'tft_fft_modes', 32))
@@ -574,7 +579,16 @@ class TemporalFusionDecoderLayer(nn.Module):
         branch_count = 2 if self.dual_attention_fusion else 1
         if self.use_lag_attention:
             branch_count += 1
-        self.attention_fusion_logits = nn.Parameter(torch.zeros(branch_count)) if branch_count > 1 else None
+        if branch_count > 1:
+            # Bias toward the proven branch so supplementary branches must earn
+            # weight during training.  For dual-attention the interpretable head
+            # (index 1) is the baseline; otherwise the main head is index 0.
+            init_logits = torch.full((branch_count,), -1.0)
+            main_idx = 1 if self.dual_attention_fusion else 0
+            init_logits[main_idx] = 0.0
+            self.attention_fusion_logits = nn.Parameter(init_logits)
+        else:
+            self.attention_fusion_logits = None
         self.gate_after_attention = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.position_wise_grn = GRN(configs.d_model, configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu) if not self.use_regime_moe else None
         self.gate_final = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
@@ -605,7 +619,7 @@ class TemporalFusionDecoderLayer(nn.Module):
             ))
             temporal_features = fft_gate * temporal_features + (1.0 - fft_gate) * fft_features
             if return_attention:
-                output_payload['fft_gate_mean'] = fft_gate.mean(dim=(1, 2)).detach()
+                output_payload['fft_gate_mean'] = fft_gate.mean().item()
         temporal_features = self.gate_after_lstm(temporal_features, temporal_input)
 
         # TEMPORAL COMPRESSION: compress history portion for long sequences
@@ -918,7 +932,7 @@ class Model(nn.Module):
         self.revin_affine = getattr(configs, 'tft_revin_affine', True)
         self.use_quantile_head = getattr(configs, 'tft_use_quantile_head', False)
         self.position_bias_type = getattr(configs, 'tft_attention_position_bias', 'none')
-        self.temporal_backbone_type = getattr(configs, 'tft_temporal_backbone', 'lstm')
+        self.temporal_backbone_type = getattr(configs, 'tft_temporal_backbone', 'hybrid_tcn_lstm')
         self.attention_backend = getattr(configs, 'tft_attention_backend', 'exact')
         quantiles = getattr(configs, 'tft_output_quantiles', [0.1, 0.5, 0.9])
         self.quantiles = None
