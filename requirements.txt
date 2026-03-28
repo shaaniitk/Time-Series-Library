@@ -19,7 +19,7 @@ transformers==4.57.3
 huggingface_hub==0.36.0
 chronos-forecasting==2.2.1
 tirex-ts==1.3.0
-timesfm==1.3.0
+# timesfm==1.0.0  # requires jaxlib==0.4.26 which has no Python 3.14 wheel
 
 # uni2ts deps
 ######

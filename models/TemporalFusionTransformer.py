@@ -273,6 +273,11 @@ class VariableSelectionNetwork(nn.Module):
             GRN(d_model * variable_num, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout, use_swiglu=use_swiglu)
             for _ in range(n_selection_heads)
         ])
+        # Per-head context projections to de-correlate head inputs
+        self.head_context_projections = nn.ModuleList([
+            nn.Linear(d_model, d_model)
+            for _ in range(n_selection_heads)
+        ]) if n_selection_heads > 1 else None
         self.variable_grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(variable_num)])
         self.use_residual_bypass = residual_bypass
         self.residual_projection = nn.Linear(d_model * variable_num, d_model)
@@ -314,7 +319,8 @@ class VariableSelectionNetwork(nn.Module):
             head_results = []
             all_head_weights = []
             for k in range(K):
-                head_weights = self.head_grns[k](x_flattened, context)
+                head_ctx = self.head_context_projections[k](context) if self.head_context_projections is not None and context is not None else context
+                head_weights = self.head_grns[k](x_flattened, head_ctx)
                 head_weights = F.softmax(head_weights, dim=-1)  # [..., C]
                 all_head_weights.append(head_weights)
                 # Slice processed variables on d dimension for this head's subspace

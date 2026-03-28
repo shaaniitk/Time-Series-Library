@@ -61,6 +61,7 @@ EPOCHS = 30
 LR = 5e-4
 NOISE_STD = 0.15
 SEED = 42
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Wave periods
 PERIOD_LOW = 96.0
@@ -493,7 +494,7 @@ def train_and_evaluate(name, cfg, train_loader, val_loader, epochs=EPOCHS, lr=LR
     quantile_val_loss (if applicable), model (trained model ref).
     """
     torch.manual_seed(SEED)
-    model = tsl_tft.Model(cfg)
+    model = tsl_tft.Model(cfg).to(DEVICE)
     n_params = count_parameters(model)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -514,6 +515,10 @@ def train_and_evaluate(name, cfg, train_loader, val_loader, epochs=EPOCHS, lr=LR
         epoch_loss = 0.0
         n_batches = 0
         for x_enc, x_mark_enc, x_dec, x_mark_dec, y in train_loader:
+            x_enc, x_mark_enc, x_dec, x_mark_dec, y = (
+                x_enc.to(DEVICE), x_mark_enc.to(DEVICE),
+                x_dec.to(DEVICE), x_mark_dec.to(DEVICE), y.to(DEVICE),
+            )
             optimizer.zero_grad()
             out = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
             pred = out[:, -cfg.pred_len:, :]
@@ -547,6 +552,10 @@ def train_and_evaluate(name, cfg, train_loader, val_loader, epochs=EPOCHS, lr=LR
         n_val = 0
         with torch.no_grad():
             for x_enc, x_mark_enc, x_dec, x_mark_dec, y in val_loader:
+                x_enc, x_mark_enc, x_dec, x_mark_dec, y = (
+                    x_enc.to(DEVICE), x_mark_enc.to(DEVICE),
+                    x_dec.to(DEVICE), x_mark_dec.to(DEVICE), y.to(DEVICE),
+                )
                 out = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
                 pred = out[:, -cfg.pred_len:, :]
                 val_loss += mse_fn(pred, y).item()
@@ -609,6 +618,10 @@ def run_interpretation(model, sample_loader):
     """Run a forward pass with interpretation and extract key diagnostics."""
     model.eval()
     x_enc, x_mark_enc, x_dec, x_mark_dec, y = next(iter(sample_loader))
+    x_enc, x_mark_enc, x_dec, x_mark_dec = (
+        x_enc.to(DEVICE), x_mark_enc.to(DEVICE),
+        x_dec.to(DEVICE), x_mark_dec.to(DEVICE),
+    )
     with torch.no_grad():
         payload = model(
             x_enc[:4], x_mark_enc[:4], x_dec[:4], x_mark_dec[:4],
@@ -919,12 +932,16 @@ class TestTFTE2E(unittest.TestCase):
         overrides = dict(ABLATIONS["full_quantile"])
         cfg = make_config(overrides)
         torch.manual_seed(SEED)
-        model = tsl_tft.Model(cfg)
+        model = tsl_tft.Model(cfg).to(DEVICE)
         optimizer = torch.optim.Adam(model.parameters(), lr=LR)
         mse_fn = nn.MSELoss()
         q_fn = QuantileLoss(cfg.tft_output_quantiles)
         model.train()
         for x_enc, x_mark_enc, x_dec, x_mark_dec, y in self.train_loader:
+            x_enc, x_mark_enc, x_dec, x_mark_dec, y = (
+                x_enc.to(DEVICE), x_mark_enc.to(DEVICE),
+                x_dec.to(DEVICE), x_mark_dec.to(DEVICE), y.to(DEVICE),
+            )
             optimizer.zero_grad()
             out = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
             pred = out[:, -cfg.pred_len:, :]
@@ -941,6 +958,10 @@ class TestTFTE2E(unittest.TestCase):
         model.train()
         for epoch in range(5):
             for x_enc, x_mark_enc, x_dec, x_mark_dec, y in self.train_loader:
+                x_enc, x_mark_enc, x_dec, x_mark_dec, y = (
+                    x_enc.to(DEVICE), x_mark_enc.to(DEVICE),
+                    x_dec.to(DEVICE), x_mark_dec.to(DEVICE), y.to(DEVICE),
+                )
                 optimizer.zero_grad()
                 out = model(x_enc, x_mark_enc, x_dec, x_mark_dec)
                 pred = out[:, -cfg.pred_len:, :]

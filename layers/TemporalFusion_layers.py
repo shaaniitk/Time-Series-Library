@@ -705,8 +705,7 @@ class RegimeAwareSparseMoE(nn.Module):
         sparse_probs.scatter_(-1, top_indices, top_values)
         sparse_probs = sparse_probs / sparse_probs.sum(dim=-1, keepdim=True).clamp_min(1e-8)
         importance = sparse_probs.sum(dim=(0, 1))
-        regime_usage = regime_probs.sum(dim=(0, 1))
-        aux_loss = self.cv_squared(importance) + 0.1 * self.cv_squared(regime_usage)
+        aux_loss = self.cv_squared(importance)
         return sparse_probs, aux_loss
 
     def forward(self, x, context: Optional[torch.Tensor] = None, return_payload: bool = False):
