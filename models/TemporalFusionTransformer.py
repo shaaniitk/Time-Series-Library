@@ -260,8 +260,9 @@ class GRN(nn.Module):
 
 
 class VariableSelectionNetwork(nn.Module):
-    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1):
+    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False):
         super(VariableSelectionNetwork, self).__init__()
+        self.per_feature_gating = per_feature_gating
         self.n_selection_heads = n_selection_heads
         if n_selection_heads > 1:
             assert d_model % n_selection_heads == 0, (
@@ -282,6 +283,15 @@ class VariableSelectionNetwork(nn.Module):
         self.use_residual_bypass = residual_bypass
         self.residual_projection = nn.Linear(d_model * variable_num, d_model)
         self.residual_gate = nn.Parameter(torch.tensor(0.0))
+        # Per-feature sigmoid gating: independent gate per covariate×feature dimension
+        if per_feature_gating:
+            self.feature_gate_grn = GRN(
+                d_model * variable_num, d_model * variable_num,
+                hidden_size=d_model, context_size=d_model,
+                dropout=dropout, use_swiglu=use_swiglu,
+            )
+        else:
+            self.feature_gate_grn = None
 
     def forward(self, x: Tensor, context: Optional[Tensor] = None, return_weights: bool = False):
         graph_attention = None
@@ -303,6 +313,23 @@ class VariableSelectionNetwork(nn.Module):
                 f"VSN variable dimension mismatch: expected {len(self.variable_grns)}, got {x.shape[-2]}."
             )
         x_flattened = torch.flatten(x, start_dim=-2)
+
+        # Per-feature sigmoid gating path (alternative to softmax selection)
+        if self.per_feature_gating and self.feature_gate_grn is not None:
+            feature_gates = torch.sigmoid(self.feature_gate_grn(x_flattened, context))  # [..., C*d]
+            gated = x_flattened * feature_gates
+            # Reshape to [..., C, d] and sum over covariates
+            orig_shape = x.shape  # [B,T,C,d] or [B,C,d]
+            C = orig_shape[-2]
+            d = orig_shape[-1]
+            gated = gated.view(*orig_shape[:-2], C, d)
+            selection_result = gated.sum(dim=-2)  # [..., d]
+            if self.use_residual_bypass:
+                residual = self.residual_projection(x_flattened)
+                selection_result = selection_result + torch.tanh(self.residual_gate) * residual
+            if return_weights:
+                return selection_result, {'selection': feature_gates.view(*orig_shape[:-2], C, d), 'graph_attention': graph_attention}
+            return selection_result
 
         # x_processed: [B,T,d,C] or [B,d,C]
         x_processed = torch.stack([grn(x[...,i,:]) for i, grn in enumerate(self.variable_grns)], dim=-1)
@@ -343,9 +370,9 @@ class VariableSelectionNetwork(nn.Module):
 
 
 class StaticCovariateEncoder(nn.Module):
-    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1):
+    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False):
         super(StaticCovariateEncoder, self).__init__()
-        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass, n_selection_heads=n_selection_heads) if static_len else None
+        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass, n_selection_heads=n_selection_heads, per_feature_gating=per_feature_gating) if static_len else None
         self.grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(4)])
 
     def forward(self, static_input, return_weights: bool = False):
@@ -599,11 +626,20 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.position_wise_grn = GRN(configs.d_model, configs.d_model, dropout=configs.dropout, use_swiglu=self.use_swiglu) if not self.use_regime_moe else None
         self.gate_final = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         self.last_moe_aux_loss = None
+        # Covariate-aware enrichment: cross-attention to pre-VSN covariate embeddings
+        self.use_covariate_reattention = getattr(configs, 'tft_covariate_reattention', False)
+        if self.use_covariate_reattention:
+            self.covariate_cross_attention = PositionalMultiHeadAttention(
+                configs.d_model, configs.n_heads,
+                position_bias_type='none',
+                attention_backend='exact',
+            )
+            self.gate_after_reattention = GateAddNorm(configs.d_model, configs.d_model, use_swiglu=self.use_swiglu)
         # Pre-build causal mask at max sequence length to avoid re-creation each forward
         max_len = configs.seq_len + configs.pred_len
         self.register_buffer('_causal_mask_buf', build_causal_mask(max_len, torch.device('cpu'), torch.float32), persistent=False)
 
-    def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False):
+    def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False, pre_vsn_embs=None):
         self.last_moe_aux_loss = None
         output_payload = {} if return_attention else None
         temporal_input = torch.cat([history_input, future_input], dim=1)
@@ -627,6 +663,15 @@ class TemporalFusionDecoderLayer(nn.Module):
             if return_attention:
                 output_payload['fft_gate_mean'] = fft_gate.mean().item()
         temporal_features = self.gate_after_lstm(temporal_features, temporal_input)
+
+        # Covariate-aware reattention: let temporal features attend to pre-VSN covariate embeddings
+        if self.use_covariate_reattention and pre_vsn_embs is not None:
+            B_cov, T_cov, C_cov, d_cov = pre_vsn_embs.shape
+            kv_tokens = pre_vsn_embs.reshape(B_cov, T_cov * C_cov, d_cov)
+            reattended = self.covariate_cross_attention(
+                temporal_features, kv_tokens, kv_tokens,
+            )
+            temporal_features = self.gate_after_reattention(reattended, temporal_features)
 
         # TEMPORAL COMPRESSION: compress history portion for long sequences
         history_len = history_input.shape[1]
@@ -834,7 +879,21 @@ class TemporalFusionDecoder(nn.Module):
         self.stochastic_depth_rate = float(getattr(configs, 'tft_stochastic_depth_rate', 0.0))
         self.gradient_checkpointing = getattr(configs, 'tft_gradient_checkpointing', False)
         self.layers = nn.ModuleList([TemporalFusionDecoderLayer(configs) for _ in range(self.e_layers)])
-        self.out_projection = nn.Linear(configs.d_model, configs.c_out)
+        self.use_per_target_heads = getattr(configs, 'tft_per_target_heads', False)
+        if self.use_per_target_heads and configs.c_out > 1:
+            head_hidden = max(configs.d_model // 2, 1)
+            self.target_heads = nn.ModuleList([
+                nn.Sequential(
+                    nn.Linear(configs.d_model, head_hidden),
+                    nn.GELU(),
+                    nn.Linear(head_hidden, 1),
+                )
+                for _ in range(configs.c_out)
+            ])
+            self.out_projection = None
+        else:
+            self.out_projection = nn.Linear(configs.d_model, configs.c_out)
+            self.target_heads = None
         self.last_moe_aux_loss = None
 
     def _aggregate_attention_payloads(self, payloads):
@@ -865,7 +924,7 @@ class TemporalFusionDecoder(nn.Module):
         merged_payload['decoder_layer_payloads'] = layerwise
         return merged_payload
 
-    def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False, return_decoder_hidden: bool = False):
+    def forward(self, history_input, future_input, c_c, c_h, c_e, return_attention: bool = False, return_decoder_hidden: bool = False, pre_vsn_embs=None):
         attention_payloads = []
         moe_aux_losses = []
         curr_history = history_input
@@ -874,7 +933,7 @@ class TemporalFusionDecoder(nn.Module):
         out = torch.cat([curr_history, curr_future], dim=1)
 
         def _layer_forward(layer_module, h, f, cc, ch, ce):
-            return layer_module(h, f, cc, ch, ce)
+            return layer_module(h, f, cc, ch, ce, pre_vsn_embs=pre_vsn_embs)
 
         for layer_idx, layer in enumerate(self.layers):
             # Stochastic depth: skip layers with linearly increasing probability
@@ -894,10 +953,10 @@ class TemporalFusionDecoder(nn.Module):
                     use_reentrant=False,
                 )
             elif return_attention:
-                out, attention_prob = layer(curr_history, curr_future, c_c, c_h, c_e, return_attention=True)
+                out, attention_prob = layer(curr_history, curr_future, c_c, c_h, c_e, return_attention=True, pre_vsn_embs=pre_vsn_embs)
                 attention_payloads.append(attention_prob)
             else:
-                out = layer(curr_history, curr_future, c_c, c_h, c_e)
+                out = layer(curr_history, curr_future, c_c, c_h, c_e, pre_vsn_embs=pre_vsn_embs)
 
             if layer.last_moe_aux_loss is not None:
                 moe_aux_losses.append(layer.last_moe_aux_loss)
@@ -906,7 +965,10 @@ class TemporalFusionDecoder(nn.Module):
 
         self.last_moe_aux_loss = torch.stack(moe_aux_losses).mean() if moe_aux_losses else None
         decoder_hidden = out[:, -self.pred_len:, :]
-        projected = self.out_projection(decoder_hidden)
+        if self.target_heads is not None:
+            projected = torch.cat([head(decoder_hidden) for head in self.target_heads], dim=-1)
+        else:
+            projected = self.out_projection(decoder_hidden)
 
         if return_attention:
             payload = self._aggregate_attention_payloads(attention_payloads)
@@ -959,22 +1021,27 @@ class Model(nn.Module):
         self.vsn_residual_bypass = getattr(configs, 'tft_vsn_residual_bypass', True)
         self.n_heads = getattr(configs, 'n_heads', 4)
         self.n_selection_heads = int(getattr(configs, 'tft_vsn_n_selection_heads', 1))
+        self.per_feature_gating = getattr(configs, 'tft_vsn_per_feature_gating', False)
+        self.use_covariate_reattention = getattr(configs, 'tft_covariate_reattention', False)
         self.last_moe_aux_loss = None
 
         self.static_encoder = StaticCovariateEncoder(
             configs.d_model, self.static_len, dropout=configs.dropout, 
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
-            residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads
+            residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
+            per_feature_gating=self.per_feature_gating
         )
         self.history_vsn = VariableSelectionNetwork(
             configs.d_model, self.observed_len + self.known_len, dropout=configs.dropout,
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
-            residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads
+            residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
+            per_feature_gating=self.per_feature_gating
         )
         self.future_vsn = VariableSelectionNetwork(
             configs.d_model, self.known_len, dropout=configs.dropout,
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
-            residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads
+            residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
+            per_feature_gating=self.per_feature_gating
         )
         self.temporal_fusion_decoder = TemporalFusionDecoder(configs)
         if self.use_quantile_head:
@@ -1071,6 +1138,19 @@ class Model(nn.Module):
         # Temporal input Selection
         history_input = torch.cat([observed_input, known_input[:,:self.seq_len]], dim=-2)
         future_input = known_input[:,self.seq_len:]
+        # Capture pre-VSN covariate embeddings for covariate-aware enrichment (Phase C)
+        if self.use_covariate_reattention:
+            C_hist = history_input.shape[-2]
+            C_fut = future_input.shape[-2]
+            if C_fut < C_hist:
+                pad = torch.zeros(*future_input.shape[:-2], C_hist - C_fut, future_input.shape[-1],
+                                  device=future_input.device, dtype=future_input.dtype)
+                future_padded = torch.cat([future_input, pad], dim=-2)
+            else:
+                future_padded = future_input
+            pre_vsn_embs = torch.cat([history_input.detach(), future_padded.detach()], dim=1)
+        else:
+            pre_vsn_embs = None
         if return_interpretation:
             history_input, history_weight_payload = self.history_vsn(history_input, c_s, return_weights=True)
             future_input, future_weight_payload = self.future_vsn(future_input, c_s, return_weights=True)
@@ -1092,6 +1172,7 @@ class Model(nn.Module):
                     c_e,
                     return_attention=True,
                     return_decoder_hidden=True,
+                    pre_vsn_embs=pre_vsn_embs,
                 )
             else:
                 dec_out, decoder_hidden = self.temporal_fusion_decoder(
@@ -1101,6 +1182,7 @@ class Model(nn.Module):
                     c_h,
                     c_e,
                     return_decoder_hidden=True,
+                    pre_vsn_embs=pre_vsn_embs,
                 )
         else:
             decoder_hidden = None
@@ -1112,9 +1194,10 @@ class Model(nn.Module):
                     c_h,
                     c_e,
                     return_attention=True,
+                    pre_vsn_embs=pre_vsn_embs,
                 )
             else:
-                dec_out = self.temporal_fusion_decoder(history_input, future_input, c_c, c_h, c_e)
+                dec_out = self.temporal_fusion_decoder(history_input, future_input, c_c, c_h, c_e, pre_vsn_embs=pre_vsn_embs)
         self.last_moe_aux_loss = self.temporal_fusion_decoder.last_moe_aux_loss
         if self.use_quantile_head:
             quantile_out = self.quantile_projection(decoder_hidden)

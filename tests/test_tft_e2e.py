@@ -423,6 +423,15 @@ ABLATIONS = OrderedDict([
     ("hybrid_backbone", {
         "tft_temporal_backbone": "hybrid_tcn_lstm",
     }),
+    ("per_target_heads", {
+        "tft_per_target_heads": True,
+    }),
+    ("per_feature_gating", {
+        "tft_vsn_per_feature_gating": True,
+    }),
+    ("covariate_reattention", {
+        "tft_covariate_reattention": True,
+    }),
     # Combination Configs
     ("combo_spectral", {
         "tft_use_revin": True,
@@ -453,6 +462,9 @@ ABLATIONS = OrderedDict([
         "tft_vsn_n_selection_heads": 2,
         "tft_cross_variable_mixing": True,
         "tft_temporal_backbone": "hybrid_tcn_lstm",
+        "tft_per_target_heads": True,
+        "tft_vsn_per_feature_gating": True,
+        "tft_covariate_reattention": True,
     }),
     # Full + Quantile Head
     ("full_quantile", {

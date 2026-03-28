@@ -243,6 +243,12 @@ if __name__ == '__main__':
                         help='Use a 2-layer MLP instead of single Linear for TFT quantile projection head.')
     parser.add_argument('--tft_quantile_projection_ff_size', type=int, default=0,
                         help='Hidden size for MLP quantile projection; 0 uses d_model.')
+    parser.add_argument('--tft_per_target_heads', action='store_true', default=False,
+                        help='Use per-target MLP decoder heads instead of shared linear projection in TFT.')
+    parser.add_argument('--tft_vsn_per_feature_gating', action='store_true', default=False,
+                        help='Use per-feature sigmoid gating instead of per-covariate softmax in TFT VSN.')
+    parser.add_argument('--tft_covariate_reattention', action='store_true', default=False,
+                        help='Enable covariate-aware cross-attention enrichment in TFT decoder layers.')
 
     # TimeFilter
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')
