@@ -283,13 +283,14 @@ class VariableSelectionNetwork(nn.Module):
         self.use_residual_bypass = residual_bypass
         self.residual_projection = nn.Linear(d_model * variable_num, d_model)
         self.residual_gate = nn.Parameter(torch.tensor(0.0))
-        # Per-feature sigmoid gating: independent gate per covariate×feature dimension
+        # Per-covariate sigmoid gating: one gate per covariate, broadcast to features
         if per_feature_gating:
             self.feature_gate_grn = GRN(
-                d_model * variable_num, d_model * variable_num,
+                d_model * variable_num, variable_num,
                 hidden_size=d_model, context_size=d_model,
                 dropout=dropout, use_swiglu=use_swiglu,
             )
+            self.feature_gate_dropout = nn.Dropout(dropout)
         else:
             self.feature_gate_grn = None
 
@@ -316,19 +317,20 @@ class VariableSelectionNetwork(nn.Module):
 
         # Per-feature sigmoid gating path (alternative to softmax selection)
         if self.per_feature_gating and self.feature_gate_grn is not None:
-            feature_gates = torch.sigmoid(self.feature_gate_grn(x_flattened, context))  # [..., C*d]
-            gated = x_flattened * feature_gates
-            # Reshape to [..., C, d] and sum over covariates
             orig_shape = x.shape  # [B,T,C,d] or [B,C,d]
             C = orig_shape[-2]
             d = orig_shape[-1]
-            gated = gated.view(*orig_shape[:-2], C, d)
-            selection_result = gated.sum(dim=-2)  # [..., d]
+            # Covariate-level sigmoid gates: [..., C]
+            covariate_gates = torch.sigmoid(self.feature_gate_grn(x_flattened, context))
+            covariate_gates = self.feature_gate_dropout(covariate_gates)
+            # Broadcast to [..., C, d] and apply
+            gated = x * covariate_gates.unsqueeze(-1)  # [..., C, d]
+            selection_result = gated.mean(dim=-2)  # [..., d] — mean keeps scale bounded
             if self.use_residual_bypass:
                 residual = self.residual_projection(x_flattened)
                 selection_result = selection_result + torch.tanh(self.residual_gate) * residual
             if return_weights:
-                return selection_result, {'selection': feature_gates.view(*orig_shape[:-2], C, d), 'graph_attention': graph_attention}
+                return selection_result, {'selection': covariate_gates, 'graph_attention': graph_attention}
             return selection_result
 
         # x_processed: [B,T,d,C] or [B,d,C]
