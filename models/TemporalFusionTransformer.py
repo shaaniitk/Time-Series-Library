@@ -260,7 +260,7 @@ class GRN(nn.Module):
 
 
 class VariableSelectionNetwork(nn.Module):
-    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False):
+    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64):
         super(VariableSelectionNetwork, self).__init__()
         self.per_feature_gating = per_feature_gating
         self.n_selection_heads = n_selection_heads
@@ -269,9 +269,19 @@ class VariableSelectionNetwork(nn.Module):
                 f"d_model ({d_model}) must be divisible by n_selection_heads ({n_selection_heads})."
             )
         self.cross_mixing = DynamicGraphLearner(d_model, n_heads, dropout, output_attention=True) if cross_variable_mixing else None
+        # Use low-rank factorization for high-dimensional inputs
+        input_dim = d_model * variable_num
+        self.use_low_rank = variable_num >= low_rank_threshold
+        if self.use_low_rank:
+            rank = min(d_model, variable_num)
+            self.low_rank_down = nn.Linear(input_dim, rank)
+            self.low_rank_act = nn.GELU()
+            head_input_dim = rank
+        else:
+            head_input_dim = input_dim
         # Multi-head selection: each head learns independent variable importance weights
         self.head_grns = nn.ModuleList([
-            GRN(d_model * variable_num, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout, use_swiglu=use_swiglu)
+            GRN(head_input_dim, variable_num, hidden_size=d_model, context_size=d_model, dropout=dropout, use_swiglu=use_swiglu)
             for _ in range(n_selection_heads)
         ])
         # Per-head context projections to de-correlate head inputs
@@ -315,6 +325,12 @@ class VariableSelectionNetwork(nn.Module):
             )
         x_flattened = torch.flatten(x, start_dim=-2)
 
+        # Low-rank projection for high-dimensional inputs
+        if self.use_low_rank:
+            x_for_heads = self.low_rank_act(self.low_rank_down(x_flattened))
+        else:
+            x_for_heads = x_flattened
+
         # Per-feature sigmoid gating path (alternative to softmax selection)
         if self.per_feature_gating and self.feature_gate_grn is not None:
             orig_shape = x.shape  # [B,T,C,d] or [B,C,d]
@@ -339,7 +355,7 @@ class VariableSelectionNetwork(nn.Module):
         K = self.n_selection_heads
         if K == 1:
             # Original single-head path (backward-compatible)
-            selection_weights = self.head_grns[0](x_flattened, context)
+            selection_weights = self.head_grns[0](x_for_heads, context)
             selection_weights = F.softmax(selection_weights, dim=-1)
             selection_result = torch.matmul(x_processed, selection_weights.unsqueeze(-1)).squeeze(-1)
         else:
@@ -349,7 +365,7 @@ class VariableSelectionNetwork(nn.Module):
             all_head_weights = []
             for k in range(K):
                 head_ctx = self.head_context_projections[k](context) if self.head_context_projections is not None and context is not None else context
-                head_weights = self.head_grns[k](x_flattened, head_ctx)
+                head_weights = self.head_grns[k](x_for_heads, head_ctx)
                 head_weights = F.softmax(head_weights, dim=-1)  # [..., C]
                 all_head_weights.append(head_weights)
                 # Slice processed variables on d dimension for this head's subspace
@@ -372,9 +388,9 @@ class VariableSelectionNetwork(nn.Module):
 
 
 class StaticCovariateEncoder(nn.Module):
-    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False):
+    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64):
         super(StaticCovariateEncoder, self).__init__()
-        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass, n_selection_heads=n_selection_heads, per_feature_gating=per_feature_gating) if static_len else None
+        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass, n_selection_heads=n_selection_heads, per_feature_gating=per_feature_gating, low_rank_threshold=low_rank_threshold) if static_len else None
         self.grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(4)])
 
     def forward(self, static_input, return_weights: bool = False):
@@ -483,6 +499,7 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.moe_top_k = int(getattr(configs, 'tft_moe_top_k', 2))
         self.moe_hidden_size = getattr(configs, 'tft_moe_hidden_size', 0) or configs.d_model
         self.moe_noise_epsilon = float(getattr(configs, 'tft_moe_noise_epsilon', 1e-2))
+        self.moe_capacity_factor = float(getattr(configs, 'tft_moe_capacity_factor', 1.25))
         self.use_fft_branch = getattr(configs, 'tft_use_fft_branch', False)
         self.fft_modes = int(getattr(configs, 'tft_fft_modes', 32))
         self.fft_mode_select = getattr(configs, 'tft_fft_mode_select', 'low')
@@ -588,6 +605,8 @@ class TemporalFusionDecoderLayer(nn.Module):
             dropout=configs.dropout,
             noise_epsilon=self.moe_noise_epsilon,
         ) if self.use_regime_moe else None
+        if self.regime_moe is not None:
+            self.regime_moe.capacity_factor = self.moe_capacity_factor
         if self.dual_attention_fusion:
             self.full_attention_module = PositionalMultiHeadAttention(
                 configs.d_model,
@@ -1024,6 +1043,7 @@ class Model(nn.Module):
         self.n_heads = getattr(configs, 'n_heads', 4)
         self.n_selection_heads = int(getattr(configs, 'tft_vsn_n_selection_heads', 1))
         self.per_feature_gating = getattr(configs, 'tft_vsn_per_feature_gating', False)
+        self.vsn_low_rank_threshold = int(getattr(configs, 'tft_vsn_low_rank_threshold', 64))
         self.use_covariate_reattention = getattr(configs, 'tft_covariate_reattention', False)
         self.last_moe_aux_loss = None
 
@@ -1031,19 +1051,22 @@ class Model(nn.Module):
             configs.d_model, self.static_len, dropout=configs.dropout, 
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
             residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
-            per_feature_gating=self.per_feature_gating
+            per_feature_gating=self.per_feature_gating,
+            low_rank_threshold=self.vsn_low_rank_threshold
         )
         self.history_vsn = VariableSelectionNetwork(
             configs.d_model, self.observed_len + self.known_len, dropout=configs.dropout,
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
             residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
-            per_feature_gating=self.per_feature_gating
+            per_feature_gating=self.per_feature_gating,
+            low_rank_threshold=self.vsn_low_rank_threshold
         )
         self.future_vsn = VariableSelectionNetwork(
             configs.d_model, self.known_len, dropout=configs.dropout,
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
             residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
-            per_feature_gating=self.per_feature_gating
+            per_feature_gating=self.per_feature_gating,
+            low_rank_threshold=self.vsn_low_rank_threshold
         )
         self.temporal_fusion_decoder = TemporalFusionDecoder(configs)
         if self.use_quantile_head:

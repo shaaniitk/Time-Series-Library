@@ -297,8 +297,8 @@ class SpectralBranch(nn.Module):
         super(SpectralBranch, self).__init__()
         if modes < 1:
             raise ValueError("tft_fft_modes must be >= 1.")
-        if mode_select not in ('low', 'top_amplitude'):
-            raise ValueError("tft_fft_mode_select must be 'low' or 'top_amplitude'.")
+        if mode_select not in ('low', 'top_amplitude', 'learned'):
+            raise ValueError("tft_fft_mode_select must be 'low', 'top_amplitude', or 'learned'.")
         self.d_model = d_model
         self.modes = modes
         self.mode_select = mode_select
@@ -307,12 +307,17 @@ class SpectralBranch(nn.Module):
         self.weight_imag = nn.Parameter(torch.empty(d_model, modes))
         nn.init.xavier_uniform_(self.weight_real)
         nn.init.xavier_uniform_(self.weight_imag)
+        # Learned soft mask over all frequency bins (used when mode_select='learned')
+        if mode_select == 'learned':
+            self.freq_mask_logits = nn.Parameter(torch.zeros(1, d_model, 1))  # broadcast over freqs, learned per-channel
         self.out_projection = nn.Linear(d_model, d_model)
         self.layer_norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
 
     def _select_modes(self, x_ft, n_freqs: int):
-        """Return indices of frequency modes to process."""
+        """Return indices of frequency modes to process (hard selection), or None for learned soft mask."""
+        if self.mode_select == 'learned':
+            return None  # soft mask applied in forward instead of hard selection
         k = min(self.modes, n_freqs)
         if self.mode_select == 'low':
             return torch.arange(k, device=x_ft.device)
@@ -334,25 +339,41 @@ class SpectralBranch(nn.Module):
         n_freqs = x_ft.shape[-1]
 
         mode_indices = self._select_modes(x_ft, n_freqs)
-        k = mode_indices.shape[0]
 
-        # Extract selected modes: [B, D, k]
-        selected = x_ft[:, :, mode_indices]
+        if mode_indices is None:
+            # Learned mode: apply differentiable soft sigmoid mask over all frequencies
+            # freq_mask_logits: [1, D, 1] broadcast to [B, D, n_freqs]
+            soft_mask = torch.sigmoid(self.freq_mask_logits.expand(-1, -1, n_freqs))  # [1, D, n_freqs]
+            k = min(self.modes, n_freqs)
+            w_real = self.weight_real[:, :k]
+            w_imag = self.weight_imag[:, :k]
+            w_complex = torch.complex(w_real, w_imag)
+            # Apply weights to first k modes, identity for rest
+            out_ft = x_ft.clone()
+            out_ft[:, :, :k] = x_ft[:, :, :k] * w_complex.unsqueeze(0)
+            # Apply soft mask to all modes (differentiable selection)
+            out_ft = out_ft * soft_mask
+            x_reconstructed = torch.fft.irfft(out_ft, n=L)
+        else:
+            k = mode_indices.shape[0]
 
-        # Learnable complex multiply: weights are [D, modes] -> use first k
-        w_real = self.weight_real[:, :k]  # [D, k]
-        w_imag = self.weight_imag[:, :k]  # [D, k]
-        w_complex = torch.complex(w_real, w_imag)  # [D, k]
+            # Extract selected modes: [B, D, k]
+            selected = x_ft[:, :, mode_indices]
 
-        # Element-wise complex multiplication: [B, D, k] * [D, k] -> [B, D, k]
-        transformed = selected * w_complex.unsqueeze(0)
+            # Learnable complex multiply: weights are [D, modes] -> use first k
+            w_real = self.weight_real[:, :k]  # [D, k]
+            w_imag = self.weight_imag[:, :k]  # [D, k]
+            w_complex = torch.complex(w_real, w_imag)  # [D, k]
 
-        # Put transformed modes back into full spectrum
-        out_ft = torch.zeros_like(x_ft)
-        out_ft[:, :, mode_indices] = transformed
+            # Element-wise complex multiplication: [B, D, k] * [D, k] -> [B, D, k]
+            transformed = selected * w_complex.unsqueeze(0)
 
-        # Inverse FFT back to time domain: [B, D, L]
-        x_reconstructed = torch.fft.irfft(out_ft, n=L)  # [B, D, L]
+            # Put transformed modes back into full spectrum
+            out_ft = torch.zeros_like(x_ft)
+            out_ft[:, :, mode_indices] = transformed
+
+            # Inverse FFT back to time domain: [B, D, L]
+            x_reconstructed = torch.fft.irfft(out_ft, n=L)  # [B, D, L]
         x_reconstructed = x_reconstructed.permute(0, 2, 1)  # [B, L, D]
 
         return self.layer_norm(x + self.dropout(self.out_projection(x_reconstructed)))
@@ -467,10 +488,10 @@ class MultiScaleLagAttention(nn.Module):
             self._causal_mask_buf = None
 
     def _shift_sequence(self, x, lag: int):
-        shifted = torch.zeros_like(x)
-        if lag < x.shape[1]:
-            shifted[:, lag:, :] = x[:, :-lag, :]
-        return shifted
+        if lag <= 0 or lag >= x.shape[1]:
+            return torch.zeros_like(x)
+        # F.pad avoids allocating a full zero tensor; single fused op
+        return F.pad(x[:, :-lag, :], (0, 0, lag, 0))
 
     def forward(self, x, return_attention: bool = False):
         if x.ndim != 3:
@@ -659,6 +680,7 @@ class RegimeAwareSparseMoE(nn.Module):
         self.top_k = top_k
         self.num_regimes = num_regimes
         self.noise_epsilon = noise_epsilon
+        self.capacity_factor = 1.25  # default; can be overridden via config
         self.softmax = nn.Softmax(dim=-1)
         self.softplus = nn.Softplus()
         self.regime_detector = nn.Sequential(
@@ -703,6 +725,26 @@ class RegimeAwareSparseMoE(nn.Module):
         top_values, top_indices = torch.topk(dense_probs, self.top_k, dim=-1)
         sparse_probs = torch.zeros_like(dense_probs)
         sparse_probs.scatter_(-1, top_indices, top_values)
+
+        # Expert capacity constraint: cap tokens per expert to prevent monopolization
+        if self.training and hasattr(self, 'capacity_factor'):
+            B_dim, T_dim = sparse_probs.shape[0], sparse_probs.shape[1]
+            capacity = int(self.capacity_factor * B_dim * T_dim * self.top_k / self.num_experts)
+            # Count tokens assigned to each expert and zero out overflow
+            flat_probs = sparse_probs.reshape(-1, self.num_experts)  # [B*T, E]
+            for e in range(self.num_experts):
+                expert_mask = flat_probs[:, e] > 0
+                assigned = expert_mask.sum().item()
+                if assigned > capacity:
+                    # Keep only the top-capacity tokens by routing weight
+                    expert_vals = flat_probs[:, e].clone()
+                    expert_vals[~expert_mask] = -1.0
+                    _, keep_idx = torch.topk(expert_vals, capacity)
+                    drop_mask = torch.ones(flat_probs.shape[0], dtype=torch.bool, device=flat_probs.device)
+                    drop_mask[keep_idx] = False
+                    flat_probs[drop_mask, e] = 0.0
+            sparse_probs = flat_probs.reshape(B_dim, T_dim, self.num_experts)
+
         sparse_probs = sparse_probs / sparse_probs.sum(dim=-1, keepdim=True).clamp_min(1e-8)
         importance = sparse_probs.sum(dim=(0, 1))
         aux_loss = self.cv_squared(importance)

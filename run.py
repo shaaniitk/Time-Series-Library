@@ -225,7 +225,7 @@ if __name__ == '__main__':
                         help='Enable parallel FFT spectral processing branch in TFT temporal backbone.')
     parser.add_argument('--tft_fft_modes', type=int, default=32,
                         help='Number of frequency modes to retain in TFT FFT branch.')
-    parser.add_argument('--tft_fft_mode_select', type=str, default='low', choices=['low', 'top_amplitude'],
+    parser.add_argument('--tft_fft_mode_select', type=str, default='low', choices=['low', 'top_amplitude', 'learned'],
                         help='Frequency mode selection strategy for TFT FFT branch.')
     parser.add_argument('--tft_stochastic_depth_rate', type=float, default=0.0,
                         help='Stochastic depth drop rate for TFT decoder layers (0.0 = disabled).')
@@ -249,6 +249,10 @@ if __name__ == '__main__':
                         help='Use per-feature sigmoid gating instead of per-covariate softmax in TFT VSN.')
     parser.add_argument('--tft_covariate_reattention', action='store_true', default=False,
                         help='Enable covariate-aware cross-attention enrichment in TFT decoder layers.')
+    parser.add_argument('--tft_moe_capacity_factor', type=float, default=1.25,
+                        help='Expert capacity factor for TFT MoE; each expert handles at most capacity_factor * tokens/num_experts tokens.')
+    parser.add_argument('--tft_vsn_low_rank_threshold', type=int, default=64,
+                        help='When variable_num >= this threshold, VSN uses low-rank factorization for weight generation.')
 
     # TimeFilter
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')
