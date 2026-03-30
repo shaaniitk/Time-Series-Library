@@ -377,6 +377,18 @@ def e2e_base_config():
         tft_tc_threshold=256,
         tft_mlp_quantile_projection=False,
         tft_quantile_projection_ff_size=0,
+        # Advanced graph defaults
+        tft_graph_type="dense",
+        tft_graph_top_k=10,
+        tft_graph_num_layers=2,
+        tft_graph_temporal_evolution=False,
+        tft_graph_edge_features=False,
+        # Phase A/B/C defaults
+        tft_per_target_heads=False,
+        tft_vsn_per_feature_gating=False,
+        tft_covariate_reattention=False,
+        tft_moe_capacity_factor=1.25,
+        tft_vsn_low_rank_threshold=64,
     )
 
 
@@ -432,6 +444,28 @@ ABLATIONS = OrderedDict([
     ("covariate_reattention", {
         "tft_covariate_reattention": True,
     }),
+    # Graph Configs
+    ("sparse_graph", {
+        "tft_cross_variable_mixing": True,
+        "tft_graph_type": "sparse",
+        "tft_graph_top_k": 5,
+        "tft_graph_num_layers": 2,
+    }),
+    ("temporal_graph", {
+        "tft_cross_variable_mixing": True,
+        "tft_graph_type": "temporal_sparse",
+        "tft_graph_top_k": 5,
+        "tft_graph_num_layers": 2,
+        "tft_graph_temporal_evolution": True,
+    }),
+    ("full_graph", {
+        "tft_cross_variable_mixing": True,
+        "tft_graph_type": "temporal_sparse",
+        "tft_graph_top_k": 8,
+        "tft_graph_num_layers": 3,
+        "tft_graph_temporal_evolution": True,
+        "tft_graph_edge_features": True,
+    }),
     # Combination Configs
     ("combo_spectral", {
         "tft_use_revin": True,
@@ -465,6 +499,11 @@ ABLATIONS = OrderedDict([
         "tft_per_target_heads": True,
         "tft_vsn_per_feature_gating": True,
         "tft_covariate_reattention": True,
+        "tft_graph_type": "temporal_sparse",
+        "tft_graph_top_k": 8,
+        "tft_graph_num_layers": 2,
+        "tft_graph_temporal_evolution": True,
+        "tft_graph_edge_features": True,
     }),
     # Full + Quantile Head
     ("full_quantile", {

@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers.Embed import DataEmbedding, TemporalEmbedding
 from layers.DynamicGraph import DynamicGraphLearner
+from layers.AdvancedDynamicGraph import AdvancedDynamicGraphLearner
 from layers.StandardNorm import Normalize
 from layers.TemporalFusion_layers import (
     GatedDilatedTemporalBackbone,
@@ -260,7 +261,7 @@ class GRN(nn.Module):
 
 
 class VariableSelectionNetwork(nn.Module):
-    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64):
+    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64, graph_type='dense', graph_top_k=10, graph_num_layers=2, graph_temporal_evolution=False, graph_edge_features=False):
         super(VariableSelectionNetwork, self).__init__()
         self.per_feature_gating = per_feature_gating
         self.n_selection_heads = n_selection_heads
@@ -268,7 +269,19 @@ class VariableSelectionNetwork(nn.Module):
             assert d_model % n_selection_heads == 0, (
                 f"d_model ({d_model}) must be divisible by n_selection_heads ({n_selection_heads})."
             )
-        self.cross_mixing = DynamicGraphLearner(d_model, n_heads, dropout, output_attention=True) if cross_variable_mixing else None
+        if cross_variable_mixing:
+            if graph_type == 'dense':
+                self.cross_mixing = DynamicGraphLearner(d_model, n_heads, dropout, output_attention=True)
+            else:
+                self.cross_mixing = AdvancedDynamicGraphLearner(
+                    d_model, n_heads, dropout, output_attention=True,
+                    top_k=graph_top_k, num_layers=graph_num_layers,
+                    temporal_evolution=(graph_type == 'temporal_sparse' or graph_temporal_evolution),
+                    edge_features=graph_edge_features,
+                    num_nodes=variable_num,
+                )
+        else:
+            self.cross_mixing = None
         # Use low-rank factorization for high-dimensional inputs
         input_dim = d_model * variable_num
         self.use_low_rank = variable_num >= low_rank_threshold
@@ -388,9 +401,9 @@ class VariableSelectionNetwork(nn.Module):
 
 
 class StaticCovariateEncoder(nn.Module):
-    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64):
+    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64, graph_type='dense', graph_top_k=10, graph_num_layers=2, graph_temporal_evolution=False, graph_edge_features=False):
         super(StaticCovariateEncoder, self).__init__()
-        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass, n_selection_heads=n_selection_heads, per_feature_gating=per_feature_gating, low_rank_threshold=low_rank_threshold) if static_len else None
+        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass, n_selection_heads=n_selection_heads, per_feature_gating=per_feature_gating, low_rank_threshold=low_rank_threshold, graph_type=graph_type, graph_top_k=graph_top_k, graph_num_layers=graph_num_layers, graph_temporal_evolution=graph_temporal_evolution, graph_edge_features=graph_edge_features) if static_len else None
         self.grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(4)])
 
     def forward(self, static_input, return_weights: bool = False):
@@ -1045,6 +1058,11 @@ class Model(nn.Module):
         self.per_feature_gating = getattr(configs, 'tft_vsn_per_feature_gating', False)
         self.vsn_low_rank_threshold = int(getattr(configs, 'tft_vsn_low_rank_threshold', 64))
         self.use_covariate_reattention = getattr(configs, 'tft_covariate_reattention', False)
+        self.graph_type = getattr(configs, 'tft_graph_type', 'dense')
+        self.graph_top_k = int(getattr(configs, 'tft_graph_top_k', 10))
+        self.graph_num_layers = int(getattr(configs, 'tft_graph_num_layers', 2))
+        self.graph_temporal_evolution = getattr(configs, 'tft_graph_temporal_evolution', False)
+        self.graph_edge_features = getattr(configs, 'tft_graph_edge_features', False)
         self.last_moe_aux_loss = None
 
         self.static_encoder = StaticCovariateEncoder(
@@ -1052,21 +1070,30 @@ class Model(nn.Module):
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
             residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
             per_feature_gating=self.per_feature_gating,
-            low_rank_threshold=self.vsn_low_rank_threshold
+            low_rank_threshold=self.vsn_low_rank_threshold,
+            graph_type=self.graph_type, graph_top_k=self.graph_top_k,
+            graph_num_layers=self.graph_num_layers, graph_temporal_evolution=self.graph_temporal_evolution,
+            graph_edge_features=self.graph_edge_features
         )
         self.history_vsn = VariableSelectionNetwork(
             configs.d_model, self.observed_len + self.known_len, dropout=configs.dropout,
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
             residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
             per_feature_gating=self.per_feature_gating,
-            low_rank_threshold=self.vsn_low_rank_threshold
+            low_rank_threshold=self.vsn_low_rank_threshold,
+            graph_type=self.graph_type, graph_top_k=self.graph_top_k,
+            graph_num_layers=self.graph_num_layers, graph_temporal_evolution=self.graph_temporal_evolution,
+            graph_edge_features=self.graph_edge_features
         )
         self.future_vsn = VariableSelectionNetwork(
             configs.d_model, self.known_len, dropout=configs.dropout,
             use_swiglu=self.use_swiglu, cross_variable_mixing=self.cross_mix, n_heads=self.n_heads,
             residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
             per_feature_gating=self.per_feature_gating,
-            low_rank_threshold=self.vsn_low_rank_threshold
+            low_rank_threshold=self.vsn_low_rank_threshold,
+            graph_type=self.graph_type, graph_top_k=self.graph_top_k,
+            graph_num_layers=self.graph_num_layers, graph_temporal_evolution=self.graph_temporal_evolution,
+            graph_edge_features=self.graph_edge_features
         )
         self.temporal_fusion_decoder = TemporalFusionDecoder(configs)
         if self.use_quantile_head:

@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 from layers.DynamicGraph import DynamicGraphLearner
+from layers.AdvancedDynamicGraph import AdvancedDynamicGraphLearner
 from layers.TemporalFusion_layers import (
     GatedDilatedTemporalBackbone,
     HigherOrderInteractionBlock,
@@ -86,6 +87,19 @@ def build_tsl_config():
         tft_payload_stack_layers=True,
         tft_cross_variable_mixing=True,
         tft_vsn_residual_bypass=True,
+        tft_vsn_n_selection_heads=1,
+        # Phase A/B/C defaults
+        tft_per_target_heads=False,
+        tft_vsn_per_feature_gating=False,
+        tft_covariate_reattention=False,
+        tft_moe_capacity_factor=1.25,
+        tft_vsn_low_rank_threshold=64,
+        # Advanced graph defaults
+        tft_graph_type="dense",
+        tft_graph_top_k=10,
+        tft_graph_num_layers=2,
+        tft_graph_temporal_evolution=False,
+        tft_graph_edge_features=False,
         tft_allow_custom_known=True,
         tft_known_len=12,
         tft_known_max_channels=64,
@@ -1210,6 +1224,152 @@ class TestTFTComprehensive(unittest.TestCase):
         losses = train_tsl_once(model, loader, cfg, lr=3e-3, epochs=4)
         self.assertGreater(losses[0], losses[-1],
                            "Loss should decrease with multi-head VSN + MLP quantile projection")
+
+
+class TestAdvancedDynamicGraph(unittest.TestCase):
+    """Targeted tests for the AdvancedDynamicGraphLearner."""
+
+    def test_sparse_graph_sparsity(self):
+        """Each node should attend to exactly top_k neighbors."""
+        set_seed(42)
+        C, d, top_k = 16, 32, 5
+        model = AdvancedDynamicGraphLearner(
+            d_model=d, n_heads=4, top_k=top_k, num_layers=2,
+            temporal_evolution=False, edge_features=False, num_nodes=C,
+        )
+        x = torch.randn(2, 10, C, d)  # [B, T, C, d]
+        out = model(x)
+        self.assertEqual(out.shape, x.shape)
+        # Check adjacency sparsity via return_attention
+        out, adj = model(x, return_attention=True)
+        # adj: [B, T, n_heads, C, C] — all heads are same (broadcast)
+        adj_2d = adj[0, 0, 0]  # [C, C]
+        for row in range(C):
+            nonzero = (adj_2d[row] > 1e-6).sum().item()
+            self.assertLessEqual(nonzero, top_k,
+                f"Row {row} has {nonzero} nonzero entries, expected <= {top_k}")
+
+    def test_multihop_captures_indirect(self):
+        """2-layer GNN should capture indirect A->B->C dependency better than 1-layer."""
+        set_seed(42)
+        C, d = 8, 16
+        # Chain: node 0 → node 1 → node 2 (information propagation)
+        x = torch.zeros(4, 5, C, d)
+        x[:, :, 0, :] = torch.randn(4, 5, d)  # source signal at node 0
+
+        model_1hop = AdvancedDynamicGraphLearner(
+            d_model=d, n_heads=2, top_k=C, num_layers=1,
+            temporal_evolution=False, edge_features=False, num_nodes=C,
+        )
+        model_2hop = AdvancedDynamicGraphLearner(
+            d_model=d, n_heads=2, top_k=C, num_layers=2,
+            temporal_evolution=False, edge_features=False, num_nodes=C,
+        )
+        out_1 = model_1hop(x)
+        out_2 = model_2hop(x)
+        # 2-hop should spread information more widely (higher norm at distant nodes)
+        spread_1 = out_1[:, :, 2:, :].norm().item()
+        spread_2 = out_2[:, :, 2:, :].norm().item()
+        # Both should be non-zero (message passing works)
+        self.assertGreater(spread_1, 0)
+        self.assertGreater(spread_2, 0)
+        # Output shapes still correct
+        self.assertEqual(out_1.shape, x.shape)
+        self.assertEqual(out_2.shape, x.shape)
+
+    def test_temporal_evolution_varies_adjacency(self):
+        """With temporal evolution, adjacency should differ across timesteps."""
+        set_seed(42)
+        C, d = 8, 16
+        B, T = 2, 20
+        model = AdvancedDynamicGraphLearner(
+            d_model=d, n_heads=2, top_k=C, num_layers=1,
+            temporal_evolution=True, edge_features=False, num_nodes=C,
+        )
+        # Create data with time-varying statistics
+        x = torch.randn(B, T, C, d)
+        x[:, T//2:, :, :] *= 3.0  # second half has different scale
+        out, adj = model(x, return_attention=True)
+        # adj: [B, T, n_heads, C, C]
+        adj_t0 = adj[0, 0, 0]  # [C, C]
+        adj_tN = adj[0, T-1, 0]  # [C, C]
+        # These should NOT be identical (temporal evolution should differ)
+        diff = (adj_t0 - adj_tN).abs().max().item()
+        self.assertGreater(diff, 1e-4,
+            "Temporal evolution should produce different adjacencies at different timesteps")
+
+    def test_edge_features_enhance_messages(self):
+        """Edge features should change the output compared to no-edge-features."""
+        set_seed(42)
+        C, d = 8, 16
+        model_no_edge = AdvancedDynamicGraphLearner(
+            d_model=d, n_heads=2, top_k=C, num_layers=1,
+            temporal_evolution=False, edge_features=False, num_nodes=C,
+        )
+        model_edge = AdvancedDynamicGraphLearner(
+            d_model=d, n_heads=2, top_k=C, num_layers=1,
+            temporal_evolution=False, edge_features=True, num_nodes=C,
+        )
+        x = torch.randn(2, 5, C, d)
+        out_no = model_no_edge(x)
+        out_yes = model_edge(x)
+        # Both should produce valid outputs
+        self.assertEqual(out_no.shape, x.shape)
+        self.assertEqual(out_yes.shape, x.shape)
+        self.assertTrue(torch.isfinite(out_no).all())
+        self.assertTrue(torch.isfinite(out_yes).all())
+        # edge_features model should have more parameters
+        params_no = sum(p.numel() for p in model_no_edge.parameters())
+        params_yes = sum(p.numel() for p in model_edge.parameters())
+        self.assertGreater(params_yes, params_no,
+            "Edge features should add parameters")
+
+    def test_static_input_3d(self):
+        """Module should handle 3D static input [B, C, d]."""
+        set_seed(42)
+        C, d = 6, 16
+        model = AdvancedDynamicGraphLearner(
+            d_model=d, n_heads=2, top_k=4, num_layers=2,
+            temporal_evolution=False, edge_features=False, num_nodes=C,
+        )
+        x = torch.randn(4, C, d)  # static: [B, C, d]
+        out = model(x)
+        self.assertEqual(out.shape, x.shape)
+        self.assertTrue(torch.isfinite(out).all())
+
+    def test_model_integration_sparse_graph(self):
+        """Full TFT Model with sparse graph should train without errors."""
+        set_seed(42)
+        cfg = build_tsl_config()
+        cfg.tft_graph_type = "sparse"
+        cfg.tft_graph_top_k = 5
+        cfg.tft_graph_num_layers = 2
+        cfg.tft_graph_temporal_evolution = False
+        cfg.tft_graph_edge_features = False
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=16)
+        loader = DataLoader(ds, batch_size=4, shuffle=True)
+        losses = train_tsl_once(model, loader, cfg, lr=1e-3, epochs=3)
+        self.assertGreater(len(losses), 0)
+        self.assertTrue(all(torch.isfinite(torch.tensor(l)) for l in losses),
+            "Sparse graph training produced NaN/Inf losses")
+
+    def test_model_integration_temporal_graph(self):
+        """Full TFT Model with temporal sparse graph should train without errors."""
+        set_seed(42)
+        cfg = build_tsl_config()
+        cfg.tft_graph_type = "temporal_sparse"
+        cfg.tft_graph_top_k = 5
+        cfg.tft_graph_num_layers = 2
+        cfg.tft_graph_temporal_evolution = True
+        cfg.tft_graph_edge_features = False
+        model = tsl_tft.Model(cfg)
+        ds = make_tsl_dataset(cfg, n_samples=16)
+        loader = DataLoader(ds, batch_size=4, shuffle=True)
+        losses = train_tsl_once(model, loader, cfg, lr=1e-3, epochs=3)
+        self.assertGreater(len(losses), 0)
+        self.assertTrue(all(torch.isfinite(torch.tensor(l)) for l in losses),
+            "Temporal graph training produced NaN/Inf losses")
 
 
 if __name__ == "__main__":

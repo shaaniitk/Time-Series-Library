@@ -253,6 +253,16 @@ if __name__ == '__main__':
                         help='Expert capacity factor for TFT MoE; each expert handles at most capacity_factor * tokens/num_experts tokens.')
     parser.add_argument('--tft_vsn_low_rank_threshold', type=int, default=64,
                         help='When variable_num >= this threshold, VSN uses low-rank factorization for weight generation.')
+    parser.add_argument('--tft_graph_type', type=str, default='dense', choices=['dense', 'sparse', 'temporal_sparse'],
+                        help='Graph learner type for TFT cross-variable mixing: dense (original), sparse (top-k), temporal_sparse (top-k + GRU evolution).')
+    parser.add_argument('--tft_graph_top_k', type=int, default=10,
+                        help='Max neighbors per node in sparse TFT graph learner.')
+    parser.add_argument('--tft_graph_num_layers', type=int, default=2,
+                        help='Number of GNN message-passing layers in advanced TFT graph learner.')
+    parser.add_argument('--tft_graph_temporal_evolution', action='store_true', default=False,
+                        help='Enable GRU-based temporal adjacency evolution in TFT graph learner.')
+    parser.add_argument('--tft_graph_edge_features', action='store_true', default=False,
+                        help='Enable learnable edge features in TFT graph message passing.')
 
     # TimeFilter
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')
