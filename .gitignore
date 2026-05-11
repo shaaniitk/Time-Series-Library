@@ -182,6 +182,20 @@ environment.txt
 .mcp.json
 .gitmodules
 
+# Local shell/editor configuration
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.gitconfig
+.ripgreprc
+.vscode/
+.claude/
+.serena/
+.mcp.json
+.gitmodules
+
 # Local debugging and training artifacts
 TFT_Denormalization_Issue_Analysis.md
 diag.py
