@@ -80,6 +80,9 @@ def get_target_pos(configs) -> list:
     if target_pos is None:
         if configs.c_out == configs.enc_in:
             return [x for x in range(configs.c_out)]
+        elif configs.c_out == 1 and configs.enc_in > 1:
+            # Default to the last column (OT) for MS (multivariate to univariate) forecasting
+            return [configs.enc_in - 1]
         raise KeyError(
             "tft_target_pos is required when c_out != enc_in. "
             "Provide explicit source indices in encoder features for each target channel."
@@ -498,7 +501,11 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.rope_base = float(getattr(configs, 'tft_rope_base', 10000.0))
         self.alibi_scale = float(getattr(configs, 'tft_alibi_scale', 1.0))
         self.use_lag_attention = getattr(configs, 'tft_use_lag_attention', False)
-        self.lag_scales = list(getattr(configs, 'tft_lag_scales', [1, 2, 4, 8]))
+        _lag_raw = getattr(configs, 'tft_lag_scales', [1, 2, 4, 8])
+        if isinstance(_lag_raw, str):
+            self.lag_scales = [int(x) for x in _lag_raw.split(',')]
+        else:
+            self.lag_scales = list(_lag_raw)
         self.temporal_backbone_type = getattr(configs, 'tft_temporal_backbone', 'hybrid_tcn_lstm')
         self.temporal_backbone_layers = int(getattr(configs, 'tft_temporal_backbone_layers', 3))
         self.temporal_kernel_size = int(getattr(configs, 'tft_temporal_kernel_size', 3))

@@ -167,3 +167,27 @@ result_anomaly_detection.txt
 scripts/augmentation/
 run_anylearn.py
 environment.txt
+
+# Local shell and editor configuration
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.gitconfig
+.ripgreprc
+.vscode/
+.claude/
+.serena/
+.mcp.json
+.gitmodules
+
+# Local debugging and training artifacts
+TFT_Denormalization_Issue_Analysis.md
+diag.py
+diag2.py
+diag3.py
+test_val_loss.py
+train_tft.py
+tft_*.txt
+*_pid.txt

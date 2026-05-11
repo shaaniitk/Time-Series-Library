@@ -331,11 +331,14 @@ if __name__ == '__main__':
             print(f"Registered datasets: {list(datatype_dict.keys())}")
             sys.exit(1)
         if args.c_out != args.enc_in and args.tft_target_pos is None:
-            print(
-                "ERROR: For TemporalFusionTransformer with c_out != enc_in, "
-                "you must provide --tft_target_pos."
-            )
-            sys.exit(1)
+            if args.c_out == 1 and args.enc_in > 1:
+                pass # The model handles this MS fallback automatically
+            else:
+                print(
+                    "ERROR: For TemporalFusionTransformer with c_out != enc_in, "
+                    "you must provide --tft_target_pos."
+                )
+                sys.exit(1)
 
 
     if args.task_name == 'long_term_forecast':
