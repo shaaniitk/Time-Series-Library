@@ -406,17 +406,42 @@ class VariableSelectionNetwork(nn.Module):
 class StaticCovariateEncoder(nn.Module):
     def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64, graph_type='dense', graph_top_k=10, graph_num_layers=2, graph_temporal_evolution=False, graph_edge_features=False):
         super(StaticCovariateEncoder, self).__init__()
-        self.static_vsn = VariableSelectionNetwork(d_model, static_len, dropout=dropout, use_swiglu=use_swiglu, cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass, n_selection_heads=n_selection_heads, per_feature_gating=per_feature_gating, low_rank_threshold=low_rank_threshold, graph_type=graph_type, graph_top_k=graph_top_k, graph_num_layers=graph_num_layers, graph_temporal_evolution=graph_temporal_evolution, graph_edge_features=graph_edge_features) if static_len else None
+        if static_len:
+            vsn_kwargs = dict(
+                d_model=d_model, variable_num=static_len, dropout=dropout, use_swiglu=use_swiglu,
+                cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass,
+                n_selection_heads=n_selection_heads, per_feature_gating=per_feature_gating,
+                low_rank_threshold=low_rank_threshold, graph_type=graph_type, graph_top_k=graph_top_k,
+                graph_num_layers=graph_num_layers, graph_temporal_evolution=graph_temporal_evolution,
+                graph_edge_features=graph_edge_features
+            )
+            self.static_vsn_cs = VariableSelectionNetwork(**vsn_kwargs)
+            self.static_vsn_cc = VariableSelectionNetwork(**vsn_kwargs)
+            self.static_vsn_ch = VariableSelectionNetwork(**vsn_kwargs)
+            self.static_vsn_ce = VariableSelectionNetwork(**vsn_kwargs)
+        else:
+            self.static_vsn_cs = None
+            self.static_vsn_cc = None
+            self.static_vsn_ch = None
+            self.static_vsn_ce = None
         self.grns = nn.ModuleList([GRN(d_model, d_model, dropout=dropout, use_swiglu=use_swiglu) for _ in range(4)])
 
     def forward(self, static_input, return_weights: bool = False):
         # static_input: [B,C,d]
         if static_input is not None:
             if return_weights:
-                static_features, static_weights = self.static_vsn(static_input, return_weights=True)
-                return [grn(static_features) for grn in self.grns], static_weights
-            static_features = self.static_vsn(static_input)
-            return [grn(static_features) for grn in self.grns]
+                feat_cs, w_cs = self.static_vsn_cs(static_input, return_weights=True)
+                feat_cc, w_cc = self.static_vsn_cc(static_input, return_weights=True)
+                feat_ch, w_ch = self.static_vsn_ch(static_input, return_weights=True)
+                feat_ce, w_ce = self.static_vsn_ce(static_input, return_weights=True)
+                feats = [feat_cs, feat_cc, feat_ch, feat_ce]
+                return [grn(f) for grn, f in zip(self.grns, feats)], {'c_s': w_cs, 'c_c': w_cc, 'c_h': w_ch, 'c_e': w_ce}
+            feat_cs = self.static_vsn_cs(static_input)
+            feat_cc = self.static_vsn_cc(static_input)
+            feat_ch = self.static_vsn_ch(static_input)
+            feat_ce = self.static_vsn_ce(static_input)
+            feats = [feat_cs, feat_cc, feat_ch, feat_ce]
+            return [grn(f) for grn, f in zip(self.grns, feats)]
         else:
             if return_weights:
                 return [None] * 4, None
@@ -738,8 +763,9 @@ class TemporalFusionDecoderLayer(nn.Module):
         if self.use_explicit_cross_attention:
             enriched_history = enriched_features[:, :compressed_history_len, :]
             enriched_future = enriched_features[:, compressed_history_len:, :]
-            history_positions = torch.arange(compressed_history_len, device=enriched_features.device)
-            future_positions = torch.arange(compressed_history_len, compressed_history_len + enriched_future.shape[1], device=enriched_features.device)
+            tc_stride = self.temporal_compression.stride if _tc_active else 1
+            history_positions = torch.arange(0, history_len, step=tc_stride, device=enriched_features.device)[:compressed_history_len]
+            future_positions = torch.arange(history_len, history_len + enriched_future.shape[1], device=enriched_features.device)
             if self.cross_attention_type == 'interpretable':
                 if return_attention:
                     cross_out, cross_attention_prob = self.cross_attention(
@@ -1062,7 +1088,9 @@ class Model(nn.Module):
         self.vsn_residual_bypass = getattr(configs, 'tft_vsn_residual_bypass', True)
         self.n_heads = getattr(configs, 'n_heads', 4)
         self.n_selection_heads = int(getattr(configs, 'tft_vsn_n_selection_heads', 1))
-        self.per_feature_gating = getattr(configs, 'tft_vsn_per_feature_gating', False)
+        self.per_feature_gating = getattr(configs, 'tft_vsn_per_feature_gating', None)
+        if self.per_feature_gating is None:
+            self.per_feature_gating = ((self.observed_len + self.known_len) >= 10)
         self.vsn_low_rank_threshold = int(getattr(configs, 'tft_vsn_low_rank_threshold', 64))
         self.use_covariate_reattention = getattr(configs, 'tft_covariate_reattention', False)
         self.graph_type = getattr(configs, 'tft_graph_type', 'dense')

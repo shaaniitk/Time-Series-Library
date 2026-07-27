@@ -16,7 +16,10 @@ class EnhancedGRN(nn.Module):
     def forward(self, a, c: Optional[torch.Tensor] = None):
         x = self.grn.lin_a(a)
         if c is not None:
-            x = x + self.grn.lin_c(c).unsqueeze(1)
+            c_proj = self.grn.lin_c(c)
+            if c_proj.ndim == 2:
+                c_proj = c_proj.unsqueeze(1)
+            x = x + c_proj
         x = F.elu(x)
         x = self.grn.lin_i(x)
         x = self.grn.dropout(x)
@@ -35,8 +38,11 @@ class EnhancedGRN(nn.Module):
 class EnhancedVSN(nn.Module):
     def __init__(self, hidden_size, num_inputs, dropout):
         super().__init__()
-        # VSN Initialization
-        self.vsn = VariableSelectionNetwork(hidden_size, num_inputs, dropout)
+        # VSN Initialization with version compatibility
+        try:
+            self.vsn = VariableSelectionNetwork(hidden_size, num_inputs, dropout)
+        except TypeError:
+            self.vsn = VariableSelectionNetwork(hidden_size, num_inputs, dropout, None)
         
         # Upgrade the sub-GRNs inside VSN with our EnhancedGRN
         self.vsn.joint_grn = EnhancedGRN(
@@ -127,10 +133,14 @@ class ContinuousTFTEmbedding(nn.Module):
         k_inp = self._apply_continuous_embedding(futr_exog, self.futr_input_size)
         o_inp = None 
 
+        while target_inp.ndim < 4:
+            target_inp = target_inp.unsqueeze(-1)
         target_inp = torch.matmul(
-            target_inp.unsqueeze(3).unsqueeze(4),
+            target_inp,
             self.tft_embed.tgt_embedding_vectors.unsqueeze(1),
-        ).squeeze(3)
+        )
+        if target_inp.ndim == 5:
+            target_inp = target_inp.squeeze(-2)
         target_inp = target_inp + self.tft_embed.tgt_embedding_bias
 
         return s_inp, k_inp, o_inp, target_inp
@@ -205,7 +215,12 @@ class Model(nn.Module):
                 setattr(module, name, EnhancedGRN(child.lin_a.in_features, child.lin_i.in_features, out_size, ctx_size, child.dropout.p))
             # Replace TFTEmbedding with Custom Continuous embedding
             elif isinstance(child, TFTEmbedding):
-                setattr(module, name, ContinuousTFTEmbedding(child.hidden_size, child.stat_input_size, child.futr_input_size, child.hist_input_size, child.tgt_size))
+                new_embed = ContinuousTFTEmbedding(child.hidden_size, child.stat_input_size, child.futr_input_size, child.hist_input_size, child.tgt_size)
+                if hasattr(child, 'tgt_embedding_vectors') and hasattr(new_embed.tft_embed, 'tgt_embedding_vectors'):
+                    new_embed.tft_embed.tgt_embedding_vectors.data.copy_(child.tgt_embedding_vectors.data)
+                if hasattr(child, 'tgt_embedding_bias') and hasattr(new_embed.tft_embed, 'tgt_embedding_bias'):
+                    new_embed.tft_embed.tgt_embedding_bias.data.copy_(child.tgt_embedding_bias.data)
+                setattr(module, name, new_embed)
             # Replace Interpretable Attention with Dual Attention Fusion
             elif isinstance(child, InterpretableMultiHeadAttention):
                 # Deriving sequence_length safely instead of relying on private `child._mask`

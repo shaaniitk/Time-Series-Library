@@ -360,9 +360,9 @@ class SpectralBranch(nn.Module):
             # Extract selected modes: [B, D, k]
             selected = x_ft[:, :, mode_indices]
 
-            # Learnable complex multiply: weights are [D, modes] -> use first k
-            w_real = self.weight_real[:, :k]  # [D, k]
-            w_imag = self.weight_imag[:, :k]  # [D, k]
+            # Learnable complex multiply: weights are [D, modes] -> bind to physical mode_indices
+            w_real = self.weight_real[:, mode_indices]  # [D, k]
+            w_imag = self.weight_imag[:, mode_indices]  # [D, k]
             w_complex = torch.complex(w_real, w_imag)  # [D, k]
 
             # Element-wise complex multiplication: [B, D, k] * [D, k] -> [B, D, k]
