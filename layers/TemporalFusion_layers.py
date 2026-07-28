@@ -730,8 +730,8 @@ class RegimeAwareSparseMoE(nn.Module):
         if self.training and hasattr(self, 'capacity_factor'):
             B_dim, T_dim = sparse_probs.shape[0], sparse_probs.shape[1]
             capacity = int(self.capacity_factor * B_dim * T_dim * self.top_k / self.num_experts)
-            # Count tokens assigned to each expert and zero out overflow
-            flat_probs = sparse_probs.reshape(-1, self.num_experts)  # [B*T, E]
+            # .contiguous() ensures in-place edits on flat_probs propagate back to sparse_probs
+            flat_probs = sparse_probs.reshape(-1, self.num_experts).contiguous()  # [B*T, E]
             for e in range(self.num_experts):
                 expert_mask = flat_probs[:, e] > 0
                 assigned = expert_mask.sum().item()

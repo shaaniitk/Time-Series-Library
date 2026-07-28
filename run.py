@@ -1,5 +1,13 @@
 import argparse
 import os
+import sys
+
+if "MIOPEN_LOG_LEVEL" not in os.environ:
+    os.environ["MIOPEN_LOG_LEVEL"] = "3"
+
+if "HSA_OVERRIDE_GFX_VERSION" not in os.environ:
+    os.environ["HSA_OVERRIDE_GFX_VERSION"] = "11.0.0"
+
 import torch
 import torch.backends
 from utils.print_args import print_args

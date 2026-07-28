@@ -1,6 +1,19 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+if "MIOPEN_LOG_LEVEL" not in os.environ:
+    os.environ["MIOPEN_LOG_LEVEL"] = "3"
+
+if torch.cuda.is_available() and "HSA_OVERRIDE_GFX_VERSION" not in os.environ:
+    try:
+        arch = torch.cuda.get_device_properties(0).gcnArchName
+        if "gfx115" in arch:
+            os.environ["HSA_OVERRIDE_GFX_VERSION"] = "11.0.0"
+    except Exception:
+        pass
+
 from layers.Embed import DataEmbedding, TemporalEmbedding
 from layers.DynamicGraph import DynamicGraphLearner
 from layers.AdvancedDynamicGraph import AdvancedDynamicGraphLearner
@@ -495,7 +508,7 @@ class InterpretableMultiHeadAttention(nn.Module):
             warnings.warn("Attention scores exceeded the stability clamp threshold; values were clipped.")
             attention_score = attention_score.clamp(min=-clamp_limit, max=clamp_limit)
         if T <= self._causal_mask_buf.shape[0]:
-            causal_mask = self._causal_mask_buf[:T, :T].to(attention_score.dtype)
+            causal_mask = self._causal_mask_buf[:T, :T].to(device=attention_score.device, dtype=attention_score.dtype)
         else:
             causal_mask = build_causal_mask(T, attention_score.device, attention_score.dtype)
         attention_score = attention_score + causal_mask
@@ -528,9 +541,11 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.use_lag_attention = getattr(configs, 'tft_use_lag_attention', False)
         _lag_raw = getattr(configs, 'tft_lag_scales', [1, 2, 4, 8])
         if isinstance(_lag_raw, str):
-            self.lag_scales = [int(x) for x in _lag_raw.split(',')]
+            self.lag_scales = [int(x.strip()) for x in _lag_raw.split(',') if x.strip()]
+        elif isinstance(_lag_raw, (list, tuple)):
+            self.lag_scales = [int(x) for x in _lag_raw]
         else:
-            self.lag_scales = list(_lag_raw)
+            self.lag_scales = [1, 2, 4, 8]
         self.temporal_backbone_type = getattr(configs, 'tft_temporal_backbone', 'hybrid_tcn_lstm')
         self.temporal_backbone_layers = int(getattr(configs, 'tft_temporal_backbone_layers', 3))
         self.temporal_kernel_size = int(getattr(configs, 'tft_temporal_kernel_size', 3))
@@ -809,7 +824,7 @@ class TemporalFusionDecoderLayer(nn.Module):
                 output_payload['cross_attention_type'] = self.cross_attention_type
         seq_len = enriched_features.shape[1]
         if seq_len <= self._causal_mask_buf.shape[0]:
-            attn_mask = self._causal_mask_buf[:seq_len, :seq_len].to(enriched_features.dtype)
+            attn_mask = self._causal_mask_buf[:seq_len, :seq_len].to(device=enriched_features.device, dtype=enriched_features.dtype)
         else:
             attn_mask = build_causal_mask(seq_len, enriched_features.device, enriched_features.dtype)
         attention_branches = []
@@ -1007,8 +1022,11 @@ class TemporalFusionDecoder(nn.Module):
             if self.training and self.stochastic_depth_rate > 0.0 and num_layers > 1 and layer_idx > 0:
                 drop_prob = layer_idx / (num_layers - 1) * self.stochastic_depth_rate
                 if torch.rand(1).item() < drop_prob:
-                    # Identity pass-through: recombine curr_history/curr_future as out for next split
+                    # Identity pass-through: keep curr_history/curr_future unchanged
                     out = torch.cat([curr_history, curr_future], dim=1)
+                    # Must update splits so the next layer receives the correct tensors
+                    curr_history = out[:, :history_input.shape[1], :]
+                    curr_future = out[:, history_input.shape[1]:, :]
                     if return_attention:
                         attention_payloads.append({})
                     continue
@@ -1169,8 +1187,8 @@ class Model(nn.Module):
             raise ValueError(
                 f"Decoder lengths must equal label_len+pred_len={expected_dec_len}, got x_dec={x_dec.shape[1]}, x_mark_dec={x_mark_dec.shape[1]}."
             )
-        if x_dec.shape[2] != self.configs.c_out:
-            raise ValueError(f"x_dec feature length must equal c_out={self.configs.c_out}, got {x_dec.shape[2]}.")
+        if x_dec.shape[2] != self.configs.c_out and x_dec.shape[2] != self.configs.enc_in:
+            raise ValueError(f"x_dec feature length must equal c_out={self.configs.c_out} or enc_in={self.configs.enc_in}, got {x_dec.shape[2]}.")
         
         if not getattr(self.configs, 'tft_allow_custom_known', False):
             if x_mark_enc.shape[2] != self.known_len:
