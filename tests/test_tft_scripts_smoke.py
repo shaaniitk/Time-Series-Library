@@ -80,6 +80,18 @@ class TestTFTScriptsSmoke(unittest.TestCase):
         self.assertIn("exact", output)
         self.assertIn("sdpa", output)
 
+    def test_profile_reference_benchmark_quick(self):
+        output = self._run_script(
+            Path("scripts/long_term_forecast/tft_profile_reference_benchmark.py"),
+            ["--quick", "--device", "cpu", "--output-dir", "results/tft_profile_reference_benchmark_test"],
+            timeout=300,
+        )
+        self.assertIn("Benchmark: TFT canonical vs extended_safe reference", output)
+        self.assertIn("canonical:", output)
+        self.assertIn("extended_safe:", output)
+        self.assertIn("Saved JSON:", output)
+        self.assertIn("Saved Markdown:", output)
+
     def test_backbone_harsh_ablation_quick(self):
         output = self._run_script(
             Path("scripts/long_term_forecast/tft_backbone_harsh_signal_ablation.py"),

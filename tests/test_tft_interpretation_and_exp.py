@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -146,6 +147,7 @@ def build_tft_args(checkpoint_dir):
         tft_payload_stack_layers=True,
         tft_known_len=12,
         tft_known_max_channels=32,
+        tft_known_feature_names=[f"known_{i}" for i in range(12)],
         alpha=0.1,
         top_p=0.5,
         pos=1,
@@ -212,6 +214,17 @@ class TestTFTInterpretationAndExp(unittest.TestCase):
             self.assertTrue(summary["has_lag_attention"])
             self.assertTrue(summary["has_higher_order"])
             self.assertTrue(summary["has_regime_moe"])
+            self.assertEqual(len(summary["history_feature_names"]), len(summary["observed_feature_names"]) + len(summary["known_feature_names"]))
+            self.assertEqual(summary["future_feature_names"], args.tft_known_feature_names)
+            self.assertEqual(summary["history_vsn_axis"], "history_features")
+            self.assertEqual(summary["future_vsn_axis"], "future_known_features")
+            self.assertIn("feature_name", summary["top_history_vsn_entries"][0])
+            self.assertIn("feature_name", summary["top_future_vsn_entries"][0])
+            self.assertFalse(summary["interpretation_flags"]["is_canonical_vsn_attribution"])
+            self.assertTrue(summary["interpretation_flags"]["uses_graph_pre_mixing"])
+            self.assertTrue(summary["interpretation_flags"]["uses_vsn_bypass"])
+            self.assertTrue(summary["interpretation_flags"]["uses_noninterpretable_attention_branch"])
+            self.assertTrue(summary["interpretation_flags"]["routing_is_detached"])
 
             output_path = Path(tmpdir) / "interpretation_summary.json"
             exported = export_tft_interpretation_summary(payload, output_path, top_k=2)
@@ -219,6 +232,88 @@ class TestTFTInterpretationAndExp(unittest.TestCase):
             self.assertTrue(output_path.exists())
             on_disk = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(on_disk["decoder_num_layers"], args.e_layers)
+            self.assertEqual(on_disk["future_feature_names"], args.tft_known_feature_names)
+
+    def test_static_interpretation_uses_feature_names(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = build_tft_args(tmpdir)
+            args.enc_in = 4
+            args.c_out = 1
+            args.dec_in = 1
+            args.tft_feature_names = ["target", "dynamic_aux", "dynamic_aux_2", "static_entity"]
+            args.tft_observed_pos = [0, 1, 2]
+            args.tft_static_pos = [3]
+            args.tft_target_pos = [0]
+            model = TinyLongForecastExp(args, {}).model
+            x_enc = torch.zeros(2, args.seq_len, args.enc_in)
+            x_enc[:, :, 0] = torch.linspace(0.0, 1.0, steps=args.seq_len)
+            x_enc[:, :, 1] = torch.linspace(1.0, 2.0, steps=args.seq_len)
+            x_enc[:, :, 2] = torch.linspace(2.0, 3.0, steps=args.seq_len)
+            x_enc[0, :, 3] = 5.0
+            x_enc[1, :, 3] = 50.0
+            x_mark_enc = torch.zeros(2, args.seq_len, args.tft_known_len)
+            x_dec = torch.zeros(2, args.label_len + args.pred_len, args.c_out)
+            x_mark_dec = torch.zeros(2, args.label_len + args.pred_len, args.tft_known_len)
+
+            payload = model(x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation=True)
+            summary = summarize_tft_interpretation(payload, top_k=2)
+
+            self.assertEqual(summary["static_feature_names"], ["static_entity"])
+            self.assertIn("c_s", summary["top_static_vsn_entries"])
+            self.assertEqual(summary["top_static_vsn_entries"]["c_s"][0]["feature_name"], "static_entity")
+            self.assertIn("c_s", summary["static_graph_attention_mean"])
+
+    def test_canonical_profile_sets_interpretation_flags_and_named_vsn_entries(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = build_tft_args(tmpdir)
+            args.enc_in = 5
+            args.c_out = 1
+            args.dec_in = 1
+            args.tft_feature_names = ["target", "obs_aux", "static_id", "known_hour", "known_holiday"]
+            args.tft_observed_pos = [0, 1]
+            args.tft_static_pos = [2]
+            args.tft_target_pos = [0]
+            args.tft_known_len = 2
+            args.tft_known_feature_names = ["known_hour", "known_holiday"]
+            args.tft_profile = "canonical"
+            args.tft_use_swiglu = False
+            args.tft_cross_variable_mixing = False
+            args.tft_vsn_residual_bypass = False
+            args.tft_full_attention = False
+            args.tft_dual_attention_fusion = False
+            args.tft_use_explicit_cross_attention = False
+            args.tft_attention_position_bias = "none"
+            args.tft_attention_backend = "exact"
+            args.tft_use_revin = False
+            args.tft_revin_affine = False
+            args.tft_use_higher_order = False
+            args.tft_use_regime_moe = False
+            args.tft_use_lag_attention = False
+            args.tft_use_fft_branch = False
+            args.tft_covariate_reattention = False
+            args.tft_payload_stack_layers = False
+            args.tft_temporal_backbone = "lstm"
+            args.tft_temporal_backbone_layers = 1
+            model = TinyLongForecastExp(args, {}).model
+
+            x_enc = torch.randn(2, args.seq_len, args.enc_in)
+            x_enc[:, :, 2] = x_enc[:, :1, 2]
+            x_mark_enc = torch.randn(2, args.seq_len, args.tft_known_len)
+            x_dec = torch.zeros(2, args.label_len + args.pred_len, args.c_out)
+            x_mark_dec = torch.randn(2, args.label_len + args.pred_len, args.tft_known_len)
+
+            payload = model(x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation=True)
+            summary = summarize_tft_interpretation(payload, top_k=2)
+
+            self.assertTrue(summary["interpretation_flags"]["is_canonical_vsn_attribution"])
+            self.assertFalse(summary["interpretation_flags"]["uses_graph_pre_mixing"])
+            self.assertFalse(summary["interpretation_flags"]["uses_vsn_bypass"])
+            self.assertFalse(summary["interpretation_flags"]["uses_noninterpretable_attention_branch"])
+            self.assertFalse(summary["interpretation_flags"]["routing_is_detached"])
+            self.assertEqual(summary["history_feature_names"], ["target", "obs_aux", "known_hour", "known_holiday"])
+            self.assertEqual(summary["future_feature_names"], ["known_hour", "known_holiday"])
+            self.assertIn(summary["top_history_vsn_entries"][0]["feature_name"], summary["history_feature_names"])
+            self.assertIn(summary["top_future_vsn_entries"][0]["feature_name"], summary["future_feature_names"])
 
     def test_quantile_loss_is_selectable(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -244,6 +339,36 @@ class TestTFTInterpretationAndExp(unittest.TestCase):
             self.assertIsNotNone(trained_model)
             self.assertTrue(Path(tmpdir, "tiny_tft_exp_smoke", "checkpoint.pth").exists())
             self.assertIsNotNone(getattr(exp.model, "last_moe_aux_loss", None))
+
+    def test_quantile_test_writes_calibration_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = build_tft_args(tmpdir)
+            args.train_epochs = 1
+            test_ds = make_exp_dataset(args, n_samples=8)
+            test_ds.scale = False
+            datasets = {
+                "train": (test_ds, DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)),
+                "val": (test_ds, DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)),
+                "test": (test_ds, DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)),
+            }
+            exp = TinyLongForecastExp(args, datasets)
+            cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                exp.test("tiny_tft_quantile_metrics", test=0)
+            finally:
+                os.chdir(cwd)
+
+            results_dir = Path(tmpdir) / "results" / "tiny_tft_quantile_metrics"
+            quantile_metrics_path = results_dir / "quantile_metrics.json"
+            quantile_pred_path = results_dir / "quantile_pred.npy"
+            self.assertTrue(quantile_metrics_path.exists())
+            self.assertTrue(quantile_pred_path.exists())
+            summary = json.loads(quantile_metrics_path.read_text(encoding="utf-8"))
+            self.assertIn("pinball", summary)
+            self.assertIn("coverage", summary)
+            self.assertIn("interval_width", summary)
+            self.assertIn("crossing_rate", summary)
 
 
 if __name__ == "__main__":

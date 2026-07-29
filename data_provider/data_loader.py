@@ -70,6 +70,7 @@ class Dataset_ETT_hour(Dataset):
             df_data = df_raw[cols_data]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
+        self.feature_names = tuple(df_data.columns.tolist())
 
         if self.scale:
             train_data = df_data[border1s[0]:border2s[0]]
@@ -170,6 +171,7 @@ class Dataset_ETT_minute(Dataset):
             df_data = df_raw[cols_data]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
+        self.feature_names = tuple(df_data.columns.tolist())
 
         if self.scale:
             train_data = df_data[border1s[0]:border2s[0]]
@@ -282,6 +284,7 @@ class Dataset_Custom(Dataset):
             df_data = df_raw[cols_data]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
+        self.feature_names = tuple(df_data.columns.tolist())
 
         if self.scale:
             train_data = df_data[border1s[0]:border2s[0]]

@@ -6,6 +6,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def _debug_check_finite(enabled: bool, tensor: torch.Tensor, message: str):
+    if enabled and not torch.isfinite(tensor).all():
+        raise ValueError(message)
+
+
 def build_causal_mask(seq_len: int, device, dtype):
     return torch.triu(torch.full((seq_len, seq_len), float('-inf'), device=device, dtype=dtype), 1)
 
@@ -70,7 +75,7 @@ def build_alibi_bias(num_heads, query_len, key_len, device, dtype, query_positio
 
 
 class PositionalMultiHeadAttention(nn.Module):
-    def __init__(self, d_model, n_heads, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact'):
+    def __init__(self, d_model, n_heads, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact', debug_checks: bool = False, attn_dropout: float = 0.0):
         super(PositionalMultiHeadAttention, self).__init__()
         if d_model % n_heads != 0:
             raise ValueError("d_model must be divisible by n_heads for PositionalMultiHeadAttention.")
@@ -85,6 +90,8 @@ class PositionalMultiHeadAttention(nn.Module):
         self.rope_base = float(rope_base)
         self.alibi_scale = float(alibi_scale)
         self.attention_backend = attention_backend
+        self.debug_checks = debug_checks
+        self.attn_dropout = float(attn_dropout)
         self.last_attention_backend = None
         self.q_linear = nn.Linear(d_model, d_model, bias=False)
         self.k_linear = nn.Linear(d_model, d_model, bias=False)
@@ -93,7 +100,7 @@ class PositionalMultiHeadAttention(nn.Module):
         self.out_dropout = nn.Dropout(dropout)
         self.scale = self.d_head ** -0.5
 
-    def _build_attention_bias(self, query, query_len, key_len, attn_mask=None, query_positions=None, key_positions=None):
+    def _build_attention_bias(self, query, query_len, key_len, attn_mask=None, query_positions=None, key_positions=None, key_padding_mask=None):
         attention_bias = None
         if self.position_bias_type == 'alibi':
             attention_bias = build_alibi_bias(
@@ -111,6 +118,15 @@ class PositionalMultiHeadAttention(nn.Module):
                 raise ValueError(f"attn_mask must be rank-2 [T,S], got shape {tuple(attn_mask.shape)}.")
             attn_mask = attn_mask.unsqueeze(0).unsqueeze(0)
             attention_bias = attn_mask if attention_bias is None else attention_bias + attn_mask
+        if key_padding_mask is not None:
+            if key_padding_mask.ndim != 2 or key_padding_mask.shape != (query.shape[0], key_len):
+                raise ValueError(
+                    f"key_padding_mask must be rank-2 [B,S] matching batch/key length, got shape {tuple(key_padding_mask.shape)}."
+                )
+            padding_bias = torch.zeros(
+                query.shape[0], 1, 1, key_len, device=query.device, dtype=query.dtype
+            ).masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(1), float('-inf'))
+            attention_bias = padding_bias if attention_bias is None else attention_bias + padding_bias
         return attention_bias
 
     def forward(
@@ -122,6 +138,7 @@ class PositionalMultiHeadAttention(nn.Module):
         attn_mask=None,
         query_positions=None,
         key_positions=None,
+        key_padding_mask=None,
     ):
         if query.ndim != 3 or key.ndim != 3 or value.ndim != 3:
             raise ValueError(
@@ -136,8 +153,9 @@ class PositionalMultiHeadAttention(nn.Module):
         if self.position_bias_type == 'rope':
             q, k = apply_rotary_embedding(q, k, query_positions=query_positions, key_positions=key_positions, base=self.rope_base)
 
-        if not torch.isfinite(q).all() or not torch.isfinite(k).all() or not torch.isfinite(v).all():
-            raise ValueError("Attention projections contain NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, q, "Attention projections contain NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, k, "Attention projections contain NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, v, "Attention projections contain NaN/Inf values.")
 
         attention_bias = self._build_attention_bias(
             query,
@@ -146,6 +164,7 @@ class PositionalMultiHeadAttention(nn.Module):
             attn_mask=attn_mask,
             query_positions=query_positions,
             key_positions=key_positions,
+            key_padding_mask=key_padding_mask,
         )
 
         if self.attention_backend == 'sdpa' and not return_attention:
@@ -154,7 +173,7 @@ class PositionalMultiHeadAttention(nn.Module):
                 k,
                 v,
                 attn_mask=attention_bias,
-                dropout_p=0.0,
+                dropout_p=(self.attn_dropout if self.training else 0.0),
                 is_causal=False,
             )
             self.last_attention_backend = 'sdpa'
@@ -164,23 +183,25 @@ class PositionalMultiHeadAttention(nn.Module):
             return out
 
         attention_score = torch.matmul(q, k.transpose(-2, -1)) * self.scale
-        if not torch.isfinite(attention_score).all():
-            raise ValueError("Attention scores contain NaN/Inf values before biasing.")
+        _debug_check_finite(self.debug_checks, attention_score, "Attention scores contain NaN/Inf values before biasing.")
         if attention_bias is not None:
             attention_score = attention_score + attention_bias.to(dtype=attention_score.dtype)
-        if torch.isnan(attention_score).any():
+        if self.debug_checks and torch.isnan(attention_score).any():
             raise ValueError("Attention scores contain NaN values after biasing.")
         clamp_limit = 1e4
         finite_mask = torch.isfinite(attention_score)
         if finite_mask.any() and (attention_score.masked_select(finite_mask).abs() > clamp_limit).any():
             clamped = attention_score.clamp(min=-clamp_limit, max=clamp_limit)
             attention_score = torch.where(finite_mask, clamped, attention_score)
-        attention_prob = F.softmax(attention_score, dim=-1)
-        if not torch.isfinite(attention_prob).all():
-            raise ValueError("Attention probabilities contain NaN/Inf values.")
+        fully_masked = ~torch.isfinite(attention_score).any(dim=-1, keepdim=True)
+        safe_scores = torch.where(fully_masked, torch.zeros_like(attention_score), attention_score)
+        attention_prob = F.softmax(safe_scores, dim=-1)
+        attention_prob = torch.where(fully_masked, torch.zeros_like(attention_prob), attention_prob)
+        _debug_check_finite(self.debug_checks, attention_prob, "Attention probabilities contain NaN/Inf values.")
+        attention_prob_used = F.dropout(attention_prob, p=self.attn_dropout, training=self.training)
 
         self.last_attention_backend = 'exact'
-        attention_out = torch.matmul(attention_prob, v)
+        attention_out = torch.matmul(attention_prob_used, v)
         attention_out = attention_out.permute(0, 2, 1, 3).contiguous().view(batch_size, query_len, self.n_heads * self.d_head)
         out = self.out_projection(attention_out)
         out = self.out_dropout(out)
@@ -213,7 +234,7 @@ class CausalConv1d(nn.Module):
 
 
 class GatedDilatedTemporalBlock(nn.Module):
-    def __init__(self, d_model, hidden_size=None, kernel_size=3, dilation=1, dropout=0.0):
+    def __init__(self, d_model, hidden_size=None, kernel_size=3, dilation=1, dropout=0.0, debug_checks: bool = False):
         super(GatedDilatedTemporalBlock, self).__init__()
         hidden_size = d_model if not hidden_size or hidden_size <= 0 else hidden_size
         if hidden_size <= 0:
@@ -223,24 +244,23 @@ class GatedDilatedTemporalBlock(nn.Module):
         self.out_projection = nn.Conv1d(hidden_size, d_model, kernel_size=1)
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(d_model)
+        self.debug_checks = debug_checks
 
     def forward(self, x):
         if x.ndim != 3:
             raise ValueError(f"GatedDilatedTemporalBlock expects rank-3 [B,T,D] input, got shape {tuple(x.shape)}.")
-        if not torch.isfinite(x).all():
-            raise ValueError("Temporal block input contains NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, x, "Temporal block input contains NaN/Inf values.")
         x_conv = x.transpose(1, 2)
         filtered = torch.tanh(self.filter_conv(x_conv))
         gated = torch.sigmoid(self.gate_conv(x_conv))
         mixed = self.out_projection(self.dropout(filtered * gated)).transpose(1, 2)
         out = self.layer_norm(x + mixed)
-        if not torch.isfinite(out).all():
-            raise ValueError("Temporal block output contains NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, out, "Temporal block output contains NaN/Inf values.")
         return out
 
 
 class GatedDilatedTemporalBackbone(nn.Module):
-    def __init__(self, d_model, num_layers=3, kernel_size=3, hidden_size=None, dropout=0.0):
+    def __init__(self, d_model, num_layers=3, kernel_size=3, hidden_size=None, dropout=0.0, debug_checks: bool = False):
         super(GatedDilatedTemporalBackbone, self).__init__()
         if num_layers <= 0:
             raise ValueError("num_layers must be positive for GatedDilatedTemporalBackbone.")
@@ -251,6 +271,7 @@ class GatedDilatedTemporalBackbone(nn.Module):
                 kernel_size=kernel_size,
                 dilation=2 ** idx,
                 dropout=dropout,
+                debug_checks=debug_checks,
             )
             for idx in range(num_layers)
         ])
@@ -262,7 +283,7 @@ class GatedDilatedTemporalBackbone(nn.Module):
 
 
 class HybridTemporalBackbone(nn.Module):
-    def __init__(self, d_model, num_layers=3, kernel_size=3, hidden_size=None, dropout=0.0):
+    def __init__(self, d_model, num_layers=3, kernel_size=3, hidden_size=None, dropout=0.0, debug_checks: bool = False):
         super(HybridTemporalBackbone, self).__init__()
         self.tcn_backbone = GatedDilatedTemporalBackbone(
             d_model,
@@ -270,6 +291,7 @@ class HybridTemporalBackbone(nn.Module):
             kernel_size=kernel_size,
             hidden_size=hidden_size,
             dropout=dropout,
+            debug_checks=debug_checks,
         )
         self.recurrent_backbone = nn.LSTM(d_model, d_model, batch_first=True)
         self.fusion_gate = nn.Linear(d_model * 2, d_model)
@@ -309,10 +331,55 @@ class SpectralBranch(nn.Module):
         nn.init.xavier_uniform_(self.weight_imag)
         # Learned soft mask over all frequency bins (used when mode_select='learned')
         if mode_select == 'learned':
-            self.freq_mask_logits = nn.Parameter(torch.zeros(1, d_model, 1))  # broadcast over freqs, learned per-channel
+            self.freq_mask_logits = nn.Parameter(torch.zeros(1, d_model, modes))
         self.out_projection = nn.Linear(d_model, d_model)
         self.layer_norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
+
+    def _interpolate_learned_spectral_params(self, n_freqs: int):
+        if self.mode_select != 'learned':
+            raise RuntimeError("_interpolate_learned_spectral_params is only valid for mode_select='learned'.")
+        if n_freqs < 1:
+            raise ValueError("n_freqs must be positive.")
+        if self.freq_mask_logits.shape[-1] == n_freqs:
+            mask_logits = self.freq_mask_logits
+            weight_real = self.weight_real.unsqueeze(0)
+            weight_imag = self.weight_imag.unsqueeze(0)
+        else:
+            mask_logits = F.interpolate(
+                self.freq_mask_logits,
+                size=n_freqs,
+                mode='linear',
+                align_corners=False,
+            )
+            weight_real = F.interpolate(
+                self.weight_real.unsqueeze(0),
+                size=n_freqs,
+                mode='linear',
+                align_corners=False,
+            )
+            weight_imag = F.interpolate(
+                self.weight_imag.unsqueeze(0),
+                size=n_freqs,
+                mode='linear',
+                align_corners=False,
+            )
+        return mask_logits, weight_real.squeeze(0), weight_imag.squeeze(0)
+
+    def summarize_learned_mask(self, n_freqs: int):
+        if self.mode_select != 'learned':
+            return None
+        mask_logits, _, _ = self._interpolate_learned_spectral_params(n_freqs)
+        soft_mask = torch.sigmoid(mask_logits)
+        mean = float(soft_mask.mean().item())
+        std = float(soft_mask.std(unbiased=False).item())
+        peak_bins = soft_mask.argmax(dim=-1).to(dtype=torch.float32)
+        peak_bin_mean = float(peak_bins.mean().item())
+        return {
+            'fft_learned_mask_mean': mean,
+            'fft_learned_mask_std': std,
+            'fft_learned_mask_peak_bin_mean': peak_bin_mean,
+        }
 
     def _select_modes(self, x_ft, n_freqs: int):
         """Return indices of frequency modes to process (hard selection), or None for learned soft mask."""
@@ -322,12 +389,11 @@ class SpectralBranch(nn.Module):
         if self.mode_select == 'low':
             return torch.arange(k, device=x_ft.device)
         else:
-            # top_amplitude: pick modes with highest average energy
+            # top_amplitude: pick modes with highest energy per sample/channel.
             # NOTE: topk selection is non-differentiable — the model learns what to
             # do with selected modes but cannot learn *which* modes to select.
-            amplitudes = x_ft.abs().mean(dim=(0, 1))  # [n_freqs]
-            _, indices = torch.topk(amplitudes, k)
-            indices, _ = indices.sort()
+            amplitudes = x_ft.abs()  # [B, D, n_freqs]
+            _, indices = torch.topk(amplitudes, k, dim=-1)
             return indices
 
     def forward(self, x):
@@ -341,36 +407,31 @@ class SpectralBranch(nn.Module):
         mode_indices = self._select_modes(x_ft, n_freqs)
 
         if mode_indices is None:
-            # Learned mode: apply differentiable soft sigmoid mask over all frequencies
-            # freq_mask_logits: [1, D, 1] broadcast to [B, D, n_freqs]
-            soft_mask = torch.sigmoid(self.freq_mask_logits.expand(-1, -1, n_freqs))  # [1, D, n_freqs]
-            k = min(self.modes, n_freqs)
-            w_real = self.weight_real[:, :k]
-            w_imag = self.weight_imag[:, :k]
-            w_complex = torch.complex(w_real, w_imag)
-            # Apply weights to first k modes, identity for rest
-            out_ft = x_ft.clone()
-            out_ft[:, :, :k] = x_ft[:, :, :k] * w_complex.unsqueeze(0)
-            # Apply soft mask to all modes (differentiable selection)
-            out_ft = out_ft * soft_mask
+            mask_logits, weight_real, weight_imag = self._interpolate_learned_spectral_params(n_freqs)
+            soft_mask = torch.sigmoid(mask_logits)
+            w_complex = torch.complex(weight_real, weight_imag).unsqueeze(0)
+            out_ft = x_ft * w_complex * soft_mask
             x_reconstructed = torch.fft.irfft(out_ft, n=L)
         else:
-            k = mode_indices.shape[0]
-
-            # Extract selected modes: [B, D, k]
-            selected = x_ft[:, :, mode_indices]
-
-            # Learnable complex multiply: weights are [D, modes] -> bind to physical mode_indices
-            w_real = self.weight_real[:, mode_indices]  # [D, k]
-            w_imag = self.weight_imag[:, mode_indices]  # [D, k]
-            w_complex = torch.complex(w_real, w_imag)  # [D, k]
-
-            # Element-wise complex multiplication: [B, D, k] * [D, k] -> [B, D, k]
-            transformed = selected * w_complex.unsqueeze(0)
-
-            # Put transformed modes back into full spectrum
-            out_ft = torch.zeros_like(x_ft)
-            out_ft[:, :, mode_indices] = transformed
+            if mode_indices.ndim == 1:
+                k = mode_indices.shape[0]
+                selected = x_ft[:, :, mode_indices]
+                w_real = self.weight_real[:, :k]
+                w_imag = self.weight_imag[:, :k]
+                w_complex = torch.complex(w_real, w_imag)
+                transformed = selected * w_complex.unsqueeze(0)
+                out_ft = torch.zeros_like(x_ft)
+                out_ft[:, :, mode_indices] = transformed
+            else:
+                k = mode_indices.shape[-1]
+                gather_index = mode_indices
+                selected = torch.gather(x_ft, dim=-1, index=gather_index)
+                w_real = self.weight_real[:, :k].unsqueeze(0)
+                w_imag = self.weight_imag[:, :k].unsqueeze(0)
+                w_complex = torch.complex(w_real, w_imag)
+                transformed = selected * w_complex
+                out_ft = torch.zeros_like(x_ft)
+                out_ft.scatter_(dim=-1, index=gather_index, src=transformed)
 
             # Inverse FFT back to time domain: [B, D, L]
             x_reconstructed = torch.fft.irfft(out_ft, n=L)  # [B, D, L]
@@ -454,7 +515,7 @@ class TemporalCompression(nn.Module):
 
 
 class MultiScaleLagAttention(nn.Module):
-    def __init__(self, d_model, n_heads, lag_scales, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact', max_seq_len=None):
+    def __init__(self, d_model, n_heads, lag_scales, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact', max_seq_len=None, debug_checks: bool = False, attn_dropout: float = 0.0):
         super(MultiScaleLagAttention, self).__init__()
         if not isinstance(lag_scales, (list, tuple)) or len(lag_scales) == 0:
             raise ValueError("tft_lag_scales must be a non-empty list/tuple of positive integers.")
@@ -476,6 +537,8 @@ class MultiScaleLagAttention(nn.Module):
                 rope_base=rope_base,
                 alibi_scale=alibi_scale,
                 attention_backend=attention_backend,
+                debug_checks=debug_checks,
+                attn_dropout=attn_dropout,
             )
             for _ in self.lag_scales
         ])
@@ -486,28 +549,33 @@ class MultiScaleLagAttention(nn.Module):
             self.register_buffer('_causal_mask_buf', build_causal_mask(max_seq_len, torch.device('cpu'), torch.float32), persistent=False)
         else:
             self._causal_mask_buf = None
+        self.debug_checks = debug_checks
 
     def _shift_sequence(self, x, lag: int):
         if lag <= 0 or lag >= x.shape[1]:
-            return torch.zeros_like(x)
+            raise ValueError(f"lag={lag} must be in [1, sequence_length-1] for active sequence length {x.shape[1]}.")
         # F.pad avoids allocating a full zero tensor; single fused op
         return F.pad(x[:, :-lag, :], (0, 0, lag, 0))
 
-    def forward(self, x, return_attention: bool = False):
+    def forward(self, x, return_attention: bool = False, positions=None):
         if x.ndim != 3:
             raise ValueError(f"MultiScaleLagAttention expects rank-3 [B,T,D] input, got shape {tuple(x.shape)}.")
-        if not torch.isfinite(x).all():
-            raise ValueError("Lag attention input contains NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, x, "Lag attention input contains NaN/Inf values.")
 
         seq_len = x.shape[1]
+        query_positions = _resolve_positions(seq_len, positions, x.device)
         if self._causal_mask_buf is not None and seq_len <= self._causal_mask_buf.shape[0]:
             attn_mask = self._causal_mask_buf[:seq_len, :seq_len].to(x.dtype)
         else:
             attn_mask = build_causal_mask(seq_len, x.device, x.dtype)
         branch_outputs = []
         branch_weights = []
+        branch_key_positions = []
         for lag, attention_layer in zip(self.lag_scales, self.attention_layers):
             shifted = self._shift_sequence(x, lag)
+            key_padding_mask = torch.zeros(x.shape[0], seq_len, dtype=torch.bool, device=x.device)
+            key_padding_mask[:, :lag] = True
+            key_positions = query_positions - float(lag)
             if return_attention:
                 attn_out, attn_prob = attention_layer(
                     x,
@@ -515,17 +583,29 @@ class MultiScaleLagAttention(nn.Module):
                     shifted,
                     return_attention=True,
                     attn_mask=attn_mask,
+                    query_positions=query_positions,
+                    key_positions=key_positions,
+                    key_padding_mask=key_padding_mask,
                 )
             else:
-                attn_out = attention_layer(x, shifted, shifted, attn_mask=attn_mask)
+                attn_out = attention_layer(
+                    x,
+                    shifted,
+                    shifted,
+                    attn_mask=attn_mask,
+                    query_positions=query_positions,
+                    key_positions=key_positions,
+                    key_padding_mask=key_padding_mask,
+                )
                 attn_prob = None
-            if not torch.isfinite(attn_out).all():
-                raise ValueError("Lag attention output contains NaN/Inf values.")
+            _debug_check_finite(self.debug_checks, attn_out, "Lag attention output contains NaN/Inf values.")
             branch_outputs.append(attn_out)
             if return_attention:
-                if attn_prob is None or not torch.isfinite(attn_prob).all():
-                    raise ValueError("Lag attention weights contain NaN/Inf values.")
+                if attn_prob is None:
+                    raise ValueError("Lag attention weights are missing.")
+                _debug_check_finite(self.debug_checks, attn_prob, "Lag attention weights contain NaN/Inf values.")
                 branch_weights.append(attn_prob)
+                branch_key_positions.append(key_positions.detach())
 
         scale_weights = torch.softmax(self.scale_logits, dim=0)
         fused = sum(weight * branch for weight, branch in zip(scale_weights, branch_outputs))
@@ -536,12 +616,15 @@ class MultiScaleLagAttention(nn.Module):
                 'lag_attention': torch.stack(branch_weights, dim=-1),
                 'lag_scale_weights': scale_weights.detach(),
                 'lag_scales': self.lag_scales,
+                'lag_attention_mode': 'shifted_history_attention',
+                'lag_query_positions': query_positions.detach(),
+                'lag_key_positions': torch.stack(branch_key_positions, dim=0),
             }
         return fused
 
 
 class InterpretableCrossAttention(nn.Module):
-    def __init__(self, d_model, n_heads, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0):
+    def __init__(self, d_model, n_heads, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, debug_checks: bool = False, attn_dropout: float = 0.0):
         super(InterpretableCrossAttention, self).__init__()
         if d_model % n_heads != 0:
             raise ValueError("d_model must be divisible by n_heads for InterpretableCrossAttention.")
@@ -552,6 +635,8 @@ class InterpretableCrossAttention(nn.Module):
         self.position_bias_type = position_bias_type
         self.rope_base = float(rope_base)
         self.alibi_scale = float(alibi_scale)
+        self.debug_checks = debug_checks
+        self.attn_dropout = float(attn_dropout)
         self.q_linear = nn.Linear(d_model, n_heads * self.d_head, bias=False)
         self.k_linear = nn.Linear(d_model, n_heads * self.d_head, bias=False)
         self.v_linear = nn.Linear(d_model, self.d_head, bias=False)
@@ -584,13 +669,12 @@ class InterpretableCrossAttention(nn.Module):
                 key_positions=key_positions,
                 scale=self.alibi_scale,
             )
-        if not torch.isfinite(attention_score).all():
-            raise ValueError("Cross-attention scores contain NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, attention_score, "Cross-attention scores contain NaN/Inf values.")
         attention_prob = torch.softmax(attention_score, dim=-1)
-        if not torch.isfinite(attention_prob).all():
-            raise ValueError("Cross-attention probabilities contain NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, attention_prob, "Cross-attention probabilities contain NaN/Inf values.")
+        attention_prob_used = F.dropout(attention_prob, p=self.attn_dropout, training=self.training)
 
-        attention_out = torch.matmul(attention_prob, v.unsqueeze(1))
+        attention_out = torch.matmul(attention_prob_used, v.unsqueeze(1))
         attention_out = attention_out.mean(dim=1)
         out = self.out_projection(attention_out)
         out = self.out_dropout(out)
@@ -600,7 +684,7 @@ class InterpretableCrossAttention(nn.Module):
 
 
 class HigherOrderInteractionBlock(nn.Module):
-    def __init__(self, d_model, interaction_order=2, interaction_rank=None, dropout=0.0):
+    def __init__(self, d_model, interaction_order=2, interaction_rank=None, dropout=0.0, debug_checks: bool = False):
         super(HigherOrderInteractionBlock, self).__init__()
         if interaction_order not in (2, 3):
             raise ValueError("tft_interaction_order must be either 2 or 3.")
@@ -610,6 +694,7 @@ class HigherOrderInteractionBlock(nn.Module):
             raise ValueError("tft_interaction_rank must be a positive integer.")
 
         self.interaction_order = interaction_order
+        self.num_terms = self.interaction_order - 1
         self.interaction_rank = interaction_rank
         self.left_projection = nn.Linear(d_model, interaction_rank)
         self.right_projection = nn.Linear(d_model, interaction_rank)
@@ -620,16 +705,16 @@ class HigherOrderInteractionBlock(nn.Module):
         else:
             self.third_projection = None
             self.triple_projection = None
-        self.gate_projection = nn.Linear(d_model, self.interaction_order)
+        self.gate_projection = nn.Linear(d_model, self.num_terms)
         self.out_projection = nn.Linear(d_model, d_model)
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(d_model)
+        self.debug_checks = debug_checks
 
     def forward(self, x, return_payload: bool = False):
         if x.ndim != 3:
             raise ValueError(f"HigherOrderInteractionBlock expects rank-3 [B,T,D] input, got shape {tuple(x.shape)}.")
-        if not torch.isfinite(x).all():
-            raise ValueError("Higher-order interaction input contains NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, x, "Higher-order interaction input contains NaN/Inf values.")
 
         left = self.left_projection(x)
         right = self.right_projection(x)
@@ -641,12 +726,11 @@ class HigherOrderInteractionBlock(nn.Module):
             triple_term = self.triple_projection((left * right * third) / self.interaction_rank)
             interaction_terms.append(triple_term)
 
-        gates = torch.softmax(self.gate_projection(x), dim=-1)
+        gates = torch.sigmoid(self.gate_projection(x))
         interaction_stack = torch.stack(interaction_terms, dim=-2)
         contribution = torch.sum(gates.unsqueeze(-1) * interaction_stack, dim=-2)
         out = self.layer_norm(x + self.out_projection(self.dropout(contribution)))
-        if not torch.isfinite(out).all():
-            raise ValueError("Higher-order interaction output contains NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, out, "Higher-order interaction output contains NaN/Inf values.")
 
         if return_payload:
             return out, {
@@ -704,6 +788,7 @@ class RegimeAwareSparseMoE(nn.Module):
         self.expert_dropout = nn.Dropout(dropout)
         self.out_dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(d_model)
+        self.debug_checks = False
 
     def cv_squared(self, x):
         eps = 1e-10
@@ -729,32 +814,35 @@ class RegimeAwareSparseMoE(nn.Module):
         # Expert capacity constraint: cap tokens per expert to prevent monopolization
         if self.training and hasattr(self, 'capacity_factor'):
             B_dim, T_dim = sparse_probs.shape[0], sparse_probs.shape[1]
-            capacity = int(self.capacity_factor * B_dim * T_dim * self.top_k / self.num_experts)
-            # .contiguous() ensures in-place edits on flat_probs propagate back to sparse_probs
-            flat_probs = sparse_probs.reshape(-1, self.num_experts).contiguous()  # [B*T, E]
-            for e in range(self.num_experts):
-                expert_mask = flat_probs[:, e] > 0
-                assigned = expert_mask.sum().item()
-                if assigned > capacity:
-                    # Keep only the top-capacity tokens by routing weight
-                    expert_vals = flat_probs[:, e].clone()
-                    expert_vals[~expert_mask] = -1.0
-                    _, keep_idx = torch.topk(expert_vals, capacity)
-                    drop_mask = torch.ones(flat_probs.shape[0], dtype=torch.bool, device=flat_probs.device)
-                    drop_mask[keep_idx] = False
-                    flat_probs[drop_mask, e] = 0.0
-            sparse_probs = flat_probs.reshape(B_dim, T_dim, self.num_experts)
+            token_count = B_dim * T_dim
+            if token_count > 0:
+                capacity = max(1, math.ceil(self.capacity_factor * token_count * self.top_k / self.num_experts))
+                flat_probs = sparse_probs.reshape(-1, self.num_experts).contiguous()  # [B*T, E]
+                keep_k = min(capacity, flat_probs.shape[0])
+                expert_scores = flat_probs.transpose(0, 1)  # [E, B*T]
+                top_scores, top_token_idx = torch.topk(expert_scores, keep_k, dim=-1)
+                keep_mask = torch.zeros_like(expert_scores, dtype=torch.bool)
+                keep_mask.scatter_(1, top_token_idx, top_scores > 0)
+                pruned = torch.where(keep_mask.transpose(0, 1), flat_probs, torch.zeros_like(flat_probs))
+                zero_token_mask = pruned.sum(dim=-1, keepdim=True) <= 0
+                if zero_token_mask.any():
+                    dense_flat = dense_probs.reshape(-1, self.num_experts)
+                    fallback_idx = dense_flat.argmax(dim=-1, keepdim=True)
+                    fallback_weight = dense_flat.gather(-1, fallback_idx)
+                    fallback = torch.zeros_like(pruned).scatter_(-1, fallback_idx, fallback_weight)
+                    pruned = torch.where(zero_token_mask, fallback, pruned)
+                sparse_probs = pruned.reshape(B_dim, T_dim, self.num_experts)
 
         sparse_probs = sparse_probs / sparse_probs.sum(dim=-1, keepdim=True).clamp_min(1e-8)
         importance = sparse_probs.sum(dim=(0, 1))
-        aux_loss = self.cv_squared(importance)
-        return sparse_probs, aux_loss
+        load = (sparse_probs > 0).to(sparse_probs.dtype).sum(dim=(0, 1))
+        aux_loss = self.cv_squared(importance) + self.cv_squared(load)
+        return sparse_probs, aux_loss, importance, load
 
     def forward(self, x, context: Optional[torch.Tensor] = None, return_payload: bool = False):
         if x.ndim != 3:
             raise ValueError(f"RegimeAwareSparseMoE expects rank-3 [B,T,D] input, got shape {tuple(x.shape)}.")
-        if not torch.isfinite(x).all():
-            raise ValueError("MoE input contains NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, x, "MoE input contains NaN/Inf values.")
 
         regime_logits = self.regime_detector(x)
         if context is not None:
@@ -766,7 +854,8 @@ class RegimeAwareSparseMoE(nn.Module):
                 raise ValueError(f"MoE context must be rank-2 [B,D] or rank-3 [B,T,D], got shape {tuple(context.shape)}.")
         regime_probs = self.softmax(regime_logits)
         pooled_regime_probs = regime_probs.mean(dim=1)
-        routing, aux_loss = self._compute_sparse_routing(x, regime_probs)
+        routing, aux_loss, importance_sum, load_sum = self._compute_sparse_routing(x, regime_probs)
+        token_count = routing.new_tensor([routing.shape[0] * routing.shape[1]])
         # Batched expert evaluation: all experts in parallel via fused parameters
         # x: [B,T,D], expert_w1: [E,D,H] -> hidden: [B,T,E,H]
         hidden = torch.einsum('btd,edh->bteh', x, self.expert_w1) + self.expert_b1
@@ -776,13 +865,16 @@ class RegimeAwareSparseMoE(nn.Module):
         expert_outputs = torch.einsum('bteh,ehd->bted', hidden, self.expert_w2) + self.expert_b2
         mixed = torch.sum(routing.unsqueeze(-1) * expert_outputs, dim=-2)
         out = self.layer_norm(x + self.out_dropout(mixed))
-        if not torch.isfinite(out).all():
-            raise ValueError("MoE output contains NaN/Inf values.")
+        _debug_check_finite(self.debug_checks, out, "MoE output contains NaN/Inf values.")
 
         if return_payload:
             return out, aux_loss, {
                 'expert_routing': routing.detach(),
                 'regime_probabilities': regime_probs.detach(),
                 'regime_probabilities_pooled': pooled_regime_probs.detach(),
+                'moe_routing_mode': 'dense_compute_topk_mixing',
+                'expert_importance_sum': importance_sum.unsqueeze(0),
+                'expert_load_sum': load_sum.unsqueeze(0),
+                'expert_token_count': token_count,
             }
         return out, aux_loss

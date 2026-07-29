@@ -1,902 +1,1027 @@
-# TFT Deep Analysis Report
+# TemporalFusionTransformer Deep Analysis Report
 
-> **Scope**: `models/TemporalFusionTransformer.py` + `layers/TemporalFusion_layers.py` + `layers/DynamicGraph.py` + `layers/AdvancedDynamicGraph.py` + `layers/StandardNorm.py`
+> Audited implementation: repository-native `models/TemporalFusionTransformer.py` at commit `564cffbc712f`
 >
-> Date: 2026-07-27
+> Excluded: `models/TFT_Nixtla.py`
+>
+> Audit date: 2026-07-28
+>
+> Physics-plan companion: [`implementation_plan.md`](implementation_plan.md)
+>
+> Progress tracker: [`TFT_Implementation_Progress.md`](TFT_Implementation_Progress.md)
+>
+> Plan orchestrator: [`TFT_Implementation_Orchestrator.md`](TFT_Implementation_Orchestrator.md)
+>
+> Planetary/NIFTY research plan: [`Vedic_Astrology_TFT_Implementation_Plan.md`](Vedic_Astrology_TFT_Implementation_Plan.md)
 
----
+## 1. Executive Verdict
 
-## Table of Contents
+The native implementation is an ambitious experimental superset of TFT, not a faithful drop-in implementation of the architecture in [Lim et al., *Temporal Fusion Transformers for Interpretable Multi-horizon Time Series Forecasting*](https://arxiv.org/abs/1912.09363). It contains useful work—an explicit model-local target map, optional RevIN, interpretable and full attention variants, custom known inputs, graph mixing, lag attention, MoE, spectral processing, compression, rich diagnostics, and substantial tests—but several optional modes are currently incorrect or misleading.
 
-1. [Architecture Overview](#1-architecture-overview)
-2. [Component-Level Algorithm Analysis](#2-component-level-algorithm-analysis)
-   - 2.1 Embedding Layer (TFTEmbedding)
-   - 2.2 Variable Selection Network (VSN)
-   - 2.3 Static Covariate Encoder
-   - 2.4 Gating Primitives — GRN, GLU, SwiGLU, GateAddNorm
-   - 2.5 Temporal Backbone (LSTM / GatedTCN / Hybrid)
-   - 2.6 Spectral Branch (FFT)
-   - 2.7 Temporal Compression
-   - 2.8 Attention Stack
-   - 2.9 Dynamic & Advanced Graph Learner
-   - 2.10 Higher-Order Interaction Block
-   - 2.11 Regime-Aware Sparse MoE
-   - 2.12 Multi-Scale Lag Attention
-   - 2.13 Normalization Strategy (RevIN vs. Non-stationary)
-   - 2.14 TemporalFusionDecoder & Output Heads
-3. [Bug Report](#3-bug-report)
-4. [Preferential Enhancements](#4-preferential-enhancements)
-5. [Theory-Based Learning in TFT](#5-theory-based-learning-in-tft)
-   - 5.1 Loss-Function Inductive Biases
-   - 5.2 Architectural Priors
-   - 5.3 Regularization as Theory Encoding
-   - 5.4 Data Augmentation from Theory
-   - 5.5 Physics / Domain Equation Constraints
-   - 5.6 Differentiable Simulation as a Supervision Signal
-   - 5.7 Knowledge Distillation from Theory-Rich Models
-   - 5.8 Interpretability-Guided Theory Alignment
-6. [Summary & Priority Matrix](#6-summary--priority-matrix)
+Status note on Tuesday, July 28, 2026:
 
----
+- the major native safety defects identified in this report have already been patched in the current worktree;
+- `TFT-C03` is no longer an open defect and should be treated as implemented unless a new regression is reproduced;
+- `TFT-T01` and `G2` are now closed in the current worktree;
+- the upgrade recommendations below now primarily serve as the post-`G1` roadmap.
 
-## 1. Architecture Overview
+At the audited base commit, the default ETT point-forecast path could train and its existing tests could pass, but that alone did not clear the feature set for production. The key audited issues were:
 
-This implementation is a heavily extended Temporal Fusion Transformer (TFT), far beyond the original [Lim et al., 2021] paper. The canonical TFT pipeline has been augmented with ten optional components, selectable at config time. The full data flow is:
+- static covariates are erased by per-window normalization before the static encoder sees them;
+- static LSTM hidden and cell contexts are passed in the wrong order;
+- quantile-only training optimizes a head different from the point head later evaluated;
+- `top_amplitude` FFT selection can raise an index error;
+- third-order interaction mode crashes, while the second-order interaction gate is effectively inert;
+- static interpretation weights are discarded by a payload-shape mismatch;
+- the “learned” FFT selector was not frequency-selective at the audited base commit;
+- temporal graph evolution destroys the promised top-k sparsity;
+- several configurations allocate large sets of trainable parameters that can never receive gradients.
 
+In the current worktree, the native safety items in the first seven bullets above have dedicated repairs and tests, and the learned FFT selector has now also been upgraded to a real per-frequency/interpolated spectral mask. The remaining bullets mainly describe post-`G1` upgrade work rather than open release blockers.
+
+The proposed physics-informed plan is feasible only after its contracts are tightened. The main issues are integration at the wrong layer, no treatment of physical units, no named feature/source schema, an ineffective L1 penalty on softmax VSN weights, an underspecified definition of monotonicity, and verification commands that do not perform the advertised test.
+
+### Priority snapshot
+
+| Priority | Finding | Affected mode |
+|---|---|---|
+| P0 | Quantile objective and evaluated output head are disconnected | `loss=Quantile` |
+| P0 | Static values become zero before encoding | any non-empty `tft_static_pos` |
+| P0 | Static hidden/cell contexts are reversed | LSTM/hybrid with static inputs |
+| P0 | FFT top-amplitude mode can index out of bounds | `tft_fft_mode_select=top_amplitude` |
+| P0 | Higher-order order 3 crashes; order 2 gate has no effect | `tft_use_higher_order` |
+| P0 | Advertised short-term task fails on its normal `None` time marks | `short_term_forecast` |
+| P0 | Production train/test slicing ignores `tft_target_pos` | mapped MS or reduced/multi-output M |
+| P1 | Static VSN interpretation payload is always lost | static + interpretation |
+| P1 | Missing mark/schema validation can silently misalign known inputs | custom schemas |
+| P1 | Physics losses would run in standardized, not physical, coordinates | proposed physics plan |
+| P1 | Softmax-VSN L1 is constant and cannot create sparsity | proposed VSN penalty |
+| P1 | “Temporal sparse” graph becomes dense after evolution | `temporal_sparse` graph |
+| P1 | Dead parameter sets materially inflate models | no-static and sigmoid-VSN modes |
+| P1 | Current extension combinations weaken TFT interpretation guarantees | graph/bypass/full/dual/reattention |
+| P2 | Benchmark and configuration controls contain dead/broken knobs | deep ETT harness and CLI |
+
+## 2. Scope and Method
+
+The review covered:
+
+- [`models/TemporalFusionTransformer.py`](models/TemporalFusionTransformer.py)
+- [`layers/TemporalFusion_layers.py`](layers/TemporalFusion_layers.py)
+- [`layers/DynamicGraph.py`](layers/DynamicGraph.py)
+- [`layers/AdvancedDynamicGraph.py`](layers/AdvancedDynamicGraph.py)
+- [`layers/StandardNorm.py`](layers/StandardNorm.py)
+- [`layers/Embed.py`](layers/Embed.py)
+- [`exp/exp_long_term_forecasting.py`](exp/exp_long_term_forecasting.py)
+- [`data_provider/data_loader.py`](data_provider/data_loader.py)
+- [`run.py`](run.py)
+- the native TFT tests and the proposed [`implementation_plan.md`](implementation_plan.md)
+
+The audit used source inspection, comparison with the original TFT component contract, the current test suite, and focused runtime probes for paths that the tests do not cover.
+
+### Verification performed
+
+```text
+PYTHONPATH=. ./ai_env/bin/pytest -q \
+  tests/test_tft_comprehensive.py \
+  tests/test_tft_interpretation_and_exp.py
+
+55 passed, 1 warning
 ```
-x_enc [B,T,enc_in]  x_mark_enc [B,T,known_len]
-         |                    |
-         +-----> TFTEmbedding <------+  x_dec, x_mark_dec
-                     |
-        static_input [B,C_s,d]   observed_input [B,T,C_o,d]   known_input [B,T+pred,C_k,d]
-                |                        |                              |
-         StaticCovariateEncoder    history_vsn (obs+known[past])   future_vsn (known[future])
-         [c_s, c_c, c_h, c_e]          |                              |
-                                  history_feat [B,T,d]        future_feat [B,pred,d]
-                                        |                              |
-                          TemporalFusionDecoderLayer (x e_layers)
-                                        |
-                          projected output [B,pred,c_out]
-                                        |
-                               De-normalization
-                                        |
-                            dec_out [B,seq_len+pred,c_out]
+
+An additional regression/smoke run covered diagnostics, script entry points, and RevIN:
+
+```text
+PYTHONPATH=. ./ai_env/bin/pytest -q \
+  tests/test_tft_bugfix_diagnostics.py \
+  tests/test_tft_scripts_smoke.py \
+  tests/test_revin_ablation.py
+
+10 passed
 ```
 
-### Key divergences from the original TFT paper
+Focused probes additionally reproduced:
 
-| Original TFT | This Implementation |
+- different static sample values producing identical normalized static embeddings;
+- `static_vsn_weights=None` despite configured static inputs;
+- no point-head gradient under quantile-only loss;
+- `IndexError` in top-amplitude FFT selection when a high FFT bin dominates;
+- near-zero gate gradient for order-2 higher-order interaction;
+- a shape error for order-3 higher-order interaction;
+- constant L1 norm for softmax VSN weights;
+- large sets of unused parameters in the sigmoid-gating VSN path.
+
+Passing shape/smoke tests therefore should not be interpreted as coverage of these semantic contracts.
+
+## 3. Actual Data and Model Flow
+
+The most important fact for both TFT correctness and physics loss design is that there are two normalization layers:
+
+```text
+raw physical data
+    |
+    | dataset StandardScaler (fit on training split)
+    v
+dataset-standardized batch: x_enc, batch_y
+    |
+    | TFT per-window normalization or RevIN
+    v
+TFT embeddings -> VSNs -> temporal decoder -> point/quantile heads
+    |
+    | TFT reverses only its own per-window normalization
+    v
+forecast in dataset-standardized coordinates
+    |
+    | required differentiable dataset inverse scaling for physics
+    v
+forecast in physical coordinates
+```
+
+The dataset scaling is performed in [`data_provider/data_loader.py` lines 51-79](data_provider/data_loader.py#L51) and equivalent loader sections. TFT's internal normalization and de-normalization occur in [`models/TemporalFusionTransformer.py` lines 1214-1228](models/TemporalFusionTransformer.py#L1214) and [1313-1355](models/TemporalFusionTransformer.py#L1313).
+
+The model then prepends a zero history block and returns `[B, seq_len + pred_len, c_out]` at [`models/TemporalFusionTransformer.py` lines 1443-1462](models/TemporalFusionTransformer.py#L1443). All task or physics losses must explicitly select the final `pred_len` steps.
+
+### Core architecture
+
+```text
+x_enc --------------------> observed/static embeddings
+x_mark_enc + x_mark_dec --> known past/future embeddings
+                                  |
+                  static VSN/context encoders
+                    c_s, c_c, c_h, c_e
+                                  |
+            history VSN              future VSN
+          observed + known              known
+                   \                    /
+                    temporal backbone
+                 LSTM / TCN / hybrid
+                          |
+             optional FFT / reattention
+                          |
+                  static enrichment
+                          |
+       causal self-attention + optional branches
+                          |
+          GRN or regime-aware MoE + gating
+                          |
+              point and optional quantile heads
+```
+
+## 4. Fidelity to the Original TFT
+
+The original paper defines heterogeneous static, observed, and known-future inputs; per-variable categorical embeddings or continuous linear transforms; one VSN for each input family; four static context GRNs; sequence-to-sequence recurrent locality; interpretable self-attention; gating; and direct quantile forecasts.
+
+| TFT component contract | Repository implementation | Assessment |
+|---|---|---|
+| Continuous variables use pointwise linear transforms | Each observed/static scalar uses a separate `DataEmbedding`, including circular Conv1d and positional embedding | Material deviation |
+| Categorical variables use entity embeddings | Only calendar categorical embeddings are directly supported; generic static categoricals lack a typed schema | Incomplete |
+| One static VSN, one past VSN, one future VSN | Four independent static VSNs plus history and future VSNs | Non-canonical and expensive |
+| Four context GRNs produce `c_s`, `c_c`, `c_h`, `c_e` | Present, but static inputs are normalized away and LSTM state order is reversed | Currently broken for real static values |
+| Recurrent local processing | LSTM, gated TCN, or hybrid; CLI defaults to hybrid | Useful extension, not canonical default |
+| Interpretable shared-value attention | Available; full and dual attention are optional | Canonical only in interpretable mode |
+| Direct probabilistic quantile output | Optional secondary head; default task is point MSE | Non-canonical objective contract |
+| Variable weights support interpretation | Available only under interpretation mode; extensions can invalidate literal attribution | Conditional |
+| Gating can skip unnecessary components | GLU path broadly follows intent; SwiGLU is not a bounded suppressive gate | Optional behavior change |
+
+### Recommended fidelity baseline
+
+Add an explicit `tft_profile=canonical` preset with:
+
+- pointwise per-variable embeddings;
+- one static VSN followed by four context GRNs;
+- correct `(c_h, c_c)` LSTM initialization;
+- LSTM local processing;
+- softmax VSN without graph mixing or residual bypass;
+- interpretable shared-value attention;
+- primary quantile output with a coherent median point forecast;
+- all experimental branches off.
+
+Use this as the reference in every extension ablation. Calling a fully augmented configuration “TFT” without the profile makes it difficult to tell whether a result comes from TFT or from the added graph/TCN/FFT/MoE stack.
+
+## 5. Verified Correctness Findings
+
+### TFT-C01 — Static covariates are erased before embedding
+
+**Severity:** P0 for datasets using static features
+
+**Implementation status on 2026-07-28:** fixed in the current worktree. Raw encoder inputs are now split before window normalization, declared static channels are validated to remain constant across encoder time, and static embeddings receive raw per-sample values in dataset coordinates under both manual normalization and RevIN.
+
+**Evidence**
+
+`forecast()` normalizes every encoder channel over time before `TFTEmbedding` extracts `static_pos`:
+
+- normalization: [`models/TemporalFusionTransformer.py` lines 1214-1228](models/TemporalFusionTransformer.py#L1214);
+- static extraction: [`models/TemporalFusionTransformer.py` lines 197-205](models/TemporalFusionTransformer.py#L197).
+
+For a truly static channel `s_b`:
+
+```text
+(s_b - mean_t(s_b)) / std_t(s_b) = 0
+```
+
+This is true in both manual normalization and RevIN. With affine RevIN, the original entity value is still lost and replaced by a shared learned channel constant.
+
+A local probe with static values `5` and `50` produced:
+
+```text
+normalized_static_values = 0
+static_embeddings_equal = True
+```
+
+**Impact**
+
+- entity/location/category information cannot influence the forecast;
+- all four static context vectors are value-independent across samples, apart from training-time dropout;
+- the feature appears supported by configuration but is semantically non-functional;
+- current ETT tests do not expose this because registered ETT datasets use no static fields.
+
+**Fix**
+
+Split raw/static inputs before window normalization. Normalize dynamic observed channels only. Process:
+
+- categorical static variables with entity embeddings;
+- continuous static variables with a dataset-level transform or dedicated static normalizer;
+- static values once per sample, not through a temporal convolution.
+
+Add an invariance test where identical dynamic histories with two different static IDs yield different static contexts and can learn different targets.
+
+### TFT-C02 — LSTM hidden and cell contexts are reversed
+
+**Severity:** P0 for LSTM/hybrid models with static inputs
+
+**Implementation status on 2026-07-28:** fixed in the current worktree. Native TFT recurrent initialization now passes static contexts in PyTorch’s required `(h_0, c_0)` order for both the pure-LSTM and hybrid temporal backbones, with identity-level recorder tests covering each path.
+
+**Evidence**
+
+PyTorch LSTM state order is `(h_0, c_0)`. The code defines static contexts in the order `c_s, c_c, c_h, c_e`, but passes:
+
+```python
+(c_c.unsqueeze(0), c_h.unsqueeze(0))
+```
+
+in both the LSTM and hybrid paths at [`models/TemporalFusionTransformer.py` lines 727-736](models/TemporalFusionTransformer.py#L727).
+
+**Impact**
+
+The cell-state context initializes the hidden state and the hidden-state context initializes the cell state. This does not create a shape error, so smoke tests pass while static conditioning has the wrong semantics.
+
+**Fix**
+
+Pass `(c_h.unsqueeze(0), c_c.unsqueeze(0))`. Add a test with a recording LSTM or controlled context tensors that asserts state identity, not only shape.
+
+### TFT-C03 — Quantile training and evaluation use different heads
+
+**Severity:** P0 when quantile mode is enabled
+
+**Implementation status on 2026-07-28:** fixed in the current worktree. The native TFT path now uses explicit `point` / `quantile` / `joint` modes, one canonicalized quantile order shared by model and loss, an ordered non-crossing quantile head, positive RevIN scale, trained-median evaluation in quantile mode, and saved calibration artifacts (`pinball`, `coverage`, `interval_width`, `crossing_rate`) during `test()`.
+
+**Evidence**
+
+The decoder always computes a point projection. A separate quantile projection is created at [`models/TemporalFusionTransformer.py` lines 1152-1173](models/TemporalFusionTransformer.py#L1152) and populated through mutable `last_quantile_predictions`.
+
+The production experiment selects either:
+
+- MSE on the returned point tensor; or
+- pinball loss on `last_quantile_predictions`;
+
+at [`exp/exp_long_term_forecasting.py` lines 38-45](exp/exp_long_term_forecasting.py#L38) and [135-168](exp/exp_long_term_forecasting.py#L135).
+
+This creates two broken cases:
+
+1. `loss=MSE` + quantile head: quantile parameters are computed but not trained.
+2. `loss=Quantile`: point-head parameters receive no gradient, yet `test()` evaluates the returned point tensor at [`exp/exp_long_term_forecasting.py` lines 235-253](exp/exp_long_term_forecasting.py#L235).
+
+A focused backward probe confirmed `point_head.weight.grad is None` under quantile-only loss.
+
+There is also ordering drift: the model sorts quantiles at [`models/TemporalFusionTransformer.py` lines 1153-1159](models/TemporalFusionTransformer.py#L1153), while `QuantileLoss` retains the user-provided order at [`utils/losses.py` lines 91-106](utils/losses.py#L91). An unsorted CLI list silently assigns different quantile levels to output slots and loss weights.
+
+Duplicate quantile levels are not rejected, and crossing is not constrained.
+
+Mutable `last_*` outputs are broken as a `DataParallel` contract. [`utils/tools.py` lines 127-138](utils/tools.py#L127) unwraps the base module after replica forwards and reads attributes that replicas do not reliably propagate. Quantile mode can therefore report missing predictions. A configured MoE auxiliary loss is even easier to miss silently because `combine_primary_and_aux_loss(..., None)` returns the primary loss unchanged.
+
+**Fix**
+
+Use a structured forecast result and a single canonicalized quantile list. Define one of:
+
+- quantile-primary mode, with the median quantile used as point output;
+- point-primary mode;
+- explicit joint mode with a configured point/quantile coefficient.
+
+For non-crossing forecasts, prefer an ordered parameterization such as a base quantile plus cumulative positive increments instead of merely sorting predictions after the fact. Preserve that order through de-normalization: RevIN's unconstrained affine weight is divided out at [`layers/StandardNorm.py` lines 56-63](layers/StandardNorm.py#L56), so a negative learned weight can reverse an ordered head. Parameterize the affine scale as positive or enforce and test ordering after de-normalization.
+
+Return a tensor-only dictionary or `NamedTuple` that `DataParallel` can gather; a plain dataclass is not handled safely by its normal recursive gather. Define a sample-weighted/global reduction for MoE routing statistics. Tests must assert gradients for exactly the heads later evaluated; cover unsorted and duplicate configuration, parallel gathering, positive-scale/post-denormalization ordering; and report pinball loss, coverage, interval width, and crossing rate.
+
+### TFT-C04 — `top_amplitude` FFT mode selection can crash
+
+**Severity:** P0 for the affected FFT option
+
+**Implementation status on 2026-07-28:** fixed in the current worktree. The FFT branch now selects top-amplitude bins per sample and latent channel, uses physical bin indices only for gather/scatter, binds learnable complex weights by selected-rank position, and preserves batch permutation/composition invariance.
+
+**Evidence**
+
+`SpectralBranch` allocates weights with shape `[d_model, modes]` at [`layers/TemporalFusion_layers.py` lines 296-309](layers/TemporalFusion_layers.py#L296). `top_amplitude` returns physical FFT-bin indices in `[0, n_freqs)` at [321-330](layers/TemporalFusion_layers.py#L321), then uses those absolute indices to index the `modes`-wide weight tensor at [360-365](layers/TemporalFusion_layers.py#L360).
+
+When `n_freqs > modes` and a dominant selected bin is at or above `modes`, indexing fails. A high-frequency probe with `modes=2` reproduced an out-of-bounds `IndexError`.
+
+Existing tests use settings where `modes` covers the available bins or random energy happens not to expose the boundary.
+
+`top_amplitude` also averages amplitudes over the current batch and latent channels. A sample's selected bins—and therefore its forecast—can change depending on unrelated samples in the same batch. That violates batch-composition invariance at inference.
+
+**Fix**
+
+Choose and document one parameterization:
+
+- weights by selected rank: use the first `k` weight slots for the `k` selected bins; or
+- weights by physical bin: allocate/derive weights for the maximum supported FFT grid and validate sequence lengths.
+
+Then remove batch dependence by selecting bins per sample/per channel, or use fixed bins learned from training data/configuration. Add deterministic sine-wave tests whose dominant bins are below, equal to, and above `modes`, plus batch permutation and batch-composition invariance tests.
+
+### TFT-C05 — Higher-order interaction gates have incompatible cardinality
+
+**Severity:** P0 for order 3; P1 for order 2
+
+**Implementation status on 2026-07-28:** fixed in the current worktree. The higher-order block now emits one independent sigmoid gate per actual interaction term, so order 2 controls the pair term directly, order 3 controls pair and triple terms separately, and interpretation payloads report gate shape `[B, T, interaction_order - 1]`.
+
+**Evidence**
+
+At [`layers/TemporalFusion_layers.py` lines 602-647](layers/TemporalFusion_layers.py#L602):
+
+- order 2 creates one interaction term (`pair_term`) but two softmax gates;
+- order 3 creates two terms (`pair_term`, `triple_term`) but three gates.
+
+For order 2, broadcasting applies both gates to the same pair term, and the softmax gates sum to one. The result is the pair term regardless of gate logits. A probe found only numerical-noise gate gradients.
+
+For order 3, the gate and term dimensions are `3` and `2`, causing a runtime size mismatch.
+
+**Fix**
+
+Make the number of gates equal the number of terms, or explicitly include a “no interaction” branch. A robust design is an independent sigmoid gate per optional term, which can suppress both pair and triple interactions. Add forward/backward tests for both orders and assert non-zero gate gradients on a non-degenerate loss.
+
+### TFT-C06 — Static interpretation weights are dropped
+
+**Severity:** P1
+
+**Implementation status on 2026-07-28:** fixed in the current worktree. Static interpretation outputs now preserve per-context VSN weights and graph-attention metadata instead of collapsing to `None`, and interpretation summaries/export now carry static feature names from the resolved TFT schema.
+
+**Evidence**
+
+`StaticCovariateEncoder` returns:
+
+```python
+{"c_s": ..., "c_c": ..., "c_h": ..., "c_e": ...}
+```
+
+at [`models/TemporalFusionTransformer.py` lines 442-451](models/TemporalFusionTransformer.py#L442). `Model._split_vsn_weight_payload()` only reads top-level `selection` and `graph_attention` keys at [1208-1212](models/TemporalFusionTransformer.py#L1208). Therefore the nested static payload is converted to `(None, None)`.
+
+A full static-input interpretation probe reproduced `static_vsn_weights=None`.
+
+**Fix**
+
+Preserve the per-context structure, or return one canonical static VSN payload after restoring the paper's single-static-VSN design. Add a full-model static interpretation test.
+
+### TFT-C07 — Advertised short-term forecasting fails its experiment contract
+
+**Severity:** P0 for `short_term_forecast`
+
+**Evidence**
+
+Normal M4 construction fails first: `data='m4'` is absent from `datatype_dict`, so `get_typepos()` requires an explicit `tft_observed_pos` that the normal short-term path does not supply. For a manually configured model that gets past construction, `Model.forward()` explicitly accepts both long- and short-term task names at [`models/TemporalFusionTransformer.py` lines 1443-1462](models/TemporalFusionTransformer.py#L1443). The short-term experiment calls the model with `x_mark_enc=None` and `x_mark_dec=None` at [`exp/exp_short_term_forecasting.py` lines 87-95](exp/exp_short_term_forecasting.py#L87), while `_validate_inputs()` immediately dereferences `.ndim` on all four inputs at [`models/TemporalFusionTransformer.py` lines 1176-1178](models/TemporalFusionTransformer.py#L1176).
+
+Even if markless input were accepted, validation/forecast assignment in the short-term experiment expects prediction-length output, while native TFT returns zero history plus prediction.
+
+**Fix**
+
+Either implement a markless known-input strategy and prediction-only output contract for short-term forecasting, or reject the task during model construction with a clear supported-task error. Add an experiment-level test rather than only a direct model smoke test.
+
+### TFT-C08 — Known-input and feature schema validation is incomplete
+
+**Severity:** P1
+
+`_validate_inputs()` checks the encoder value length but never checks `x_mark_enc.shape[1] == seq_len`. A short mark tensor can cause an early future mark to be sliced into the history while the decoder still returns the expected shape. A long mark tensor can insert extra tokens. This is a semantic alignment failure, not necessarily a shape failure.
+
+Other schema gaps:
+
+- registered dataset entries override explicit static/observed positions;
+- registered and custom role indices are not checked or resolved against the effective post-`M`/`MS`/`S` feature schema; in particular, ETT's registered `0..6` observed positions index out of range with `features='S'` and `enc_in=1`;
+- static and observed roles are not checked for invalid overlap;
+- targets are not required or warned to be historically observed;
+- `run.py` exposes `--tft_allow_custom_known` but not the required `tft_known_len` or optional maximum-channel setting;
+- runner help allows detailed frequencies such as `15min` and `3h`, while `get_known_len()` uses exact short-code dictionary lookup.
+
+**Fix**
+
+Introduce a typed feature schema resolved once at construction. Validate names, indices, role overlap, target observability, exact mark lengths, known-input names, frequency aliases, and source availability before the first batch.
+
+### TFT-C09 — The production experiment ignores the model target map
+
+**Severity:** P0 for non-last MS targets and reduced/non-contiguous multi-output mappings
+
+**Evidence**
+
+`get_target_pos()` and model de-normalization honor `tft_target_pos`, but the production experiment still selects truth with the repository-wide `f_dim` convention in train, validation, and test at [`exp/exp_long_term_forecasting.py` lines 55-73, 122-168, and 222-253](exp/exp_long_term_forecasting.py#L55). MS always takes the last truth channel, regardless of `tft_target_pos`; reduced M outputs can be compared against incompatible channels or shapes.
+
+The test inverse path also tiles `C_out` predictions to the full input width before applying the dataset scaler. This can produce numerically wrong inverse metrics even when the model's internal target de-normalization was correct.
+
+**Fix**
+
+Use one schema-aware target-index helper for train, validation, test, quantile loss, inverse metrics, and physics operands. Select truth by resolved target indices and inverse-transform each predicted target with its corresponding training-scaler mean/scale—never by tiling. Add non-last MS and non-contiguous multi-output M tests.
+
+## 6. Architecture, Performance, and Interpretability Findings
+
+### TFT-A01 — The “learned” FFT selector does not select frequencies
+
+**Implementation status on 2026-07-28:** fixed in the current worktree. The learned FFT path now allocates spectral-anchor logits with shape `[1, d_model, modes]`, interpolates logits and complex weights onto the runtime FFT grid, and exports learned-mask summaries through the interpretation payload.
+
+At the audited base commit, `freq_mask_logits` had shape `[1, d_model, 1]` and was expanded across every frequency at [`layers/TemporalFusion_layers.py` lines 310-312](layers/TemporalFusion_layers.py#L310) and [343-355](layers/TemporalFusion_layers.py#L343). It therefore learned one scalar amplitude gate per latent channel, identical for all FFT bins.
+
+The repair keeps `low`, `top_amplitude`, and `learned` modes separate. `learned` now uses a length-independent anchor parameterization over `modes`, then linearly interpolates both mask logits and complex weights to the active `rfft` grid. That makes the option genuinely frequency-selective while preserving checkpoint portability across sequence lengths.
+
+Regression coverage now includes:
+
+- distinct learned logits producing different bin weights;
+- runtime-length interpolation behavior;
+- finite gradients through learned mask logits and complex weights;
+- state-dict round-trip preservation of learned mask behavior;
+- interpretation payload summaries for learned-mask mean, spread, and peak-bin location.
+
+The FFT branch also processes the entire history-plus-known-future sequence at once. That is valid if all future inputs are truly known, but it means later known-future information can influence earlier latent positions before the causal attention mask. Temporal attention from this mode is not a complete causal explanation.
+
+### TFT-A02 — Large parameter sets are structurally unused
+
+Three cases are visible:
+
+1. `StaticCovariateEncoder` always creates four GRNs even when `static_len == 0` at [`models/TemporalFusionTransformer.py` lines 419-440](models/TemporalFusionTransformer.py#L419). They can never execute.
+2. `VariableSelectionNetwork` always allocates the residual projection and gate even when residual bypass is disabled at [321-324](models/TemporalFusionTransformer.py#L321).
+3. When sigmoid gating is enabled, the early return at [363-379](models/TemporalFusionTransformer.py#L363) bypasses `head_grns`, `variable_grns`, and the low-rank selection path.
+
+In a representative local probe:
+
+```text
+d_model=16:  4,480 dead static parameters, about 9.9% of model parameters
+d_model=128: 265,216 dead static parameters, about 9.9%
+sigmoid VSN, d=48/C=28: about 77% of VSN parameters structurally unused
+```
+
+Instantiate modules only for the selected execution path. Add a test that every expected trainable parameter receives a gradient for each named profile.
+
+### TFT-A03 — Per-variable embedding is expensive and non-canonical
+
+Every observed/static scalar owns a full `DataEmbedding`, which contains:
+
+- a circular kernel-3 temporal convolution;
+- a length-5000 positional buffer;
+- temporal embedding modules that are unused when `x_mark=None`.
+
+See [`models/TemporalFusionTransformer.py` lines 176-205](models/TemporalFusionTransformer.py#L176) and [`layers/Embed.py` lines 29-42 and 109-126](layers/Embed.py#L29).
+
+Consequences:
+
+- a variable representation is not pointwise as in the TFT paper;
+- circular padding makes the first history embedding use the last history value;
+- duplicated positional buffers scale as `O(C * max_len * d_model)` and are included in state dictionaries;
+- feature-heavy models become unnecessarily large.
+
+For ETT's seven observed variables, duplicated positional buffers alone were approximately:
+
+```text
+d_model=16:   2.24 MB
+d_model=128: 17.92 MB
+```
+
+Use feature-specific pointwise linear/categorical embeddings and one shared positional representation only where the architecture needs it.
+
+### TFT-A04 — Temporal graph evolution is not sparse
+
+**Implementation status on 2026-07-28:** fixed in the current worktree. Temporal graph evolution now perturbs base logits rather than normalized probabilities, preserves the original structural support mask, re-masks removed edges to negative infinity before the final softmax, and uses a low-rank temporal state instead of a dense `C²` hidden state.
+
+At the audited base commit, the base learner created top-k adjacency at [`layers/AdvancedDynamicGraph.py` lines 32-55](layers/AdvancedDynamicGraph.py#L32). Temporal evolution then added a dense perturbation and applied a full softmax at [133-153](layers/AdvancedDynamicGraph.py#L133). Every finite edge became positive, including edges removed by top-k.
+
+Even a zero perturbation would apply `softmax()` to an already normalized probability matrix and make it dense. In addition, `alpha` was initialized to `0.1` but used through `sigmoid(alpha)`, giving an initial multiplier near `0.525`, not `0.1`.
+
+The repair now defines `top_k=0` as truly dense, keeps sparse support fixed during temporal evolution, and initializes the effective evolution strength to `0.1` through a logit parameterization. The temporal evolution path now uses low-rank source/destination factors derived from a compact recurrent state, which removes the worst `O(C⁴)` recurrent parameter growth from the previous `C²` GRU design.
+
+Edge-feature mode still materializes dense `[N,C,C,d]` tensors when enabled, but the module now raises early when that tensor would exceed a conservative size guard. Returned “multi-head” adjacency remains one learned graph broadcast across heads; the implementation is now at least honest about preserving one shared support rather than silently densifying it.
+
+Regression coverage now includes:
+
+- temporal sparse graphs staying within top-k support;
+- `top_k=0` behaving as dense rather than all-zero;
+- finite row-normalized temporal adjacency;
+- initial effective evolution strength equal to `0.1`;
+- temporal variation without support expansion;
+- temporal-evolution parameter-growth regression.
+
+### TFT-A05 — The MoE is sparse in routing only
+
+**Implementation status on 2026-07-28:** fixed in the current worktree at the contract level. The module is now explicitly treated as dense-compute top-k mixing, capacity uses `ceil()` with a minimum of one routed token when tokens exist, zero-route tokens are restored to their strongest fallback expert, and the auxiliary loss now includes both importance and load-balancing terms with global-reducible summaries.
+
+`RegimeAwareSparseMoE` still evaluates every expert through fused einsums at [`layers/TemporalFusion_layers.py` lines 770-777](layers/TemporalFusion_layers.py#L770). Top-k routing reduces mixing, not expert compute. The implementation is now honest about that behavior through the exported routing-mode label.
+
+At the audited base commit, the capacity path at [729-748](layers/TemporalFusion_layers.py#L729):
+
+- loops over experts in Python;
+- calls `.item()`, synchronizing accelerator execution;
+- can compute capacity `0` for small token counts;
+- can drop every route for a token, producing a zero mixture with no fallback.
+
+A `B=1, T=1, E=4, top_k=2` probe produced `capacity=0`, routing sum `0`, auxiliary loss `0`, and zero expert gradient. The repair now prevents that failure mode and propagates both expert-importance sums and expert-load sums through the structured output so experiment-side auxiliary-loss reduction remains replica-safe.
+
+Regression coverage now includes:
+
+- `B=1, T=1` retaining a non-zero route;
+- every token retaining at least one route after capacity pruning;
+- heavy expert-imbalance/capacity stress cases;
+- global auxiliary-loss reduction using importance and load statistics;
+- selected experts receiving gradients.
+
+### TFT-A06 — Extension modes weaken literal interpretability
+
+Interpretation payloads remain useful diagnostics, but they are not always faithful attributions:
+
+- graph mixing changes each node representation before VSN selection;
+- residual VSN bypass allows predictions to avoid the selected convex combination;
+- sigmoid gates are independent and not unit-sum;
+- full attention is not the shared-value interpretable attention from TFT;
+- dual attention blends an interpretable and non-interpretable branch;
+- FFT globally mixes time before causal attention;
+- higher-order interactions occur after VSN collapse, so they are latent-coordinate interactions, not explicit original-covariate interactions;
+- covariate reattention uses detached pre-VSN embeddings and padded zero tokens without a mask; after flattening there is no explicit 2-D time-by-covariate coordinate, identity is only partial/implicit, and padded tokens have neither identity nor a padding mask at [`models/TemporalFusionTransformer.py` lines 1246-1257](models/TemporalFusionTransformer.py#L1246) and [748-755](models/TemporalFusionTransformer.py#L748);
+- MoE regime/routing tensors are detached in the interpretation payload.
+
+This is now repaired in the current worktree: interpretation exports use named history/future feature summaries, explicit axis labels, and profile-aware caveat flags rather than flat VSN indices.
+
+Expose interpretation-quality metadata such as:
+
+```text
+is_canonical_vsn_attribution
+uses_graph_pre_mixing
+uses_vsn_bypass
+uses_noninterpretable_attention_branch
+uses_global_spectral_mixing
+```
+
+Do not present canonical TFT variable importance or temporal attention claims when those assumptions are false.
+
+### TFT-A07 — Lag attention needs physical and masking semantics
+
+`MultiScaleLagAttention` shifts the sequence with zero padding, but does not mask padded keys at [`layers/TemporalFusion_layers.py` lines 490-520](layers/TemporalFusion_layers.py#L490). It then attends over all causal positions in the shifted sequence, rather than selecting only an exact lag.
+
+When RoPE or ALiBi is enabled, shifted keys are not given positions offset by the physical lag. When `lag >= sequence_length`, the branch is entirely zero yet still receives a learned fusion weight.
+
+This is now repaired in the current worktree: lag branches validate active length, mask shifted padding, label themselves honestly as shifted-history attention, and pass physical lagged key positions. Temporal compression also preserves explicit original coordinates for downstream RoPE/ALiBi use.
+
+### TFT-A08 — Runtime safety checks can dominate accelerator execution
+
+The model performs repeated `torch.isfinite(...).all()`, `.any()`, and warning checks throughout embeddings, temporal blocks, attention, graphs, and the top-level input validator. These reductions can synchronize GPU/ROCm execution each forward.
+
+This is now repaired in the current worktree: expensive repeated finite-value checks are debug-gated, cheap structural validation stays on, and import-time hardware environment mutation has been removed from the model module.
+
+### TFT-A09 — Configuration and benchmark semantics drift
+
+- `d_ff` is printed and varied throughout `tests/test_tft_deep_ett.py`, but neither native TFT source file reads it. Those “d_ff” ablations do nothing.
+- `tft_temporal_backbone_layers` controls TCN depth, not the plain LSTM path.
+- direct model defaults and `run.py` defaults differ for important flags such as full attention, residual bypass, and interpretation payload stacking.
+- `run.py` experiment identifiers omit TFT extension flags, so materially different models can share a checkpoint/result path.
+- `tests/test_tft_deep_ett.py` references undefined `use_amp` in its final test loop at line 574.
+- its advertised “2-epoch” physics verification would actually use `baseline_safe`'s 150 epochs; the parser has no epoch override.
+- `run_tests.py` discovers `Tests`, while the repository directory is lowercase `tests`.
+- the main native comprehensive test class is skipped when optional Nixtla TFT import fails, coupling native coverage to an out-of-scope implementation.
+
+This is now repaired in the current worktree: native TFT defaults are centralized, `d_ff` is explicitly treated as ignored/non-material, backbone-layer scope is surfaced honestly, and the digest now tracks the resolved material semantics.
+
+### TFT-A10 — Attention dropout configuration is incomplete
+
+Full attention uses `dropout_p=0.0` in the SDPA call, and the exact path does not drop attention probabilities. The configured dropout is applied only after output projection. This can be a valid design choice, but it does not match the expectation of an attention-dropout argument and reduces regularization relative to common TFT implementations.
+
+This is now repaired in the current worktree: attention-probability dropout is explicit, exact/SDPA paths match in evaluation, training-only dropout is applied correctly, and interpretation tensors remain pre-dropout.
+
+## 7. What Is Already Correct or Improved
+
+The prior report overstated several bugs that are not open in the audited commit:
+
+| Previous claim | Current status |
 |---|---|
-| LSTM-only temporal backbone | LSTM / Gated-TCN / Hybrid-TCN-LSTM (configurable) |
-| Single-head VSN | Multi-head VSN, per-feature sigmoid gating, low-rank factorization |
-| Static causal self-attention | `PositionalMultiHeadAttention` with RoPE/ALiBi/none + SDPA backend |
-| No cross-attention | Optional explicit cross-attention (interpretable or full) |
-| No frequency modeling | Parallel FFT spectral branch with learned modes |
-| Single attention head per layer | Dual-attention fusion (full + interpretable heads) |
-| No sparsity | Regime-aware sparse MoE replacing position-wise FFN |
-| No graph learning | Dense or sparse dynamic graph covariate mixer |
-| No multi-scale dependencies | Multi-scale lag attention at configurable lags |
-| Fixed sequence length processing | Optional TemporalCompression for long sequences |
-| No higher-order interactions | Optional 2nd/3rd order feature interaction block |
-| RevIN optional, applied globally | RevIN optional, with correct target-only scatter/de-norm |
+| Non-persistent causal-mask buffers stay on CPU | False in general—registered non-persistent buffers migrate with the module—and current forwards explicitly move device/dtype |
+| `x_dec` must equal `c_out` | Fixed: validation accepts `c_out` or `enc_in` at model lines 1190-1191 |
+| Stochastic-depth split remains stale | Fixed at model lines 1022-1032 |
+| MoE flat reshape does not propagate | Current code makes the tensor contiguous and reassigns the reshaped result |
+| Pair/triple normalization is a bug | Not a bug; the actual higher-order defect is gate/term cardinality |
+| `minute_x=0.` causes stack failure | The non-minute branch excludes it from the stack |
 
----
+Other sound pieces include:
 
-## 2. Component-Level Algorithm Analysis
+- explicit model-local `tft_target_pos` mapping with an MS fallback;
+- cached `target_pos_buf`;
+- target-aware internal de-normalization, including the RevIN scatter/select approach;
+- causal attention masks with a dynamic fallback for longer sequences;
+- exact/SDPA selection with exact fallback when attention weights are requested;
+- partial input rank/length/known-feature validation;
+- structured interpretation data for many optional branches;
+- gradient checkpointing and stochastic-depth controls;
+- a broad native TFT test suite.
 
-### 2.1 Embedding Layer — `TFTEmbedding`
+These are worth preserving while simplifying the architecture around them.
 
-**Algorithm**
+## 8. Audit of the Original Physics-Informed Plan
 
-Each variable type is embedded independently before any mixing:
+### Overall assessment
 
-- **Observed covariates** (`observed_pos`): Each scalar channel `x_enc[:,:,i]` → `DataEmbedding(1, d_model)` → one embedding per variable per time step → stacked to `[B, T, C_o, d]`.
-- **Known covariates** (timestamps): `TFTTemporalEmbedding` or `TFTTimeFeatureEmbedding` → each temporal component (month, day, weekday, hour, minute) gets its own embedding → stacked to `[B, T+pred, C_k, d]`. For `timeF` mode, each of the `d_inp` scalar channels gets a separate `nn.Linear(1, d_model)`, so positional features remain disentangled.
-- **Static covariates** (`static_pos`): Uses only the first time step `x_enc[:, :1, i]` — correct since static features are time-invariant.
+The proposal can become a useful physics-/theory-guided loss framework. As written, it would not yet constitute a reliable implementation and should not be described as a classical PINN: it contains no collocation-domain residual construction, no coordinate differentiation, and no governing equation for ETTh1.
 
-**Design observations**
+| Proposed item | Verdict | Required change |
+|---|---|---|
+| Generic equation residual | Feasible with constraints | Named sources, safe schema, physical scaling, masks, tolerances, future-availability rules |
+| Monotonicity pairs | Underspecified | Paired counterfactual or Jacobian definition with perturbation/range/horizon |
+| Rate bound | Closest to implementable | Physical `dt`, target mapping, last-history boundary, raw-unit conversion |
+| L1 on VSN weights | Incorrect for softmax VSN | Entropy/KL/prior mass; L1 only for sigmoid gates |
+| Integrate in model and deep test | Wrong production layer | Output losses in the experiment; model changes only for internal diagnostics |
+| Two-epoch ETTh1 verification | Not what command does | Add epoch/batch override; fix undefined `use_amp`; use synthetic-law tests first |
 
-- `TFTTemporalEmbedding.forward` hard-codes the order `[month, day, weekday, hour, (minute)]`. This is fragile if `x_mark` column ordering ever changes. A named-field approach would be safer.
-- `x_mark` is concatenated along the time dimension as `[x_mark_enc, x_mark_dec[:, -pred_len:, :]]`, giving `T + pred_len` timesteps total. The slice `-pred_len:` is correct and avoids re-using the label window.
-- The custom known embedding (`TFTCustomKnownEmbedding`) uses a value projection + channel embedding, effectively giving each known feature an additive channel bias. This is lightweight but does not model inter-channel interactions.
+### 8.1 Missing units and scaler contract
 
----
+Physics equations must run in a declared coordinate system. The repository's sklearn/NumPy inverse transforms are used only after inference and are not differentiable. The implementation needs Torch buffers for training-split mean/scale, selected through `target_pos`.
 
-### 2.2 Variable Selection Network — `VariableSelectionNetwork`
+Residuals with different units must be normalized, for example:
 
-**Algorithm**
-
-The VSN learns *soft* importance weights over C variables at each time step.
-
-```
-x [B,T,C,d]  ->  flatten to [B,T,C*d]
-                     |
-              (optional) cross-mixing via DynamicGraphLearner
-                     |
-              (optional) low-rank projection [C*d -> rank]
-                     |
-              GRN(flat_input, context) -> unnormalized weights [B,T,C]
-                     |
-              Softmax -> selection_weights [B,T,C]
-                     |
-           x_processed = stack of per-variable GRN(x[...,i,:]) -> [B,T,d,C]
-                     |
-           selection_result = x_processed @ selection_weights  -> [B,T,d]
-                     |
-           (optional) residual bypass: linear(flat) gated by tanh(scalar_gate)
+```text
+L_k = mean( rho(residual_k / tolerance_k) )
 ```
 
-**Multi-head extension**: For `n_selection_heads > 1`, `d_model` is split into `K` subspaces of size `d_head = d_model // K`. Each head independently selects variables in its subspace using a separate GRN, and results are concatenated. De-correlated context projections per head prevent head collapse.
+Without this, a term measured in watts can dominate a term measured in degrees solely because of magnitude.
 
-**Per-feature gating alternative**: When `per_feature_gating=True`, the VSN switches from softmax selection to per-covariate sigmoid gates, effectively letting the network decide to include or exclude each covariate independently rather than distributing unit probability mass over them.
+### 8.2 Missing data-source contract
 
-**Complexity observations**
+The plan's coefficient/index lists do not identify whether an operand is:
 
-- The flattened input `[B, T, C*d]` fed to the GRN head has dimension `C * d_model`. For C=11 variables and d_model=512, that's 5632 inputs. For larger covariate sets this can be very large, hence the low-rank threshold (default 64 variables triggers rank factorization).
-- The `residual_projection` maps `[C*d]` → `d`. This is a large linear layer that can dominate parameter count for large C. A depthwise-then-pointwise structure would be cheaper.
-- `torch.flatten(x, start_dim=-2)` collapses `[B,T,C,d]` to `[B,T,C*d]` which allocates a new contiguous tensor — not avoidable since GRN requires contiguous input.
+- a predicted state;
+- historical observation;
+- true known-future driver;
+- future training label;
+- static variable.
 
----
+The distinction is essential for deployability and leakage prevention. Standard TFT `x_mark` is calendar/time-feature data, not arbitrary future physical state. `x_dec` values are ignored by the model.
 
-### 2.3 Static Covariate Encoder — `StaticCovariateEncoder`
+### 8.3 Rate loss boundary
 
-Produces four context vectors `[c_s, c_c, c_h, c_e]` from static features, each derived by an independent VSN followed by a GRN. When `static_len == 0` all four are `None`, which propagates correctly through the decoder (LSTM initial state, enrichment GRN context, etc.).
+The correct first finite difference is:
 
-**Design note**: Four separate VSNs share the same hyperparameters but learn independently. Since they produce conceptually different contextualization roles (variable selection context, cell state, hidden state, enrichment), independent parameterization is correct. However, during the early training phase all four encoders receive identical gradients from the static input, which may slow differentiation. A shared backbone with four separate heads could be explored.
-
----
-
-### 2.4 Gating Primitives — `GRN`, `GLU`, `SwiGLU`, `GateAddNorm`
-
-**GLU**: `fc1(x)` → value; `fc2(x)` → gate. Uses `nn.GLU` which implements `x[...,:half] * sigmoid(x[...,half:])`. Since `fc1` and `fc2` project independently, the combined output is `fc1(x) * sigmoid(fc2(x))` — correct. Note this doubles the Linear parameter count compared to a single projection + split.
-
-**SwiGLU**: Replaces `sigmoid` gate with `SiLU(fc1(x))`. Empirically stronger on LLM-scale models; at small d_model the difference is minimal but never harmful.
-
-**GRN**: The core non-linear unit. Mathematically:
-```
-η₁ = ELU(W_a·a + W_c·c)     (context injection)
-η₂ = W_i·η₁
-output = LayerNorm(GLU(η₂) + W_skip·a)
-```
-The residual projection (`project_a`) only activates when `hidden_size != input_size`, which handles the dimensionality mismatch cleanly.
-
-**Key observation on GRN context injection**: The context `c` is broadcast via `c.unsqueeze(1)`, working correctly for `c: [B, d]` applied to `a: [B, T, d]`. If `c` is `None`, the branch is skipped — correct.
-
----
-
-### 2.5 Temporal Backbone
-
-Three choices exist:
-
-**LSTM** (`temporal_backbone_type='lstm'`): Original TFT design. History and future encoded sequentially, sharing state across the boundary. Cell/hidden state initialized from `c_c` / `c_h` static context.
-
-**Gated Dilated TCN** (`'gated_tcn'`): Stack of `GatedDilatedTemporalBlock` with doubling dilation `2^i`. Each block:
-```
-filter = tanh(CausalConv1d(x, dilation=2^i))
-gate   = sigmoid(CausalConv1d(x, dilation=2^i))
-out    = LayerNorm(x + Conv1x1(filter * gate))
-```
-This is the WaveNet gating pattern, appropriately adapted. Receptive field grows as `sum(2^i * (K-1))` for `i in 0..L-1`.
-
-**Hybrid** (`'hybrid_tcn_lstm'`): TCN followed by LSTM with a learned fusion gate:
-```
-tcn_feat = GatedDilatedTCN(x)
-rnn_feat, state = LSTM(tcn_feat, init_state)
-gate = sigmoid(Linear([tcn_feat; rnn_feat]))
-output = gate * rnn_feat + (1-gate) * tcn_feat
-```
-This lets the LSTM operate on already-convolved features, reducing its burden of learning local patterns. The `gate` biases toward LSTM initially (both logits start at 0 → gate ≈ 0.5).
-
-**Algorithm concern with LSTM backbone**: The LSTM is split into `history_encoder` and `future_encoder`. The `future_encoder` receives the LSTM state from `history_encoder`. However, in `TemporalFusionDecoder.forward`, when `e_layers > 1`, `curr_history` and `curr_future` are updated each layer but re-split at `history_input.shape[1]`. This is correctly derived from the original history length, not the compressed length, so the split index is stable across layers.
-
----
-
-### 2.6 Spectral Branch — `SpectralBranch`
-
-Runs **in parallel** with the temporal backbone:
-
-```
-x [B,L,D] -> permute -> rfft -> select/transform modes -> irfft -> LayerNorm(x + projection(output))
+```text
+(forecast[:, 0] - history_target[:, -1]) / dt
 ```
 
-Three mode selection strategies:
-- `low`: deterministic low-frequency selection (stable but biased toward smooth signals).
-- `top_amplitude`: non-differentiable topk over energy — the model cannot learn *which* modes to select, only what to do with them.
-- `learned`: differentiable sigmoid soft-mask over all modes — fully trainable.
+followed by differences between forecast steps. Applying `diff()` to the model's full returned tensor would compare a zero history pad with the first forecast and create a false violation.
 
-Fusion with temporal features via a learned sigmoid gate over the concatenation — this is the correct way to interpolate two signal representations.
+### 8.4 Monotonicity is not a temporal-difference rule
 
----
+If the intended statement is “increasing input `x_i`, all else equal, must not decrease output `y_j`,” use a paired perturbed forward or input derivative. A time-series co-movement penalty does not isolate that effect and can encode spurious correlation.
 
-### 2.7 Temporal Compression — `TemporalCompression`
+### 8.5 VSN priors need a lightweight differentiable output
 
-A depthwise-separable strided convolution + transposed convolution pair for compressing/decompressing history features before/after attention. Activated only when `history_len > threshold`.
+Normal forward does not return VSN weights. Full interpretation mode also materializes attention and can disable the fast attention path. Add a selective `return_auxiliary` contract that can return differentiable VSN logits/weights without unrelated payloads.
 
-The decompress-to-target-len logic trims or pads the transposed conv output, which is correct since `ConvTranspose1d` output length is not always exactly `target_len` due to padding arithmetic.
+Graph pre-mixing and residual bypass must be considered: a perfect prior on reported VSN weights does not constrain information that bypasses or has already mixed across variables.
 
-**Key integration subtlety**: When compression is active, `enriched_features` in the decoder layer contains compressed history + full-resolution future. The split index `compressed_history_len` is used throughout the cross-attention and causal masking paths. After the attention pass, `temporal_compression.decompress_to` restores the history to original length before `gate_final`. This means `gate_final(out, temporal_features)` receives correctly-aligned tensors.
+### 8.6 ETTh1 is not a physics validation dataset by default
 
----
+The repository supplies ETT feature names and sampling frequency, but not a governing equation, topology, rated capacities, units, or an energy-balance source. Rate or smoothness hypotheses can be tested as theory-guided regularizers. They are not evidence of physics consistency without an externally justified law.
 
-### 2.8 Attention Stack
+## 9. Improved Physics/Theory-Guided Implementation Plan
 
-**`InterpretableMultiHeadAttention`**: Projects Q, K from all heads, V shared across heads (`v` has shape `[B,T,d_head]`). This is the original TFT interpretable attention design where value representations are averaged across heads. Averaging in `attention_out = torch.mean(attention_out, dim=1)` reduces multi-head capacity but improves interpretability.
+The full actionable plan is in [`implementation_plan.md`](implementation_plan.md). The recommended sequence is:
 
-**`PositionalMultiHeadAttention`**: Full multi-head attention with optional RoPE/ALiBi positional biases. Supports SDPA backend (`torch.nn.functional.scaled_dot_product_attention`) for Flash Attention on CUDA.
+### Phase 0 — Stabilize native TFT prerequisites
 
-**Dual-attention fusion**: Both `PositionalMultiHeadAttention` (full capacity) and `InterpretableMultiHeadAttention` (interpretable) run in parallel, their outputs blended via learned softmax logits initialized to favor interpretable branch (`init_logits[1] = 0.0` vs. `init_logits[0] = -1.0`).
+Fix and test:
 
-**Causal mask pre-buffering**: Both `InterpretableMultiHeadAttention` and `TemporalFusionDecoderLayer` build a causal mask at `max_len = seq_len + pred_len` and register it as a non-persistent buffer. This avoids re-allocation each forward pass. The buffer is on CPU at init; it's moved to the correct dtype/device lazily by `.to(enriched_features.dtype)`. ⚠️ **Device bug**: if the model moves to GPU after construction, the buffer stays on CPU and `.to(dtype=...)` does **not** move it to GPU — `.to(device=..., dtype=...)` is required.
+1. static value preservation;
+2. `(c_h, c_c)` state order;
+3. quantile training/evaluation contract and ordering;
+4. FFT top-amplitude indexing and learned selector;
+5. higher-order interaction gating;
+6. production use of `tft_target_pos`;
+7. DataParallel-safe quantile/MoE outputs;
+8. deep benchmark `use_amp` and epoch override.
 
----
+Physics experiments should not be built on output modes whose trained/evaluated contracts are already inconsistent.
 
-### 2.9 Dynamic & Advanced Graph Learner
+### Phase 1 — Add domain metadata and strict schema
 
-**`DynamicGraphLearner`** (dense): Reshapes `[B,T,C,d]` → `[B*T, C, d]` and applies full attention across C nodes. This is O(C²) per timestep. Correct API: takes `return_attention` kwarg and returns `(features, weights)` or just `features`.
+Add:
 
-**`AdvancedDynamicGraphLearner`** (sparse): Adds sparse adjacency learning via top-k masking, multi-hop GNN with DenseNet skip connections, optional temporal adjacency evolution via GRU, and optional edge feature modulation. The DenseNet aggregation at the end (`skip_proj(concat of all layer outputs)`) is a good way to preserve shallow representations.
+- ordered feature names after the effective `M`/`MS`/`S` loader selection and column reordering;
+- generated known-feature names and measured sample interval;
+- full observed scaler plus explicit transforms for known/static namespaces;
+- units from a versioned physics spec or sidecar, never guessed from CSV columns;
+- source namespaces;
+- versioned JSON constraint specifications;
+- complete inequality/bound/polynomial, temporal-selector, mask, quantile, reduction, and feasibility semantics;
+- startup resolution from names to indices.
 
-**Temporal evolution design**: The `TemporalGraphEvolution` GRU has output size `C*C`, which for large covariate sets becomes unwieldy. For C=100, that's 10,000 hidden units per GRU timestep. This is a known scaling issue.
+Reject missing/unavailable operands, incompatible time axes, irregular cadence, and missing units before training. History operands require explicit `last`, `lag:k`, or reduction semantics; static broadcasting must also be declared. Use an allow-listed unit registry only during configuration resolution and precompute Torch affine transforms for the batch loop. Never evaluate free-form Python expressions from configuration.
 
----
+### Phase 2 — Implement output-level constraints
 
-### 2.10 Higher-Order Interaction Block — `HigherOrderInteractionBlock`
+Create:
 
-Computes pairwise (2nd order) and optionally triadic (3rd order) FM-style interactions:
-```
-pair  = W_pair( (W_left·x) ⊙ (W_right·x) / sqrt(rank) )
-triple = W_triple( (W_left·x) ⊙ (W_right·x) ⊙ (W_third·x) / rank )   # if order==3
-gates = softmax(W_gate·x)   # [B,T,order]
-output = LayerNorm(x + W_out( dropout( sum_i(gates_i * term_i) ) ))
-```
-The rank normalization (`sqrt(rank)` for pairs, `rank` for triples) prevents scale explosion as rank grows. The gate is input-dependent, making the interaction contribution adaptive.
+- `utils/physics_config.py`
+- `utils/physics_losses.py`
 
----
+Initial constraints:
 
-### 2.11 Regime-Aware Sparse MoE — `RegimeAwareSparseMoE`
+- linear equality and inequality;
+- explicit polynomial monomials;
+- physical value bounds;
+- absolute rate bounds including the history boundary.
 
-**Regime detection** → soft regime probabilities → bias expert routing logits by learned regime-expert bias matrix. This is the key theoretical contribution: the model learns that different market/data regimes should route to different expert sub-networks.
+Pass the complete observed history, horizon-aligned known-future inputs and labels, and static values through qualified namespaces. Do not reduce history to target-only channels before resolving operands.
 
-**Expert computation**: Fully fused via einsum over expert parameters `[E, D, H]` — all experts computed in parallel, no Python loop. Routing weights then mix outputs.
-
-**Capacity constraint**: The per-expert capacity loop at training time is a Python-level for loop over experts — this will not scale for large E. A vectorized scatter-based implementation would be faster.
-
-**Auxiliary load-balancing loss**: Uses coefficient of variation squared (CV²) of expert importance. The standard Switch Transformer loss is `n_experts * sum(f_i * p_i)`. The CV² is a valid alternative but may have different gradient properties.
-
----
-
-### 2.12 Multi-Scale Lag Attention — `MultiScaleLagAttention`
-
-For each lag `l` in `lag_scales`:
-```
-shifted_x = pad(x[:, :-l, :], left=l)   # shift right by l steps
-attn_out_l = Attention(query=x, key=shifted, value=shifted, causal_mask)
-```
-Outputs are blended via learned softmax weights over scales. The `_shift_sequence` method correctly uses `F.pad` for efficiency. **Edge case**: when `lag >= seq_len`, the shifted sequence is all-zeros — the attention layer will still compute valid (though trivially uninformative) outputs.
-
----
-
-### 2.13 Normalization Strategy
-
-**Non-stationary mode** (default, `tft_use_revin=False`):
-```
-means = x_enc.mean(T)
-stdev = sqrt(var(x_enc) + 1e-5)
-x_enc_norm = (x_enc - means) / stdev
-```
-After prediction:
-```
-target_stdev = stdev[:, 0, :].index_select(-1, target_pos)
-target_means = means[:, 0, :].index_select(-1, target_pos)
-dec_out = dec_out * target_stdev + target_means
-```
-The `[:, 0, :]` indexing on `stdev [B,1,C]` collapses the time dim — correct since `keepdim=True` gives shape `[B,1,C]`.
-
-**RevIN mode** (`tft_use_revin=True`):
-The prediction is scattered into a full `[B, pred_len, enc_in]` buffer at `target_pos` indices, passed through `revin(..., 'denorm')` on all channels, then re-indexed. This is the correct way to apply per-channel affine denormalization because RevIN's stored `stdev`/`mean` have shape `[B,1,enc_in]`.
-
----
-
-### 2.14 TemporalFusionDecoder & Output Heads
-
-**Stochastic depth**: Layer-drop probability increases linearly with depth: `drop_prob = layer_idx / (num_layers-1) * rate`. Layer 0 is never dropped. This is the canonical stochastic depth schedule from [Huang et al., 2016].
-
-**Gradient checkpointing**: Activated during training when `tft_gradient_checkpointing=True`, using `use_reentrant=False` for compatibility with the autograd system. Disabled when `return_attention=True` (checkpointing is incompatible with captured activations).
-
-**Per-target heads**: When `tft_per_target_heads=True` and `c_out > 1`, each target channel gets its own 2-layer MLP head `Linear(d_model → d_model//2) → GELU → Linear(→1)`. This adds `c_out * (d_model * d_model/2 + d_model/2)` parameters — manageable for small c_out but grows quickly.
-
----
-
-## 3. Bug Report
-
-### BUG-01 — Causal mask buffer stays on CPU after `.to(device)` ❌ CRITICAL
-
-**Location**: `InterpretableMultiHeadAttention.__init__` and `TemporalFusionDecoderLayer.__init__`
-
-**Code**:
-```python
-self.register_buffer('_causal_mask_buf', build_causal_mask(max_len, torch.device('cpu'), torch.float32), persistent=False)
-```
-And later in forward:
-```python
-causal_mask = self._causal_mask_buf[:T, :T].to(attention_score.dtype)
-```
-
-**Problem**: `.to(dtype)` only converts dtype, not device. When the model is moved to GPU via `model.to('cuda')` or `model.cuda()`, `register_buffer` with `persistent=False` does **not** guarantee device migration because the buffer is explicitly constructed on CPU. In practice, PyTorch *does* migrate non-persistent buffers on `.to(device)`, but calling `.to(dtype)` without `.to(device=..., dtype=...)` in the forward pass risks using a CPU tensor in a CUDA operation if the buffer fails to migrate.
-
-**Fix**:
-```python
-# In forward:
-causal_mask = self._causal_mask_buf[:T, :T].to(device=attention_score.device, dtype=attention_score.dtype)
-```
-This is a one-line fix in both affected classes and makes device handling explicit.
-
----
-
-### BUG-02 — `_validate_inputs` checks `x_dec.shape[2] != configs.c_out` but `x_dec` is all-zeros in practice ⚠️ MEDIUM
-
-**Location**: `Model._validate_inputs`
-
-**Code**:
-```python
-if x_dec.shape[2] != self.configs.c_out:
-    raise ValueError(...)
-```
-
-**Problem**: In the standard TSL `exp_main.py` data pipeline, `x_dec` is constructed as `[x_mark_dec, zeros(pred_len, enc_in)]`, giving it `enc_in` channels, not `c_out`. When `c_out != enc_in` (e.g., MS forecasting with `c_out=1`), this validation will raise a false error even on valid inputs. The TFT model never reads `x_dec` values — only `x_mark_dec` is consumed. This validation is therefore semantically incorrect.
-
-**Fix**: Remove or relax the `x_dec` feature-size check, or document that callers must pass `x_dec` with exactly `c_out` channels (and update the TSL pipeline accordingly).
-
----
-
-### BUG-03 — `HigherOrderInteractionBlock` triple-order normalization off by factor of sqrt ⚠️ MEDIUM
-
-**Location**: `layers/TemporalFusion_layers.py`, `HigherOrderInteractionBlock.forward`
-
-**Code** (reconstructed from the truncated read):
-```python
-triple_term = self.triple_projection((left * right * third) / self.interaction_rank)
-```
-versus pair term:
-```python
-pair_term = self.pair_projection((left * right) / (self.interaction_rank ** 0.5))
-```
-
-**Problem**: The pair term is normalized by `sqrt(rank)` (mimicking attention scaling), while the triple term is normalized by `rank` (not `rank^(2/3)` or `rank` consistently). For interaction of order N, a consistent scale would be `rank^((N-1)/2)` — giving `sqrt(rank)` for N=2 and `rank` for N=3. The current triple normalization is actually correct by this formula, but the inconsistency with the pair normalization is confusing and should be documented.
-
----
-
-### BUG-04 — Stochastic depth skips gradient checkpointing path ⚠️ LOW
-
-**Location**: `TemporalFusionDecoder.forward`
-
-**Code**:
-```python
-if self.training and self.stochastic_depth_rate > 0.0 and ...:
-    drop_prob = ...
-    if torch.rand(1).item() < drop_prob:
-        out = torch.cat([curr_history, curr_future], dim=1)
-        continue
-# Gradient checkpointing:
-if self.gradient_checkpointing and self.training and not return_attention:
-    out = torch.utils.checkpoint.checkpoint(...)
-```
-
-**Problem**: The stochastic depth check runs before gradient checkpointing. When a layer is dropped, `out = cat(curr_history, curr_future)` which is the *previous* layer's output, not the current layer's residual. This is technically correct for stochastic depth but misses updating `curr_history` and `curr_future` in the dropped-layer case — they remain stale from the previous iteration. The `continue` statement skips the update at the bottom:
-```python
-curr_history = out[:, :history_input.shape[1], :]
-curr_future  = out[:, history_input.shape[1]:, :]
-```
-This means the *next* layer will receive the output from two layers back rather than one. This is actually correct stochastic depth behavior (identity skip) but is not re-split, so `curr_history` and `curr_future` are stale on the next iteration. **The bug is**: the `continue` exits before updating `curr_history`/`curr_future` from `out`.
-
-**Fix**:
-```python
-if torch.rand(1).item() < drop_prob:
-    out = torch.cat([curr_history, curr_future], dim=1)
-    # Update curr splits for the next layer
-    curr_history = out[:, :history_input.shape[1], :]
-    curr_future  = out[:, history_input.shape[1]:, :]
-    if return_attention:
-        attention_payloads.append({})
-    continue
-```
-
----
-
-### BUG-05 — MoE capacity constraint Python loop does not scale ⚠️ LOW-MEDIUM
-
-**Location**: `RegimeAwareSparseMoE._compute_sparse_routing`
+Return:
 
 ```python
-for e in range(self.num_experts):
-    expert_mask = flat_probs[:, e] > 0
-    ...
-    _, keep_idx = torch.topk(expert_vals, capacity)
-    drop_mask = ...
-    flat_probs[drop_mask, e] = 0.0
-```
-
-**Problem**: This is an `O(num_experts)` Python loop with `torch.topk` inside. For `num_experts=16`, this is 16 topk calls per forward pass. This is fine at small scale but becomes a training bottleneck. More importantly, in-place modification of `flat_probs` which is derived from `sparse_probs` via `.reshape` — if `sparse_probs` is not contiguous, `.reshape` returns a copy and the in-place modifications won't propagate back.
-
-**Fix**: Use a vectorized scatter-based capacity constraint, or at minimum call `.contiguous()` before `.reshape`.
-
----
-
-### BUG-06 — `TFTTemporalEmbedding.forward` returns embedding tensor not d_model-dimensional ⚠️ LOW
-
-**Location**: `TFTTemporalEmbedding.forward`
-
-```python
-embedding_x = torch.stack([month_x, day_x, weekday_x, hour_x, minute_x], dim=-2)
-```
-
-Each of `month_x`, `day_x` etc. has shape `[B, T, d_model]` (from the parent `TemporalEmbedding`). The stack on `dim=-2` gives `[B, T, n_components, d_model]`. This is the expected known_input shape `[B,T,C_k,d]`. Correct — but note that `minute_x = 0.` (a scalar float) when `minute_embed` is absent. `torch.stack([..., 0.])` will fail because you cannot stack a float with tensors. In practice this is guarded by the conditional — the `if hasattr(self, 'minute_embed')` correctly selects the 4-element stack. So this is not a runtime bug, but the naming of the else branch (returning `0.` as `minute_x`) is misleading.
-
----
-
-### BUG-07 — `forecast()` variance check runs before RevIN normalization ⚠️ INFO
-
-**Location**: `Model.forecast`
-
-```python
-var = torch.var(x_enc, dim=1, keepdim=True, unbiased=False)
-if (var < 1e-8).any():
-    warnings.warn("Near-constant channels detected...")
-if self.use_revin:
-    x_enc = self.revin(x_enc, 'norm')
-    ...
-else:
-    means = x_enc.mean(1, keepdim=True).detach()
-    x_enc = x_enc - means
-    stdev = torch.sqrt(torch.clamp(var, min=1e-10) + 1e-5)
-    x_enc = x_enc / stdev
-```
-
-**Problem**: When `use_revin=True`, `var` is computed but never used. The warning is still useful (RevIN will also handle near-constant channels via its own eps), but the variable allocation is wasted. Not a bug per se, but wasteful.
-
----
-
-### BUG-08 — `build_causal_mask` buffer shared between CPU and GPU path for SDPA ⚠️ INFO
-
-When `attention_backend='sdpa'`, `torch.nn.functional.scaled_dot_product_attention` is called with `is_causal=False` and an explicit `attn_mask`. The causal mask from `_causal_mask_buf` must be on the same device as the query. Since SDPA returns directly without `return_attention`, the buffer device issue from BUG-01 also affects this path.
-
----
-
-## 4. Preferential Enhancements
-
-### ENH-01 — Flash Attention for `InterpretableMultiHeadAttention`
-
-`InterpretableMultiHeadAttention` currently always uses the manual `torch.matmul` path and cannot leverage Flash Attention because V is not multi-headed. However, since the averaging over heads happens *after* the matmul, you could compute multi-headed output and average at the end, then dispatch to SDPA:
-
-```python
-# In forward, reshape v to be multi-headed for SDPA compat:
-v_expanded = v.unsqueeze(1).expand(B, self.n_heads, T, self.d_head)
-# ... then average after SDPA output
-```
-This enables memory-efficient attention on long sequences even for the interpretable head.
-
----
-
-### ENH-02 — Vectorize MoE capacity constraint
-
-Replace the Python expert loop with a vectorized implementation:
-
-```python
-# Vectorized capacity enforcement
-flat_probs = sparse_probs.reshape(-1, self.num_experts)  # [N, E]
-capacity = int(self.capacity_factor * flat_probs.shape[0] * self.top_k / self.num_experts)
-# For each expert, zero out tokens beyond capacity by sorting descending
-for e in range(self.num_experts): ...  # current
-# Better: use scatter approach
-order = flat_probs.argsort(dim=0, descending=True)  # [N, E]
-overflow_mask = order >= capacity  # [N, E]
-flat_probs = flat_probs.masked_fill(overflow_mask, 0.0)
-```
-This still has a sort but avoids the topk loop.
-
----
-
-### ENH-03 — Learnable temperature in `SparseGraphStructureLearner`
-
-The current temperature parameter is fixed at `1.0`. Making it a learnable parameter per node or a global scalar would allow the model to control graph sparsity during training:
-
-```python
-self.temperature = nn.Parameter(torch.tensor(1.0))
-logits = torch.bmm(Q, K.transpose(1,2)) * self.scale / self.temperature.clamp(min=0.1)
-```
-
----
-
-### ENH-04 — Positional encoding for covariate reattention
-
-The covariate reattention in `TemporalFusionDecoderLayer` flattens `[B, T, C, d]` to `[B, T*C, d]` as keys/values. This loses the temporal structure of covariate embeddings. Adding a sinusoidal or learned positional encoding over the time dimension before flattening would help the decoder distinguish covariates at different time steps:
-
-```python
-# Add time-positional bias to pre_vsn_embs before reshaping
-time_pe = sinusoidal_pe(T_cov, d_cov)  # [T_cov, d_cov]
-pre_vsn_embs = pre_vsn_embs + time_pe.unsqueeze(0).unsqueeze(2)
-```
-
----
-
-### ENH-05 — Hierarchical static context
-
-Currently all four static context vectors are derived independently from the same static VSN output. In practice, `c_h` and `c_c` (cell and hidden init) should be more tightly coupled since they govern the same LSTM. A shared trunk with task-specific heads:
-
-```python
-shared = shared_grn(static_feat)
-c_h = head_h(shared)
-c_c = head_c(shared)
-c_s = head_s(shared)
-c_e = head_e(shared)
-```
-This halves the static encoder parameter count while maintaining expressivity.
-
----
-
-### ENH-06 — Curriculum learning for stochastic depth
-
-The current stochastic depth rate is static. A warmup schedule that linearly increases `stochastic_depth_rate` from 0 to the configured value over the first N epochs would allow the model to stabilize before depth dropping begins:
-
-```python
-# In training loop, set:
-model.temporal_fusion_decoder.stochastic_depth_rate = min(
-    config.tft_stochastic_depth_rate,
-    config.tft_stochastic_depth_rate * epoch / warmup_epochs
+PhysicsLossResult(
+    total=...,
+    terms={...},
+    violation_rates={...},
+    valid_counts={...},
+    violation_counts={...},
 )
 ```
 
----
+Do not put this module under `layers/` and do not import it from the model.
 
-### ENH-07 — Conditional known embedding for custom covariates
+### Phase 3 — Integrate the production experiment
 
-`TFTCustomKnownEmbedding` uses a fixed channel embedding table. For custom known features with semantic meaning (e.g., day-of-week, is-holiday), a `nn.Embedding` per categorical channel plus `nn.Linear` per continuous channel would be more expressive:
+Modify `exp/exp_long_term_forecasting.py` so AMP and non-AMP branches share one composition helper:
 
-```python
-class HeterogeneousKnownEmbedding(nn.Module):
-    def __init__(self, channel_configs, d_model):
-        # channel_configs: list of ('categorical', vocab_size) or ('continuous', 1)
-        ...
+```text
+total = primary + moe_coefficient * moe_aux
+                  + scheduled_physics_weight * physics.total
 ```
 
----
+The same resolved target-index helper must select labels for primary/quantile loss, physical operands, inverse transforms, and final metrics. Auxiliary model outputs must be tensor-only, gatherable values rather than mutable replica attributes.
 
-### ENH-08 — Interpretability: export VSN weights as importance scores
+Log primary task loss, the legacy validation objective, total loss, every constraint term, and violation rate separately. Preserve the current primary-plus-MoE validation objective and epoch-based LR schedule by default; allow explicit primary, fixed-weight-total, or feasibility-aware checkpoint policies.
 
-The `return_interpretation=True` path already collects `history_vsn_weights` and `future_vsn_weights`. A utility method that aggregates these across the batch and time dimension into per-variable importance rankings would make the TFT's interpretability practical:
+Hash the raw config and relevant flags when constructing the run setting, then persist the fully resolved spec/mappings/scalers as a manifest after the dataset is available. In standalone test mode, load and verify that manifest or resolve only from metadata whose scaler was fitted on the training range. Add held-out physical-unit compliance metrics to `test()`.
 
-```python
-@torch.no_grad()
-def get_variable_importance(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
-    payload = self.forward(x_enc, x_mark_enc, x_dec, x_mark_dec, return_interpretation=True)
-    hist_weights = payload['history_vsn_weights']   # [B, T, C] or [B, T, K, C]
-    importance = hist_weights.mean(dim=(0, 1))       # [C] or [K, C]
-    return importance
+### Phase 4 — Verify with a known synthetic law
+
+Before ETTh1:
+
+- exact satisfying examples must yield zero residual;
+- violations must yield positive loss and finite non-zero gradients;
+- standardized and raw-space computations must agree after inverse scaling;
+- a synthetic conservation/dynamics dataset must reduce held-out violation versus a matched baseline;
+- `physics_weight=0` must skip the training loss path and preserve baseline outputs and parameter updates in deterministic CPU tests; post-hoc compliance evaluation remains allowed.
+
+### Phase 5 — Add VSN theory alignment
+
+- softmax path: entropy minimization, KL to a theory prior, or forbidden-mass penalty;
+- sigmoid path: L1 or target-cardinality penalty on pre-dropout gates/logits;
+- use a selective differentiable auxiliary output;
+- define history/future variable namespaces;
+- report bypass and graph-mixing caveats.
+
+The correct entropy sign for sparsity is:
+
+```text
+L_sparse = +lambda * H(w)
+H(w) = -sum_i w_i log(w_i)
 ```
 
----
+Minimizing positive entropy encourages concentration. The old report's subtraction would maximize entropy and encourage a dense/uniform distribution.
 
-### ENH-09 — Replace manual attention clamp with `torch.nan_to_num`
+### Phase 6 — Add counterfactual monotonicity
 
-The current clamping logic:
-```python
-if (attention_score.abs() > clamp_limit).any():
-    warnings.warn(...)
-    attention_score = attention_score.clamp(...)
-```
-is a global check that triggers on any outlier. A safer approach is to use `torch.nan_to_num` after softmax to handle any residual NaN without masking valid large values:
+Perturb a named covariate in physical units, transform it back to model coordinates, re-run the forecast, and penalize directional violations. Specify input range, perturbation, timesteps, horizons, and targets. Use identical stochastic behavior for the paired forwards, and reject whole-window shifts that normalization cancels. Treat Jacobian-based constraints as an advanced mode requiring second-order-gradient tests.
 
-```python
-attention_prob = F.softmax(attention_score, dim=-1)
-attention_prob = attention_prob.nan_to_num(nan=0.0)
-```
+### Phase 7 — Consider hard physics architectures
 
----
+Only after a validated domain law exists:
 
-### ENH-10 — TemporalGraphEvolution GRU scaling fix
+- project outputs onto an exact linear conservation manifold;
+- predict a correction to a physics baseline;
+- couple to a differentiable simulator;
+- use augmented Lagrangian/adaptive multipliers if fixed weights cannot reach feasibility.
 
-For large covariate sets (C > 30), the GRU hidden size `C*C` becomes prohibitive. A low-rank approximation:
+## 10. Recommended Native TFT Upgrade Roadmap
 
-```python
-# Instead of GRU with C*C hidden:
-self.gru = nn.GRU(num_nodes, rank)           # [B, T, C] -> [B, T, rank]
-self.delta_proj = nn.Linear(rank, C * C)     # [B, T, rank] -> [B, T, C*C]
-```
-This reduces parameters from `O(C^4)` to `O(C^2 * rank)`.
+### Release blocker set
 
----
+Status on Tuesday, July 28, 2026: this set is implemented in the current worktree except for the release-gate verification task `TFT-T01`.
 
-## 5. Theory-Based Learning in TFT
+1. Keep `TFT-C01` through `TFT-C09`, `TFT-H01`, and `TFT-O01` treated as closed unless a new regression is proven.
+2. Finish `TFT-T01` with the exact recorded native release command.
+3. Pass `G1` only after that command is green and logged.
+4. Do not reopen already-fixed blockers opportunistically while working on post-`G1` upgrades.
 
-"Theory-based learning" refers to injecting domain knowledge, physical constraints, or mathematical structure into the learning process beyond what the raw data provides. Most discussions focus on the **loss function**, but there are at least seven other distinct mechanisms applicable to a TFT for time-series forecasting.
+### Canonicalization set
 
----
+Recommended order after `G1`:
 
-### 5.1 Loss-Function Inductive Biases (the common approach)
+1. `TFT-P01`: add `canonical`, `extended_safe`, and `experimental_full` profiles.
+2. `TFT-A03`: replace observed/static `DataEmbedding` modules with typed pointwise variable embeddings and restore a canonical static design.
+3. `TFT-A02`: stop instantiating structurally dead branches under the canonical profile.
+4. `TFT-E01`: benchmark the canonical profile so later extension claims have a trustworthy baseline.
+5. `TFT-A09` is now complete in the current worktree.
+6. Preserve the current tensor-only structured output contract as the long-term API baseline.
 
-The most straightforward way to encode theory. Examples relevant to TFT:
+### Extension-hardening set
 
-| Theory | Loss Term |
-|---|---|
-| Forecast should be smooth | `λ * ||dec_out[t+1] - dec_out[t]||²` (finite-difference penalty) |
-| Forecast should be monotone in rising windows | Hinge on sign of diff |
-| Quantile predictions should be monotone (no quantile crossing) | `max(0, q_low - q_high).mean()` |
-| Prediction should revert to a long-run mean at long horizons | Soft constraint toward mean |
-| Periodicity at known frequency f | Fourier regularization: penalize energy outside multiples of f |
-| Covariate effects should be sparse | L1 on VSN weights |
-| Regime transitions should be rare | TV norm on `regime_probabilities` across time |
+Recommended order after the canonicalization set:
 
-For the **quantile head** already in this model, **monotonicity enforcement** is the most immediately useful addition:
+1. `TFT-A01` is now complete in the current worktree.
+2. `TFT-A04`: preserve temporal graph sparsity and replace `C²` recurrent adjacency evolution with something honest and scalable.
+3. `TFT-A05`: either implement real sparse-dispatch MoE behavior or rename/document it honestly as dense-compute top-k mixing.
+4. `TFT-A07` is now complete in the current worktree.
+5. `TFT-A08` is now complete in the current worktree.
+6. `TFT-A10` is now complete in the current worktree.
+7. `TFT-A06` is now complete in the current worktree.
 
-```python
-# After quantile_out = quantile_projection(decoder_hidden).view(..., Q, c_out)
-# Enforce q[i] <= q[i+1] via:
-quantile_out_sorted = quantile_out.sort(dim=-2).values  # sort over Q dim
-crossing_loss = (quantile_out[:, :, :-1, :] - quantile_out[:, :, 1:, :]).clamp(min=0).mean()
-total_loss = task_loss + lambda_crossing * crossing_loss
-```
+### Evaluation set
 
----
+Every extension should be compared against the canonical profile with:
 
-### 5.2 Architectural Priors (theory encoded in structure)
+- identical seed, initialization policy, data split, optimizer, and parameter budget;
+- forecast MSE/MAE or quantile risk;
+- calibration/coverage for probabilistic output;
+- latency, peak memory, parameter count, and checkpoint size;
+- interpretation stability across seeds;
+- constraint violation in physical units when physics mode is active.
 
-This is the most powerful form because it applies at every forward pass, not just during loss computation.
+Do not enable all extensions simultaneously and infer individual value from the aggregate result.
 
-#### 5.2.1 Causal Convolutions as Temporal Causality
+## 11. Test Additions
 
-Already implemented via `CausalConv1d`. This encodes the theory that "the future cannot influence the past." No data can teach this constraint — it must be architectural.
+### Native TFT regression tests
 
-#### 5.2.2 Non-negative Mixture Weights
+- `test_static_values_survive_normalization`
+- `test_static_context_changes_with_entity_value`
+- `test_lstm_receives_hidden_then_cell_context`
+- `test_static_interpretation_payload_preserved`
+- `test_encoder_mark_length_must_equal_sequence_length`
+- `test_registered_ett_single_feature_schema`
+- `test_short_term_contract_or_explicit_rejection`
+- `test_nonlast_ms_target_mapping_end_to_end`
+- `test_noncontiguous_multioutput_target_mapping`
+- `test_quantile_only_evaluates_trained_output`
+- `test_mse_mode_does_not_expose_untrained_quantiles`
+- `test_unsorted_quantiles_are_canonicalized_once`
+- `test_quantile_outputs_do_not_cross`
+- `test_quantile_order_survives_revin_denormalization`
+- `test_parallel_output_gathers_quantiles_and_moe`
+- `test_fft_top_amplitude_high_bin`
+- `test_fft_selection_is_batch_composition_invariant`
+- `test_fft_learned_mask_varies_by_frequency`
+- `test_higher_order_two_has_gate_gradient`
+- `test_higher_order_three_forward_backward`
+- `test_temporal_sparse_graph_stays_top_k`
+- `test_moe_small_batch_has_nonzero_route`
+- `test_selected_profile_has_no_unexpected_dead_parameters`
+- `test_cli_and_model_defaults_match`
 
-Variable selection softmax weights already enforce the theory that "the selected representation is a convex combination of covariates." Making the per-feature gating also output a sigmoid-normalized sum (already done in the per-feature gating path) further respects the unit-sum prior.
+### Physics tests
 
-#### 5.2.3 Theory-Informed Lag Scales
+- satisfying/violating equations and gradients;
+- physical-unit inverse-scaling equivalence;
+- target-name and `target_pos` resolution;
+- rate boundary and `dt`;
+- masks and missing observations;
+- temporal alignment and namespace-specific transforms;
+- unit compatibility, including affine/offset conversions;
+- unavailable future source rejection;
+- softmax-L1 configuration rejection;
+- primary + MoE + physics composition;
+- quantile policy;
+- feasibility-aware checkpoint semantics;
+- zero-weight parity;
+- held-out physical-unit compliance persistence;
+- synthetic-law compliance improvement.
 
-Instead of arbitrary `lag_scales=[1,2,4,8]`, use domain knowledge:
-- **Electricity**: lag at 24h, 48h, 168h (weekly cycle), 8760h (annual)
-- **Finance**: lag at 1, 5 (week), 21 (month), 252 (year) trading days
-- **Weather**: 6h, 24h, 48h, 168h
+## 12. Final Priority Matrix
 
-```python
-# ETTh1 (hourly electricity):
-tft_lag_scales = [24, 48, 168, 720]
-```
-This encodes domain periodicity theory directly into the attention structure.
+| Order | Work item | Reason |
+|---:|---|---|
+| 1 | Repair static normalization and LSTM state order | Core advertised TFT input class is otherwise unusable |
+| 2 | Repair quantile output/loss/evaluation contract | Current probabilistic mode can score an untrained head |
+| 3 | Make production losses/metrics honor `tft_target_pos` | Model-local mapping is currently undone by experiment slicing |
+| 4 | Fix FFT top-amplitude and higher-order interaction failures | Deterministic optional-mode crashes |
+| 5 | Close short-term, schema, static-interpretation, and parallel-output contracts | Advertised APIs otherwise fail or silently misalign inputs |
+| 6 | Add semantic regression tests | Existing suite misses the failures above |
+| 7 | Add canonical TFT profile and typed embeddings | Restores a trustworthy reference and reduces bloat |
+| 8 | Add domain metadata and differentiable physical scaling | Prerequisite for meaningful physics loss |
+| 9 | Implement output-level physics constraints in experiment layer | Lowest-risk useful physics milestone |
+| 10 | Validate on synthetic governing laws | Establishes correctness before real-data claims |
+| 11 | Add VSN priors through selective auxiliary outputs | Current L1 proposal is ineffective |
+| 12 | Add counterfactual monotonicity | Higher compute and more semantic choices |
+| 13 | Harden graph/MoE/lag/FFT extensions | Important, but separable from the canonical path |
+| 14 | Explore hard projection/simulator coupling | Requires validated domain equations |
 
-#### 5.2.4 Monotone Expert Routing via Sorted Regimes
+## 13. Domain Analysis: NIFTY 50 with Planetary Known-Future Covariates
 
-If you have prior knowledge about regime ordering (e.g., "low volatility" → "high volatility" is a one-directional shift), you can enforce monotonicity in the regime transitions via a sorted softmax over learned regime embeddings using a cumulative softmax.
+This domain was opened explicitly on 2026-07-29. Its canonical cross-session
+project is
+[`projects/financial_astrology_tft/README.md`](projects/financial_astrology_tft/README.md);
+the original detailed audit is
+[`Vedic_Astrology_TFT_Implementation_Plan.md`](Vedic_Astrology_TFT_Implementation_Plan.md).
 
-#### 5.2.5 Symmetry Breaking for the Spectral Branch
+### 13.1 Scientific classification
 
-For known-periodic signals, initialize `SpectralBranch.weight_real` and `weight_imag` at the known fundamental frequency and harmonics rather than `xavier_uniform_`. This gives the model a head start aligned with physical theory.
+PySwissEph ephemerides are deterministic, inference-available future covariates. The orbital physics has already been used to generate the input trajectory. It does not provide a governing equation from planetary state to NIFTY returns.
 
----
+Therefore:
 
-### 5.3 Regularization as Theory Encoding
+- the correct first description is **physics-respecting exogenous-covariate modeling** or **theory-guided planetary interaction modeling**;
+- a classical PINN residual on market outputs is not justified;
+- orbital consistency checks belong in data validation;
+- planet-to-market duration/aspect priors must be tested as explicit ablations against matched null trajectories;
+- any positive finding establishes out-of-sample predictive association for the tested representation, not causality.
 
-Regularization terms impose soft geometric constraints without altering the loss landscape globally.
+### 13.2 Confirmed production blocker
 
-#### 5.3.1 Temporal Smoothness of Expert Routing
+The model-side custom-known path exists, but the production loader does not populate it:
 
-If you believe regimes change slowly, penalize rapid regime switching:
+1. `TFTCustomKnownEmbedding` accepts arbitrary known channels.
+2. The model concatenates `x_mark_enc` and the future portion of `x_mark_dec`.
+3. `Dataset_Custom` constructs both mark tensors only from timestamp/calendar fields.
+4. All other CSV columns go into `data_x/data_y`.
 
-```python
-# regime_probs: [B, T, R] from RegimeAwareSparseMoE
-regime_smooth_loss = ((regime_probs[:, 1:, :] - regime_probs[:, :-1, :]) ** 2).mean()
-total_loss = task_loss + lambda_regime * regime_smooth_loss
-```
+Consequently, adding planetary columns to the CSV or enabling `--tft_allow_custom_known` does not create a valid end-to-end planetary-known-future run. A dedicated loader must split:
 
-#### 5.3.2 Graph Sparsity Prior
-
-The `SparseGraphStructureLearner` learns graph edges. If theory says the graph should be sparse (only a few covariates affect each other), add an entropy regularizer on the adjacency:
-
-```python
-# adj: [N, C, C] soft adjacency from structure learner
-entropy = -(adj * (adj + 1e-8).log()).sum(-1).mean()
-total_loss = task_loss - lambda_sparse * entropy  # maximize entropy = spread attention = sparser hard adj
-```
-
-#### 5.3.3 Decorrelation of Attention Heads
-
-Theory from independent component analysis: attention heads should learn diverse features. A decorrelation penalty on the multi-head attention weight matrices:
-
-```python
-W_q = model.attention.q_linear.weight  # [d_model, d_model]
-# Split into head subspaces and penalize cross-head cosine similarity
-```
-
----
-
-### 5.4 Data Augmentation from Theory
-
-Augmentation encodes theory by generating training examples consistent with domain laws, forcing the model to learn invariances it cannot learn from real data alone.
-
-#### 5.4.1 Time Warping with Preserved Causality
-
-Stretch or compress the temporal axis within windows while keeping the causal direction — tests whether the model learns timescale-invariant patterns.
-
-#### 5.4.2 Covariate Permutation Invariance
-
-For the VSN: randomly permute the order of covariates in the input. The model should learn the same variable importance regardless of column order. Augmenting with permuted inputs teaches permutation equivariance.
-
-#### 5.4.3 Multiplicative Noise on Known Features
-
-If theory says known timestamp features are reliable (not noisy), augmenting with small multiplicative noise on `x_mark` teaches robustness to clock drift or rounding — relevant for industrial IoT sensors.
-
-#### 5.4.4 Synthetic Regime Injection
-
-Concatenate synthetic regime-shift data (generated from a simple piecewise-stationary model) with real training data. This provides explicit supervision for `RegimeAwareSparseMoE` to learn meaningful regime boundaries.
-
----
-
-### 5.5 Physics / Domain Equation Constraints
-
-For forecasting problems with known governing equations, you can add a physics residual loss term.
-
-#### 5.5.1 Energy Balance Constraint (Electricity)
-
-For power grid forecasting: supply ≈ demand at each time step. If the model predicts load at multiple nodes, penalize the imbalance:
-
-```python
-predicted_load_sum = dec_out.sum(dim=-1)   # sum over channels
-grid_imbalance_loss = (predicted_load_sum - known_supply).pow(2).mean()
+```text
+historical market -> x_enc
+market targets     -> batch_y
+calendar + planets -> x_mark_enc and x_mark_dec
 ```
 
-#### 5.5.2 Smoothness via Numerical PDE Operators
+Custom-known mode also replaces rather than automatically augments the standard calendar embedding. The new known block must preserve a stable named calendar control alongside planetary fields.
 
-For temperature forecasting, the diffusion equation says spatial/temporal gradients should follow `∂T/∂t = α∇²T`. The finite-difference approximation of this can be used as a physics residual loss on the decoder output.
+### 13.3 Additional current implementation findings
 
-#### 5.5.3 Non-Negativity Constraints
+- Dataset feature names are discovered after model construction, so custom observed names currently fall back to anonymous `f0`, `f1`, and so on unless the lifecycle is changed.
+- Known radius/velocity features have no production train-only scaling contract.
+- Plain Adam, MSE/Quantile-only loss selection, no gradient clipping, and no warmup are weak defaults for a noisy approximately 7–8k-session dataset.
+- The production training loop evaluates the test set after every epoch; a confirmatory financial study must remove that feedback and use validation only.
+- Disabling RevIN does not disable native TFT's manual per-window mean/std normalization. Return targets require an explicit normalization-mode ablation.
+- `label_len` does not influence native TFT computation because decoder market values are not consumed.
+- `d_ff` remains ignored.
+- A direct reproduction found `tft_vsn_per_feature_gating=True` crashes because `variable_grns` is set to `None` and then passed to `len(...)`. This is now tracked as `AST-C00`.
 
-For count data (e.g., traffic, demand), theory says values must be ≥ 0. Softplus output activation + non-negativity penalty:
+### 13.4 Target and evaluation recommendation
 
-```python
-dec_out = F.softplus(dec_out)  # or: penalty = dec_out.clamp(max=0).pow(2).mean()
-```
+The confirmatory first target should be next-trading-day close-to-close log return, not raw OHLC level. Recommended causal historical inputs are close return, overnight gap, intraday body, and log high/low range.
 
----
+The primary null is:
 
-### 5.6 Differentiable Simulation as a Supervision Signal
+> Conditional on market history and ordinary calendar/Fourier controls, real planetary covariates do not reduce paired future-date forecast loss beyond matched smooth null ephemerides.
 
-This is the most advanced approach. Instead of just penalizing prediction error against observations, you run predictions through a domain simulator and penalize the simulator's outputs.
+Use expanding walk-forward development folds, multiple fixed seeds, a locked final temporal holdout, paired per-date losses, block-bootstrap/HAC-aware uncertainty, and multiplicity correction. Coherent date shifts, spectrum-preserving surrogates, and smooth pseudo-planets are required controls; independent row shuffling is too weak because it destroys ephemeris autocorrelation.
 
-```
-TFT predictions → domain simulator f(x) → simulator output → theory-grounded loss
-```
+### 13.5 Architecture recommendation
 
-**Examples**:
-- **Financial risk**: Pass predictions through a VaR calculation; penalize VaR exceedances.
-- **Energy**: Pass load predictions through an optimal power flow (OPF) solver; penalize constraint violations.
-- **Climate**: Pass temperature predictions through a simplified energy balance model.
+Start with a small point-forecast `extended_safe`/LSTM TFT, `pred_len=1`,
+`seq_len=252` trading sessions for the **local market branch**, all advanced
+extensions off, and a parameter budget near or below 50k. Compare 64, 128, 252,
+and 504 only inside development folds. First test a compact raw
+longitude/velocity block through the corrected production known-future path.
 
-The gradient of the simulator output w.r.t. TFT parameters is the key signal. For non-differentiable simulators, use the straight-through estimator or REINFORCE.
+The local market sequence is not the planetary memory. Use exact target-date
+circular/rashi/nakshatra/retrograde state, a fast calendar-daily event grid, a
+medium weekly/event grid, slow monthly or recursive calendar-time state, and
+current/relative phase for outer planets. This represents long cycles without
+feeding thirty years of daily rows through one LSTM.
 
-For this TFT codebase, a practical example:
+Only after that raw incremental-value test should the architecture add:
 
-```python
-class SimulatorLoss(nn.Module):
-    def forward(self, predictions, known_future_inputs):
-        # predictions: [B, pred_len, c_out]  — e.g., load forecast
-        # Simple simulation: if predicted peak > capacity, cost is quadratic
-        capacity = known_future_inputs[:, :, CAPACITY_CHANNEL]
-        excess = (predictions.max(dim=-1).values - capacity).clamp(min=0)
-        return excess.pow(2).mean()
-```
+1. grouped `[batch,time,planet,field]` tokens with a shared body encoder;
+2. explicit relative-angle/aspect edge features before VSN collapse;
+3. an 8–16 dimensional pooled planetary state;
+4. calendar-time-aware fast/intermediate/slow response kernels, including
+   preregistered classical fruition-delay centers;
+5. a separately measurable, near-zero-initialized planetary residual branch.
 
----
+The current higher-order block is post-VSN latent interaction, not an explicit Mercury–Moon or Jupiter–Saturn interaction. Generic lag attention counts sequence rows rather than elapsed calendar days. FFT, MoE, covariate reattention, and the full experimental profile should remain off in the first small-data experiment.
 
-### 5.7 Knowledge Distillation from Theory-Rich Models
+Slow-planet claims have an irreducible identification limit: NIFTY data from
+1995 contains roughly one Saturn orbit, only a few Jupiter orbits, and fractions
+of the Uranus, Neptune, and Pluto orbits. No sequence length or network size can
+create independent cycles. The classical Navagraha profile and modern
+outer-planet profile must remain separate. Longer history or preregistered
+validation across other markets is required for stronger slow-cycle conclusions.
 
-Use a domain-specific model (e.g., a SARIMA fitted on each channel, or an exponential smoothing model) as a **teacher** to guide the TFT student's predictions:
+### 13.6 Required next input
 
-```python
-# Teacher predictions from SARIMA / ETS / Prophet
-teacher_pred = teacher_model.predict(x_enc)  # [B, pred_len, c_out]
-# Distillation loss (soft targets)
-distill_loss = F.mse_loss(dec_out, teacher_pred.detach())
-total_loss = task_loss + lambda_distill * distill_loss
-```
+Before any loader or architecture patch, inspect representative merged rows, the full column dictionary/units, PySwissEph generation code and settings, market-source/adjustment policy, market/ephemeris timestamps, trading-holiday handling, Rahu/Ketu construction, and Hilbert-transform boundary semantics.
 
-This encodes the theory "short-horizon forecasts should look like classical statistical forecasts" while still allowing the TFT to deviate when it learns better patterns from data.
+## 14. Bottom Line
 
-**For TFT specifically**, you can distill the VSN variable importance weights from a SHAP-based analysis of a gradient-boosted model trained on the same data — encoding the theory "these covariates matter" as a soft supervision signal on `history_vsn_weights`.
+The repository has a promising, feature-rich temporal model. Native TFT safety, canonicalization, and planned extension hardening are now implemented in the current worktree; remaining extension work is comparative evidence rather than the original contract-repair backlog.
 
----
+For domains with real governing equations, the generic physics effort should still begin outside the model with named, unit-aware, differentiable output constraints and synthetic-law validation.
 
-### 5.8 Interpretability-Guided Theory Alignment
+For the NIFTY/planetary hypothesis opened on Wednesday, July 29, 2026, the next meaningful work is different: audit the data/provenance, make calendar plus planetary trajectories true production known-future covariates, freeze a falsifiable incremental-value protocol, and test a small capacity-matched raw representation against smooth null ephemerides before building grouped aspect or multiscale modules.
 
-Unique to TFT: because the model produces interpretable attention weights and variable importance scores, you can penalize *deviations from expected theoretical behavior* in the interpretation outputs themselves.
+That sequencing produces two durable assets:
 
-#### 5.8.1 Variable Importance Ordering Constraint
-
-If domain theory says "variable A should be more important than variable B for this task," add:
-```python
-importance_loss = F.relu(vsn_weights[:, :, B_idx] - vsn_weights[:, :, A_idx]).mean()
-```
-
-#### 5.8.2 Attention Locality Prior
-
-Theory might say "attention over recent history should be stronger than distant history." Penalize attention mass on temporally distant positions:
-```python
-# attention_prob: [B, n_heads, T, T]
-distance = (torch.arange(T) - torch.arange(T).unsqueeze(-1)).float().abs()  # [T, T]
-locality_loss = (attention_prob * distance.to(device)).mean()
-total_loss = task_loss + lambda_locality * locality_loss
-```
-
-#### 5.8.3 Regime Semantic Alignment
-
-If you have labeled regime periods in training data (e.g., "recession", "expansion" in economic data), provide regime supervision:
-```python
-# regime_probs: [B, T, R], regime_labels: [B, T] integer labels
-regime_supervision_loss = F.cross_entropy(
-    regime_probs.reshape(-1, R),
-    regime_labels.reshape(-1)
-)
-```
-
----
-
-## 6. Summary & Priority Matrix
-
-### Bug Priority
-
-| ID | Description | Severity | Fix Effort |
-|---|---|---|---|
-| BUG-01 | Causal mask stays on CPU after model.to(device) | **Critical** | 2 lines |
-| BUG-04 | Stochastic depth skips `curr_history`/`curr_future` update | **High** | 3 lines |
-| BUG-02 | `x_dec` shape validation fails for MS forecasting | **Medium** | 1 line |
-| BUG-05 | MoE capacity loop modifies non-contiguous view | **Medium** | 1 line |
-| BUG-03 | Triple-order normalization factor inconsistency | Low | Doc only |
-| BUG-06 | `minute_x = 0.` is a float in stack (misleading) | Low | Cosmetic |
-| BUG-07 | Unused `var` computation when `use_revin=True` | Info | 1 line |
-| BUG-08 | SDPA path inherits BUG-01 device issue | Info | Same fix as BUG-01 |
-
-### Enhancement Priority
-
-| ID | Description | Impact | Effort |
-|---|---|---|---|
-| ENH-01 | SDPA for interpretable attention head | High (memory) | Medium |
-| ENH-10 | Low-rank temporal graph evolution GRU | High (scaling) | Medium |
-| ENH-03 | Learnable temperature in sparse graph | Medium (quality) | Low |
-| ENH-04 | Positional encoding for covariate reattention | Medium (quality) | Low |
-| ENH-05 | Shared static context backbone | Medium (params) | Medium |
-| ENH-02 | Vectorized MoE capacity constraint | Low-Medium (speed) | Medium |
-| ENH-06 | Curriculum schedule for stochastic depth | Low (training) | Low |
-| ENH-07 | Heterogeneous known feature embedding | Low (quality) | High |
-| ENH-08 | Variable importance export utility | Low (usability) | Low |
-| ENH-09 | `nan_to_num` instead of attention clamping | Low (robustness) | Low |
-
-### Theory-Based Learning Complexity vs. Impact
-
-| Mechanism | Complexity | Expected Impact | Recommended for This Model |
-|---|---|---|---|
-| Quantile monotonicity loss (5.1) | Low | High | **Yes — implement immediately** |
-| Theory-informed lag scales (5.2.3) | Low | High | **Yes — config change only** |
-| Temporal smoothness of regimes (5.3.1) | Low | Medium | Yes |
-| Covariate permutation augmentation (5.4.2) | Low | Medium | Yes |
-| VSN importance ordering constraint (5.8.1) | Low | Medium | Yes, domain-specific |
-| Knowledge distillation from classical models (5.7) | Medium | High | **Yes** |
-| Attention locality prior (5.8.2) | Medium | Medium | Yes |
-| Graph sparsity prior (5.3.2) | Medium | Medium | Yes |
-| Regime semantic alignment (5.8.3) | Medium | High | Yes, if regime labels available |
-| Differentiable simulator (5.6) | High | Very High | Domain-specific |
-| Physics residual (5.5) | High | Very High | Domain-specific |
-
----
-
-### Immediate Action Checklist
-
-1. **Fix BUG-01** — add `.to(device=..., dtype=...)` in both causal mask usages.
-2. **Fix BUG-04** — update `curr_history`/`curr_future` before `continue` in stochastic depth.
-3. **Fix BUG-02** — relax or remove `x_dec` feature-size validation.
-4. **Add `.contiguous()` before `.reshape` in MoE capacity block (BUG-05)**.
-5. **Set theory-informed lag scales in your config** for ETT data (e.g., `[24, 48, 168, 720]` for hourly).
-6. **Add quantile monotonicity loss** if `tft_use_quantile_head=True`.
-7. **Consider knowledge distillation** from an N-BEATS or ETS model as a warmup training signal.
-
----
-
-*Report generated by deep analysis of `models/TemporalFusionTransformer.py` and supporting layer files.*
-*All line references are to the implementation as provided on 2026-07-27.*
+1. a trustworthy canonical native TFT with clearly labeled extensions; and
+2. a reusable physics-/theory-guided loss framework for future domains with defensible laws; and
+3. a separate, scientifically controlled planetary-covariate research lane whose evidence is based on out-of-sample incremental value rather than architectural complexity or attention weights.

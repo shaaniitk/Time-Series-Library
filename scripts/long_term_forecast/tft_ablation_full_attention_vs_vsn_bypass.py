@@ -70,6 +70,7 @@ def build_base_config():
         tft_allow_custom_known=True,
         tft_known_len=40,
         tft_known_max_channels=128,
+        tft_known_feature_names=[f"known_{i}" for i in range(40)],
         tft_use_lag_attention=False,
         tft_lag_scales=[1, 2, 4],
         tft_use_higher_order=False,

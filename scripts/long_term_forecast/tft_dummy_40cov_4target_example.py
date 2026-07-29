@@ -61,6 +61,7 @@ def build_model_config():
         tft_allow_custom_known=True,
         tft_known_len=40,
         tft_known_max_channels=128,
+        tft_known_feature_names=[f"known_{i}" for i in range(40)],
         # Required for unregistered datasets (no fallbacks allowed)
         tft_observed_pos=list(range(40)),
         tft_static_pos=[],

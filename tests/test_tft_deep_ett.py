@@ -31,6 +31,8 @@ if "HSA_OVERRIDE_GFX_VERSION" not in os.environ:
 import torch
 import numpy as np
 import random
+from utils.tft_config import apply_tft_profile
+from utils.tft_schema import resolve_target_positions, select_tft_truth
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -44,6 +46,33 @@ def set_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def _target_index_tensor(target_positions, device):
+    return torch.as_tensor(tuple(target_positions), dtype=torch.long, device=device)
+
+
+def _select_targets_for_loss(outputs, batch_y, pred_len, target_positions):
+    if target_positions is None:
+        pred = outputs[:, -pred_len:, :]
+        true = batch_y[:, -pred_len:, :]
+        return pred, true
+
+    pred = outputs[:, -pred_len:, :]
+    true = select_tft_truth(batch_y, pred_len, target_positions)
+    if pred.shape != true.shape:
+        raise RuntimeError(
+            f"TFT prediction/target shape mismatch in deep_ett harness: pred={tuple(pred.shape)} true={tuple(true.shape)}."
+        )
+    return pred, true
+
+
+def _naive_prediction(batch_x, pred_len, target_positions):
+    if target_positions is None:
+        return batch_x.mean(1, keepdim=True).expand(-1, pred_len, -1)
+    index = _target_index_tensor(target_positions, device=batch_x.device)
+    selected = batch_x.index_select(-1, index)
+    return selected.mean(1, keepdim=True).expand(-1, pred_len, -1)
 
 
 # ── Configurations ──────────────────────────────────────────────────
@@ -92,6 +121,91 @@ CONFIGS = {
         "tft_use_revin": True, "tft_revin_affine": True,
         "tft_use_regime_moe": False, "tft_use_higher_order": False, "tft_dual_attention_fusion": False,
         "tft_use_lag_attention": False, "tft_full_attention": False, "tft_use_explicit_cross_attention": False,
+    },
+    # 55K-ish effective native TFT capacity with the upgraded regularisation path:
+    # real attention-probability dropout, active early stopping, and gentler LR.
+    # This is the recommended first rerun when val loss previously rose after warmup.
+    "ett_stable_v2": {
+        "tft_profile": "extended_safe",
+        "d_model": 16, "n_heads": 2, "e_layers": 1, "d_ff": 32,
+        "dropout": 0.25, "tft_attention_dropout": 0.10,
+        "train_epochs": 80, "batch_size": 64,
+        "learning_rate": 3e-4,
+        "patience": 12, "warmup_epochs": 8, "plateau_patience": 4, "plateau_factor": 0.5, "min_lr": 1e-6,
+        "tft_temporal_backbone": "lstm", "tft_temporal_backbone_layers": 1, "tft_temporal_kernel_size": 3,
+        "tft_cross_variable_mixing": False, "tft_graph_type": "dense", "tft_graph_top_k": 5,
+        "tft_graph_num_layers": 2, "tft_graph_temporal_evolution": False, "tft_graph_edge_features": False,
+        "tft_per_target_heads": False, "tft_vsn_per_feature_gating": False, "tft_covariate_reattention": False,
+        "tft_use_revin": True, "tft_revin_affine": True,
+        "tft_use_regime_moe": False, "tft_use_higher_order": False, "tft_dual_attention_fusion": False,
+        "tft_use_lag_attention": False, "tft_full_attention": False, "tft_use_explicit_cross_attention": False,
+        "tft_stochastic_depth_rate": 0.0, "tft_payload_stack_layers": False,
+    },
+    # Single-target OT forecasting through the same native TFT path.
+    # This aligns better with the usual "predict OT" expectation than the
+    # default 7-channel multivariate-to-multivariate harness objective.
+    "ett_ot_stable_v1": {
+        "tft_profile": "extended_safe",
+        "features": "MS",
+        "enc_in": 7, "dec_in": 7, "c_out": 1,
+        "tft_target_pos": [6],
+        "d_model": 16, "n_heads": 2, "e_layers": 1, "d_ff": 32,
+        "dropout": 0.20, "tft_attention_dropout": 0.08,
+        "train_epochs": 80, "batch_size": 64,
+        "learning_rate": 2e-4,
+        "patience": 10, "warmup_epochs": 8, "plateau_patience": 4, "plateau_factor": 0.5, "min_lr": 1e-6,
+        "tft_temporal_backbone": "lstm", "tft_temporal_backbone_layers": 1, "tft_temporal_kernel_size": 3,
+        "tft_cross_variable_mixing": False, "tft_graph_type": "dense", "tft_graph_top_k": 5,
+        "tft_graph_num_layers": 2, "tft_graph_temporal_evolution": False, "tft_graph_edge_features": False,
+        "tft_per_target_heads": False, "tft_vsn_per_feature_gating": False, "tft_covariate_reattention": False,
+        "tft_use_revin": True, "tft_revin_affine": True,
+        "tft_use_regime_moe": False, "tft_use_higher_order": False, "tft_dual_attention_fusion": False,
+        "tft_use_lag_attention": False, "tft_full_attention": False, "tft_use_explicit_cross_attention": False,
+        "tft_stochastic_depth_rate": 0.0, "tft_payload_stack_layers": False,
+    },
+    # Same OT-only objective, but with a much gentler LR ceiling because the
+    # stable_v1 curve peaked before warmup completed and degraded once LR rose.
+    "ett_ot_low_lr_v1": {
+        "tft_profile": "extended_safe",
+        "features": "MS",
+        "enc_in": 7, "dec_in": 7, "c_out": 1,
+        "tft_target_pos": [6],
+        "d_model": 16, "n_heads": 2, "e_layers": 1, "d_ff": 32,
+        "dropout": 0.20, "tft_attention_dropout": 0.08,
+        "train_epochs": 80, "batch_size": 64,
+        "learning_rate": 1e-4,
+        "patience": 10, "warmup_epochs": 6, "plateau_patience": 3, "plateau_factor": 0.5, "min_lr": 5e-7,
+        "weight_decay": 5e-3,
+        "tft_temporal_backbone": "lstm", "tft_temporal_backbone_layers": 1, "tft_temporal_kernel_size": 3,
+        "tft_cross_variable_mixing": False, "tft_graph_type": "dense", "tft_graph_top_k": 5,
+        "tft_graph_num_layers": 2, "tft_graph_temporal_evolution": False, "tft_graph_edge_features": False,
+        "tft_per_target_heads": False, "tft_vsn_per_feature_gating": False, "tft_covariate_reattention": False,
+        "tft_use_revin": True, "tft_revin_affine": True,
+        "tft_use_regime_moe": False, "tft_use_higher_order": False, "tft_dual_attention_fusion": False,
+        "tft_use_lag_attention": False, "tft_full_attention": False, "tft_use_explicit_cross_attention": False,
+        "tft_stochastic_depth_rate": 0.0, "tft_payload_stack_layers": False,
+    },
+    # Same as low_lr_v1, but removes RevIN in case the extra per-window
+    # normalization/denormalization is hurting OT-only stability on ETTh1.
+    "ett_ot_no_revin_v1": {
+        "tft_profile": "extended_safe",
+        "features": "MS",
+        "enc_in": 7, "dec_in": 7, "c_out": 1,
+        "tft_target_pos": [6],
+        "d_model": 16, "n_heads": 2, "e_layers": 1, "d_ff": 32,
+        "dropout": 0.20, "tft_attention_dropout": 0.08,
+        "train_epochs": 80, "batch_size": 64,
+        "learning_rate": 1e-4,
+        "patience": 10, "warmup_epochs": 6, "plateau_patience": 3, "plateau_factor": 0.5, "min_lr": 5e-7,
+        "weight_decay": 5e-3,
+        "tft_temporal_backbone": "lstm", "tft_temporal_backbone_layers": 1, "tft_temporal_kernel_size": 3,
+        "tft_cross_variable_mixing": False, "tft_graph_type": "dense", "tft_graph_top_k": 5,
+        "tft_graph_num_layers": 2, "tft_graph_temporal_evolution": False, "tft_graph_edge_features": False,
+        "tft_per_target_heads": False, "tft_vsn_per_feature_gating": False, "tft_covariate_reattention": False,
+        "tft_use_revin": False, "tft_revin_affine": False,
+        "tft_use_regime_moe": False, "tft_use_higher_order": False, "tft_dual_attention_fusion": False,
+        "tft_use_lag_attention": False, "tft_full_attention": False, "tft_use_explicit_cross_attention": False,
+        "tft_stochastic_depth_rate": 0.0, "tft_payload_stack_layers": False,
     },
     # ── TIER 2: Borderline (10-30×) — acceptable with high dropout + AdamW ─
     # 142K params = 16.8× — needs dropout ≥ 0.3 to generalise
@@ -305,6 +419,7 @@ def build_config(cfg_overrides):
         "loss": "MSE",
         "lradj": "type1",
         "use_amp": False,
+        "weight_decay": 1e-2,
         # GPU
         "use_gpu": True,
         "gpu": 0,
@@ -378,14 +493,14 @@ def build_config(cfg_overrides):
     cfg = Config()
     for k, v in defaults.items():
         setattr(cfg, k, v)
-    return cfg
+    return apply_tft_profile(cfg)
 
 
 def count_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def run_ett_config(name, cfg_overrides):
+def run_ett_config(name, cfg_overrides, *, max_train_batches=None, max_eval_batches=None, use_amp=False):
     """Train TFT on ETTh1 with given config overrides."""
     from models.TemporalFusionTransformer import Model
     from data_provider.data_factory import data_provider
@@ -393,6 +508,7 @@ def run_ett_config(name, cfg_overrides):
     set_seed(SEED)
     cfg = build_config(cfg_overrides)
     cfg.model_id = f"ETTh1_deep_{name}"
+    target_positions = resolve_target_positions(cfg)
 
     # Per-config training knobs with sensible defaults
     early_stop_patience = getattr(cfg, "patience", None)  # None = disabled
@@ -406,7 +522,9 @@ def run_ett_config(name, cfg_overrides):
     print(f"  d_model={cfg.d_model}, e_layers={cfg.e_layers}, d_ff={cfg.d_ff}")
     print(f"  dropout={cfg.dropout}, lr={cfg.learning_rate}, epochs={cfg.train_epochs}")
     print(f"  revin={cfg.tft_use_revin}, graph={cfg.tft_graph_type}")
+    print(f"  weight_decay={cfg.weight_decay}")
     print(f"  warmup={warmup_epochs} epochs | plateau_patience={plateau_patience} | early_stop={'disabled' if early_stop_patience is None else early_stop_patience}")
+    print(f"  use_amp={use_amp} | max_train_batches={max_train_batches} | max_eval_batches={max_eval_batches}")
     print(f"{'='*70}")
 
     # Build model
@@ -432,8 +550,8 @@ def run_ett_config(name, cfg_overrides):
         _mse = 0; _n = 0
         with _torch.no_grad():
             for bx, by, _, _ in loader:
-                tgt  = by[:, -cfg.pred_len:, :]
-                pred = bx.mean(1, keepdim=True).expand_as(tgt)
+                tgt = select_tft_truth(by, cfg.pred_len, target_positions)
+                pred = _naive_prediction(bx, cfg.pred_len, target_positions)
                 _mse += ((pred - tgt) ** 2).mean().item(); _n += 1
         naive_mse[split_name] = _mse / max(_n, 1)
     print(f"  Naive mean-predictor MSE — train: {naive_mse['train']:.4f}  "
@@ -443,7 +561,7 @@ def run_ett_config(name, cfg_overrides):
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=cfg.learning_rate,
-        weight_decay=1e-2,   # AdamW decoupled weight decay — stronger regularisation
+        weight_decay=float(getattr(cfg, "weight_decay", 1e-2)),
         betas=(0.9, 0.98),
     )
     criterion = torch.nn.MSELoss()
@@ -478,7 +596,7 @@ def run_ett_config(name, cfg_overrides):
         model.train()
         epoch_loss = 0.0
         n_batches = 0
-        for batch_x, batch_y, batch_x_mark, batch_y_mark in train_loader:
+        for batch_idx, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
             batch_x      = batch_x.float().to(DEVICE)
             batch_y      = batch_y.float().to(DEVICE)
             batch_x_mark = batch_x_mark.float().to(DEVICE)
@@ -488,7 +606,8 @@ def run_ett_config(name, cfg_overrides):
             dec_inp = torch.cat([batch_y[:, :cfg.label_len, :], dec_inp], dim=1)
 
             outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-            loss    = criterion(outputs[:, -cfg.pred_len:, :], batch_y[:, -cfg.pred_len:, :])
+            pred, true = _select_targets_for_loss(outputs, batch_y, cfg.pred_len, target_positions)
+            loss = criterion(pred, true)
 
             optimizer.zero_grad()
             loss.backward()
@@ -497,6 +616,8 @@ def run_ett_config(name, cfg_overrides):
 
             epoch_loss += loss.item()
             n_batches  += 1
+            if max_train_batches is not None and (batch_idx + 1) >= max_train_batches:
+                break
 
         train_loss = epoch_loss / max(n_batches, 1)
         train_losses.append(train_loss)
@@ -510,7 +631,7 @@ def run_ett_config(name, cfg_overrides):
         val_loss = 0.0
         n_val = 0
         with torch.no_grad():
-            for batch_x, batch_y, batch_x_mark, batch_y_mark in val_loader:
+            for batch_idx, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(val_loader):
                 batch_x      = batch_x.float().to(DEVICE)
                 batch_y      = batch_y.float().to(DEVICE)
                 batch_x_mark = batch_x_mark.float().to(DEVICE)
@@ -519,9 +640,12 @@ def run_ett_config(name, cfg_overrides):
                 dec_inp = torch.zeros_like(batch_y[:, -cfg.pred_len:, :]).to(DEVICE)
                 dec_inp = torch.cat([batch_y[:, :cfg.label_len, :], dec_inp], dim=1)
 
-                outputs   = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                val_loss += criterion(outputs[:, -cfg.pred_len:, :], batch_y[:, -cfg.pred_len:, :]).item()
+                outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                pred, true = _select_targets_for_loss(outputs, batch_y, cfg.pred_len, target_positions)
+                val_loss += criterion(pred, true).item()
                 n_val    += 1
+                if max_eval_batches is not None and (batch_idx + 1) >= max_eval_batches:
+                    break
 
         val_loss = val_loss / max(n_val, 1)
         val_losses.append(val_loss)
@@ -562,7 +686,7 @@ def run_ett_config(name, cfg_overrides):
     test_loss = 0.0
     n_test = 0
     with torch.no_grad():
-        for batch_x, batch_y, batch_x_mark, batch_y_mark in test_loader:
+        for batch_idx, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
             batch_x = batch_x.float().to(DEVICE)
             batch_y = batch_y.float().to(DEVICE)
             batch_x_mark = batch_x_mark.float().to(DEVICE)
@@ -573,10 +697,11 @@ def run_ett_config(name, cfg_overrides):
 
             with torch.amp.autocast("cuda", enabled=use_amp):
                 outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                outputs = outputs[:, -cfg.pred_len:, :]
-                targets = batch_y[:, -cfg.pred_len:, :]
-                test_loss += criterion(outputs, targets).item()
+                pred, true = _select_targets_for_loss(outputs, batch_y, cfg.pred_len, target_positions)
+                test_loss += criterion(pred, true).item()
             n_test += 1
+            if max_eval_batches is not None and (batch_idx + 1) >= max_eval_batches:
+                break
 
     test_loss = test_loss / max(n_test, 1)
     total_time = time.time() - t0
@@ -611,6 +736,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--configs", nargs="+", default=None,
                         help="Specific configs to run (default: all)")
+    parser.add_argument("--epochs", type=int, default=None,
+                        help="Override every selected config's train_epochs for quicker benchmark runs.")
+    parser.add_argument("--max-train-batches", type=int, default=None,
+                        help="Stop each training epoch after this many batches.")
+    parser.add_argument("--max-eval-batches", type=int, default=None,
+                        help="Stop each validation/test pass after this many batches.")
+    parser.add_argument("--use-amp", action="store_true", default=False,
+                        help="Enable CUDA AMP for the evaluation pass.")
     args = parser.parse_args()
 
     configs_to_run = args.configs or list(CONFIGS.keys())
@@ -628,7 +761,16 @@ def main():
         if name not in CONFIGS:
             print(f"WARNING: Unknown config '{name}', skipping")
             continue
-        r = run_ett_config(name, CONFIGS[name])
+        cfg_overrides = dict(CONFIGS[name])
+        if args.epochs is not None:
+            cfg_overrides["train_epochs"] = args.epochs
+        r = run_ett_config(
+            name,
+            cfg_overrides,
+            max_train_batches=args.max_train_batches,
+            max_eval_batches=args.max_eval_batches,
+            use_amp=args.use_amp,
+        )
         results.append(r)
 
     # ── Summary table ──

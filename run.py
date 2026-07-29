@@ -11,16 +11,12 @@ if "HSA_OVERRIDE_GFX_VERSION" not in os.environ:
 import torch
 import torch.backends
 from utils.print_args import print_args
+from utils.tft_config import apply_tft_profile
 import random
 import numpy as np
 import sys
 
-if __name__ == '__main__':
-    fix_seed = 2021
-    random.seed(fix_seed)
-    torch.manual_seed(fix_seed)
-    np.random.seed(fix_seed)
-
+def build_parser():
     parser = argparse.ArgumentParser(description='TimesNet')
 
     # basic config
@@ -67,7 +63,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
     parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
     parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-    parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
+    parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn; native TemporalFusionTransformer ignores this knob.')
     parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
     parser.add_argument('--factor', type=int, default=1, help='attn factor')
     parser.add_argument('--distil', action='store_false',
@@ -156,6 +152,10 @@ if __name__ == '__main__':
     parser.add_argument('--individual', action='store_true', default=False,
                         help='DLinear: a linear layer for each variate(channel) individually')
 
+    parser.add_argument('--tft_profile', type=str, default='extended_safe',
+                        choices=['canonical', 'extended_safe', 'experimental_full'],
+                        help='Resolved TFT profile. canonical is the trustworthy reference, extended_safe keeps repaired defaults, experimental_full enables hardened research combinations.')
+
     # TFT strict schema controls
     parser.add_argument('--tft_observed_pos', type=str, default='',
                         help='Comma-separated observed feature indices for TFT when dataset key is not pre-registered.')
@@ -171,6 +171,12 @@ if __name__ == '__main__':
                         help='Apply Cross-Variable Attention mixing before VSN in TFT.')
     parser.add_argument('--tft_allow_custom_known', action='store_true', default=False,
                         help='Relax rigid known_len timestamp count validations in TFT inputs.')
+    parser.add_argument('--tft_known_len', type=int, default=0,
+                        help='Required known-future feature width when tft_allow_custom_known=True.')
+    parser.add_argument('--tft_known_max_channels', type=int, default=512,
+                        help='Maximum supported known-future channels for TFT custom-known embedding.')
+    parser.add_argument('--tft_known_feature_names', type=str, default='',
+                        help='Comma-separated known-future feature names; required when tft_allow_custom_known=True.')
     parser.add_argument('--tft_vsn_residual_bypass', action='store_true', default=False,
                         help='Enable residual bypass in TFT variable selection networks.')
     parser.add_argument('--tft_dual_attention_fusion', action='store_true', default=False,
@@ -182,7 +188,7 @@ if __name__ == '__main__':
     parser.add_argument('--tft_temporal_backbone', type=str, default='hybrid_tcn_lstm', choices=['lstm', 'gated_tcn', 'hybrid_tcn_lstm'],
                         help='Temporal backbone used before TFT enrichment and attention blocks.')
     parser.add_argument('--tft_temporal_backbone_layers', type=int, default=3,
-                        help='Number of layers in the TFT gated TCN temporal backbone.')
+                        help='Number of TCN layers used by TFT gated_tcn and hybrid_tcn_lstm backbones; plain lstm ignores this knob.')
     parser.add_argument('--tft_temporal_kernel_size', type=int, default=3,
                         help='Kernel size for the TFT gated TCN temporal backbone.')
     parser.add_argument('--tft_temporal_hidden_size', type=int, default=0,
@@ -203,6 +209,8 @@ if __name__ == '__main__':
                         help='Temporal positional biasing strategy for TFT attention blocks.')
     parser.add_argument('--tft_attention_backend', type=str, default='exact', choices=['exact', 'sdpa'],
                         help='Backend for TFT full-attention branches; sdpa falls back to exact when attention weights are requested.')
+    parser.add_argument('--tft_attention_dropout', type=float, default=0.0,
+                        help='Attention-probability dropout for native TFT attention blocks; output projection dropout remains separate.')
     parser.add_argument('--tft_rope_base', type=float, default=10000.0,
                         help='Base period used when TFT attention positional bias is set to rope.')
     parser.add_argument('--tft_alibi_scale', type=float, default=1.0,
@@ -215,6 +223,12 @@ if __name__ == '__main__':
                         help='Enable a TFT quantile prediction head in addition to the point forecast head.')
     parser.add_argument('--tft_output_quantiles', type=str, default='0.1,0.5,0.9',
                         help='Comma-separated quantile levels for TFT quantile head, e.g. 0.1,0.5,0.9.')
+    parser.add_argument('--tft_output_mode', type=str, default='',
+                        help='TFT output mode: point, quantile, or joint. Empty uses a backward-compatible default.')
+    parser.add_argument('--tft_point_loss_coeff', type=float, default=1.0,
+                        help='Point-loss coefficient for TFT joint output mode.')
+    parser.add_argument('--tft_quantile_loss_coeff', type=float, default=1.0,
+                        help='Quantile-loss coefficient for TFT joint output mode.')
     parser.add_argument('--tft_num_regimes', type=int, default=4,
                         help='Number of regimes for TFT regime-aware MoE.')
     parser.add_argument('--tft_num_moe_experts', type=int, default=4,
@@ -261,6 +275,8 @@ if __name__ == '__main__':
                         help='Expert capacity factor for TFT MoE; each expert handles at most capacity_factor * tokens/num_experts tokens.')
     parser.add_argument('--tft_vsn_low_rank_threshold', type=int, default=64,
                         help='When variable_num >= this threshold, VSN uses low-rank factorization for weight generation.')
+    parser.add_argument('--tft_debug_checks', action='store_true', default=False,
+                        help='Enable expensive per-layer TFT finiteness/debug checks; shape/schema checks remain always enabled.')
     parser.add_argument('--tft_graph_type', type=str, default='dense', choices=['dense', 'sparse', 'temporal_sparse'],
                         help='Graph learner type for TFT cross-variable mixing: dense (original), sparse (top-k), temporal_sparse (top-k + GRU evolution).')
     parser.add_argument('--tft_graph_top_k', type=int, default=10,
@@ -276,8 +292,11 @@ if __name__ == '__main__':
     parser.add_argument('--alpha', type=float, default=0.1, help='KNN for Graph Construction')
     parser.add_argument('--top_p', type=float, default=0.5, help='Dynamic Routing in MoE')
     parser.add_argument('--pos', type=int, choices=[0, 1], default=1, help='Positional Embedding. Set pos to 0 or 1')
+    return parser
 
-    args = parser.parse_args()
+
+def normalize_args(args):
+    args = argparse.Namespace(**vars(args))
     if torch.cuda.is_available() and args.use_gpu:
         args.device = torch.device('cuda:{}'.format(args.gpu))
         print('Using GPU')
@@ -314,20 +333,35 @@ if __name__ == '__main__':
             return [float(v.strip()) for v in value.split(',') if v.strip() != '']
         return value
 
+    def _parse_str_list(value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            if value == '':
+                return None
+            return [v.strip() for v in value.split(',') if v.strip() != '']
+        return value
+
     args.tft_observed_pos = _parse_int_list(args.tft_observed_pos)
     args.tft_static_pos = _parse_int_list(args.tft_static_pos)
     args.tft_target_pos = _parse_int_list(args.tft_target_pos)
     args.tft_lag_scales = _parse_int_list(args.tft_lag_scales)
     args.tft_output_quantiles = _parse_float_list(args.tft_output_quantiles)
+    args.tft_known_feature_names = _parse_str_list(args.tft_known_feature_names)
+    if isinstance(args.tft_output_mode, str) and args.tft_output_mode.strip() == '':
+        args.tft_output_mode = None
     if args.tft_interaction_rank == 0:
         args.tft_interaction_rank = None
     if args.tft_temporal_hidden_size == 0:
         args.tft_temporal_hidden_size = None
     if args.tft_moe_hidden_size == 0:
         args.tft_moe_hidden_size = None
+    if args.tft_known_len <= 0:
+        args.tft_known_len = None
 
-    print('Args in experiment:')
-    print_args(args)
+    if args.model == 'TemporalFusionTransformer':
+        args = apply_tft_profile(args)
 
     if args.model == 'TemporalFusionTransformer':
         from models.TemporalFusionTransformer import datatype_dict
@@ -347,6 +381,46 @@ if __name__ == '__main__':
                     "you must provide --tft_target_pos."
                 )
                 sys.exit(1)
+    return args
+
+
+def build_setting(args, ii):
+    setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_expand{}_dc{}_fc{}_eb{}_dt{}_{}_{}'.format(
+        args.task_name,
+        args.model_id,
+        args.model,
+        args.data,
+        args.features,
+        args.seq_len,
+        args.label_len,
+        args.pred_len,
+        args.d_model,
+        args.n_heads,
+        args.e_layers,
+        args.d_layers,
+        args.d_ff,
+        args.expand,
+        args.d_conv,
+        args.factor,
+        args.embed,
+        args.distil,
+        args.des, ii)
+    if args.model == 'TemporalFusionTransformer':
+        setting = f"{setting}_tp{args.tft_profile}_td{args.tft_config_digest}"
+    return setting
+
+
+if __name__ == '__main__':
+    fix_seed = 2021
+    random.seed(fix_seed)
+    torch.manual_seed(fix_seed)
+    np.random.seed(fix_seed)
+
+    parser = build_parser()
+    args = normalize_args(parser.parse_args())
+
+    print('Args in experiment:')
+    print_args(args)
 
 
     if args.task_name == 'long_term_forecast':
@@ -375,26 +449,7 @@ if __name__ == '__main__':
         for ii in range(args.itr):
             # setting record of experiments
             exp = Exp(args)  # set experiments
-            setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_expand{}_dc{}_fc{}_eb{}_dt{}_{}_{}'.format(
-                args.task_name,
-                args.model_id,
-                args.model,
-                args.data,
-                args.features,
-                args.seq_len,
-                args.label_len,
-                args.pred_len,
-                args.d_model,
-                args.n_heads,
-                args.e_layers,
-                args.d_layers,
-                args.d_ff,
-                args.expand,
-                args.d_conv,
-                args.factor,
-                args.embed,
-                args.distil,
-                args.des, ii)
+            setting = build_setting(args, ii)
 
             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
             exp.train(setting)
@@ -409,26 +464,7 @@ if __name__ == '__main__':
     else:
         exp = Exp(args)  # set experiments
         ii = 0
-        setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_expand{}_dc{}_fc{}_eb{}_dt{}_{}_{}'.format(
-            args.task_name,
-            args.model_id,
-            args.model,
-            args.data,
-            args.features,
-            args.seq_len,
-            args.label_len,
-            args.pred_len,
-            args.d_model,
-            args.n_heads,
-            args.e_layers,
-            args.d_layers,
-            args.d_ff,
-            args.expand,
-            args.d_conv,
-            args.factor,
-            args.embed,
-            args.distil,
-            args.des, ii)
+        setting = build_setting(args, ii)
 
         print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
         exp.test(setting, test=1)

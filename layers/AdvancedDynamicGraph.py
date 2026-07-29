@@ -29,7 +29,11 @@ class SparseGraphStructureLearner(nn.Module):
         self.key_proj = nn.Linear(d_model, d_model, bias=False)
         self.scale = d_model ** -0.5
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_structure: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
         """
         Args:
             x: [N, C, d] where N = B*T (flattened batch-time)
@@ -42,17 +46,20 @@ class SparseGraphStructureLearner(nn.Module):
         logits = torch.bmm(Q, K.transpose(1, 2)) * self.scale  # [N, C, C]
 
         C = x.shape[1]
-        k = min(self.top_k, C)
-
-        # Top-k sparsification per row
-        topk_vals, topk_idx = torch.topk(logits, k, dim=-1)  # [N, C, k]
-        # Create sparse mask
-        mask = torch.zeros_like(logits).scatter_(-1, topk_idx, 1.0)
-        # Masked softmax: set non-top-k to -inf before softmax
-        logits_masked = logits.masked_fill(mask == 0, float('-inf'))
+        if self.top_k < 0:
+            raise ValueError("top_k must be >= 0.")
+        if self.top_k == 0 or self.top_k >= C:
+            mask = None
+            logits_masked = logits
+        else:
+            k = min(self.top_k, C)
+            _, topk_idx = torch.topk(logits, k, dim=-1)  # [N, C, k]
+            mask = torch.zeros_like(logits, dtype=torch.bool).scatter_(-1, topk_idx, True)
+            logits_masked = logits.masked_fill(~mask, float('-inf'))
         adj = F.softmax(logits_masked / self.temperature, dim=-1)  # [N, C, C]
-        # NaN safety: rows where all are -inf get 0
         adj = adj.nan_to_num(0.0)
+        if return_structure:
+            return adj, logits, mask
         return adj
 
 
@@ -120,21 +127,31 @@ class TemporalGraphEvolution(nn.Module):
     Base adjacency captures static relationships; GRU captures temporal shifts.
     """
 
-    def __init__(self, d_model: int, num_nodes: int):
+    def __init__(self, d_model: int, num_nodes: int, rank: Optional[int] = None):
         super().__init__()
         # Compress node features to a graph-level summary per timestep
         self.node_compress = nn.Linear(d_model, 1)
-        # GRU operates on [B, T, C] graph summary
-        self.gru = nn.GRU(num_nodes, num_nodes * num_nodes, batch_first=True)
         self.num_nodes = num_nodes
+        self.rank = max(1, min(num_nodes, rank or min(16, num_nodes)))
+        # GRU now evolves a low-rank graph state instead of a dense C^2 state.
+        self.gru = nn.GRU(num_nodes, 2 * self.rank, batch_first=True)
+        self.src_projection = nn.Linear(2 * self.rank, num_nodes * self.rank)
+        self.dst_projection = nn.Linear(2 * self.rank, num_nodes * self.rank)
         # Learnable gate controlling perturbation strength
-        self.alpha = nn.Parameter(torch.tensor(0.1))
+        alpha_init = torch.logit(torch.tensor(0.1))
+        self.alpha_logit = nn.Parameter(alpha_init)
 
-    def forward(self, x_4d: torch.Tensor, base_adj: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x_4d: torch.Tensor,
+        base_logits: torch.Tensor,
+        structure_mask: Optional[torch.Tensor],
+    ) -> torch.Tensor:
         """
         Args:
             x_4d:    [B, T, C, d] original 4D input
-            base_adj: [B*T, C, C] base adjacency from structure learner
+            base_logits: [B*T, C, C] base logits from structure learner
+            structure_mask: [B*T, C, C] boolean support mask, or None for dense
         Returns:
             evolved_adj: [B*T, C, C] time-varying adjacency
         """
@@ -142,14 +159,17 @@ class TemporalGraphEvolution(nn.Module):
         # Graph summary per timestep: [B, T, C]
         summary = self.node_compress(x_4d).squeeze(-1)  # [B, T, C]
         # GRU produces per-timestep perturbation
-        delta_flat, _ = self.gru(summary)  # [B, T, C*C]
-        delta = delta_flat.reshape(B * T, C, C)
-        # Tanh to bound perturbation, gated by learnable alpha
-        delta = torch.tanh(delta) * torch.sigmoid(self.alpha)
-        # Evolve adjacency
-        evolved = base_adj + delta
-        # Re-normalize rows to valid distribution
-        evolved = F.softmax(evolved, dim=-1)
+        state, _ = self.gru(summary)  # [B, T, 2*rank]
+        state = torch.tanh(state).reshape(B * T, 2 * self.rank)
+        src = self.src_projection(state).reshape(B * T, C, self.rank)
+        dst = self.dst_projection(state).reshape(B * T, C, self.rank)
+        delta_logits = torch.bmm(src, dst.transpose(1, 2))
+        delta_logits = torch.tanh(delta_logits) * torch.sigmoid(self.alpha_logit)
+        evolved_logits = base_logits + delta_logits
+        if structure_mask is not None:
+            evolved_logits = evolved_logits.masked_fill(~structure_mask, float('-inf'))
+        evolved = F.softmax(evolved_logits, dim=-1)
+        evolved = evolved.nan_to_num(0.0)
         return evolved
 
 
@@ -187,6 +207,8 @@ class AdvancedDynamicGraphLearner(nn.Module):
         self.top_k = top_k
         self.num_layers = num_layers
         self.temporal_evolution = temporal_evolution
+        self.edge_features = edge_features
+        self.max_edge_feature_elements = 2_000_000
 
         # 1. Sparse structure learner
         self.structure_learner = SparseGraphStructureLearner(d_model, top_k)
@@ -233,12 +255,20 @@ class AdvancedDynamicGraphLearner(nn.Module):
         x_4d = x  # keep for temporal evolution
         x_flat = x.reshape(B * T, C, d)
 
+        if self.edge_features:
+            edge_elements = B * T * C * C * d
+            if edge_elements > self.max_edge_feature_elements:
+                raise ValueError(
+                    "edge_features would materialize an oversized dense edge tensor; "
+                    "disable edge_features or reduce batch/time/node dimensions."
+                )
+
         # Learn sparse adjacency
-        adj = self.structure_learner(x_flat)  # [B*T, C, C]
+        adj, base_logits, structure_mask = self.structure_learner(x_flat, return_structure=True)  # [B*T, C, C]
 
         # Temporal evolution of adjacency
         if self.temporal_evolver is not None:
-            adj = self.temporal_evolver(x_4d, adj)
+            adj = self.temporal_evolver(x_4d, base_logits, structure_mask)
 
         # Multi-hop message passing with skip connections
         skip_outputs = [x_flat]  # input as first skip

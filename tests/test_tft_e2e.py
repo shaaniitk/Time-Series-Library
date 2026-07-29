@@ -29,6 +29,7 @@ features help capture these complex multi-scale dynamics.
 """
 
 import math
+import os
 import sys
 import time
 import unittest
@@ -61,7 +62,18 @@ EPOCHS = 30
 LR = 5e-4
 NOISE_STD = 0.15
 SEED = 42
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def resolve_test_device():
+    requested = os.environ.get("TFT_E2E_DEVICE", "").strip().lower()
+    if requested:
+        if requested == "cuda" and torch.cuda.is_available():
+            return torch.device("cuda")
+        if requested == "cpu":
+            return torch.device("cpu")
+    # Default to CPU for deterministic, crash-resistant CI/local verification.
+    return torch.device("cpu")
+
+
+DEVICE = resolve_test_device()
 
 # Wave periods
 PERIOD_LOW = 96.0
@@ -363,6 +375,7 @@ def e2e_base_config():
         tft_vsn_n_selection_heads=1,
         tft_allow_custom_known=True,
         tft_known_len=KNOWN_LEN,
+        tft_known_feature_names=[f"known_{i}" for i in range(KNOWN_LEN)],
         tft_known_max_channels=64,
         tft_observed_pos=list(range(ENC_IN)),
         tft_static_pos=[],

@@ -33,7 +33,10 @@ def print_args(args):
     print(f'  {"Enc In:":<20}{args.enc_in:<20}{"Dec In:":<20}{args.dec_in:<20}')
     print(f'  {"C Out:":<20}{args.c_out:<20}{"d model:":<20}{args.d_model:<20}')
     print(f'  {"n heads:":<20}{args.n_heads:<20}{"e layers:":<20}{args.e_layers:<20}')
-    print(f'  {"d layers:":<20}{args.d_layers:<20}{"d FF:":<20}{args.d_ff:<20}')
+    d_ff_value = getattr(args, "d_ff", "-")
+    if getattr(args, "model", None) == "TemporalFusionTransformer":
+        d_ff_value = f"{d_ff_value} (ignored)"
+    print(f'  {"d layers:":<20}{args.d_layers:<20}{"d FF:":<20}{str(d_ff_value):<20}')
     print(f'  {"Moving Avg:":<20}{args.moving_avg:<20}{"Factor:":<20}{args.factor:<20}')
     print(f'  {"Distil:":<20}{args.distil:<20}{"Dropout:":<20}{args.dropout:<20}')
     print(f'  {"Embed:":<20}{args.embed:<20}{"Activation:":<20}{args.activation:<20}')
@@ -41,6 +44,7 @@ def print_args(args):
 
     if hasattr(args, 'tft_use_lag_attention'):
         print("\033[1m" + "TFT Upgrades" + "\033[0m")
+        print(f'  {"TFT Profile:":<20}{getattr(args, "tft_profile", "extended_safe"):<20}{"TFT Digest:":<20}{str(getattr(args, "tft_config_digest", "-")):<20}')
         print(f'  {"TFT SwiGLU:":<20}{args.tft_use_swiglu!s:<20}{"TFT Full Attn:":<20}{args.tft_full_attention!s:<20}')
         print(f'  {"TFT Dual Attn:":<20}{args.tft_dual_attention_fusion!s:<20}{"TFT Cross Mix:":<20}{args.tft_cross_variable_mixing!s:<20}')
         print(f'  {"VSN Bypass:":<20}{args.tft_vsn_residual_bypass!s:<20}{"Custom Known:":<20}{args.tft_allow_custom_known!s:<20}')
@@ -49,6 +53,7 @@ def print_args(args):
         print(f'  {"RoPE Base:":<20}{args.tft_rope_base:<20}{"ALiBi Scale:":<20}{args.tft_alibi_scale:<20}')
         print(f'  {"Use RevIN:":<20}{args.tft_use_revin!s:<20}{"Quantile Head:":<20}{args.tft_use_quantile_head!s:<20}')
         print(f'  {"Temporal BB:":<20}{args.tft_temporal_backbone:<20}{"BB Layers:":<20}{args.tft_temporal_backbone_layers:<20}')
+        print(f'  {"BB Layer Scope:":<20}{str(getattr(args, "tft_temporal_backbone_layers_scope", "-")):<20}')
         print(f'  {"BB Kernel:":<20}{args.tft_temporal_kernel_size:<20}{"BB Hidden:":<20}{str(args.tft_temporal_hidden_size):<20}')
         print(f'  {"Lag Attention:":<20}{args.tft_use_lag_attention!s:<20}{"Lag Scales:":<20}{str(args.tft_lag_scales):<20}')
         print(f'  {"Higher Order:":<20}{args.tft_use_higher_order!s:<20}{"Interaction Ord:":<20}{args.tft_interaction_order:<20}')

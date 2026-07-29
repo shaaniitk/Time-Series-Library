@@ -31,6 +31,17 @@ def divide_no_nan(a, b):
     return result
 
 
+def canonicalize_quantiles(quantiles):
+    if not isinstance(quantiles, (list, tuple)) or len(quantiles) == 0:
+        raise ValueError("quantiles must be a non-empty list/tuple.")
+    normalized = tuple(sorted(float(q) for q in quantiles))
+    if any(q <= 0.0 or q >= 1.0 for q in normalized):
+        raise ValueError("quantiles must be strictly between 0 and 1.")
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("quantiles must not contain duplicates.")
+    return normalized
+
+
 class mape_loss(nn.Module):
     def __init__(self):
         super(mape_loss, self).__init__()
@@ -91,15 +102,17 @@ class mase_loss(nn.Module):
 class QuantileLoss(nn.Module):
     def __init__(self, quantiles):
         super(QuantileLoss, self).__init__()
-        if not isinstance(quantiles, (list, tuple)) or len(quantiles) == 0:
-            raise ValueError("quantiles must be a non-empty list/tuple.")
-        self.quantiles = [float(q) for q in quantiles]
+        self.quantiles = list(canonicalize_quantiles(quantiles))
 
     def forward(self, forecast: t.Tensor, target: t.Tensor) -> t.Tensor:
         if forecast.ndim != 4:
             raise ValueError(f"Quantile forecast must have shape [B,T,Q,C], got {tuple(forecast.shape)}.")
         if target.ndim != 3:
             raise ValueError(f"Quantile target must have shape [B,T,C], got {tuple(target.shape)}.")
+        if forecast.shape[2] != len(self.quantiles):
+            raise ValueError(
+                f"Quantile forecast Q dimension ({forecast.shape[2]}) must match configured quantiles ({len(self.quantiles)})."
+            )
         errors = target.unsqueeze(2) - forecast
         quantiles = forecast.new_tensor(self.quantiles).view(1, 1, -1, 1)
         loss = t.maximum(quantiles * errors, (quantiles - 1.0) * errors)
