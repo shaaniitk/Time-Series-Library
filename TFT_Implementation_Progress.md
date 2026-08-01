@@ -1,6 +1,6 @@
 # TFT, Planetary-Covariate, and Physics Implementation Progress Tracker
 
-> Last updated: 2026-07-29 (Asia/Kolkata)
+> Last updated: 2026-08-01 14:05 (Asia/Kolkata)
 >
 > Audited base commit: `564cffbc712f`
 >
@@ -12,33 +12,43 @@
 >
 > Technical audit: [`TFT_Deep_Analysis_Report.md`](TFT_Deep_Analysis_Report.md)
 >
-> Planetary/NIFTY lane: [`Vedic_Astrology_TFT_Implementation_Plan.md`](Vedic_Astrology_TFT_Implementation_Plan.md)
+> Historical planetary/NIFTY audit: [`Vedic_Astrology_TFT_Implementation_Plan.md`](Vedic_Astrology_TFT_Implementation_Plan.md)
+>
+> Canonical financial-astrology plan:
+> [`projects/financial_astrology_tft/IMPLEMENTATION_PLAN.md`](projects/financial_astrology_tft/IMPLEMENTATION_PLAN.md)
 >
 > Canonical financial-astrology tracker:
 > [`projects/financial_astrology_tft/PROGRESS_TRACKER.md`](projects/financial_astrology_tft/PROGRESS_TRACKER.md)
 
 ## 1. Honest Current Status
 
-The native TFT implementation roadmap is closed through the post-`G1` hardening set. The user explicitly opened a planetary/NIFTY hypothesis-testing lane on 2026-07-29. That lane is at protocol/data-audit stage; generic output-physics work remains separate and unimplemented.
+The original native TFT implementation roadmap remains closed, but the July
+2026 trained-feature matrix exposed a second semantic-repair wave. Historical
+`TFT-A*` completion is preserved; new `TFT-SR00`–`TFT-SR09` tasks track the
+additional work. Detailed planetary/NIFTY planning is authorized. Data-dependent
+implementation is waiting for corrected source OHLC and the ephemeris generator
+package after a blocking data audit; generic output-physics work remains
+separate.
 
 ```text
-Native TFT progress:      59 / 59 implementation weight = 100%
+Original native roadmap:  59 / 59 implementation weight = 100%
+Semantic-repair wave:      4 / 28 implementation weight = 14.3%
 Generic PHY/THY progress: 0 / 45 active weight = 0%
 Planetary AST progress:   0 / 44 implementation weight = 0%
-Current native gate:      G2 — Canonical baseline (passed)
-Current AST/FA gate:      FA-G1/G2 — TFT matrix running; theory/data discussion
-Native defects fixed:     11
+Current native gate:      G2-SR — Post-matrix semantic hardening (open)
+Current AST/FA gate:      FA-TFT-SEM/G2 — rashi/date defects; source remediation pending
+Native defects fixed:     12
 Native release tasks done:12 / 12
 Physics modules created:  0
 Planetary modules created: 0
-Immediate prerequisites:  let TFT matrix finish; sample + generator/provenance review
+Immediate prerequisites:  execute TFT-SR02..09; rebuild/audit source data
 ```
 
 Do not count a written plan, a started branch, a passing unrelated test, or a partial patch as implementation progress. A task contributes progress only after it is `DONE` and has recorded evidence.
 
 Plain-English repo state:
 
-- the repo already contains the major native TFT safety fixes identified in the audit;
+- the repo already contains the major original native TFT safety fixes identified in the audit;
 - `TFT-T01` is now complete and `G1` is closed;
 - `TFT-P01` is now complete, so the TFT profile system and stable TFT digest are in place;
 - `TFT-A03` is now complete, so canonical mode has pointwise continuous embeddings and a single shared static VSN path;
@@ -51,7 +61,17 @@ Plain-English repo state:
 - `TFT-A09` is now complete, so native TFT defaults/digests are centralized, ignored knobs such as `d_ff` are explicitly warned and de-materialized, and backbone-layer scope is surfaced honestly;
 - `TFT-A08` is now complete, so import-time hardware mutation is gone and deep finite-value checks are gated behind `tft_debug_checks`;
 - `TFT-A10` is now complete, so self-attention and cross-attention now support a distinct probability-dropout control while keeping interpretation tensors pre-dropout;
-- `TFT-A06` is now complete, so interpretation exports carry named history/future variables plus explicit caveat flags for canonical-vs-extended semantics;
+- `TFT-A06` is complete for its historical contract, but post-matrix audit found
+  additional intended-semantic and interpretation gaps tracked by `TFT-SR*`;
+- `TFT-SR00` is complete: all 14 legacy-v1 cases are frozen by hash, repaired
+  semantics use versioned identities, and checkpoint compatibility is explicit;
+- `TFT-SR01` is complete: production seed streams, deterministic sample order,
+  exact paired initialization, tamper-evident manifests, and validation-only
+  fitting passed independent adversarial review;
+- the matrix exposed non-paired initialization/data order, ignored `--seed`,
+  non-neutral optional branches, learned-FFT naming drift, dead final-layer
+  decompression, shifted-prefix rather than exact-lag behavior, post-VSN rather
+  than named-covariate interactions, and aggressive single-adjacency graph mixing;
 - a planetary-covariate lane is now explicitly open, but its ephemerides are treated as known-future inputs rather than an invented output-physics law;
 - the production `Dataset_Custom` path cannot yet carry planetary values through `x_mark_*`;
 - the optional per-feature VSN gating path has a reproduced `len(None)` forward crash and is tracked as `AST-C00`;
@@ -67,7 +87,8 @@ Use exactly these values:
 | `READY` | All dependencies are `DONE`; the task may be claimed. |
 | `IN_PROGRESS` | One owner is actively implementing the task. |
 | `IN_REVIEW` | Coding is complete, but independent verification is pending. |
-| `BLOCKED` | Work cannot continue without a real external or technical change; the blocker is recorded. |
+| `WAITING_EXTERNAL` | Read-only/internal work is exhausted and completion awaits a named user artifact or external process. |
+| `BLOCKED` | Work cannot continue because of a technical or dependency conflict not represented by ordinary task prerequisites. |
 | `DONE` | Every acceptance criterion passed and evidence is recorded. |
 | `DEFERRED` | Intentionally outside the current implementation milestone. |
 
@@ -99,13 +120,14 @@ implementation_progress =
 | `G0` Planning baseline | `PASSED` | — | — | `EV-BASE-001`, `EV-DOC-001` |
 | `G1` Native safety | `PASSED` | 24 | 24 | `EV-IMP-001`, `EV-IMP-002`, `EV-IMP-003`, `EV-IMP-004`, `EV-IMP-005`, `EV-IMP-006`, `EV-IMP-007`, `EV-IMP-008`, `EV-IMP-009` |
 | `G2` Canonical baseline | `PASSED` | 12 | 12 | `EV-IMP-010`, `EV-IMP-011`, `EV-IMP-012`, `EV-IMP-013` |
+| `G2-SR` Post-matrix semantic readiness | `OPEN` | 4 | 28 | `EV-IMP-025`, `EV-IMP-026`; release evidence still pending `TFT-SR09` |
 | `G3` Physics foundation | `LOCKED` | 0 | 17 | — |
 | `G4` Production physics integration | `LOCKED` | 0 | 12 | — |
 | `G5` Physical validity | `LOCKED` | 0 | 3 | — |
 | `G6` VSN theory priors | `LOCKED` | 0 | 6 | — |
 | `G7` Counterfactual monotonicity | `LOCKED` | 0 | 5 | — |
-| `G8` Experimental hardening | `OPEN — comparison evidence pending` | 23 | 23 | Implementations are complete; isolated comparative benchmark evidence is still being collected. |
-| `AST-G0` Protocol/data contract | `OPEN` | 0 | 6 | Research draft `EV-DOC-003`; data audit still requires the supplied sample/generator. |
+| `G8` Experimental hardening | `PASSED — legacy-v1 screening only` | 23 | 23 | Fourteen-case comparison complete; semantic-v2 release still requires `G2-SR`. |
+| `AST-G0` Protocol/data contract | `OPEN / EXTERNAL REMEDIATION` | 0 | 6 | `EV-DATA-023`; raw OHLC/session keys and generator manifest required. |
 | `AST-G1` Loader and baselines | `LOCKED` | 0 | 9 | — |
 | `AST-G2` Circular features and nulls | `LOCKED` | 0 | 7 | — |
 | `AST-G3` Raw test plus grouped/multiscale architecture | `LOCKED` | 0 | 11 | — |
@@ -115,11 +137,15 @@ implementation_progress =
 
 ## 5. Active Work
 
-No implementation task is currently claimed. `AST-H01` and `AST-D01` are the next discussion/data-review tasks.
+The native matrix completed 14/14, `TFT-SR00` froze its legacy-v1 evidence, and
+`TFT-SR01` passed its reproducibility/paired-ablation gate. `TFT-SR02` is now
+claimed for the exact baseline-neutral adapter and coordinate contract.
+The read-only `AST-D01` audit is complete and is waiting externally on raw
+OHLC/session keys and generator provenance.
 
 | Task | Owner | Status | Started | Primary-file lock | Next action |
 |---|---|---|---|---|---|
-| — | — | — | — | — | Await the representative dataset sample/generator, then claim `AST-H01` or `AST-D01`. |
+| `TFT-SR02` | Codex `/root` | `IN_PROGRESS` | 2026-08-01 14:05 IST | `LOCK-TFT-MODEL/LAYERS/CONFIG`, semantic-neutrality tests/docs | Add exact-zero residual adapters and an explicit physical time/feature-coordinate contract shared by repaired extensions. |
 
 ## 5.1 Operator quick-start
 
@@ -128,41 +154,53 @@ If you are taking over this repo without context, do this in order:
 1. Open the native release-gate task card `TFT-T01` in [`implementation_plan.md`](implementation_plan.md).
 2. Confirm `TFT-T01` is already recorded `DONE` with `EV-IMP-009`.
 3. Confirm the remaining TFT hardening tasks `TFT-A06` through `TFT-A10` are all recorded `DONE`.
-4. Do not reopen completed native TFT tasks unless a fresh regression reproduces against the recorded evidence.
-5. For the NIFTY/planetary project, read [`Vedic_Astrology_TFT_Implementation_Plan.md`](Vedic_Astrology_TFT_Implementation_Plan.md).
-6. Start with `AST-H01`/`AST-D01`; do not build a planet-to-price output-physics loss.
+4. Preserve the historical completion of those tasks; the fresh post-matrix
+   regressions are tracked under `TFT-SR00`–`TFT-SR09`.
+5. Read Section 14 of [`implementation_plan.md`](implementation_plan.md), verify
+   `TFT-SR00`/`TFT-SR01` evidence, and continue the claimed `TFT-SR02` task.
+6. For NIFTY/planet work, read the canonical project
+   [`IMPLEMENTATION_PLAN.md`](projects/financial_astrology_tft/IMPLEMENTATION_PLAN.md).
+7. Resume `AST-D01` in parallel when raw OHLC and the generator/convention
+   package arrive; no neural astrology training begins before `TFT-SR09` and
+   the corrected-data gates.
 
-## 6. Ready Queue
+## 6. Next-Activation Queue
 
-The orchestrator normally selects the highest item whose files do not conflict with active work. There is no completed-native-TFT task to claim; the new domain lane begins with protocol and data review.
+The orchestrator normally selects the highest item whose files do not conflict
+with active work. The post-matrix semantic wave now precedes neural planetary
+training; data/provenance review remains independently parallel.
 
-| Priority | Task | Why it is ready | Primary files |
+| Priority | Task | Current activation condition | Primary files |
 |---:|---|---|---|
-| 1 | `AST-H01` | Freeze the falsifiable target, cutoff, metrics, folds, and holdout after the data discussion. | `configs/astrology/`, domain protocol |
-| 2 | `AST-D01` | Audit the representative data, PySwissEph generation, units, timestamps, Hilbert boundaries, and joins. | planetary schema/manifest/tests |
-| 3 | `AST-C00` | Repair the reproduced per-feature VSN gating crash; keep the feature disabled in the first run regardless. | native TFT + extension test |
+| 1 | `TFT-SR02` | `READY` and claimed: `TFT-SR01` passed with `EV-IMP-026`. | native TFT model/layers/config/neutrality tests |
+| 2 | `AST-H01` | `READY`: continue protocol choices that do not require results. | `configs/astrology/`, domain protocol |
+| 3 | `AST-D01` | `WAITING_EXTERNAL`: audit found bad rashi/date semantics; wait for raw OHLC and generator/convention package. | planetary schema/manifest/tests |
 
 The intended branch after `TFT-T01` is:
 
 | If `TFT-T01` result is… | Then do this next |
 |---|---|
-| Green | Done. `G1`, `G2`, `TFT-P01`, `TFT-A01`–`TFT-A10`, and `TFT-E01` are complete. Proceed through the separate `AST-*` lane for the planetary hypothesis. |
+| Green | Historical `G1/G2` remain passed. Complete `TFT-SR00`–`TFT-SR09`, then proceed to neural `AST-*` work. |
 | Red | Historical branch only: keep `TFT-T01` `IN_PROGRESS`, identify the failing contract, fix only that contract, and rerun the same exact command. |
 
 ## 7. Blockers
 
-There is no native-code blocker. The planetary data/provenance audit cannot close until a representative sample and generation details are supplied.
+The legacy matrix has exited, so `TFT-SR00` is no longer blocked. The planetary
+data/provenance audit cannot close until authoritative source OHLC/session keys
+and generation details are supplied.
 
 | Task | Since | Exact blocker | Evidence | Required action | Owner |
 |---|---|---|---|---|---|
-| `AST-D01` | 2026-07-29 | Representative rows, column dictionary, PySwissEph generation code/config, timestamp/frame/ayanamsha metadata, and Hilbert policy are not yet in the workspace. | `EV-DOC-003` | User supplies sample and generator details; then run the read-only audit. | — |
+| `AST-D01` source remediation | 2026-07-31 | Derived return dates mix session conventions; raw OHLC/session keys are absent. | `EV-DATA-023` | Supply authoritative raw OHLC or exact retrieval script/artifact; rebuild without heuristics. | user input |
+| `AST-D01` generator provenance | 2026-07-31 | Generator/config, timestamp/frame/ayanamsha, and Shadbala provenance are absent. | `EV-DATA-023` | Supply PySwissEph generator and manifest; Hilbert code only if a separate feature family was intended. | user input |
 
 ## 7.1 Things that are not blockers
 
 Do not mark these as blockers:
 
 - “Generic physics is not started yet.” That is expected and is not required for the planetary known-covariate lane.
-- “Post-G1 implementations are incomplete.” They are complete; only some comparative benchmark evidence remains open.
+- “Historical post-G1 tasks are incomplete.” They remain complete; the new
+  semantic defects have their own `TFT-SR*` IDs.
 - “A red test exists while writing the fix.” That is normal `IN_PROGRESS` work.
 - “The repo has unrelated dirty files.” Record them and work around them.
 
@@ -222,9 +260,29 @@ Canonicalization/extension subtotal: `35 / 35`.
 
 Recommended post-`G1` order:
 
-1. Closed — all planned TFT hardening tasks are complete in the current worktree.
-2. Reopen only on reproduced regression.
-3. Keep `PHY-*` and `THY-*` work deferred until a separate physics implementation pass begins.
+1. The original hardening set remains historically closed.
+2. Do not rewrite old task evidence; use the new `TFT-SR*` wave below.
+3. Keep `PHY-*` and `THY-*` work separate.
+
+## 10.1 Post-Matrix Semantic-Repair Ledger
+
+| ID | Status | Owner | Weight | Dependencies | Evidence | Next action |
+|---|---|---|---:|---|---|---|
+| `TFT-SR00` | `DONE` | — | 1 | final matrix artifact inventory | `EV-IMP-025` | Legacy-v1 evidence, versioned identities, bound metadata, guarded replay, and migration policy are verified. |
+| `TFT-SR01` | `DONE` | — | 3 | `TFT-SR00` | `EV-IMP-026` | Seed streams, exact paired common-state copying, deterministic sample order, manifests, and validation-only fitting are verified. |
+| `TFT-SR02` | `IN_PROGRESS` | Codex `/root` | 3 | `TFT-SR01` | `EV-AUDIT-022` | Add exact no-op residual adapters and explicit physical coordinate contracts. |
+| `TFT-SR03` | `NOT_STARTED` | — | 3 | `TFT-SR02` | `EV-AUDIT-022` | Split FFT filter/selection semantics, scopes, diagnostics, and neutral fusion. |
+| `TFT-SR04` | `NOT_STARTED` | — | 2 | `TFT-SR02` | `EV-AUDIT-022` | Make cross-attention neutral, mask-safe, and correctly labeled. |
+| `TFT-SR05` | `NOT_STARTED` | — | 3 | `TFT-SR02` | `EV-AUDIT-022` | Split prefix/exact/calendar-time lag semantics and fix compressed positions. |
+| `TFT-SR06` | `NOT_STARTED` | — | 3 | `TFT-SR02` | `EV-AUDIT-022` | Rename latent polynomial behavior; add named pre-VSN interaction contract; fix per-feature VSN crash. |
+| `TFT-SR07` | `NOT_STARTED` | — | 3 | `TFT-SR02` | `EV-AUDIT-022` | Replace dead codec path with live anti-aliased K/V compression semantics. |
+| `TFT-SR08` | `NOT_STARTED` | — | 4 | `TFT-SR02` | `EV-AUDIT-022` | Add identity-safe typed graph, real heads, explicit self/top-k/history/future policy. |
+| `TFT-SR09` | `NOT_STARTED` | — | 3 | `TFT-SR00`–`TFT-SR08` | — | Run semantic, synthetic, liveness, migration, regression, and micro-replay gate. |
+
+Post-matrix semantic subtotal: `4 / 28`.
+
+`TFT-SR09` is the only task that closes `G2-SR`. A passing old shape suite or a
+completed ETTh1 case cannot substitute for it.
 
 ## 11. Physics and Theory-Guided Ledger
 
@@ -271,11 +329,11 @@ Generic output-physics work remains a separate reusable branch. It is not a prer
 
 | ID | Status | Owner | Weight | Dependencies | Evidence | Next action |
 |---|---|---|---:|---|---|---|
-| `AST-H01` | `READY` | — | 2 | `G2` | `EV-DOC-003` | Review the data format, then freeze target, cutoff, folds, metrics, seeds, and final holdout. |
-| `AST-D01` | `BLOCKED` | — | 3 | supplied sample/generator | `EV-DOC-003` | Receive representative rows, column dictionary, generation code, and ephemeris/Hilbert metadata. |
-| `AST-C00` | `READY` | — | 1 | `G2` | `EV-DOC-003` | Add a failing regression for the reproduced per-feature VSN `len(None)` crash, then repair it. |
-| `AST-K01` | `NOT_STARTED` | — | 5 | `AST-D01` | — | Build the production known-future loader after the schema is frozen. |
-| `AST-B01` | `NOT_STARTED` | — | 4 | `AST-H01`, `AST-K01` | — | Add zero/Ridge/TFT market and market+calendar baselines plus paired metrics. |
+| `AST-H01` | `READY` | — | 2 | `G2` | `EV-DOC-003`, `EV-DATA-023` | Use the audit findings to freeze target, cutoff, folds, metrics, seeds, and final holdout without opening it. |
+| `AST-D01` | `WAITING_EXTERNAL` | — | 3 | supplied files; source/generator remediation | `EV-DATA-023` | Resume with raw OHLC/session keys and PySwissEph generator/convention package. |
+| `AST-C00` | `NOT_STARTED` | — | 1 | `G2-SR` / `TFT-SR06` | `EV-DOC-003` | Accept the per-feature VSN repair evidence from `TFT-SR06`; do not implement it twice. |
+| `AST-K01` | `NOT_STARTED` | — | 5 | `AST-D01`, `G2-SR` | — | Build the production known-future loader after the schema and native coordinate/reproducibility contracts are frozen. |
+| `AST-B01` | `NOT_STARTED` | — | 4 | `AST-H01`, `AST-K01`, `G2-SR` | — | Add zero/Ridge/TFT market and market+calendar baselines plus paired metrics. |
 | `AST-F01` | `NOT_STARTED` | — | 3 | `AST-D01`, `AST-K01` | — | Build frozen circular, relative-harmonic, and declared-aspect feature families. |
 | `AST-N01` | `NOT_STARTED` | — | 4 | `AST-D01`, `AST-F01` | — | Build coherent shifted, spectral, and smooth pseudo-planet null blocks. |
 | `AST-E00` | `NOT_STARTED` | — | 2 | `AST-H01`, `AST-B01`, `AST-F01`, `AST-N01` | — | Test raw planetary incremental value before bespoke architecture work. |
@@ -289,6 +347,190 @@ Generic output-physics work remains a separate reusable branch. It is not a prer
 Planetary-covariate subtotal: `0 / 44`.
 
 ## 13. Evidence Log
+
+### EV-IMP-026 — Reproducible and paired native-TFT experiment contract
+
+- Task: `TFT-SR01`.
+- Date: 2026-08-01.
+- Production behavior:
+  - `seed`, model-init, extension-init, data-order, worker, and training streams
+    resolve independently under an explicit per-iteration schedule;
+  - production seeding uses the single `set_experiment_seed()` entry point and
+    honors `off`, `warn`, and `strict` deterministic-backend policies;
+  - only train is shuffled; validation/test order is deterministic, worker
+    counts `0` and `>0` preserve sample order, and v2 direct callers cannot
+    silently fall back to legacy shuffled validation;
+  - paired construction builds a reference under `model_init_seed`, builds the
+    variant under `extension_init_seed`, copies all shared tensors bitwise, and
+    fails closed on unexpected names, shapes, dtypes, schemas, or forbidden
+    reference controls;
+  - the canonical reference spec is part of run identity, and the full paired
+    report/spec is bound by a trusted construction-time digest so post-build
+    mutations cannot forge shared/reference hashes or tensor inventories;
+  - fold manifests bind current source bytes, split coordinates, transformed
+    content, augmentation configuration/effective seed, and ordered sample IDs;
+    an unaugmented fold does not claim or depend on an unused seed;
+  - confirmatory fitting uses validation only and never constructs or evaluates
+    the test loader during epochs.
+- Acceptance evidence:
+
+  ```bash
+  PYTHONPATH=. ./ai_env/bin/pytest -q \
+    tests/test_tft_reproducibility.py \
+    tests/test_tft_reproducibility_utils.py \
+    tests/test_tft_data_reproducibility.py \
+    tests/test_tft_semantics_versioning.py \
+    tests/test_tft_interpretation_and_exp.py \
+    tests/test_tft_profiles.py
+
+  PYTHONPATH=. ./ai_env/bin/python scripts/tft_verify_legacy_matrix.py
+
+  PYTHONPATH=. ./ai_env/bin/python -m py_compile \
+    run.py exp/exp_long_term_forecasting.py \
+    data_provider/data_factory.py data_provider/data_loader.py \
+    utils/reproducibility.py utils/print_args.py utils/tft_config.py
+
+  git diff --check
+  ```
+
+- Result:
+  - `101 passed, 23 warnings` in the combined SR01/SR00/profile/experiment gate;
+  - an independent adversarial review also passed `65` focused and `89`
+    broader native tests and found no remaining SR01 blocker;
+  - the production micro-test repeats a paired one-epoch run with non-null,
+    identical shared/checkpoint/order/fold hashes, then proves a changed seed
+    changes model state and sample order;
+  - `65` immutable legacy-v1 records still verify;
+  - compilation and diff hygiene passed;
+  - `tests/test_tft_comparison.py` is not counted because it starts a long GPU
+    benchmark at import/collection rather than acting as an opt-in unit test.
+
+### EV-IMP-025 — Legacy-v1 freeze and semantic checkpoint boundary
+
+- Task: `TFT-SR00`.
+- Date: 2026-08-01.
+- Frozen inventory:
+  [`metadata/tft/legacy_v1_matrix_manifest.json`](metadata/tft/legacy_v1_matrix_manifest.json),
+  SHA-256 `7a86aff8509a96eed44282f4b9e53fb2658fe06130480843cba2e47afe6b21fc`.
+- Producer snapshot SHA-256:
+  `9a438eb714aaeec8a947a54763092be5a73781c38a6325558cb0cb8f1539b9d2`;
+  the separately labeled explicit-v1 replay launcher SHA-256 is
+  `348b548e0df705e0c4df9ff5746a92dc3e77c365bf9fa8ecc27f208b389addb2`.
+- Implementation:
+  - legacy semantics retain the known baseline digest `6c54053ec5d7`;
+  - repaired/current identities add `_tsv{version}` and a resolved-schema-aware
+    digest;
+  - bare checkpoints remain backward compatible, while atomic sidecars bind
+    the exact checkpoint SHA-256, resolved config/schema, setting, active
+    contracts, and migration policy;
+  - missing sidecars are classified as v1 and require both explicit legacy
+    runtime and compatibility authorization;
+  - no v1 weights can enter v2, and no pending semantic-v2 operator can be
+    stamped as repaired before its `TFT-SR*` task is released;
+  - historical no-`_tsv` directories resolve through the production test path
+    only under the explicit v1 compatibility policy.
+- Exact verification:
+
+  ```bash
+  PYTHONPATH=. ./ai_env/bin/python scripts/tft_verify_legacy_matrix.py
+
+  PYTHONPATH=. ./ai_env/bin/pytest -q \
+    tests/test_tft_core_contracts.py \
+    tests/test_tft_experiment_contracts.py \
+    tests/test_tft_extension_contracts.py \
+    tests/test_tft_comprehensive.py \
+    tests/test_tft_profiles.py \
+    tests/test_tft_interpretation_and_exp.py \
+    tests/test_tft_semantics_versioning.py
+
+  PYTHONPATH=. ./ai_env/bin/python -m py_compile \
+    utils/tft_config.py utils/tft_checkpoint.py \
+    scripts/tft_verify_legacy_matrix.py \
+    exp/exp_long_term_forecasting.py run.py
+
+  git diff --check
+  ```
+
+- Result:
+  - `65` immutable legacy-v1 records verified;
+  - `158 passed, 37 warnings` in the full native regression group;
+  - compilation and diff hygiene passed;
+  - warnings are the existing near-constant-channel and ignored-`d_ff`
+    diagnostics.
+
+### EV-MATRIX-024 — Native advanced-feature matrix completed
+
+- Date: 2026-07-31 23:22 Asia/Kolkata.
+- Scope: 14 ETTh1 `pred_len=24` native-TFT legacy-v1 cases.
+- Evidence: 14 result directories, 14 checkpoint directories, and the final
+  entry in `result_long_term_forecast.txt`.
+- Final case: `tft_ot_p24_experimental_profile`, profile
+  `experimental_full`, digest `0d7246b61e1b`.
+- Final metrics: MSE `0.0424571671`, MAE `0.1627180278`, pinball
+  `0.0530012586`, nominal-80% coverage `0.6766567495`, width `0.4105779813`,
+  crossing `0.0`.
+- Final MSE is `+18.96%` versus the `0.0356888101` baseline.
+- Process check after completion: no matrix launcher or `run.py` remained.
+- Interpretation: execution evidence is complete; paired semantic attribution
+  remains invalid until `TFT-SR00`–`TFT-SR09` close.
+
+### EV-DATA-023 — Blocking NIFTY/planetary source audit
+
+- Date: 2026-07-31.
+- Task: `AST-D01` / `FA-DATA-001`.
+- Full report:
+  [`projects/financial_astrology_tft/DATA_AUDIT_REPORT.md`](projects/financial_astrology_tft/DATA_AUDIT_REPORT.md).
+- Audited artifacts:
+  - planet table: 18,251 × 88, SHA-256
+    `3036dc79790fed35d3a5f9cf2b4e7726bb00eec7915b54f839aba4a99671fa6d`;
+  - return table: 7,109 × 6, SHA-256
+    `6765711ed03964f06fec725683e28bc1e83461c36feba09181c080d9a05485b6`.
+- Continuous longitude pairs are coherent, but all supplied rashi pairs for all
+  12 bodies/nodes and all rows implement the same off-by-one/clipping defect.
+- The return file mixes correct session labels and one-day-early labels; 412
+  strict four-field fingerprints match the following calendar day's bar.
+- No generator or convention manifest exists in the tree/Git history; same-date
+  local artifacts differ by exactly 8.25 hours of angular motion.
+- Disposition: reject existing rashi fields; quarantine Shadbala; derive Ketu
+  from one node axis; omit Hilbert; rebuild market dates and elapsed time.
+- No source data was mutated and no model was trained.
+- State: `WAITING_EXTERNAL` pending raw OHLC/session keys and
+  generator/convention package.
+- Verification replay passed hashes/shapes, all 12 all-row rashi-defect
+  assertions, direct unit-circle tolerance `4.44e-16`, 120 weekend labels, and
+  the exact 37-column provisional schema; document diff/fence/link hygiene also
+  passed.
+
+### EV-AUDIT-022 — Post-matrix extension semantic audit
+
+- Date: 2026-07-31.
+- Scope: native TFT FFT, cross-attention, lag attention, latent higher-order,
+  temporal compression, sparse graph mixing, and matrix experiment controls.
+- Matrix state at final planning inspection: 13 of 14 result artifacts complete;
+  `tft_ot_p24_experimental_profile` was the active final case and was not
+  interrupted.
+- Existing component/contract verification run during the audit:
+  `80 passed` across `tests/test_tft_extension_contracts.py` and
+  `tests/test_tft_comprehensive.py`.
+- Runtime/checkpoint findings:
+  - `--seed` is parsed but native training hardcodes `2021`;
+  - optional construction changes common initial tensors and subsequent sampler
+    RNG, so the matrix is not a paired one-seed ablation;
+  - optional branches are not exact baseline-neutral at initialization;
+  - learned FFT uses interpolated all-bin filter anchors and its trained mask
+    remained near-uniform;
+  - cross-attention is active and correctly directed, but metadata and neutral
+    integration need repair;
+  - lag is shifted-prefix attention, not exact-lag lookup, and compressed/
+    irregular source positions are calculated incorrectly;
+  - higher-order is post-VSN latent polynomial interaction, not a named
+    covariate-pair interaction;
+  - final-layer compression decompressor parameters receive zero gradient;
+  - sparse graph uses one adjacency broadcast as heads, strongly transforms the
+    VSN input, and applied `top_k=3` at incompatible 11-node and 4-node densities.
+- Interpretation: the legacy matrix is useful screening evidence but cannot
+  establish that the affected ideas are beneficial or invalid.
+- Resulting work: new `TFT-SR00`–`TFT-SR09` plan and `G2-SR` gate.
 
 ### EV-DOC-003 — Planetary/NIFTY hypothesis audit and implementation roadmap
 
@@ -1148,6 +1390,9 @@ Planetary-covariate subtotal: `0 / 44`.
 | Raw returns precede raw OHLC levels | 2026-07-29 | Price persistence would obscure the incremental-signal test; structured OHLC is a later secondary task. | `AST-H01`, `AST-O01` |
 | Real ephemerides require matched smooth nulls | 2026-07-29 | Row shuffling destroys autocorrelation and creates an unfairly weak placebo. | `AST-N01`, `AST-E01` |
 | Do not enable per-feature VSN gating yet | 2026-07-29 | A direct forward reproduction currently fails at `len(self.variable_grns)` when the field is `None`. | `AST-C00` |
+| Preserve old completion but open semantic v2 tasks | 2026-07-31 | Trained-checkpoint audit found new semantics outside the historical task acceptance scope. | `TFT-SR00`–`TFT-SR09` |
+| No neural astrology training before `G2-SR` | 2026-07-31 | The next substantial run must not inherit known seed, neutrality, lag, compression, graph, or interaction defects. | `TFT-SR09`, `AST-*` |
+| First astrology model keeps generic extensions off | 2026-07-31 | Correct implementation does not imply support from a small 1995-onward dataset. | `AST-B01`, `AST-E00` |
 
 ## 15. Change Log
 
@@ -1172,6 +1417,17 @@ Planetary-covariate subtotal: `0 / 44`.
 | 2026-07-29 | `AST-H01` | — | `READY` | Native `G2` is passed; protocol can be frozen after the data-format discussion. |
 | 2026-07-29 | `AST-D01` | — | `BLOCKED` | Representative data and generation/provenance details are not yet present in the workspace. |
 | 2026-07-29 | `AST-C00` | — | `READY` | Optional per-feature VSN gating crash was directly reproduced. |
+| 2026-07-31 | `TFT-SR00`–`TFT-SR09` | — | `NOT_STARTED` | Post-matrix audit opened a distinct semantic-v2 repair wave without rewriting historical `DONE` evidence. |
+| 2026-07-31 | `G2-SR` | — | `OPEN` | Native semantic readiness now requires `TFT-SR09`. |
+| 2026-07-31 | `AST-C00` | `READY` | `NOT_STARTED` | Repair ownership moved into native `TFT-SR06`; the AST task accepts that evidence instead of duplicating code. |
+| 2026-07-31 | Native feature matrix | `13/14 ACTIVE` | `14/14 COMPLETE` | Final experimental profile wrote result/checkpoint artifacts at 23:22 IST. |
+| 2026-07-31 | `TFT-SR00` | `NOT_STARTED` | `READY` | Matrix-exit dependency is satisfied; legacy-v1 inventory may begin. |
+| 2026-07-31 | `AST-D01` | `BLOCKED` | `IN_PROGRESS` | Supplied CSVs made the read-only source audit executable. |
+| 2026-07-31 | `AST-D01` | `IN_PROGRESS` | `WAITING_EXTERNAL` | Audit completed, but mixed market dates and absent raw OHLC/generator prevent acceptance. |
+| 2026-08-01 | `TFT-SR00` | `IN_PROGRESS` | `DONE` | Immutable 14-case/65-record legacy inventory, semantic identities, bound checkpoint metadata, guarded legacy replay, and 158-test regression evidence passed. |
+| 2026-08-01 | `TFT-SR01` | `NOT_STARTED` | `IN_PROGRESS` | `TFT-SR00` dependency passed; reproducibility and paired-ablation repair claimed by Codex `/root`. |
+| 2026-08-01 | `TFT-SR01` | `IN_PROGRESS` | `DONE` | Independent adversarial audit found no blocker; exact paired state/order, separated seed streams, truthful manifests, and validation-only fitting passed with `EV-IMP-026`. |
+| 2026-08-01 | `TFT-SR02` | `NOT_STARTED` | `IN_PROGRESS` | `TFT-SR01` dependency passed; exact-neutral adapter and physical-coordinate contract claimed by Codex `/root`. |
 
 ## 16. Update Checklist
 

@@ -3,6 +3,12 @@
 > Status: architecture draft. Exact constants and disputed conventions are not
 > frozen.
 
+> Source-audit rule: the supplied `*_sign_sin/cos` columns are rejected, all
+> Shadbala columns are quarantined, and Ketu numeric state is derived from one
+> node axis. The provisional primary slice is `CLASSICAL_CONTINUOUS_V1` only
+> after timestamp/unit/frame/generator checks pass. See
+> [DATA_AUDIT_REPORT.md](DATA_AUDIT_REPORT.md).
+
 ## 1. Circular Geometry
 
 Convert degrees to radians:
@@ -37,6 +43,10 @@ for a preregistered small harmonic set `k`. Do not tune a large harmonic bank on
 the final test.
 
 ## 2. Rashi
+
+Do not read the supplied rashi pairs. They implement a confirmed
+off-by-one/clipping defect on every row. Regenerate rashi from an independently
+reproduced longitude only after the convention manifest is frozen.
 
 For sidereal longitude `L` in `[0, 360)`:
 
@@ -254,7 +264,49 @@ Candidate widths:
 Pre/post channels remain separate so anticipatory and aftermath hypotheses are
 not forced to be symmetric.
 
-## 13. Multi-Clock Inputs
+## 13. Decision-to-Target Interval Features
+
+Instantaneous state and interval state are separate named families. For a
+forecast origin with decision time `d`, target open `o`, and target close `c`,
+the interval builder operates only on deterministic ephemeris/event data over
+`[d,c]` and returns, where applicable:
+
+```text
+value_at_decision
+value_at_target_open
+value_at_target_close
+minimum_wrapped_orb
+signed_time_to_minimum_orb
+crossing_count
+first_exact_event_offset_days
+last_exact_event_offset_days
+station_or_ingress_inside_interval
+response_state_at_decision
+response_state_at_target_open
+response_state_at_target_close
+```
+
+For circular paths, extrema and crossings must be solved on an unwrapped or
+event-solver representation; linear interpolation across `359° -> 0°` is
+invalid. A Friday-close-to-Monday-close example spans real calendar time and
+must include weekend events even though there are no market rows.
+
+Each field carries:
+
+```text
+source_body_or_pair
+event_family
+interval_boundary_definition
+unit
+convention_hash
+availability_class = astronomy_known_future
+```
+
+The same API must accept real, matched-null, and disabled feature sources so
+their tensors, names, masks, and capacity are identical. Changing future OHLC
+must never alter these features.
+
+## 14. Multi-Clock Inputs
 
 ### Market grid
 
@@ -298,7 +350,7 @@ role: representation diagnostic only
 The secular grid cannot supply missing market outcomes and cannot establish a
 Pluto-cycle effect from NIFTY history.
 
-## 14. Feature Group Output
+## 15. Feature Group Output
 
 The feature builder returns a typed object:
 
@@ -314,6 +366,7 @@ node_eclipse_state
 panchanga_state
 response_bank
 event_tokens
+interval_state
 feature_names
 group_names
 convention_hash
@@ -321,4 +374,3 @@ feature_spec_hash
 ```
 
 No anonymous `f0`, `f1`, … output is accepted for confirmatory runs.
-

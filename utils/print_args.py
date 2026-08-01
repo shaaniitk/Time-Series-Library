@@ -45,6 +45,17 @@ def print_args(args):
     if hasattr(args, 'tft_use_lag_attention'):
         print("\033[1m" + "TFT Upgrades" + "\033[0m")
         print(f'  {"TFT Profile:":<20}{getattr(args, "tft_profile", "extended_safe"):<20}{"TFT Digest:":<20}{str(getattr(args, "tft_config_digest", "-")):<20}')
+        print(f'  {"TFT Semantics:":<20}{getattr(args, "tft_extension_semantics_version", 2):<20}{"Digest Schema:":<20}{str(getattr(args, "tft_digest_schema", "-")):<20}')
+        print(f'  {"Allow Legacy Ckpt:":<20}{getattr(args, "tft_allow_legacy_extension_checkpoint", False)!s:<20}')
+        print(f'  {"Residual Shape:":<20}{getattr(args, "tft_extension_residual_shape", "scalar"):<20}{"Small Init:":<20}{getattr(args, "tft_small_residual_init", 1e-3):<20}')
+        print(f'  {"Position Source:":<20}{getattr(args, "tft_position_source", "row_index"):<20}{"Position Unit:":<20}{getattr(args, "tft_position_unit", "steps"):<20}')
+        print(f'  {"Regular Sampling:":<20}{getattr(args, "tft_declared_regular_sampling", False)!s:<20}{"Declaration:":<20}{str(getattr(args, "tft_regular_sampling_declaration_source", None)):<20}')
+        resolved_modes = getattr(args, 'tft_resolved_extension_modes', {}) or {}
+        active_modes = ', '.join(
+            f'{name}={mode}' for name, mode in sorted(resolved_modes.items())
+            if mode != 'off'
+        ) or 'all off'
+        print(f'  {"Extension Modes:":<20}{active_modes}')
         print(f'  {"TFT SwiGLU:":<20}{args.tft_use_swiglu!s:<20}{"TFT Full Attn:":<20}{args.tft_full_attention!s:<20}')
         print(f'  {"TFT Dual Attn:":<20}{args.tft_dual_attention_fusion!s:<20}{"TFT Cross Mix:":<20}{args.tft_cross_variable_mixing!s:<20}')
         print(f'  {"VSN Bypass:":<20}{args.tft_vsn_residual_bypass!s:<20}{"Custom Known:":<20}{args.tft_allow_custom_known!s:<20}')
@@ -80,6 +91,11 @@ def print_args(args):
         mlp_qp = getattr(args, 'tft_mlp_quantile_projection', False)
         if mlp_qp:
             print(f'  {"MLP Quantile Proj:":<20}{mlp_qp!s:<20}{"Q Proj FF Size:":<20}{getattr(args, "tft_quantile_projection_ff_size", 0):<20}')
+        paired_init = bool(getattr(args, 'tft_paired_initialization', False))
+        print(f'  {"Paired Init:":<20}{paired_init!s:<20}{"Pair Spec Digest:":<20}{str(getattr(args, "tft_paired_reference_spec_digest", "-")):<20}')
+        if paired_init:
+            disabled = ','.join(getattr(args, 'tft_paired_reference_disable', ()) or ())
+            print(f'  {"Reference Disables:":<20}{disabled:<20}')
         print()
 
     print("\033[1m" + "Run Parameters" + "\033[0m")
@@ -88,6 +104,12 @@ def print_args(args):
     print(f'  {"Patience:":<20}{args.patience:<20}{"Learning Rate:":<20}{args.learning_rate:<20}')
     print(f'  {"Des:":<20}{args.des:<20}{"Loss:":<20}{args.loss:<20}')
     print(f'  {"Lradj:":<20}{args.lradj:<20}{"Use Amp:":<20}{args.use_amp:<20}')
+    if hasattr(args, 'experiment_seed'):
+        print(f'  {"Run/Base Seed:":<20}{str(getattr(args, "run_index", 0)) + "/" + str(getattr(args, "seed", "-")):<20}{"Experiment Seed:":<20}{args.experiment_seed:<20}')
+        print(f'  {"Model Init Seed:":<20}{args.model_init_seed:<20}{"Extension Seed:":<20}{args.extension_init_seed:<20}')
+        print(f'  {"Data Order Seed:":<20}{args.data_order_seed:<20}{"Worker Seed:":<20}{args.worker_seed:<20}')
+        print(f'  {"Determinism:":<20}{getattr(args, "deterministic_mode", "off"):<20}{"Eval Policy:":<20}{getattr(args, "evaluation_policy", "legacy_val_and_test"):<20}')
+        print(f'  {"Run Digest:":<20}{getattr(args, "reproducibility_digest", "-"):<20}')
     print()
 
     print("\033[1m" + "GPU" + "\033[0m")

@@ -3,11 +3,11 @@
 > Canonical project home for testing Jyotisha- and financial-astrology-derived
 > hypotheses with the repository's native `TemporalFusionTransformer`.
 >
-> Project state: `PLANNING / THEORY DISCUSSION`.
+> Project state: `NATIVE SEMANTIC HARDENING / DATA REMEDIATION`.
 >
-> Model implementation state: `NOT STARTED`.
+> Financial-astrology model state: `NOT STARTED`; native semantic gate open.
 >
-> Last updated: 2026-07-29 (Asia/Kolkata).
+> Last updated: 2026-07-31 (Asia/Kolkata).
 
 ## Purpose
 
@@ -72,40 +72,65 @@ their current freeze state.
 Read these in order when resuming the project:
 
 1. [CURRENT_STATUS.md](CURRENT_STATUS.md) — live state and immediate next action.
-2. [ORCHESTRATOR.md](ORCHESTRATOR.md) — mandatory agent start/finish protocol.
-3. [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md) — task state, blockers, and evidence.
-4. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — architecture, phases, and
+2. [DATA_AUDIT_REPORT.md](DATA_AUDIT_REPORT.md) — audited source artifacts,
+   confirmed defects, admitted features, and required remediation inputs.
+3. [ORCHESTRATOR.md](ORCHESTRATOR.md) — mandatory agent start/finish protocol.
+4. [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md) — task state, blockers, and evidence.
+5. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) — architecture, phases, and
    acceptance gates.
-5. [HYPOTHESIS_REGISTRY.md](HYPOTHESIS_REGISTRY.md) — theory definitions and
+6. [HYPOTHESIS_REGISTRY.md](HYPOTHESIS_REGISTRY.md) — theory definitions and
    preregistration state.
-6. [DATA_CONTRACT.md](DATA_CONTRACT.md) — required input schema and anti-leakage
+7. [DATA_CONTRACT.md](DATA_CONTRACT.md) — required input schema and anti-leakage
    rules.
-7. [ASTROLOGY_FEATURE_SPEC.md](ASTROLOGY_FEATURE_SPEC.md) — exact feature
+8. [ASTROLOGY_FEATURE_SPEC.md](ASTROLOGY_FEATURE_SPEC.md) — exact feature
    semantics; currently a design draft.
-8. [DECISIONS.md](DECISIONS.md) — append-only material decisions.
-9. [RISKS_VALIDITY.md](RISKS_VALIDITY.md) — identifiability and validity risks.
-10. [RESULTS_SCORECARD.md](RESULTS_SCORECARD.md) — frozen-baseline comparisons;
-    empty until experiments begin.
+9. [DECISIONS.md](DECISIONS.md) — append-only material decisions.
+10. [RISKS_VALIDITY.md](RISKS_VALIDITY.md) — identifiability and validity risks.
+11. [RESULTS_SCORECARD.md](RESULTS_SCORECARD.md) — frozen-baseline comparisons;
+    the native prerequisite matrix is populated, while astrology results remain
+    empty.
+12. [SESSION_HANDOFF.md](SESSION_HANDOFF.md) — concise last-session state and
+    exact resume boundary.
 
 The earlier repository-level
 [`Vedic_Astrology_TFT_Implementation_Plan.md`](../../Vedic_Astrology_TFT_Implementation_Plan.md)
 remains a technical audit and historical design document. This directory is the
 canonical cross-session project control plane.
 
-## Current External Dependency
+## Current Execution Boundary
 
-The ETTh1 native-TFT advanced-feature matrix is still running in another
-terminal. It must not be interrupted or restarted. Its completed evidence is
-recorded in [CURRENT_STATUS.md](CURRENT_STATUS.md).
+The 14-case ETTh1 native-TFT advanced-feature matrix completed at 23:22 on
+2026-07-31. The final `experimental_full` case produced its checkpoint and
+result artifacts; it was 18.96% worse than the baseline by MSE. `TFT-SR00` is
+now ready to inventory and freeze all legacy-v1 artifacts before code semantics
+change.
 
-No financial-astrology model implementation should begin merely because this
-project scaffold exists. The next gates are:
+Its results revealed semantic defects in several advanced switches. The root
+[`implementation_plan.md`](../../implementation_plan.md#14-post-matrix-native-tft-semantic-repair-wave)
+therefore defines the mandatory `TFT-SR00`–`TFT-SR09` repair wave. The umbrella
+project task is `FA-TFT-SEM-001`.
 
-1. finish or intentionally close the TFT feature matrix;
-2. inspect the user's representative merged dataset and PySwissEph generator;
-3. freeze the astronomical convention manifest;
-4. freeze the first confirmatory hypothesis family;
-5. prove the production known-future loader does not leak future market values.
+The supplied data has been audited. Continuous coordinates are coherent, but
+the stored rashi pairs are wrong on every row, market dates use mixed session
+labels, and the source generator is absent. See
+[DATA_AUDIT_REPORT.md](DATA_AUDIT_REPORT.md). A financial-astrology neural
+training run is **not** authorized
+until all of the following gates close:
+
+1. freeze the now-complete TFT matrix artifacts under `TFT-SR00`;
+2. complete `TFT-SR00`–`TFT-SR09`, including neutral/no-op, semantic, gradient,
+   mask, and reproducibility tests;
+3. rebuild market sessions from authoritative raw OHLC and audit the PySwissEph
+   generator/convention manifest;
+4. define decision-time-to-target-time interval features and freeze the
+   astronomical convention manifest;
+5. freeze the first confirmatory hypothesis family;
+6. prove the production known-future loader does not leak future market values;
+7. build market-only and calendar-only baselines before enabling planets.
+
+The next substantial training data will be NIFTY, not another exhaustive ETTh1
+matrix. Native repairs use focused unit tests, synthetic known-answer fixtures,
+gradient tests, and one deterministic micro-run.
 
 ## Naming
 
@@ -117,4 +142,3 @@ It is not a physics-informed neural network in the strict sense. Ephemerides and
 circular geometry supply physical constraints; Jyotisha supplies theory-derived
 features, interactions, and lag priors. There is no established governing
 equation mapping planetary state to market price.
-

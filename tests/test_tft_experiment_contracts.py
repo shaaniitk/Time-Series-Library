@@ -57,6 +57,7 @@ def _build_tft_args():
     return SimpleNamespace(
         task_name="long_term_forecast",
         model="TemporalFusionTransformer",
+        tft_declared_regular_sampling=True,
         data="custom_tft_exp_contracts",
         seq_len=12,
         label_len=6,
@@ -151,9 +152,13 @@ def test_structured_output_shapes():
     assert tuple(output.point_forecast.shape) == (2, args.pred_len, args.c_out)
     assert tuple(output.point_full.shape) == (2, args.seq_len + args.pred_len, args.c_out)
     assert tuple(output.quantile_forecast.shape) == (2, args.pred_len, 3, args.c_out)
-    assert output.moe_importance_sum is not None
-    assert output.moe_load_sum is not None
-    assert output.moe_token_count is not None
+    # Semantics-v2 MoE starts as an exact-neutral residual. Routing is observed
+    # internally, but it cannot leak an auxiliary objective before the branch
+    # strength moves away from zero.
+    assert output.moe_importance_sum is None
+    assert output.moe_load_sum is None
+    assert output.moe_token_count is None
+    assert output.moe_aux_loss.item() == 0.0
 
 
 def test_global_moe_reduction_uses_counts():

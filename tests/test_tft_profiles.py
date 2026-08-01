@@ -19,6 +19,7 @@ def _direct_args(**overrides):
         is_training=1,
         model_id="tft-profile-test",
         model="TemporalFusionTransformer",
+        tft_declared_regular_sampling=True,
         data="ETTh1",
         root_path="./data/ETT/",
         data_path="ETTh1.csv",
@@ -125,6 +126,8 @@ def test_cli_and_model_defaults_match():
 
     fields = [
         "tft_profile",
+        "tft_extension_semantics_version",
+        "tft_digest_schema",
         "tft_temporal_backbone",
         "tft_use_quantile_head",
         "tft_output_mode",

@@ -87,6 +87,8 @@ def build_base_config():
         tft_observed_pos=list(range(40)),
         tft_static_pos=[],
         tft_target_pos=[0, 1, 2, 3],
+        # The synthetic ablation generator uses a complete regular grid.
+        tft_declared_regular_sampling=True,
     )
 
 

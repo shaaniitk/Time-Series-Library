@@ -8,8 +8,16 @@ from types import SimpleNamespace
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
+from exp.exp_long_term_forecasting import (
+    TFT_REPRODUCIBILITY_FILENAME,
+    Exp_Long_Term_Forecast,
+)
 from utils.losses import QuantileLoss
+from utils.tft_config import (
+    TFT_CHECKPOINT_METADATA_FILENAME,
+    TFT_RESULT_METADATA_FILENAME,
+    write_tft_semantics_metadata,
+)
 from utils.tft_interpretation import export_tft_interpretation_summary, summarize_tft_interpretation
 from utils.tft_synthetic import make_multiscale_tft_tensors
 
@@ -109,6 +117,8 @@ def build_tft_args(checkpoint_dir):
         conv_channel=32,
         skip_channel=32,
         individual=False,
+        tft_extension_semantics_version=1,
+        tft_allow_legacy_extension_checkpoint=True,
         tft_observed_pos=list(range(16)),
         tft_static_pos=[],
         tft_target_pos=[0, 1, 2, 3],
@@ -338,7 +348,52 @@ class TestTFTInterpretationAndExp(unittest.TestCase):
             trained_model = exp.train("tiny_tft_exp_smoke")
             self.assertIsNotNone(trained_model)
             self.assertTrue(Path(tmpdir, "tiny_tft_exp_smoke", "checkpoint.pth").exists())
+            self.assertTrue(
+                Path(
+                    tmpdir,
+                    "tiny_tft_exp_smoke",
+                    TFT_CHECKPOINT_METADATA_FILENAME,
+                ).exists()
+            )
+            reproducibility_path = Path(
+                tmpdir,
+                "tiny_tft_exp_smoke",
+                TFT_REPRODUCIBILITY_FILENAME,
+            )
+            self.assertTrue(reproducibility_path.exists())
+            reproducibility = json.loads(
+                reproducibility_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                reproducibility["evaluation_policy"],
+                "legacy_val_and_test",
+            )
+            self.assertIsNotNone(reproducibility["initial_state_hash"])
+            self.assertIsNotNone(reproducibility["final_state_hash"])
+            self.assertIn("data_order_seed", reproducibility["seed_bundle"])
             self.assertIsNotNone(getattr(exp.model, "last_moe_aux_loss", None))
+
+    def test_validation_only_training_never_constructs_test_loader(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = build_tft_args(tmpdir)
+            args.evaluation_policy = "validation_only"
+            train_ds = make_exp_dataset(args, n_samples=8)
+            val_ds = make_exp_dataset(args, n_samples=4)
+            datasets = {
+                "train": (train_ds, DataLoader(train_ds, batch_size=args.batch_size, shuffle=False)),
+                "val": (val_ds, DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)),
+            }
+            exp = TinyLongForecastExp(args, datasets)
+            exp.train("tiny_tft_validation_only")
+            manifest = json.loads(
+                Path(
+                    tmpdir,
+                    "tiny_tft_validation_only",
+                    TFT_REPRODUCIBILITY_FILENAME,
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["evaluation_policy"], "validation_only")
+            self.assertIsNone(manifest["loaders"]["test"])
 
     def test_quantile_test_writes_calibration_artifacts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -362,13 +417,70 @@ class TestTFTInterpretationAndExp(unittest.TestCase):
             results_dir = Path(tmpdir) / "results" / "tiny_tft_quantile_metrics"
             quantile_metrics_path = results_dir / "quantile_metrics.json"
             quantile_pred_path = results_dir / "quantile_pred.npy"
+            result_metadata_path = results_dir / TFT_RESULT_METADATA_FILENAME
+            reproducibility_path = results_dir / TFT_REPRODUCIBILITY_FILENAME
             self.assertTrue(quantile_metrics_path.exists())
             self.assertTrue(quantile_pred_path.exists())
+            self.assertTrue(result_metadata_path.exists())
+            self.assertTrue(reproducibility_path.exists())
             summary = json.loads(quantile_metrics_path.read_text(encoding="utf-8"))
             self.assertIn("pinball", summary)
             self.assertIn("coverage", summary)
             self.assertIn("interval_width", summary)
             self.assertIn("crossing_rate", summary)
+
+    def test_standalone_test_respects_custom_checkpoint_root(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = build_tft_args(tmpdir)
+            test_ds = make_exp_dataset(args, n_samples=4)
+            test_ds.scale = False
+            datasets = {
+                "train": (test_ds, DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)),
+                "val": (test_ds, DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)),
+                "test": (test_ds, DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)),
+            }
+            exp = TinyLongForecastExp(args, datasets)
+            setting = "custom_checkpoint_root"
+            checkpoint_dir = Path(args.checkpoints) / setting
+            checkpoint_dir.mkdir(parents=True)
+            torch.save(exp.model.state_dict(), checkpoint_dir / "checkpoint.pth")
+            write_tft_semantics_metadata(
+                checkpoint_dir,
+                exp.args,
+                artifact_kind="checkpoint",
+                setting=setting,
+            )
+
+            cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                exp.test(setting, test=1)
+            finally:
+                os.chdir(cwd)
+
+    def test_standalone_test_resolves_historical_unversioned_v1_setting(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = build_tft_args(tmpdir)
+            test_ds = make_exp_dataset(args, n_samples=4)
+            test_ds.scale = False
+            datasets = {
+                "train": (test_ds, DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)),
+                "val": (test_ds, DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)),
+                "test": (test_ds, DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)),
+            }
+            exp = TinyLongForecastExp(args, datasets)
+            versioned_setting = "legacy_matrix_case_tsv1_td0123456789ab"
+            historical_setting = "legacy_matrix_case_td0123456789ab"
+            checkpoint_dir = Path(args.checkpoints) / historical_setting
+            checkpoint_dir.mkdir(parents=True)
+            torch.save(exp.model.state_dict(), checkpoint_dir / "checkpoint.pth")
+
+            cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                exp.test(versioned_setting, test=1)
+            finally:
+                os.chdir(cwd)
 
 
 if __name__ == "__main__":

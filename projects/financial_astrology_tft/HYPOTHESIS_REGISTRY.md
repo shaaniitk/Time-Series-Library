@@ -23,8 +23,12 @@ exact formula
 event condition
 applying/separating rule
 orb or bandwidth
+decision timestamp
+forecast target and label interval
 latency
 persistence
+phase representation
+decision-to-target interval summary fields
 target channel
 expected direction, or explicitly NONDIRECTIONAL
 interaction partners
@@ -428,4 +432,3 @@ These sources define hypotheses, not scientific validation:
 10. [Swiss Ephemeris technical documentation](https://www.astro.com/swisseph-download/doc/swisseph.pdf)
 11. [NASA/JPL planetary physical parameters](https://ssd.jpl.nasa.gov/planets/phys_par.html)
 12. [Wiley, A Trader's Guide to Financial Astrology](https://onlinelibrary.wiley.com/doi/book/10.1002/9781118646953)
-

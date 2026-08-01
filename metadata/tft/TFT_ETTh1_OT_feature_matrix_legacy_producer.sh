@@ -15,9 +15,6 @@ set -euo pipefail
 # Usage:
 #   bash scripts/long_term_forecast/ETT_script/TFT_ETTh1_OT_feature_matrix.sh
 #
-# This launcher is frozen as a semantics-v1 replay. It is not the semantic-v2
-# release gate and must never be used to claim repaired operator behavior.
-#
 # Optional:
 #   export CUDA_VISIBLE_DEVICES=0
 
@@ -63,14 +60,9 @@ run_case() {
     --batch_size 64 \
     --patience 6 \
     --loss MSE \
-    --seed 2021 \
-    --deterministic_mode off \
-    --evaluation_policy legacy_val_and_test \
     --itr 1 \
     --des "${case_id}" \
     --tft_profile extended_safe \
-    --tft_extension_semantics_version 1 \
-    --tft_allow_legacy_extension_checkpoint \
     --tft_temporal_backbone lstm \
     --tft_temporal_backbone_layers 1 \
     --tft_temporal_kernel_size 3 \

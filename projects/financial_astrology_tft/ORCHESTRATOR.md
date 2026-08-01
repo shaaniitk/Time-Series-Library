@@ -31,13 +31,17 @@ older repository-level plans
 ## 2. Current Orchestration Decision
 
 ```text
-implementation: PAUSED
-active external work: native TFT feature matrix
-allowed project work: discussion, read-only inspection, documentation
-next code task: none
+project_plan: AUTHORIZED
+native_matrix: COMPLETE_14_OF_14
+native_code_edits: TFT-SR02_IN_PROGRESS
+data_audit: WAITING_EXTERNAL_AFTER_BLOCKING_FINDINGS
+financial_astrology_neural_training: BLOCKED_BY_SEMANTIC_LOADER_BASELINE_GATES
+next_native_task: continue TFT-SR02 / FA-TFT-SEM-001
+next_data_task: receive raw OHLC and generator package, then resume FA-DATA-001
 ```
 
-Do not infer authorization from the existence of detailed task cards.
+The plan may be executed within these gates. Do not infer authorization for a
+neural run from the existence of detailed task cards.
 
 ## 3. Read-Only Start Checks
 
@@ -68,14 +72,17 @@ Rules:
 
 Select exactly one primary task:
 
-1. Is implementation paused? If yes, stop at discussion/read-only work.
-2. Is an external run active? If yes, prefer independent documentation/data
-   audit work and never modify its loaded code.
-3. Find tasks whose dependencies are `COMPLETE`.
-4. Exclude `BLOCKED`, `WAITING_EXTERNAL`, and already owned tasks.
-5. Choose the earliest `READY` task in dependency order.
-6. Read every referenced spec.
-7. Record owner, timestamp, planned files, and acceptance commands.
+1. Confirm the external matrix remains inactive and all 14 legacy result and
+   checkpoint directories still exist.
+2. Continue claimed `TFT-SR02` under umbrella task `FA-TFT-SEM-001`;
+   `TFT-SR00`/`TFT-SR01` already passed with root `EV-IMP-025`/`EV-IMP-026`.
+3. Keep `FA-DATA-001` in `WAITING_EXTERNAL` until raw OHLC and the generator
+   package arrive; resume the audit independently when they do.
+4. Find tasks whose dependencies are `COMPLETE`.
+5. Exclude `BLOCKED`, `WAITING_EXTERNAL`, and already owned tasks.
+6. Choose the earliest `READY` task in dependency order.
+7. Read every referenced spec.
+8. Record owner, timestamp, planned files, and acceptance commands.
 
 Do not leap from `FA-DATA-001` directly to `FA-ENC-001`.
 
@@ -225,7 +232,7 @@ After results:
 Outer-planet features never enter a classical profile through a configuration
 default.
 
-## 10. TFT Matrix Closeout Procedure
+## 10. TFT Matrix and Semantic-Repair Closeout
 
 `FA-TFT-001` is unusual because it runs in the user's terminal.
 
@@ -240,28 +247,69 @@ find results -maxdepth 1 -type d -name \
 
 After natural completion:
 
-1. enumerate the 13 expected cases from the script;
+1. enumerate the 14 expected cases from the script;
 2. verify each result directory and metric array;
 3. compare prediction arrays where backend parity is expected;
 4. load quantile diagnostics;
 5. record failures separately;
 6. update `RESULTS_SCORECARD.md`;
 7. select a native reference by a declared rule;
-8. mark `FA-TFT-001` complete.
+8. mark `FA-TFT-001` complete;
+9. do not select the best single-seed ETTh1 switch as the automatic NIFTY
+   architecture.
 
 Do not kill a slow case simply because later cases are queued.
 
-## 11. Data Review Procedure
+### 10.1 Native semantic-repair wave
 
-When the user supplies data:
+After natural matrix completion, execute the root task cards in order:
 
-1. copy nothing into permanent dataset paths until provenance is clear;
-2. inspect shape, columns, sample timestamps, and missingness;
-3. map each column to observed/target/known/static/forbidden;
-4. reproduce selected ephemeris rows;
-5. inspect Hilbert implementation;
-6. draft the convention manifest;
-7. show unresolved choices to the user before freezing them.
+```text
+TFT-SR00 -> TFT-SR01 -> TFT-SR02
+                         |-> TFT-SR03 FFT
+                         |-> TFT-SR04 cross-attention
+                         |-> TFT-SR05 lag/response
+                         |-> TFT-SR06 interactions/VSN
+                         |-> TFT-SR07 compression
+                         `-> TFT-SR08 graph
+all branches -> TFT-SR09 release gate
+```
+
+The root `TFT_Implementation_Progress.md` owns the individual task states.
+This project tracker owns only the umbrella state `FA-TFT-SEM-001`; update both
+when a child task changes.
+
+Required evidence includes:
+
+- immutable legacy-v1 configuration and migration mapping;
+- centralized deterministic seeds and paired common initialization;
+- exact disabled parity and true zero-initialized/no-op residual behavior;
+- known-answer synthetic tests for every named operator;
+- nonzero finite gradient tests for newly introduced paths;
+- causal/prefix/mask invariance tests;
+- one deterministic CPU micro-run plus the focused native TFT regression suite.
+
+A second exhaustive ETTh1 matrix is explicitly not required. `TFT-SR09` must
+close before any NIFTY neural training.
+
+## 11. Data Remediation and Review Procedure
+
+The first wide-CSV audit is complete. When the raw-source/generator remediation
+package arrives:
+
+1. preserve the audited artifacts and recorded hashes unchanged;
+2. inventory raw OHLC/session keys and generator provenance;
+3. rebuild market returns and reproduce selected ephemeris rows;
+4. revalidate shape, columns, timestamps, units, and missingness;
+5. map each column to observed/target/known/static/forbidden;
+6. establish the decision timestamp, target interval, exchange calendar, and
+   timezone before labeling any value known-future;
+7. regenerate rashi from audited longitude and run all-boundary fixtures;
+8. inspect a Hilbert implementation only if one is separately supplied;
+9. distinguish instantaneous decision-time state from summaries over the
+   decision-to-target interval;
+10. draft and hash the convention/schema manifests;
+11. show unresolved choices to the user before freezing them.
 
 The output of data review is an audit and tests, not a trained model.
 
@@ -303,4 +351,3 @@ The final user message should state:
 - what remains paused/waiting;
 - the most important evidence;
 - the next decision or input.
-

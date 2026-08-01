@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 import numpy as np
 import torch
@@ -30,7 +31,13 @@ def adjust_learning_rate(optimizer, epoch, args):
 
 
 class EarlyStopping:
-    def __init__(self, patience=7, verbose=False, delta=0):
+    def __init__(
+        self,
+        patience=7,
+        verbose=False,
+        delta=0,
+        checkpoint_saved_callback=None,
+    ):
         self.patience = patience
         self.verbose = verbose
         self.counter = 0
@@ -38,6 +45,7 @@ class EarlyStopping:
         self.early_stop = False
         self.val_loss_min = np.inf
         self.delta = delta
+        self.checkpoint_saved_callback = checkpoint_saved_callback
 
     def __call__(self, val_loss, model, path):
         score = -val_loss
@@ -57,7 +65,30 @@ class EarlyStopping:
     def save_checkpoint(self, val_loss, model, path):
         if self.verbose:
             print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
-        torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
+        checkpoint_path = os.path.join(path, 'checkpoint.pth')
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=path,
+                prefix='.checkpoint.',
+                suffix='.pth.tmp',
+                delete=False,
+            ) as temporary:
+                temporary_path = temporary.name
+                # Serializing to the file object keeps PyTorch's internal ZIP
+                # archive name deterministic; serializing to a randomly named
+                # temporary path would make byte hashes differ across exact
+                # replay runs even when every tensor is identical.
+                torch.save(model.state_dict(), temporary)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+            os.replace(temporary_path, checkpoint_path)
+            temporary_path = None
+            if self.checkpoint_saved_callback is not None:
+                self.checkpoint_saved_callback(checkpoint_path)
+        finally:
+            if temporary_path is not None and os.path.exists(temporary_path):
+                os.unlink(temporary_path)
         self.val_loss_min = val_loss
 
 

@@ -21,15 +21,15 @@
 
 This document is deliberately explicit. A new contributor should follow it without inventing architecture or silently changing scope.
 
-Current execution snapshot on 2026-07-29:
+Current execution snapshot on 2026-07-31:
 
 | Area | State | What that means |
 |---|---|---|
 | Native safety repairs | Complete | The audited correctness defects in static handling, recurrent state order, quantile flow, FFT indexing, higher-order interaction, schema validation, target mapping, interpretation payloads, and short-term rejection have code changes and recorded evidence in the worktree. |
 | Native release gate | Closed | `TFT-T01` passed on Tuesday, July 28, 2026 with the exact required regression command, so `G1` is now passed. |
 | Physics/theory plan | Designed, not implemented | Schema/parser, namespace metadata, differentiable transforms, constraint loss, and production integration remain future work. |
-| Post-G1 TFT upgrades | Implementation complete | `TFT-P01`, `TFT-A01`–`TFT-A10`, and `TFT-E01` are all recorded `DONE`; comparative extension benchmarking remains a separate evidence activity. |
-| Planetary/NIFTY lane | Separate project; planning/discussion | The native TFT matrix is still running, the long-cycle architecture has been redesigned, and no loader, planetary encoder, market experiment, or claim has been implemented. |
+| Post-G1 TFT upgrades | Legacy implementation/matrix complete; semantic-v2 open | `TFT-P01`, `TFT-A01`–`TFT-A10`, and `TFT-E01` are recorded `DONE`; the 14-case matrix completed, and `TFT-SR00`–`TFT-SR09` now own the discovered semantic defects. |
+| Planetary/NIFTY lane | Data remediation / theory discussion | Source audit found invalid rashi encodings, mixed session dates, and absent generator provenance; no loader, planetary encoder, market experiment, or claim has been implemented. |
 
 If you are picking work up cold, use this exact branch logic:
 
@@ -107,13 +107,14 @@ G1 + TFT-O01 ─> THY-A01 ─> THY-V01
 Planetary-covariate hypothesis lane:
 
 ```text
-G2
-├─> AST-H01 ──────────────┐
-├─> AST-C00               │
-└─> AST-D01 ─> AST-K01 ─> AST-B01
-             └> AST-F01 ─> AST-N01
+G2 ─> AST-H01
+raw OHLC + generator package ─> AST-D01
+TFT-SR06 ─> AST-C00
+G2-SR + AST-D01 ─> AST-K01
+G2-SR + AST-H01 + AST-K01 ─> AST-B01
+AST-D01 + AST-K01 ─> AST-F01 ─> AST-N01
 
-AST-H01 + AST-B01 + AST-F01 + AST-N01
+G2-SR + AST-H01 + AST-B01 + AST-F01 + AST-N01
                     └─> AST-E00 ─> AST-M01 ─> AST-L01 ─> AST-E01 ─> AST-R01
 ```
 
@@ -153,12 +154,13 @@ This is the intended path unless a failing test forces a narrower fix-first bran
 
 | Order | Task | Why now | Stop condition |
 |---:|---|---|---|
-| 1 | Closed | The TFT-only roadmap is already closed in the current worktree. | Reopen only on reproduced regression. |
-| 2 | `AST-H01` + `AST-D01` + `AST-C00` | Freeze the falsifiable question, audit the supplied data/generator, and close the reproduced per-feature-gating regression. | Dataset roles, provenance, cutoff, target, and holdout are frozen. |
-| 3 | `AST-K01` -> `AST-B01` + `AST-F01` -> `AST-N01` | Make planetary values real production known-future inputs and create fair baselines/nulls. | One audited batch and every baseline/null test pass. |
-| 4 | `AST-E00` | Test raw incremental value before building a bespoke large architecture. | Record stop/proceed decision from development folds only. |
-| 5 | `AST-M01` -> `AST-L01` -> `AST-E01` -> `AST-R01` | Add explicit group/aspect and duration priors only if justified, then run locked evaluation. | Evidence is classified without claim inflation. |
-| 6 | `PHY-C01` onward | Generic output-law work remains a separate reusable branch for domains with defensible equations. | Do not use it to invent a planet-to-price law. |
+| 1 | `TFT-SR00` -> `TFT-SR01` -> `TFT-SR02` | The 14-case matrix is complete; freeze legacy-v1, then repair paired randomness and neutral integration. | Contract tests pass and the common baseline state is identical. |
+| 2 | `TFT-SR03`–`TFT-SR08` -> `TFT-SR09` | Repair each named advanced operator and close one semantic release gate. | Focused semantic suite and deterministic micro-run pass. |
+| 3 | `AST-H01`; resume `AST-D01` when inputs arrive | Freeze the falsifiable question now; rebuild/audit sources when raw OHLC and the generator package arrive. `AST-C00` accepts `TFT-SR06` evidence. | Dataset roles, provenance, cutoff, target, and holdout are frozen. |
+| 4 | `AST-K01` -> `AST-B01` + `AST-F01` -> `AST-N01` | Make planetary values real production known-future inputs and create fair baselines/nulls. | One audited batch and every baseline/null test pass. |
+| 5 | `AST-E00` | Test raw incremental value before building a bespoke large architecture. | Record stop/proceed decision from development folds only. |
+| 6 | `AST-M01` -> `AST-L01` -> `AST-E01` -> `AST-R01` | Add explicit group/aspect and duration priors only if justified, then run locked evaluation. | Evidence is classified without claim inflation. |
+| 7 | `PHY-C01` onward | Generic output-law work remains a separate reusable branch for domains with defensible equations. | Do not use it to invent a planet-to-price law. |
 
 ## 1. Decision Summary
 
@@ -2464,7 +2466,607 @@ Do not start until the tracker records:
 - expected inference behavior;
 - a soft-loss baseline.
 
-## 14. Global Definition of Done
+## 14. Post-Matrix Native TFT Semantic-Repair Wave
+
+> Added after the July 2026 ETTh1 advanced-feature matrix exposed a gap between
+> structural correctness and intended feature semantics.
+>
+> These tasks do **not** reopen or erase the historical `DONE` evidence for
+> `TFT-A01` through `TFT-A10`. Those tasks repaired the contracts declared at
+> that time. `TFT-SR00` through `TFT-SR09` are a new, immutable repair wave for
+> defects and experiment confounds discovered by trained-checkpoint audit.
+
+### 14.1 Release rule and execution order
+
+No financial-astrology neural training may start until `TFT-SR09` is `DONE`.
+The initial data/provenance audit is complete. Source remediation and re-audit
+may resume in parallel when raw OHLC and the generator/convention package
+arrive; it does not depend on model semantics.
+
+```text
+TFT-SR00 freeze legacy evidence and semantic version
+       |
+       v
+TFT-SR01 reproducibility and paired-ablation contract
+       |
+       v
+TFT-SR02 exact baseline-neutral extension contract
+       |
+       +--> TFT-SR03 FFT semantics -------------------+
+       +--> TFT-SR04 explicit cross-attention --------+
+       +--> TFT-SR05 lag/time semantics --------------+
+       +--> TFT-SR06 interaction semantics -----------+--> TFT-SR09
+       +--> TFT-SR07 temporal compression ------------+    release gate
+       +--> TFT-SR08 sparse graph semantics ----------+
+```
+
+This wave does not require another full ETTh1 matrix. Acceptance uses:
+
+1. focused semantic tests;
+2. synthetic tasks with a known feature relationship;
+3. exact initialization/batch-order hashes;
+4. all-parameter gradient-liveness audits;
+5. checkpoint/config migration tests;
+6. one short deterministic micro-training replay;
+7. the existing native TFT regression suites.
+
+The adverse one-seed ETTh1 deltas remain diagnostic evidence only. They are not
+acceptance thresholds for these tasks.
+
+---
+
+### `TFT-SR00` — Freeze legacy extension semantics and evidence
+
+**Depends on:** completed/closed ETTh1 matrix artifact inventory
+
+**Primary files**
+
+- `utils/tft_config.py`
+- checkpoint/config loading utilities
+- experiment/result metadata
+- migration tests and documentation
+
+**Implementation steps**
+
+1. Add `tft_extension_semantics_version`; new repaired configurations resolve
+   to version `2`.
+2. Label the July 2026 ETTh1 matrix as legacy semantics version `1` without
+   modifying its prediction, checkpoint, or metric artifacts.
+3. Include the resolved semantic version in the TFT digest and experiment ID.
+4. Treat a checkpoint without version metadata as legacy.
+5. Require an explicit compatibility flag to load legacy extension weights.
+6. Never silently map a v1 lag, compression, graph, FFT, or interaction weight
+   into a v2 module whose computation changed.
+7. Save a capability/migration table stating whether each v1 branch can be
+   reproduced, partially migrated, or must be retrained.
+
+**Done when**
+
+Version-1 evidence remains reproducible, v1 and v2 digests differ, and an old
+checkpoint either enters an explicit legacy path or fails with a precise
+migration message.
+
+**Status:** `DONE` on 2026-08-01 with `EV-IMP-025`. The frozen producer and
+explicit-v1 replay launchers are separately hashed; 65 legacy records and 158
+native regression tests passed. Pending operators are prohibited from emitting
+v2 artifacts until their repair task releases them.
+
+---
+
+### `TFT-SR01` — Make seeds, initialization, and data order reproducible
+
+**Depends on:** `TFT-SR00`
+
+**Primary files**
+
+- `run.py`
+- `data_provider/data_factory.py`
+- `exp/exp_long_term_forecasting.py`
+- a new shared reproducibility utility under `utils/`
+- new paired-ablation tests
+
+**Defects being repaired**
+
+1. `run.py` parses `--seed` but hardcodes `2021` for model training.
+2. Optional modules consume RNG before common downstream modules are created,
+   so a one-seed feature comparison does not share baseline initialization.
+3. Model construction advances the global RNG before shuffled loaders are
+   created, changing batch order between architecture variants.
+4. The production loop evaluates the test set every epoch.
+
+**Required configuration**
+
+```text
+seed                  overall experiment seed
+model_init_seed       shared/base parameter seed
+extension_init_seed   optional-branch seed
+data_order_seed       sampler order seed
+worker_seed           data-loader worker seed base
+deterministic_mode    off | warn | strict
+evaluation_policy     validation_only | legacy_val_and_test
+```
+
+`legacy_val_and_test` may remain only for backward-compatible exploratory
+scripts. Financial-astrology runs must use `validation_only`.
+
+**Implementation steps**
+
+1. Replace the hardcoded seed with the resolved CLI/config seed.
+2. Add one `set_experiment_seed()` entry point for Python, NumPy, Torch CPU,
+   accelerator RNG, and deterministic-backend policy.
+3. Give each shuffled `DataLoader` an explicit `torch.Generator` seeded from
+   `data_order_seed`; add a deterministic worker seeding function.
+4. Shuffle the training loader only. Validation, forward test, and lockbox
+   loaders must preserve manifest order.
+5. Add a paired-initialization helper that:
+   - creates the reference model;
+   - creates the variant with its independent extension seed;
+   - copies every matching shared tensor by fully qualified name and shape;
+   - records unmatched reference/variant tensors;
+   - fails if a tensor expected to be shared is missing or shape-changed.
+6. Persist all derived seeds, shared-state hash, first-batch index hash, and
+   fold manifest hash with each experiment.
+7. Remove epoch-level test evaluation from the confirmatory experiment path.
+8. Ensure `itr>1` has an explicit seed schedule rather than silently advancing
+   process-global RNG state.
+
+**Tests written first**
+
+- two identical runs produce identical shared-state and batch-order hashes;
+- changing `--seed` changes both initialization and sampler order;
+- baseline and variant have bitwise-identical matching initial tensors;
+- baseline and variant see identical ordered sample IDs;
+- a validation epoch never iterates the locked test loader;
+- worker counts `0` and `>0` preserve sample order for the same manifest.
+
+**Done when**
+
+The run manifest proves which randomness was shared and which was independent,
+and a paired ablation no longer changes common initialization or sample order
+merely because an optional module exists.
+
+**Status:** `DONE` on 2026-08-01 with `EV-IMP-026`. Independent adversarial
+review found no remaining blocker. Production-path tests prove isolated seed
+streams, bitwise paired shared state, identical two-arm sample IDs, repeated
+non-null pair/checkpoint/order hashes, changed-seed sensitivity, validation-only
+fitting, truthful augmented/unaugmented folds, and tamper-evident manifests.
+
+---
+
+### `TFT-SR02` — Add an exact baseline-neutral extension protocol
+
+**Depends on:** `TFT-SR01`
+
+**Primary files**
+
+- `models/TemporalFusionTransformer.py`
+- `layers/TemporalFusion_layers.py`
+- `utils/tft_config.py`
+- extension-neutrality tests
+
+**Target contract**
+
+Every optional extension must expose the same conceptual interface:
+
+```text
+base_output
+delta_output
+residual_strength
+combined = base_output + residual_strength * delta_output
+```
+
+At `residual_strength == 0`, enabling the extension must be an exact numerical
+no-op. No additional LayerNorm may alter `base_output` after the zero residual.
+
+All temporal extensions must also receive an explicit coordinate contract:
+
+```text
+positions: [T] or [B,T]
+position_unit: steps | trading_sessions | calendar_days
+validity/padding mask
+monotonicity assertion
+```
+
+Astronomy batches use real elapsed calendar-day coordinates. Row indices are a
+backward-compatible default only for ordinary regularly sampled datasets.
+
+**Required modes**
+
+```text
+off              module not constructed
+neutral          module constructed; exact zero residual at initialization
+small_residual   explicitly experimental nonzero initialization
+legacy           checkpoint-compatibility only
+```
+
+**Implementation steps**
+
+1. Add a reusable scalar or channel-wise residual adapter.
+2. Initialize confirmatory/ablation variants at exactly zero.
+3. Keep the old branch behavior behind an explicit legacy semantic version.
+4. Export residual strength, base RMS, delta RMS, and combined-minus-base RMS.
+5. Provide a context-manager/helper that temporarily forces an extension to
+   exact zero for counterfactual evaluation without rebuilding the model.
+6. Add `tft_semantic_version` to the config digest and checkpoint metadata.
+7. Document the expected learning behavior at zero: the residual-strength
+   parameter learns first; branch gradients become active once it moves away
+   from zero. If a branch requires immediate learning, use a declared two-stage
+   warm-up or a tiny nonzero exploratory mode, never an undocumented 25–50%
+   initial mixture.
+
+**Tests written first**
+
+- each extension in neutral mode matches the reference prediction exactly;
+- the reference loss and shared gradients match exactly at zero strength;
+- changing strength away from zero changes predictions and reaches the branch;
+- disabling a trained branch restores its logged base path;
+- save/load preserves semantic version and residual strength.
+
+**Done when**
+
+An extension can be enabled for a fair capacity-matched experiment without
+destroying a good baseline before it earns a contribution.
+
+**Status:** `IN_PROGRESS`, claimed by Codex `/root` on 2026-08-01 14:05 IST.
+
+---
+
+### `TFT-SR03` — Make FFT names, mode selection, and fusion truthful
+
+**Depends on:** `TFT-SR02`
+
+**Defect summary**
+
+The matrix used `modes=16, mode_select=learned`, but the implementation
+interpolated 16 spectral control points across every runtime FFT bin. The
+trained 61-bin mask remained almost uniform around `0.5`; it was a smooth
+all-frequency filter, not a 16-mode selector.
+
+**Required public semantics**
+
+```text
+low_k             retain the first k bins
+top_amplitude_k   retain k sample/channel-specific bins
+learned_filter    interpolate learned spectral control points over all bins
+learned_sparse_k  optional future mode; explicitly selects/sparsifies k bins
+```
+
+The legacy token `learned` must resolve to `learned_filter` with a deprecation
+warning and a digest that records the resolved meaning. CLI help must call
+`tft_fft_modes` “retained bins” only for the hard-selection modes and “spectral
+control points” for `learned_filter`.
+
+**Implementation steps**
+
+1. Rename/resolve modes without silently changing old checkpoints.
+2. Use the `TFT-SR02` residual adapter; the temporal/LSTM path has weight 1 at
+   neutral initialization.
+3. Export the actual FFT contribution rather than ambiguously calling the
+   temporal-path weight an “FFT gate.”
+4. Apply FFT separately to history and known-future streams. Do not transform
+   across their concatenation boundary.
+5. Export mask entropy, effective active-bin count, selected/peak bins,
+   normalized frequencies, equivalent token periods, and per-channel filter
+   norm.
+6. Record the configured scope and that FFT periods are token periods unless
+   timestamps are regular in a declared physical unit.
+7. Keep the first astrology model's FFT switch off. It becomes an isolated
+   later ablation only after raw known-covariate signal survives.
+
+**Semantic tests**
+
+- single-frequency sine fixtures recover the expected bin;
+- `low_k` and `top_amplitude_k` have exactly `k` active bins;
+- `learned_filter` reports all-bin filtering rather than selection;
+- neutral fusion is exact baseline parity;
+- mask/filter parameters all receive finite gradients;
+- runtime-length interpolation and checkpoint reload remain stable.
+
+**Done when**
+
+Configuration, implementation, diagnostics, and claims all describe the same
+frequency operation.
+
+---
+
+### `TFT-SR04` — Formalize explicit cross-attention as optional enrichment
+
+**Depends on:** `TFT-SR02`
+
+**Decision**
+
+The current interpretable cross-attention wiring—future queries attending to
+historical keys/values—is structurally sound. The repair is integration and
+metadata hardening, not a rewrite.
+
+**Implementation steps**
+
+1. Name the role `future_query_to_history_enrichment` in config and payloads.
+2. Apply it through the exact neutral residual protocol.
+3. Correct interpretation metadata so an interpretable cross-attention module
+   is not automatically labeled non-interpretable.
+4. Export attention entropy, head disagreement, residual strength, and branch
+   knockout delta.
+5. Prove that keys/values contain history only and that future market values
+   can never enter the branch through the known-future tensor.
+6. Keep this branch off in the first astrology run because native causal
+   self-attention and the decoder LSTM already carry history into the future.
+
+**Semantic tests**
+
+- perturbing future labels/market placeholders does not alter the branch;
+- perturbing historical context can alter future enrichment;
+- attention rows sum to one and contain only history columns;
+- neutral mode is exact baseline parity;
+- reporting distinguishes interpretable and full variants correctly.
+
+**Done when**
+
+The branch is safe to ablate and its one-seed ETTh1 result is no longer
+confounded by a random, always-active extra GateAddNorm.
+
+---
+
+### `TFT-SR05` — Separate shifted-history, exact-token, and calendar-time lag semantics
+
+**Depends on:** `TFT-SR02`
+
+**Defect summary**
+
+The existing branch called “lag attention” attends to the full prefix ending at
+`t-L`; it does not directly retrieve only `x[t-L]`. When positions are
+irregular or compressed, it also reports `positions[j] - L` instead of the
+actual source coordinate `positions[j-L]`.
+
+**Required modes**
+
+```text
+shifted_prefix_attention   existing behavior, honestly named
+exact_token_lag            direct gather/mix of declared row lags
+elapsed_time_response      not generic attention; delegated to a calendar-time
+                           response-bank interface
+```
+
+**Implementation steps**
+
+1. Preserve the old computation under `shifted_prefix_attention`.
+2. Add an exact-token mode whose query at `t` consumes only declared source
+   tokens such as `t-1`, `t-5`, or `t-20`, with explicit missing masks.
+3. Shift positions by index with the values: valid key position at shifted
+   index `j` is `positions[j-L]`.
+4. Compose position maps correctly through compression; reject combinations
+   whose coordinate mapping is unavailable.
+5. Add a separate outer residual strength initialized at zero.
+6. Use distinct history/future masks and export learned scale weights.
+7. For financial astrology, do not encode Saturn/Jupiter persistence with row
+   lags. Use actual calendar-day event clocks and response kernels.
+
+**Semantic tests**
+
+- impulse at one source token appears only at the declared exact lag;
+- shifted-prefix mode sees the prefix and labels itself accordingly;
+- Friday-to-Monday/holiday positions preserve real elapsed coordinates;
+- compressed positions point to the actual shifted source;
+- padded lag tokens have zero probability and contribution;
+- impossible lags fail during configuration.
+
+**Done when**
+
+“Lag” always has an explicit unit and retrieval meaning, and astrology effect
+duration is never inferred from trading-row distance.
+
+---
+
+### `TFT-SR06` — Distinguish latent polynomial terms from named covariate interactions
+
+**Depends on:** `TFT-SR02`
+
+**Defect summary**
+
+The current higher-order block runs after the VSN has collapsed named variables.
+It multiplies projections of one `[B,T,D]` latent token. It is not evidence for
+Mercury–Moon, Jupiter–Saturn, or any other named input interaction.
+
+**Required changes**
+
+1. Rename its resolved semantic role to `latent_polynomial_block`; retain a
+   checkpoint alias for the old class/config name.
+2. Return the actual residual added after dropout/projection, plus its strength,
+   instead of describing the pre-projection tensor as the model contribution.
+3. Apply the baseline-neutral residual protocol.
+4. Fix the independent per-feature VSN crash: validate the variable dimension
+   without calling `len(None)` when per-feature gating is selected.
+5. Define a separate pre-VSN `NamedCovariateInteractionEncoder` interface:
+
+   ```text
+   input:  [B,T,C,D] plus ordered covariate/group names
+   edges:  declared directed pairs or group-pair masks
+   output: named low-rank interaction channels plus provenance metadata
+   ```
+
+6. Do not instantiate unrestricted `C x C` interactions by default.
+7. The astrology-specific implementation later uses body identity, relative
+   phase, aspect activation, applying/separating state, and slow×fast group
+   masks through this pre-VSN contract.
+
+**Semantic tests**
+
+- a synthetic product target is learnable by the named pair block;
+- disabling the named pair leaves the market/calendar baseline exact;
+- permuting covariate order with matching names preserves output;
+- undeclared pairs cannot contribute;
+- latent-polynomial interpretation is never labeled original-variable effect;
+- per-feature gating completes forward/backward without dead parameters.
+
+**Done when**
+
+The repository has two honestly distinct concepts: generic latent nonlinearity
+and explicit, auditable original-covariate interaction.
+
+---
+
+### `TFT-SR07` — Repair temporal compression liveness and long-sequence semantics
+
+**Depends on:** `TFT-SR02`
+
+**Defect summary**
+
+The ETTh1 matrix forced stride-2 compression onto a 96-step history even though
+the feature is intended for long sequences. With one decoder layer, every
+decompressor parameter has zero gradient because restored history is never used
+by the future-only loss.
+
+**Required design**
+
+```text
+off                default
+kv_pool            preferred: compress historical attention K/V while retaining
+                   the full-resolution residual/query path
+legacy_codec       experimental compatibility mode
+```
+
+**Implementation steps**
+
+1. Prefer anti-aliased historical K/V pooling over a learnable compress-then-
+   reconstruct codec when only future outputs are consumed.
+2. Initialize pooling as a fixed low-pass/average operation before allowing a
+   small learned residual.
+3. Remove final-layer decompressor parameters when their outputs cannot affect
+   the forecast, or add an explicit reconstruction objective if a codec is
+   intentionally trained.
+4. For multi-layer codec mode, prove restored history feeds the next layer and
+   every declared trainable codec parameter receives gradients.
+5. Preserve both the content-center coordinate and the availability coordinate
+   (latest contributing source time) for each pooled token. Causal masks use
+   availability time; interpretation may show the content center. Preserve
+   padding masks and original endpoints.
+6. Reject or loudly require an experimental override for histories below a
+   conservative long-sequence threshold; the default first-use threshold is
+   at least 512 tokens and must be benchmarked for actual memory/latency gain.
+7. Keep compression off in the first astrology run (`seq_len=252`).
+
+**Semantic tests**
+
+- every enabled trainable parameter has finite nonzero gradient;
+- an impulse/step/sinusoid survives the declared pooling bandwidth;
+- coordinate centers and padding masks are exact;
+- `off` and inactive-threshold paths are exact baseline parity;
+- short-window activation is rejected unless explicitly experimental;
+- memory/latency decreases on a genuinely long synthetic sequence.
+
+**Done when**
+
+Compression provides a measured long-sequence benefit without dead trainable
+parameters or an unnecessary lossy round trip.
+
+---
+
+### `TFT-SR08` — Make sparse graph mixing identity-safe, typed, and truthful
+
+**Depends on:** `TFT-SR02`
+
+**Defect summary**
+
+The graph currently replaces VSN inputs with a strong stack of residual
+LayerNorm transforms. It learns one adjacency and broadcasts it across heads.
+The ETTh1 configuration simultaneously tested an 11-node history graph and a
+4-node future graph with `top_k=3`, corresponding to very different densities.
+
+**Required configuration**
+
+```text
+history_top_k or history_density
+future_top_k or future_density
+self_edge_policy: required | allowed | excluded
+head_mode: single | true_multihead
+temperature
+entropy_regularization
+support_stability_regularization
+residual_strength_init
+graph_scope: observed | known | observed_and_known | typed_planetary
+```
+
+**Implementation steps**
+
+1. Wrap graph output in an exact zero-initialized residual; no unconditional
+   final LayerNorm may change the identity path.
+2. Stop broadcasting one adjacency as if it were multi-head. Either implement
+   independent head projections/adjacencies or report `single` honestly.
+3. Separate history and future sparsity settings and validate them against node
+   counts.
+4. Make self-edge policy explicit and test it. When residual self-information
+   is present, `top_k` counts non-self neighbors and rejects `k > C-1` rather
+   than silently treating an almost-complete graph as sparse.
+5. Export adjacency entropy, selected support frequency, support turnover,
+   self-edge mass, and residual contribution.
+6. Add optional temperature and declared regularizers; default them off.
+7. Keep generic graph mixing off in the first astrology model. The later
+   planetary graph is restricted to typed body/pair geometry before VSN and
+   must not indiscriminately mix market, Gregorian calendar, and planet fields.
+
+**Semantic tests**
+
+- zero residual is exact identity;
+- true multi-head mode learns distinct adjacency tensors;
+- single-head mode reports one head only;
+- top-k/density and self-edge policies hold exactly;
+- a synthetic known graph is recoverable above a parameter-matched MLP control;
+- real and placebo planetary graphs have identical capacity.
+
+**Done when**
+
+Graph metadata is truthful, topology choices are typed and reproducible, and
+merely enabling the graph no longer rescales or replaces every VSN input.
+
+---
+
+### `TFT-SR09` — Post-matrix semantic release gate
+
+**Depends on:** `TFT-SR00` through `TFT-SR08`
+
+**Primary outputs**
+
+- one semantic-version migration note;
+- one machine-readable extension capability table;
+- focused and full regression evidence;
+- a short reproducibility micro-run report;
+- updated interpretation caveats and config help.
+
+**Required gate checks**
+
+1. `--seed` changes runs and reproduces when repeated.
+2. Paired reference/variant common tensors and batch IDs match.
+3. Every extension has an exact no-op mode.
+4. Every enabled trainable parameter is either gradient-live or explicitly
+   documented as frozen/non-trainable.
+5. FFT, lag, interaction, compression, and graph names match their mathematics.
+6. Irregular/compressed coordinates pass source-position tests.
+7. Interpretation payloads report actual post-projection contributions and
+   true head counts.
+8. Synthetic sine, exact-lag impulse, product interaction, known graph, and
+   long-sequence compression fixtures pass.
+9. Existing native TFT suites pass.
+10. One small paired micro-training replay is reproducible; no full ETT feature
+    matrix is required.
+11. Old checkpoints either migrate explicitly or fail with a clear semantic-
+    version error.
+12. `git diff --check` passes.
+
+**Astrology handoff condition**
+
+After this gate passes, the first NIFTY training still starts with FFT,
+cross-attention, generic lag, latent-polynomial, generic graph, MoE, compression,
+and covariate reattention **off**. The first experiment tests the data contract
+and incremental value of a small flat known-future planetary block. Specialized
+planetary interactions and calendar-time memory advance only after that cheap
+screen survives matched nulls.
+
+**Done when**
+
+`TFT-SR09` has recorded evidence in the tracker and the financial-astrology
+umbrella task `FA-TFT-SEM-001` may be marked complete.
+
+## 15. Global Definition of Done
 
 The recommended program is complete only when:
 

@@ -1,8 +1,10 @@
 # TFT, Planetary-Covariate, and Physics Implementation Orchestrator
 
-> Version: 2
+> Version: 3
 >
-> Created: 2026-07-28; planetary lane added 2026-07-29
+> Created: 2026-07-28; planetary lane added 2026-07-29; post-matrix
+> semantic-repair gate added 2026-07-31; `TFT-SR00`/`TFT-SR01` closed and
+> `TFT-SR02` claimed 2026-08-01
 >
 > Audited base: `564cffbc712f`
 >
@@ -14,7 +16,10 @@
 >
 > Technical rationale: [`TFT_Deep_Analysis_Report.md`](TFT_Deep_Analysis_Report.md)
 >
-> Planetary/NIFTY implementation recipes: [`Vedic_Astrology_TFT_Implementation_Plan.md`](Vedic_Astrology_TFT_Implementation_Plan.md)
+> Historical planetary/NIFTY audit: [`Vedic_Astrology_TFT_Implementation_Plan.md`](Vedic_Astrology_TFT_Implementation_Plan.md)
+>
+> Canonical planetary/NIFTY implementation plan:
+> [`projects/financial_astrology_tft/IMPLEMENTATION_PLAN.md`](projects/financial_astrology_tft/IMPLEMENTATION_PLAN.md)
 >
 > Canonical financial-astrology orchestrator:
 > [`projects/financial_astrology_tft/ORCHESTRATOR.md`](projects/financial_astrology_tft/ORCHESTRATOR.md)
@@ -32,7 +37,7 @@ This is the control document for the implementation. It answers:
 
 This file is not a background daemon. It is an explicit operating protocol for a human or coding agent. The tracker records live state; this orchestrator determines whether that state is legal.
 
-Current audited implementation state through 2026-07-29:
+Current audited implementation state through 2026-08-01:
 
 - `TFT-H01` is complete.
 - `TFT-C07` is complete.
@@ -59,9 +64,13 @@ Current audited implementation state through 2026-07-29:
 - `TFT-A08` is complete.
 - `TFT-A10` is complete.
 - `TFT-A06` is complete.
-- The planetary/NIFTY branch is explicitly open at protocol/data-audit stage.
-- Financial-astrology implementation is currently paused while the native TFT
-  feature matrix runs and the theory/data choices are discussed.
+- The historical native roadmap remains complete, but trained-checkpoint audit
+  opened new tasks `TFT-SR00` through `TFT-SR09`.
+- `TFT-SR00` is complete with `EV-IMP-025`, `TFT-SR01` is complete with
+  `EV-IMP-026`, and `TFT-SR02` is the active native task.
+- The planetary/NIFTY branch is in data-remediation stage. Its first audit found
+  blocking rashi/date defects and absent generator provenance; neural training
+  waits for corrected data and `TFT-SR09`.
 - Generic output-physics work remains separate; it is not a prerequisite for treating deterministic ephemerides as known-future covariates.
 
 ## 1.1 If you are resuming work mid-stream
@@ -71,7 +80,7 @@ Use this exact branch logic:
 | Situation | Required action |
 |---|---|
 | You think `TFT-C03` is still open | Re-check the tracker first. `TFT-C03` is already `DONE`; do not reopen it without a reproduced regression. |
-| You need the next legal task | Read the canonical financial-astrology `CURRENT_STATUS.md`. At present only discussion/read-only matrix inspection is legal; after authorization use `FA-DATA-001` first. |
+| You need the next legal task | Continue claimed `TFT-SR02`; `TFT-SR01` passed with `EV-IMP-026`. Resume `FA-DATA-001` independently when raw OHLC and the generator package arrive. |
 | You are verifying whether `TFT-T01` ever closed | Check evidence `EV-IMP-009`; it records the exact green release command. |
 | You are verifying whether `TFT-P01` ever closed | Check evidence `EV-IMP-010`; it records the shared profile/digest implementation and regression pass. |
 | You are verifying whether `TFT-A03` ever closed | Check evidence `EV-IMP-011`; it records the canonical embedding/static-encoder implementation and regression pass. |
@@ -85,7 +94,7 @@ Use this exact branch logic:
 | You are verifying whether `TFT-A08` ever closed | Check evidence `EV-IMP-019`; it records debug-gated finite checks and the removal of import-time environment mutation. |
 | You are verifying whether `TFT-A10` ever closed | Check evidence `EV-IMP-020`; it records attention-probability dropout across exact/SDPA paths. |
 | You are verifying whether `TFT-A06` ever closed | Check evidence `EV-IMP-021`; it records schema-aware interpretation exports and caveat flags. |
-| You reproduce a new native regression | Open a new task or reopen the specific failing contract, not `TFT-T01` by default. |
+| You reproduce a post-matrix regression | Use the matching `TFT-SR*` task. Preserve the historical evidence for `TFT-A*` unless its original acceptance claim itself is false. |
 | You want to test planetary covariates | Follow `AST-*`; first prove the loader/time alignment and nested baselines. Do not route directly into generic `PHY-L01`. |
 | You want generic physics integration | Keep it separate unless a domain supplies a quantitative governing law and physical units for the target relationship. |
 
@@ -93,11 +102,16 @@ Use this exact branch logic:
 
 When documents disagree, use this order:
 
-1. This orchestrator owns stable IDs, dependencies, task weights, gates, and status-transition rules.
+1. This orchestrator owns root `TFT-*`, `PHY-*`, `THY-*`, gates, dependencies,
+   and weights. The financial-astrology orchestrator owns `FA-*` execution state
+   and references root gate `TFT-SR09` through `FA-TFT-SEM-001`.
 2. [`implementation_plan.md`](implementation_plan.md) owns exact implementation steps, APIs, tests, and task-specific acceptance criteria.
 3. [`TFT_Implementation_Progress.md`](TFT_Implementation_Progress.md) owns current status, owner, blockers, evidence, and percentages.
 4. [`TFT_Deep_Analysis_Report.md`](TFT_Deep_Analysis_Report.md) owns the audited diagnosis and rationale.
-5. [`Vedic_Astrology_TFT_Implementation_Plan.md`](Vedic_Astrology_TFT_Implementation_Plan.md) owns exact planetary-market protocol, task recipes, controls, and claim gates.
+5. [`projects/financial_astrology_tft/IMPLEMENTATION_PLAN.md`](projects/financial_astrology_tft/IMPLEMENTATION_PLAN.md)
+   owns the current planetary-market protocol, task recipes, controls, and
+   claim gates. The root Vedic plan is retained as historical audit/design
+   evidence.
 
 Never rename or reuse an ID. If a task must split, keep the parent and create suffixes such as `TFT-C03-1` and `TFT-C03-2`.
 
@@ -125,6 +139,9 @@ These rules require an explicit recorded decision before they may change:
 - Independently row-shuffled ephemerides are not an adequate smooth-process null.
 - VSN/attention/graph weights are diagnostics, not causal evidence.
 - The final temporal holdout is frozen and inspected once per confirmatory protocol version.
+- The first NIFTY neural comparison keeps generic FFT, cross-attention, lag,
+  graph, latent-polynomial, MoE, compression, and covariate-reattention
+  extensions off even after their semantic repairs; repaired is not selected.
 
 ## 4. Status State Machine
 
@@ -199,7 +216,24 @@ Native safety weight: `24`.
 
 Canonicalization/extension weight: `35`.
 
-### 5.4 Physics and theory-guided tasks
+### 5.4 Post-matrix semantic-repair tasks
+
+| ID | Weight | Dependencies | Work item |
+|---|---:|---|---|
+| `TFT-SR00` | 1 | final matrix inventory | Freeze legacy v1 artifacts and add semantic versioning/migration policy. |
+| `TFT-SR01` | 3 | `TFT-SR00` | Honor seeds; isolate RNG streams; pair common initialization and data order. |
+| `TFT-SR02` | 3 | `TFT-SR01` | Add exact no-op extension residuals and physical coordinate contract. |
+| `TFT-SR03` | 3 | `TFT-SR02` | Repair FFT filter/selection naming, scope, diagnostics, and neutral fusion. |
+| `TFT-SR04` | 2 | `TFT-SR02` | Harden explicit cross-attention masks, metadata, and neutral enrichment. |
+| `TFT-SR05` | 3 | `TFT-SR02` | Split shifted-prefix, exact-token, and calendar-time lag semantics. |
+| `TFT-SR06` | 3 | `TFT-SR02` | Separate latent polynomial from named pre-VSN interactions; repair per-feature VSN. |
+| `TFT-SR07` | 3 | `TFT-SR02` | Replace dead compression codec semantics with live anti-aliased K/V memory compression. |
+| `TFT-SR08` | 4 | `TFT-SR02` | Make graph mixing identity-safe, typed, genuinely multi-head or truthfully single-head. |
+| `TFT-SR09` | 3 | `TFT-SR00`–`TFT-SR08` | Run post-matrix semantic release gate and publish semantics v2. |
+
+Semantic-repair weight: `28`.
+
+### 5.5 Physics and theory-guided tasks
 
 | ID | Weight | Dependencies | Work item |
 |---|---:|---|---|
@@ -221,15 +255,15 @@ Canonicalization/extension weight: `35`.
 
 Active physics/theory weight, excluding deferred `ADV-P01`: `45`.
 
-### 5.5 Planetary-covariate research tasks
+### 5.6 Planetary-covariate research tasks
 
 | ID | Weight | Dependencies | Work item |
 |---|---:|---|---|
 | `AST-H01` | 2 | `G2` | Freeze the falsifiable hypothesis, target, cutoff, folds, metrics, seeds, and locked holdout. |
-| `AST-D01` | 3 | supplied sample/generator | Audit provenance, coordinates, timestamps, joins, units, redundancy, missingness, and Hilbert boundaries. |
-| `AST-C00` | 1 | `G2` | Repair or explicitly reject the reproduced per-feature VSN gating crash. |
-| `AST-K01` | 5 | `AST-D01` | Build a production loader with separate market, target, calendar, and planetary namespaces. |
-| `AST-B01` | 4 | `AST-H01`, `AST-K01` | Add zero/Ridge/TFT market and market+calendar baselines plus paired metrics. |
+| `AST-D01` | 3 | raw OHLC/session keys + generator manifest | Rebuild/audit provenance, coordinates, timestamps, joins, units, rashi semantics, redundancy, and optional separately supplied Hilbert code. |
+| `AST-C00` | 1 | `G2-SR` / `TFT-SR06` | Accept the native per-feature VSN repair; do not implement the same defect twice. |
+| `AST-K01` | 5 | `AST-D01`, `G2-SR` | Build a production loader with separate market, target, calendar, and planetary namespaces. |
+| `AST-B01` | 4 | `AST-H01`, `AST-K01`, `G2-SR` | Add zero/Ridge/TFT market and market+calendar baselines plus paired metrics. |
 | `AST-F01` | 3 | `AST-D01`, `AST-K01` | Build frozen raw-circular, relative-harmonic, and declared-aspect feature families. |
 | `AST-N01` | 4 | `AST-D01`, `AST-F01` | Build coherent shifted, spectrum-preserving, and smooth pseudo-planet nulls. |
 | `AST-E00` | 2 | `AST-H01`, `AST-B01`, `AST-F01`, `AST-N01` | Test raw incremental predictive value and issue a stop/proceed decision. |
@@ -272,15 +306,24 @@ G1 ─> TFT-A04 / TFT-A05 / TFT-A07 / TFT-A08
 TFT-P01 ─> TFT-A06 / TFT-A09
 G1 ─> TFT-A10
 
+final matrix inventory
+    └─> TFT-SR00 ─> TFT-SR01 ─> TFT-SR02
+                                      ├─> TFT-SR03 ─┐
+                                      ├─> TFT-SR04  │
+                                      ├─> TFT-SR05  │
+                                      ├─> TFT-SR06  ├─> TFT-SR09 ─> G2-SR
+                                      ├─> TFT-SR07  │
+                                      └─> TFT-SR08 ─┘
+
 G1 + TFT-O01 ─> THY-A01 ─> THY-V01 ─> G6
 
-G2
-├─> AST-H01 ──────────────┐
-├─> AST-C00               │
-└─> AST-D01 ─> AST-K01 ─> AST-B01
-             └> AST-F01 ─> AST-N01
+G2 discussion/data design ─> AST-H01
+raw OHLC + generator package ─> AST-D01 ─> AST-F01 ─> AST-N01
+G2-SR ─> AST-C00
+G2-SR + AST-D01 ─> AST-K01
+G2-SR + AST-H01 + AST-K01 ─> AST-B01
 
-AST-H01 + AST-B01 + AST-F01 + AST-N01
+G2-SR + AST-H01 + AST-B01 + AST-F01 + AST-N01
                     └─> AST-E00
                            ├─ stop and report a null/invalid representation, or
                            └─ proceed -> AST-M01 -> AST-L01 -> AST-E01 -> AST-R01
@@ -301,11 +344,19 @@ The dependency graph is authoritative. This section translates it into simple �
 7. `TFT-A04` is already closed.
 8. `TFT-A05` is already closed.
 9. `TFT-A07`, `TFT-A09`, `TFT-A08`, `TFT-A10`, and `TFT-A06` are also already closed.
-10. Do not reopen TFT unless a fresh regression reproduces against the recorded evidence.
-11. For the planetary project, claim `AST-H01` for protocol work, `AST-D01` when the sample/generator is present, or `AST-C00` for the reproduced optional-gating regression.
-12. Do not implement `AST-K01` until the dataset/provenance contract is frozen.
-13. Do not implement `AST-M01`/`AST-L01` until `AST-E00` records a justified proceed decision.
-14. Keep generic output-physics work separate; it is not a dependency of `AST-*`.
+10. Preserve that historical completion; do not overwrite old evidence.
+11. The final matrix completed 14/14; `TFT-SR00` and `TFT-SR01` are closed.
+    Continue the claimed `TFT-SR02` exact-neutrality/coordinate contract.
+12. Execute `TFT-SR03`–`TFT-SR08` in parallel only where file locks permit;
+    close the wave with `TFT-SR09`.
+13. Resume `WAITING_EXTERNAL` `AST-D01` independently when authoritative raw OHLC and the
+    generator/convention package are present; data remediation does not wait
+    for model repair.
+14. Do not train `AST-B01`/`AST-E00` until `G2-SR` passes.
+15. Do not implement `AST-M01`/`AST-L01` until `AST-E00` records a justified
+    proceed decision.
+16. Keep generic output-physics work separate; it is not a dependency of
+    planetary known-future covariates.
 
 ## 7. Phase Gates
 
@@ -349,6 +400,27 @@ Required:
 - `TFT-P01`, `TFT-A02`, `TFT-A03`, `TFT-E01`;
 - canonical profile has no unexpected dead parameters;
 - reference results include accuracy, calibration, memory, latency, and parameter count.
+
+State: `PASSED` for the historical baseline contract.
+
+### G2-SR — Post-matrix semantic readiness
+
+Required:
+
+- `TFT-SR00` through `TFT-SR09` are `DONE`;
+- legacy semantic-v1 evidence/checkpoints remain reproducible or fail through a
+  declared migration policy;
+- `--seed`, sampler order, common initialization, and validation-only selection
+  are proven by hashes/tests;
+- every extension has exact disabled parity;
+- FFT, lag, interaction, compression, graph, and cross-attention labels match
+  their actual computation;
+- synthetic known-answer and all-parameter liveness tests pass;
+- no unexplained dead trainable extension parameter remains;
+- one short deterministic replay and existing native regressions pass.
+
+State: `OPEN`. This gate, not historical `G2`, controls the first neural
+financial-astrology run.
 
 ### G3 — Physics foundation
 
@@ -414,7 +486,8 @@ Required:
 - `AST-H01`, `AST-D01`, and `AST-C00`;
 - forecast cutoff, target, primary metric, folds, seeds, and locked holdout are versioned;
 - ephemeris frame, ayanamsha, timestamp, units, body list, node policy, and generator are reproducible;
-- Hilbert transforms have an explicit boundary/availability policy;
+- any separately supplied Hilbert transform has an explicit
+  boundary/availability policy; otherwise that family is absent;
 - the per-feature VSN flag is either repaired or rejected clearly.
 
 ### AST-G1 — Production loader and baselines
@@ -488,6 +561,7 @@ These tasks touch `models/TemporalFusionTransformer.py` and must normally be ser
 
 - `TFT-C01`, `TFT-C02`, `TFT-O01`, `TFT-C06`, `TFT-C07`;
 - `TFT-C03`, `TFT-A03`, `TFT-A06`, `TFT-A08`;
+- `TFT-SR02`, `TFT-SR04`, `TFT-SR06`, `TFT-SR08`;
 - `THY-A01`, `AST-C00`, `AST-M01`.
 
 ### Experiment lock
@@ -495,6 +569,7 @@ These tasks touch `models/TemporalFusionTransformer.py` and must normally be ser
 Serialize:
 
 - `TFT-C09`, `TFT-O01`, `TFT-C03`;
+- `TFT-SR01`, `TFT-SR09`;
 - `PHY-I01`, `PHY-M01`, `PHY-T02`;
 - `AST-B01`, `AST-E00`, `AST-E01`.
 
@@ -502,25 +577,26 @@ Serialize:
 
 Serialize:
 
-- `TFT-C04`, `TFT-C05`, `TFT-A01`, `TFT-A05`, `TFT-A07`, `AST-L01`.
+- `TFT-C04`, `TFT-C05`, `TFT-A01`, `TFT-A05`, `TFT-A07`, `AST-L01`;
+- `TFT-SR02`, `TFT-SR03`, `TFT-SR04`, `TFT-SR05`, `TFT-SR07`, `TFT-SR08`.
 
 ### Data/CLI lock
 
 Serialize overlapping edits among:
 
-- `TFT-C08`, `PHY-D01`, `PHY-I02`, `TFT-A09`, `AST-D01`, `AST-K01`.
+- `TFT-C08`, `PHY-D01`, `PHY-I02`, `TFT-A09`, `TFT-SR00`, `TFT-SR01`,
+  `TFT-SR09`, `AST-D01`, `AST-K01`.
 
 ### Safe initial parallel wave
 
-With separate owners:
+Current safe order:
 
-- model/API lane: `TFT-O01`;
-- experiment lane: `TFT-C09`;
-- layer lane: `TFT-C04`, then `TFT-C05`;
-- new-file physics lane: `PHY-C01`;
-- harness/reviewer lane: `TFT-H01`.
-
-For the planetary lane, `AST-H01` protocol drafting and read-only `AST-D01` inspection may overlap, but do not implement `AST-K01` until the data manifest is frozen.
+- the matrix is closed; serialize `TFT-SR00`, `TFT-SR01`, and `TFT-SR02`;
+- then split `TFT-SR03`–`TFT-SR08` only across non-overlapping locks/tests;
+- keep `TFT-SR09` serialized as the final integrator/reviewer gate;
+- run `AST-H01` discussion and resume `AST-D01` source remediation in parallel
+  with native repairs when its missing inputs are available;
+- do not run neural `AST-B01`/`AST-E00` before `G2-SR`.
 
 Do not parallelize merely because multiple agents are available.
 
@@ -528,7 +604,10 @@ Do not parallelize merely because multiple agents are available.
 
 ### Before editing
 
-1. Read the task card in [`implementation_plan.md`](implementation_plan.md), or in [`Vedic_Astrology_TFT_Implementation_Plan.md`](Vedic_Astrology_TFT_Implementation_Plan.md) for `AST-*`.
+1. Read the native task card in [`implementation_plan.md`](implementation_plan.md),
+   or the canonical project
+   [`IMPLEMENTATION_PLAN.md`](projects/financial_astrology_tft/IMPLEMENTATION_PLAN.md)
+   for `AST-*`/`FA-*` work.
 2. Confirm every dependency is `DONE`.
 3. Set the task to `IN_PROGRESS`.
 4. Record owner, start date, primary-file lock, and next action.

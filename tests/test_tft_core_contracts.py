@@ -33,6 +33,8 @@ def _build_args(task_name="long_term_forecast"):
         tft_use_quantile_head=False,
         tft_output_mode="point",
         tft_temporal_backbone="lstm",
+        # These unit fixtures use a synthetic, gap-free row grid.
+        tft_declared_regular_sampling=True,
     )
 
 

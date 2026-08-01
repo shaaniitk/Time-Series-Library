@@ -1,21 +1,38 @@
 # Data and Availability Contract
 
-> Status: design draft. It becomes frozen only after the user's sample data and
-> PySwissEph generator are audited.
+> Status: remediation draft. The supplied wide CSVs were audited on 2026-07-31;
+> see [DATA_AUDIT_REPORT.md](DATA_AUDIT_REPORT.md). The contract remains
+> unfrozen until raw market rows, generator provenance, and convention metadata
+> pass the acceptance tests below.
 
 ## 1. Required Inputs
 
-The first audit requires:
+Received and audited:
 
-1. 100–300 consecutive merged rows, including at least one weekend, exchange
-   holiday, month boundary, and year boundary;
-2. the complete ordered column list;
-3. a description, unit, and reference frame for every column;
-4. the PySwissEph generation script/notebook and dependency versions;
-5. ephemeris files and checksum/source metadata;
-6. the NIFTY OHLC source, adjustment/revision policy, and timezone;
-7. Hilbert-transform code, padding, window, and boundary handling;
-8. an explanation of whether each row is stamped at market open, close, local
+```text
+data/comprehensive_dynamic_features_nifty.csv
+data/nifty50_returns.csv
+data/nifty50_returns.parquet
+```
+
+The planetary table is structurally complete, but its rashi encodings are
+invalid; the returns table has mixed session-date semantics. These files remain
+immutable evidence and are not production inputs.
+
+Still required:
+
+1. raw NIFTY OHLC with true exchange session dates, or an exact retrieval and
+   transformation script plus immutable source artifact;
+2. a description, unit, and reference frame for every admitted planet column;
+3. the PySwissEph generation script/notebook and dependency versions;
+4. ephemeris files and checksum/source metadata;
+5. the NIFTY adjustment/revision policy and timezone;
+6. Shadbala formula/generator, location, and timestamp if that family remains
+   in scope;
+7. any actual Hilbert-transform code, padding, window, and boundary handling if
+   the user intended a separate feature family;
+8. an explanation of whether each planetary row is stamped at market open,
+   close, local
    midnight, UTC midnight, or another instant.
 
 ## 2. Canonical Tables
@@ -28,7 +45,8 @@ One row per NIFTY trading session:
 
 ```text
 session_date
-decision_timestamp_utc
+session_open_timestamp_utc
+session_close_timestamp_utc
 open
 high
 low
@@ -133,6 +151,24 @@ At that decision time:
 - a feature derived from future market data is forbidden even if stored beside
   planetary columns.
 
+Every supervised example must persist an availability record:
+
+```text
+forecast_origin_session
+decision_timestamp_utc
+target_session_or_end_session
+target_open_timestamp_utc
+target_close_timestamp_utc
+label_interval_start_utc
+label_interval_end_utc
+maximum_market_timestamp_consumed
+maximum_known_astronomy_timestamp_consumed
+```
+
+`maximum_known_astronomy_timestamp_consumed` may be after the decision time;
+`maximum_market_timestamp_consumed` may not. This asymmetry is the central
+known-future contract and must be visible in saved batch manifests.
+
 Required model batch:
 
 ```text
@@ -156,16 +192,52 @@ Future astronomical state is legitimate known-future information. Future
 market-derived rolling values, normalizers, Hilbert components, or labels are
 not.
 
+### 4.1 Target-specific interval contract
+
+Do not reuse one ambiguous “next day” join for all targets:
+
+| Target | Decision information | Label interval | Astronomy interval summaries allowed |
+|---|---|---|---|
+| close-to-close return | through close of `t` | close `t` to close `t+h` | decision state; path to target open and close |
+| overnight gap | through close of `t` | close `t` to open `t+1` | path from decision close to target open |
+| intraday body | through close of `t` for next-session forecast | open `t+1` to close `t+1` | target open state, target-session path, target close state |
+| range/realized volatility | through close of `t` | declared future sessions only | full declared label interval |
+
+The target builder—not the neural decoder—owns these definitions. A horizon-20
+endpoint target may still be one output token. Its purge/embargo length must
+cover all sessions used by the label.
+
+### 4.2 Interval-only astronomy summaries
+
+For each declared event/aspect family, an interval feature builder may produce:
+
+```text
+state at decision, target open, and target close
+minimum wrapped separation/orb
+timestamp and signed offset of closest approach
+number and type of exact crossings
+whether an ingress or station occurs
+first and last exact-event offsets
+response-bank state at interval start and end
+```
+
+These summaries must be computed from ephemeris/event tables only. They must be
+invariant when every future OHLC value is changed.
+
 ## 5. Calendar and Timestamp Join
 
 The join algorithm must:
 
 1. construct exact target trading dates from the exchange calendar;
 2. construct the declared astronomical evaluation timestamp for each target;
-3. query/interpolate ephemeris at that exact instant;
-4. retain calendar-day event history across weekends and holidays;
-5. expose actual elapsed time `delta_days`, not merely row lag;
-6. fail on duplicate, missing, or timezone-ambiguous keys.
+3. derive target open/close timestamps and the complete decision-to-target
+   interval from the versioned exchange calendar;
+4. query/interpolate ephemeris at exact boundary instants;
+5. solve declared extrema/crossings inside the interval rather than inferring
+   them from trading-row endpoints;
+6. retain calendar-day event history across weekends and holidays;
+7. expose actual elapsed time `delta_days`, not merely row lag;
+8. fail on duplicate, missing, or timezone-ambiguous keys.
 
 Never silently forward-fill an angle across missing astronomical timestamps.
 Never assume that Friday-to-Monday is a one-day physical interval.
@@ -219,7 +291,8 @@ checkpoint.
 
 ## 9. Split Contract
 
-Final dates remain provisional until the data range is audited. The mechanism is:
+Final dates remain provisional until authoritative session dates and the
+corrected market range pass source remediation. The mechanism is:
 
 ```text
 expanding training window
@@ -256,5 +329,19 @@ before the available market series unless an audited source is added.
 9. no full-series fitted scaler;
 10. correct weekend/holiday elapsed time;
 11. stable schema and convention hashes;
-12. explicit handling of missing values, never silent imputation.
-
+12. explicit handling of missing values, never silent imputation;
+13. exact decision/open/close timestamps for Friday-to-Monday and holiday gaps;
+14. interval event/extremum fixtures match an independently evaluated dense
+    ephemeris calculation;
+15. changing every future OHLC value leaves all known-future astronomy and
+    every earlier sample unchanged;
+16. each target's label interval and purge end are present in the fold manifest.
+17. every regenerated rashi ID equals
+    `floor((longitude_deg mod 360) / 30)` and all 12 boundary categories pass
+    known-answer tests;
+18. no rejected supplied `*_sign_sin/cos`, quarantined Shadbala, duplicate Ketu
+    state, or legacy `time_delta` field enters the primary schema;
+19. each market row maps to an authoritative session key without a weekend-only
+    or global-day-shift repair heuristic;
+20. the first admissible schema has a frozen ordered list and contains only its
+    declared 37 planetary columns before ordinary controls.

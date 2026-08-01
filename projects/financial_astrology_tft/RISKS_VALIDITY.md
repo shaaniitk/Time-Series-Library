@@ -142,3 +142,78 @@ Control:
 - use commodities as an external domain for literal price doctrine;
 - do not rewrite a textual rule after seeing modern results.
 
+## 12. Named-Feature Semantic Mismatch
+
+An executable switch may not implement the scientific object implied by its
+name. Examples already found include shifted-prefix “lag” attention, an all-bin
+FFT filter described as mode selection, post-VSN latent products described as
+original-covariate interactions, broadcast graph heads, and dead compression
+decoder parameters.
+
+Control:
+
+- close `TFT-SR00`–`TFT-SR09` before neural NIFTY work;
+- preserve legacy-v1 results rather than silently reinterpreting them;
+- require exact no-op initialization and shared-state/batch hashes;
+- use synthetic known-answer, gradient-liveness, mask, and coordinate tests;
+- keep generic advanced switches off in the first planetary arm.
+
+## 13. Horizon, Duration, and Availability Conflation
+
+A long hypothesized Saturn effect can be confused with model `seq_len`, decoder
+length, trading-row lag, or orbital period. Similarly, a deterministic event
+known to occur tomorrow can be joined at the wrong market timestamp.
+
+Control:
+
+- store decision, target-open, target-close, and label-interval timestamps;
+- represent elapsed time in calendar days;
+- keep market context length, target horizon, orbital phase, and response
+  half-life as separate configuration fields;
+- compute interval astronomy from ephemerides only;
+- prove future-OHLC perturbations cannot change known-future features.
+
+## 14. Derived-Date Corruption
+
+The supplied returns file mixes exchange-session dates with labels one calendar
+day earlier in long blocks. A same-date merge can therefore attach the wrong
+Moon position and wrong interval events while still passing ordinary shape and
+missing-value checks.
+
+Control:
+
+- reconstruct returns from source OHLC keyed by authoritative sessions;
+- validate holidays and special sessions against an exchange calendar;
+- forbid weekend-only and global-offset repair rules;
+- persist both displayed source date and canonical session key during audit;
+- add known-answer joins across Friday/Monday, holidays, and special sessions.
+
+## 15. Circular-Category Transformation Corruption
+
+Every supplied rashi pair is shifted/clipped even though the underlying
+longitude pair is coherent. A derived category can therefore be wrong while
+its `sin/cos` norm remains exactly one.
+
+Control:
+
+- derive rashi from audited longitude rather than trusting stored category
+  pairs;
+- test both sides of all 12 boundaries and retrograde re-entry;
+- require all categories to occur on an adequate date range;
+- retain the rejected columns only as immutable audit evidence;
+- hash the derivation code and astronomical convention manifest.
+
+## 16. Generator and Timestamp Non-Reproducibility
+
+Two local planetary artifacts with the same displayed date differ by exactly
+8.25 hours of angular motion, while neither records the calculation instant.
+The PySwissEph generator, flags, ayanamsha, ephemeris source, and Shadbala
+formula are absent.
+
+Control:
+
+- block generator-dependent features rather than guess defaults;
+- require exact UTC calculation instants and convention hashes;
+- independently reproduce selected rows before loader acceptance;
+- quarantine Shadbala until its full formula and availability are proven;
+- generate a longer astronomy-only warm-up for slow response states.

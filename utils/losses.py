@@ -104,7 +104,12 @@ class QuantileLoss(nn.Module):
         super(QuantileLoss, self).__init__()
         self.quantiles = list(canonicalize_quantiles(quantiles))
 
-    def forward(self, forecast: t.Tensor, target: t.Tensor) -> t.Tensor:
+    def forward(
+        self,
+        forecast: t.Tensor,
+        target: t.Tensor,
+        valid_mask: t.Tensor | None = None,
+    ) -> t.Tensor:
         if forecast.ndim != 4:
             raise ValueError(f"Quantile forecast must have shape [B,T,Q,C], got {tuple(forecast.shape)}.")
         if target.ndim != 3:
@@ -116,6 +121,27 @@ class QuantileLoss(nn.Module):
         errors = target.unsqueeze(2) - forecast
         quantiles = forecast.new_tensor(self.quantiles).view(1, 1, -1, 1)
         loss = t.maximum(quantiles * errors, (quantiles - 1.0) * errors)
+        if valid_mask is not None:
+            if valid_mask.dtype != t.bool:
+                raise TypeError("Quantile valid_mask must have boolean dtype.")
+            if valid_mask.ndim != 2 or tuple(valid_mask.shape) != tuple(target.shape[:2]):
+                raise ValueError(
+                    "Quantile valid_mask must have shape [B,T] matching target."
+                )
+            mask = valid_mask.to(device=loss.device).unsqueeze(-1).unsqueeze(-1)
+            mask = mask.expand_as(loss)
+            if not bool(mask.any()):
+                raise ValueError("Quantile loss requires a valid forecast token.")
+            safe_errors = t.where(
+                mask,
+                target.unsqueeze(2) - forecast,
+                t.zeros_like(loss),
+            )
+            loss = t.maximum(
+                quantiles * safe_errors,
+                (quantiles - 1.0) * safe_errors,
+            )
+            return loss.sum() / mask.sum()
         return loss.mean()
 
 

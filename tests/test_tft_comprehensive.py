@@ -94,6 +94,18 @@ def build_tsl_config():
         tft_covariate_reattention=False,
         tft_moe_capacity_factor=1.25,
         tft_vsn_low_rank_threshold=64,
+        # Exercise active semantics-v2 branches in this comprehensive suite.
+        # Neutrality itself is covered by the dedicated SR02 parity matrix.
+        tft_fft_integration_mode="small_residual",
+        tft_cross_attention_integration_mode="small_residual",
+        tft_lag_integration_mode="small_residual",
+        tft_higher_order_integration_mode="small_residual",
+        tft_temporal_compression_integration_mode="small_residual",
+        tft_graph_integration_mode="small_residual",
+        tft_covariate_reattention_integration_mode="small_residual",
+        tft_regime_moe_integration_mode="small_residual",
+        tft_dual_attention_integration_mode="small_residual",
+        tft_vsn_bypass_integration_mode="small_residual",
         # Advanced graph defaults
         tft_graph_type="dense",
         tft_graph_top_k=10,
@@ -106,6 +118,8 @@ def build_tsl_config():
         tft_known_feature_names=[f"known_{i}" for i in range(12)],
         tft_observed_pos=list(range(16)),
         tft_static_pos=[],
+        # The synthetic generator emits a complete, regularly spaced grid.
+        tft_declared_regular_sampling=True,
         tft_target_pos=[0, 1, 2, 3],
     )
 
@@ -208,7 +222,7 @@ class TestTFTComprehensive(unittest.TestCase):
         with self.assertRaises(ValueError):
             lag_attention(x)
 
-    def test_compressed_positions_remain_monotonic_original_coordinates(self):
+    def test_compression_shell_preserves_full_original_coordinates(self):
         set_seed(42)
         cfg = build_tsl_config()
         cfg.tft_use_temporal_compression = True
@@ -225,10 +239,10 @@ class TestTFTComprehensive(unittest.TestCase):
             x_dec.unsqueeze(0), x_mark_dec.unsqueeze(0),
             return_interpretation=True,
         )
-        positions = payload["temporal_positions"]
+        positions = payload["temporal_positions"][0]
         self.assertTrue(torch.all(positions[1:] > positions[:-1]))
         self.assertEqual(int(positions[0].item()), 0)
-        self.assertEqual(int(positions[1].item()), cfg.tft_tc_stride)
+        self.assertEqual(int(positions[1].item()), 1)
         self.assertEqual(int(positions[-1].item()), cfg.seq_len + cfg.pred_len - 1)
 
     def test_gated_temporal_backbone_component(self):
@@ -529,7 +543,7 @@ class TestTFTComprehensive(unittest.TestCase):
         model = tsl_tft.Model(cfg)
         self.assertTrue(model.use_revin)
         self.assertIsNotNone(model.revin)
-        self.assertIsNone(model.temporal_fusion_decoder.layers[0].position_wise_grn)
+        self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].position_wise_grn)
         self.assertEqual(model.temporal_fusion_decoder.layers[0].temporal_backbone_type, "lstm")
         ds = make_tsl_dataset(cfg, n_samples=8)
         x_enc, x_mark_enc, x_dec, x_mark_dec, _ = ds[0]
@@ -565,7 +579,10 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertIn("static_graph_attention", payload)
         self.assertEqual(tuple(payload["predictions"].shape), (1, cfg.pred_len, cfg.c_out))
         self.assertEqual(tuple(payload["predictions_full"].shape), (1, cfg.seq_len + cfg.pred_len, cfg.c_out))
-        self.assertEqual(tuple(payload["attention_branch_weights"].shape), (3,))
+        self.assertIsNone(payload["attention_branch_weights"])
+        self.assertIsNone(payload["attention_fusion_alpha"])
+        self.assertIn("dual_attention_fusion", payload["extension_residuals"])
+        self.assertIn("lag_attention", payload["extension_residuals"])
         self.assertEqual(tuple(payload["cross_attention_weights"].shape), (1, cfg.n_heads, cfg.pred_len, cfg.seq_len))
         self.assertEqual(tuple(payload["lag_scale_weights"].shape), (len(cfg.tft_lag_scales),))
         self.assertEqual(payload["lag_attention_weights"].shape[-1], len(cfg.tft_lag_scales))
@@ -579,9 +596,9 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertEqual(payload["temporal_backbone_type"], "lstm")
         self.assertEqual(payload["attention_backend_config"], "exact")
         self.assertEqual(payload["attention_backend_used"], "exact")
-        self.assertIn("attention_branch_weights", payload["decoder_layer_payloads"])
+        self.assertIn("extension_residuals", payload["decoder_layer_payloads"])
         self.assertIn("cross_attention", payload["decoder_layer_payloads"])
-        self.assertEqual(tuple(payload["decoder_layer_payloads"]["attention_branch_weights"].shape), (cfg.e_layers, 3))
+        self.assertNotIn("attention_branch_weights", payload["decoder_layer_payloads"])
         self.assertEqual(tuple(payload["decoder_layer_payloads"]["cross_attention"].shape), (cfg.e_layers, 1, cfg.n_heads, cfg.pred_len, cfg.seq_len))
         self.assertEqual(tuple(payload["decoder_layer_payloads"]["lag_scale_weights"].shape), (cfg.e_layers, len(cfg.tft_lag_scales)))
         self.assertEqual(payload["decoder_layer_payloads"]["expert_routing"].shape[0], cfg.e_layers)
@@ -680,7 +697,7 @@ class TestTFTComprehensive(unittest.TestCase):
             x_mark_dec.unsqueeze(0),
         )
         self.assertTrue(torch.isfinite(forward_out).all())
-        self.assertEqual(model.temporal_fusion_decoder.layers[0].full_attention_module.last_attention_backend, "sdpa")
+        self.assertEqual(model.temporal_fusion_decoder.layers[0].attention.last_attention_backend, "sdpa")
         self.assertEqual(model.temporal_fusion_decoder.layers[0].cross_attention.last_attention_backend, "sdpa")
 
         payload = model(
@@ -705,11 +722,12 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertLess(losses[-1], losses[0] * 0.90, "TSL TFT loss reduction is too weak for a learnable target.")
 
         # Ensure important gates receive gradients at least once.
-        gate_grad = model.history_vsn.residual_gate.grad
+        gate_grad = model.history_vsn.vsn_bypass_residual_adapter.residual_strength.grad
         self.assertIsNotNone(gate_grad)
         self.assertGreater(gate_grad.abs().sum().item(), 0.0)
-        self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].attention_fusion_logits.grad)
-        self.assertGreater(model.temporal_fusion_decoder.layers[0].attention_fusion_logits.grad.abs().sum().item(), 0.0)
+        dual_strength_grad = model.temporal_fusion_decoder.layers[0].dual_attention_residual_adapter.residual_strength.grad
+        self.assertIsNotNone(dual_strength_grad)
+        self.assertGreater(dual_strength_grad.abs().sum().item(), 0.0)
         self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].lag_attention_module.scale_logits.grad)
         self.assertGreater(model.temporal_fusion_decoder.layers[0].lag_attention_module.scale_logits.grad.abs().sum().item(), 0.0)
         self.assertIsNotNone(model.temporal_fusion_decoder.layers[0].higher_order_block.gate_projection.weight.grad)

@@ -1,4 +1,7 @@
 import argparse
+import copy
+from dataclasses import asdict
+import json
 import os
 import sys
 
@@ -11,10 +14,14 @@ if "HSA_OVERRIDE_GFX_VERSION" not in os.environ:
 import torch
 import torch.backends
 from utils.print_args import print_args
-from utils.tft_config import apply_tft_profile
-import random
-import numpy as np
-import sys
+from utils.tft_config import TFT_PAIRED_ARCHITECTURE_KEYS, apply_tft_profile
+from utils.reproducibility import (
+    SeedBundle,
+    resolve_seed_bundle,
+    set_experiment_seed,
+    stable_json_hash,
+)
+
 
 def build_parser():
     parser = argparse.ArgumentParser(description='TimesNet')
@@ -117,6 +124,32 @@ def build_parser():
     # Augmentation
     parser.add_argument('--augmentation_ratio', type=int, default=0, help="How many times to augment")
     parser.add_argument('--seed', type=int, default=2, help="Randomization seed")
+    parser.add_argument('--model_init_seed', type=int, default=None,
+                        help='Optional base-model initialization seed; omitted values are deterministically derived from --seed and run index.')
+    parser.add_argument('--extension_init_seed', type=int, default=None,
+                        help='Optional extension initialization seed for paired ablations; omitted values are deterministically derived.')
+    parser.add_argument('--data_order_seed', type=int, default=None,
+                        help='Optional training-sampler seed; omitted values are deterministically derived.')
+    parser.add_argument('--worker_seed', type=int, default=None,
+                        help='Optional DataLoader worker seed base; omitted values are deterministically derived.')
+    parser.add_argument('--deterministic_mode', type=str, default=None,
+                        choices=['off', 'warn', 'strict'],
+                        help='Deterministic backend policy. Native TFT v2 defaults to warn; legacy/non-TFT runs default to off.')
+    parser.add_argument('--evaluation_policy', type=str, default=None,
+                        choices=['validation_only', 'legacy_val_and_test'],
+                        help='Whether fitting may inspect test data. Native TFT v2 defaults to validation_only.')
+    parser.add_argument('--run_index', type=int, default=0,
+                        help='Starting reproducibility-run index; standalone evaluation uses this index to resolve its checkpoint setting.')
+    parser.add_argument('--tft_paired_initialization', action='store_true', default=False,
+                        help='Construct an explicit reference and copy every shared TFT tensor bitwise into the variant (semantics-v2, extended_safe only).')
+    parser.add_argument('--tft_paired_reference_disable', type=str, default='',
+                        help='Comma-separated TFT boolean flags to disable in the paired reference, e.g. tft_use_fft_branch.')
+    parser.add_argument('--tft_paired_reference_overrides', type=str, default='{}',
+                        help='JSON object of additional tft_* values for the paired reference; shared-name shape changes fail.')
+    parser.add_argument('--tft_paired_reference_only_pattern', action='append', default=[],
+                        help='Repeatable regex allowing state names present only in the paired reference.')
+    parser.add_argument('--tft_paired_variant_only_pattern', action='append', default=[],
+                        help='Repeatable regex allowing state names present only in the paired variant.')
     parser.add_argument('--jitter', default=False, action="store_true", help="Jitter preset augmentation")
     parser.add_argument('--scaling', default=False, action="store_true", help="Scaling preset augmentation")
     parser.add_argument('--permutation', default=False, action="store_true",
@@ -155,6 +188,77 @@ def build_parser():
     parser.add_argument('--tft_profile', type=str, default='extended_safe',
                         choices=['canonical', 'extended_safe', 'experimental_full'],
                         help='Resolved TFT profile. canonical is the trustworthy reference, extended_safe keeps repaired defaults, experimental_full enables hardened research combinations.')
+    parser.add_argument('--tft_extension_semantics_version', type=int, default=2,
+                        choices=[1, 2],
+                        help='Native TFT extension semantics: 1 replays legacy July-2026 operators; 2 uses repaired/current contracts.')
+    parser.add_argument('--tft_allow_legacy_extension_checkpoint', action='store_true', default=False,
+                        help='Explicitly allow loading legacy extension weights, only with --tft_extension_semantics_version 1.')
+    tft_integration_choices = ['off', 'neutral', 'small_residual', 'legacy']
+    for integration_flag, integration_label in (
+        ('tft_fft_integration_mode', 'FFT branch'),
+        ('tft_cross_attention_integration_mode', 'explicit cross-attention'),
+        ('tft_lag_integration_mode', 'lag-attention'),
+        ('tft_higher_order_integration_mode', 'higher-order interaction'),
+        ('tft_temporal_compression_integration_mode', 'temporal compression'),
+        ('tft_graph_integration_mode', 'graph cross-mixing'),
+        ('tft_covariate_reattention_integration_mode', 'covariate reattention'),
+        ('tft_regime_moe_integration_mode', 'regime MoE'),
+        ('tft_dual_attention_integration_mode', 'dual attention'),
+        ('tft_vsn_bypass_integration_mode', 'VSN residual bypass'),
+    ):
+        parser.add_argument(
+            f'--{integration_flag}',
+            type=str,
+            default=None,
+            choices=tft_integration_choices,
+            help=(
+                f'Integration mode for the native TFT {integration_label}; '
+                'an enabled semantics-v2 branch defaults to exact-neutral.'
+            ),
+        )
+    parser.add_argument(
+        '--tft_extension_residual_shape',
+        type=str,
+        default='scalar',
+        choices=['scalar', 'channel'],
+        help='Use one residual strength per extension or one per latent channel.',
+    )
+    parser.add_argument(
+        '--tft_small_residual_init',
+        type=float,
+        default=1e-3,
+        help='Declared nonzero initialization used only by small_residual mode.',
+    )
+    parser.add_argument(
+        '--tft_position_unit',
+        type=str,
+        default='steps',
+        choices=['steps', 'trading_sessions', 'calendar_days'],
+        help='Physical unit of native TFT temporal coordinates.',
+    )
+    parser.add_argument(
+        '--tft_position_source',
+        type=str,
+        default='row_index',
+        choices=['row_index', 'explicit_argument', 'known_feature'],
+        help='Source of the native TFT temporal-coordinate contract.',
+    )
+    parser.add_argument(
+        '--tft_position_feature_name',
+        type=str,
+        default='',
+        help='Known-feature column used as temporal coordinates when source=known_feature.',
+    )
+    parser.add_argument(
+        '--tft_declared_regular_sampling',
+        action='store_true',
+        default=False,
+        help=(
+            'Explicitly declare that adjacent rows are equally spaced. Required '
+            'by semantics-v2 when tft_position_source=row_index; do not use for '
+            'irregular market-calendar observations.'
+        ),
+    )
 
     # TFT strict schema controls
     parser.add_argument('--tft_observed_pos', type=str, default='',
@@ -349,6 +453,30 @@ def normalize_args(args):
     args.tft_lag_scales = _parse_int_list(args.tft_lag_scales)
     args.tft_output_quantiles = _parse_float_list(args.tft_output_quantiles)
     args.tft_known_feature_names = _parse_str_list(args.tft_known_feature_names)
+    args.tft_paired_reference_disable = (
+        _parse_str_list(args.tft_paired_reference_disable) or []
+    )
+    args.tft_paired_reference_only_pattern = [
+        str(value).strip()
+        for value in (args.tft_paired_reference_only_pattern or [])
+        if str(value).strip()
+    ]
+    args.tft_paired_variant_only_pattern = [
+        str(value).strip()
+        for value in (args.tft_paired_variant_only_pattern or [])
+        if str(value).strip()
+    ]
+    if isinstance(args.tft_paired_reference_overrides, str):
+        try:
+            args.tft_paired_reference_overrides = json.loads(
+                args.tft_paired_reference_overrides
+            )
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "tft_paired_reference_overrides must be a valid JSON object."
+            ) from exc
+    if not isinstance(args.tft_paired_reference_overrides, dict):
+        raise ValueError("tft_paired_reference_overrides must resolve to a JSON object.")
     if isinstance(args.tft_output_mode, str) and args.tft_output_mode.strip() == '':
         args.tft_output_mode = None
     if args.tft_interaction_rank == 0:
@@ -357,11 +485,143 @@ def normalize_args(args):
         args.tft_temporal_hidden_size = None
     if args.tft_moe_hidden_size == 0:
         args.tft_moe_hidden_size = None
-    if args.tft_known_len <= 0:
+    if args.tft_known_len is not None and args.tft_known_len <= 0:
         args.tft_known_len = None
 
     if args.model == 'TemporalFusionTransformer':
         args = apply_tft_profile(args)
+
+    is_native_tft = args.model == 'TemporalFusionTransformer'
+    semantics_version = int(
+        getattr(args, 'tft_extension_semantics_version', 1)
+    ) if is_native_tft else 1
+    if args.deterministic_mode is None:
+        args.deterministic_mode = (
+            'warn' if is_native_tft and semantics_version == 2 else 'off'
+        )
+    if args.evaluation_policy is None:
+        args.evaluation_policy = (
+            'validation_only'
+            if is_native_tft and semantics_version == 2
+            else 'legacy_val_and_test'
+        )
+    if int(args.run_index) < 0:
+        raise ValueError("run_index must be non-negative.")
+
+    paired_controls_present = bool(
+        args.tft_paired_reference_disable
+        or args.tft_paired_reference_overrides
+        or args.tft_paired_reference_only_pattern
+        or args.tft_paired_variant_only_pattern
+    )
+    if paired_controls_present and not args.tft_paired_initialization:
+        raise ValueError(
+            "tft_paired_reference_* controls require --tft_paired_initialization."
+        )
+    if args.tft_paired_initialization:
+        if not is_native_tft:
+            raise ValueError(
+                "--tft_paired_initialization is supported only for the native "
+                "TemporalFusionTransformer."
+            )
+        if semantics_version != 2:
+            raise ValueError(
+                "--tft_paired_initialization requires "
+                "--tft_extension_semantics_version 2."
+            )
+        if args.tft_profile != 'extended_safe':
+            raise ValueError(
+                "--tft_paired_initialization currently requires "
+                "--tft_profile extended_safe so profile defaults cannot silently "
+                "change the reference arm."
+            )
+        if not (
+            args.tft_paired_reference_disable
+            or args.tft_paired_reference_overrides
+        ):
+            raise ValueError(
+                "--tft_paired_initialization requires at least one reference "
+                "disable flag or override."
+            )
+
+        forbidden_reference_keys = {
+            'tft_profile',
+            'tft_extension_semantics_version',
+            'tft_allow_legacy_extension_checkpoint',
+            'tft_config_digest',
+            'tft_digest_schema',
+            'tft_paired_initialization',
+            'tft_paired_reference_disable',
+            'tft_paired_reference_overrides',
+            'tft_paired_reference_only_pattern',
+            'tft_paired_variant_only_pattern',
+        }
+        disable_flags = sorted(set(args.tft_paired_reference_disable))
+        if len(disable_flags) != len(args.tft_paired_reference_disable):
+            raise ValueError("tft_paired_reference_disable contains duplicate flags.")
+        for key in disable_flags:
+            if key in forbidden_reference_keys or not key.startswith('tft_'):
+                raise ValueError(f"Invalid paired reference disable flag: {key!r}.")
+            if not hasattr(args, key):
+                raise ValueError(f"Unknown paired reference disable flag: {key!r}.")
+            if key not in TFT_PAIRED_ARCHITECTURE_KEYS:
+                raise ValueError(
+                    f"Paired reference disable {key!r} is not an allowed TFT "
+                    "architecture control."
+                )
+            value = getattr(args, key)
+            if not isinstance(value, bool):
+                raise ValueError(
+                    f"Paired reference disable flag {key!r} must name a boolean option."
+                )
+            if not value:
+                raise ValueError(
+                    f"Paired variant does not enable {key!r}; disabling it in the "
+                    "reference would not create an ablation."
+                )
+
+        overrides = {}
+        for key, value in sorted(args.tft_paired_reference_overrides.items()):
+            if (
+                not isinstance(key, str)
+                or key in forbidden_reference_keys
+                or not key.startswith('tft_')
+            ):
+                raise ValueError(f"Invalid paired reference override key: {key!r}.")
+            if not hasattr(args, key):
+                raise ValueError(f"Unknown paired reference override key: {key!r}.")
+            if key not in TFT_PAIRED_ARCHITECTURE_KEYS:
+                raise ValueError(
+                    f"Paired reference override {key!r} is not an allowed TFT "
+                    "architecture control."
+                )
+            if key in disable_flags:
+                raise ValueError(
+                    f"Paired reference key {key!r} cannot be both disabled and overridden."
+                )
+            if getattr(args, key) == value:
+                raise ValueError(
+                    f"Paired reference override {key!r} equals the variant value; "
+                    "it would not create an ablation."
+                )
+            overrides[key] = value
+
+        args.tft_paired_reference_disable = disable_flags
+        args.tft_paired_reference_overrides = overrides
+
+    paired_spec = {
+        'schema_version': 1,
+        'enabled': bool(args.tft_paired_initialization),
+        'reference_disable': sorted(args.tft_paired_reference_disable),
+        'reference_overrides': {
+            key: args.tft_paired_reference_overrides[key]
+            for key in sorted(args.tft_paired_reference_overrides)
+        },
+        'reference_only_patterns': list(args.tft_paired_reference_only_pattern),
+        'variant_only_patterns': list(args.tft_paired_variant_only_pattern),
+    }
+    args.tft_paired_reference_spec = paired_spec
+    args.tft_paired_reference_spec_digest = stable_json_hash(paired_spec)[:12]
 
     if args.model == 'TemporalFusionTransformer':
         from models.TemporalFusionTransformer import datatype_dict
@@ -406,22 +666,175 @@ def build_setting(args, ii):
         args.distil,
         args.des, ii)
     if args.model == 'TemporalFusionTransformer':
-        setting = f"{setting}_tp{args.tft_profile}_td{args.tft_config_digest}"
+        setting = (
+            f"{setting}_tp{args.tft_profile}"
+            f"_tsv{args.tft_extension_semantics_version}"
+            f"_td{args.tft_config_digest}"
+        )
+        if int(args.tft_extension_semantics_version) == 2:
+            run_digest = getattr(args, 'reproducibility_digest', None)
+            if not run_digest:
+                bundle = resolve_seed_bundle(args, iteration=ii)
+                run_digest = stable_json_hash(
+                    {
+                        "seed_bundle": asdict(bundle),
+                        "deterministic_mode": getattr(args, 'deterministic_mode', 'warn'),
+                        "evaluation_policy": getattr(args, 'evaluation_policy', 'validation_only'),
+                        "paired_reference_spec": getattr(
+                            args,
+                            'tft_paired_reference_spec',
+                            {
+                                'schema_version': 1,
+                                'enabled': False,
+                                'reference_disable': [],
+                                'reference_overrides': {},
+                                'reference_only_patterns': [],
+                                'variant_only_patterns': [],
+                            },
+                        ),
+                    }
+                )[:12]
+            setting = f"{setting}_rd{run_digest}"
+    return setting
+
+
+def resolve_run_args(base_args, iteration):
+    run_args = copy.deepcopy(base_args)
+    run_args._seed_roots = {
+        'seed': int(getattr(base_args, 'seed', 2021)),
+        'model_init_seed': getattr(base_args, 'model_init_seed', None),
+        'extension_init_seed': getattr(base_args, 'extension_init_seed', None),
+        'data_order_seed': getattr(base_args, 'data_order_seed', None),
+        'worker_seed': getattr(base_args, 'worker_seed', None),
+        'training_seed': getattr(base_args, 'training_seed', None),
+    }
+    isolated_v2 = (
+        getattr(run_args, 'model', None) == 'TemporalFusionTransformer'
+        and int(getattr(run_args, 'tft_extension_semantics_version', 1)) == 2
+    )
+    if isolated_v2:
+        bundle = resolve_seed_bundle(run_args, iteration=iteration)
+    else:
+        # Historical/native-v1 and non-TFT paths keep one global stream so the
+        # explicit v1 matrix replay remains faithful. Iterations receive a
+        # deterministic, collision-free base+index schedule.
+        base_seed = int(getattr(run_args, 'seed', 2021))
+        if base_seed < 0:
+            raise ValueError("seed must be non-negative.")
+        legacy_seed = base_seed + int(iteration)
+        if legacy_seed >= 2**63 - 1:
+            raise ValueError("seed + run_index exceeds Torch's portable seed range.")
+        bundle = SeedBundle(
+            derivation_version=0,
+            base_seed=base_seed,
+            iteration=int(iteration),
+            experiment_seed=legacy_seed,
+            model_init_seed=legacy_seed,
+            extension_init_seed=legacy_seed,
+            data_order_seed=legacy_seed,
+            worker_seed=legacy_seed,
+            training_seed=legacy_seed,
+        )
+    run_args._isolated_rng_streams = isolated_v2
+    for name, value in asdict(bundle).items():
+        if name in {
+            'model_init_seed',
+            'extension_init_seed',
+            'data_order_seed',
+            'worker_seed',
+        }:
+            setattr(run_args, name, value)
+    run_args.experiment_seed = bundle.experiment_seed
+    run_args.training_seed = bundle.training_seed
+    run_args.seed_derivation_version = bundle.derivation_version
+    run_args.run_index = int(iteration)
+    run_args._seed_bundle = bundle
+    run_args.reproducibility_digest = stable_json_hash(
+        {
+            "seed_bundle": asdict(bundle),
+            "deterministic_mode": run_args.deterministic_mode,
+            "evaluation_policy": run_args.evaluation_policy,
+            "paired_reference_spec": getattr(
+                run_args,
+                'tft_paired_reference_spec',
+                {
+                    'schema_version': 1,
+                    'enabled': False,
+                    'reference_disable': [],
+                    'reference_overrides': {},
+                    'reference_only_patterns': [],
+                    'variant_only_patterns': [],
+                },
+            ),
+        }
+    )[:12]
+    return run_args, bundle
+
+
+def _clear_device_cache(args):
+    if not args.use_gpu:
+        return
+    if args.gpu_type == 'mps':
+        torch.backends.mps.empty_cache()
+    elif args.gpu_type == 'cuda':
+        torch.cuda.empty_cache()
+
+
+def execute_training_runs(args, Exp):
+    settings = []
+    for offset in range(args.itr):
+        iteration = int(args.run_index) + offset
+        run_args, bundle = resolve_run_args(args, iteration)
+        set_experiment_seed(
+            bundle,
+            selected_seed=bundle.model_init_seed,
+            deterministic_mode=run_args.deterministic_mode,
+        )
+        print('Args in experiment:')
+        print_args(run_args)
+        exp = Exp(run_args)
+        if run_args._isolated_rng_streams:
+            set_experiment_seed(
+                bundle,
+                selected_seed=bundle.training_seed,
+                deterministic_mode=run_args.deterministic_mode,
+            )
+        setting = build_setting(run_args, iteration)
+        settings.append(setting)
+
+        print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+        exp.train(setting)
+
+        if run_args.evaluation_policy == 'legacy_val_and_test':
+            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            exp.test(setting)
+        _clear_device_cache(run_args)
+    return settings
+
+
+def execute_standalone_evaluation(args, Exp):
+    iteration = int(args.run_index)
+    run_args, bundle = resolve_run_args(args, iteration)
+    set_experiment_seed(
+        bundle,
+        selected_seed=bundle.model_init_seed,
+        deterministic_mode=run_args.deterministic_mode,
+    )
+    print('Args in experiment:')
+    print_args(run_args)
+    exp = Exp(run_args)
+    setting = build_setting(run_args, iteration)
+
+    print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+    exp.test(setting, test=1)
+    _clear_device_cache(run_args)
     return setting
 
 
 if __name__ == '__main__':
-    fix_seed = 2021
-    random.seed(fix_seed)
-    torch.manual_seed(fix_seed)
-    np.random.seed(fix_seed)
 
     parser = build_parser()
     args = normalize_args(parser.parse_args())
-
-    print('Args in experiment:')
-    print_args(args)
-
 
     if args.task_name == 'long_term_forecast':
         from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
@@ -446,30 +859,6 @@ if __name__ == '__main__':
         Exp = Exp_Long_Term_Forecast
 
     if args.is_training:
-        for ii in range(args.itr):
-            # setting record of experiments
-            exp = Exp(args)  # set experiments
-            setting = build_setting(args, ii)
-
-            print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
-            exp.train(setting)
-
-            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-            exp.test(setting)
-            if args.use_gpu:
-                if args.gpu_type == 'mps':
-                    torch.backends.mps.empty_cache()
-                elif args.gpu_type == 'cuda':
-                    torch.cuda.empty_cache()
+        execute_training_runs(args, Exp)
     else:
-        exp = Exp(args)  # set experiments
-        ii = 0
-        setting = build_setting(args, ii)
-
-        print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-        exp.test(setting, test=1)
-        if args.use_gpu:
-            if args.gpu_type == 'mps':
-                torch.backends.mps.empty_cache()
-            elif args.gpu_type == 'cuda':
-                torch.cuda.empty_cache()
+        execute_standalone_evaluation(args, Exp)

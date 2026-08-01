@@ -67,6 +67,8 @@ def build_base_config():
         features="M",
         target="OT",
         freq="h",
+        # Synthetic benchmark samples are regularly spaced by construction.
+        tft_declared_regular_sampling=True,
         checkpoints="./checkpoints/",
         seq_len=24,
         label_len=12,

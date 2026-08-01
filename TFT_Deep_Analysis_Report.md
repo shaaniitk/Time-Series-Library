@@ -25,6 +25,20 @@ Status note on Tuesday, July 28, 2026:
 - `TFT-T01` and `G2` are now closed in the current worktree;
 - the upgrade recommendations below now primarily serve as the post-`G1` roadmap.
 
+Post-matrix qualification on Friday, July 31, 2026: trained-checkpoint audit
+reproduced additional intended-semantic and experiment-control defects outside
+the original task acceptance scope. Section 14 and tasks `TFT-SR00`–`TFT-SR09`
+supersede any reading that all optional extensions are semantically ready for a
+new scientific dataset.
+
+Implementation update on Saturday, August 1, 2026: `TFT-SR00` and `TFT-SR01`
+are complete. The 14-case legacy matrix is frozen by a 65-record hash inventory,
+v1/v2 identities and checkpoint policies are explicit, and unrepaired operators
+cannot be published as v2 artifacts. Production experiments now have isolated
+seed streams, deterministic data order, exact paired common initialization,
+tamper-evident run/fold manifests, and validation-only fitting. `TFT-SR02`
+exact-neutrality/coordinate work is active.
+
 At the audited base commit, the default ETT point-forecast path could train and its existing tests could pass, but that alone did not clear the feature set for production. The key audited issues were:
 
 - static covariates are erased by per-window normalization before the static encoder sees them;
@@ -1008,20 +1022,118 @@ create independent cycles. The classical Navagraha profile and modern
 outer-planet profile must remain separate. Longer history or preregistered
 validation across other markets is required for stronger slow-cycle conclusions.
 
-### 13.6 Required next input
+### 13.6 Supplied-data audit result and required remediation
 
-Before any loader or architecture patch, inspect representative merged rows, the full column dictionary/units, PySwissEph generation code and settings, market-source/adjustment policy, market/ephemeris timestamps, trading-holiday handling, Rahu/Ketu construction, and Hilbert-transform boundary semantics.
+The wide CSVs have now been inspected. Their continuous longitude/motion fields
+are internally coherent, but all supplied rashi pairs implement an exact
+off-by-one/clipping transform, the return file mixes session-date conventions,
+Shadbala lacks reproducible provenance, and no Hilbert fields are identifiable.
+The repository contains no PySwissEph generator or convention manifest. The
+full evidence and admitted 37-column provisional slice are in
+[`projects/financial_astrology_tft/DATA_AUDIT_REPORT.md`](projects/financial_astrology_tft/DATA_AUDIT_REPORT.md).
 
-## 14. Bottom Line
+Before any loader or architecture patch, obtain authoritative raw NIFTY
+OHLC/session keys plus the PySwissEph generator/settings, reproduce selected
+rows, and resolve market/ephemeris timestamps. Shadbala remains quarantined;
+Hilbert code is needed only if the user intended a separate absent feature arm.
 
-The repository has a promising, feature-rich temporal model. Native TFT safety, canonicalization, and planned extension hardening are now implemented in the current worktree; remaining extension work is comparative evidence rather than the original contract-repair backlog.
+## 14. Post-Matrix Semantic Audit — 2026-07-31
+
+The July ETTh1 feature matrix adds a second kind of evidence: trained behavior,
+checkpoint state, parameter gradients, and ablation comparability. It does not
+invalidate the historical repairs recorded for `TFT-A01`–`TFT-A10`; it shows
+that those structural/safety contracts were narrower than intended-feature
+semantics and fair experimental integration.
+
+The matrix subsequently completed all 14 cases at 23:22 Asia/Kolkata. The
+experimental-full profile produced MSE `0.04245717` and MAE `0.16271803`, which
+is `18.96%` worse than the baseline by MSE. Its nominal-80% interval covered
+`67.67%`. The result is evidence against enabling the stacked legacy profile,
+not a clean attribution to any one component, because the same seed,
+initialization, neutrality, and semantic limitations described below remain.
+
+### 14.1 Experiment-control defect
+
+`run.py` exposes `--seed` but hardcodes `2021`. Optional modules are constructed
+before shared downstream modules and before shuffled loaders are iterated.
+Consequently a one-seed feature run changes common parameter initialization,
+batch order, worker seeds, and later dropout streams merely by allocating the
+extension. Baseline/SDPA parity proves deterministic replay only when the model
+graph is unchanged; it does not make the other rows paired ablations.
+
+The production loop also evaluates test data every epoch. Although checkpoint
+selection uses validation, repeated human visibility makes the test period
+unsuitable as a pristine confirmatory lockbox.
+
+### 14.2 Feature-by-feature classification
+
+| Feature | Test delta vs baseline | Post-matrix finding | Current classification |
+|---|---:|---|---|
+| Learned FFT | +1.08% MSE | Sixteen parameters are interpolated as control points over all 61 bins; the trained mask remained near-uniform around 0.5. Fusion is not baseline-neutral. | Inconclusive; selector/filter semantics ineffective in this run |
+| Interpretable cross-attention | +1.34% | Wiring is correct and gradient-live. Best validation loss improved about 5.9% while test worsened, indicating split/seed generalization rather than a dead path. Metadata labels the interpretable branch incorrectly. | No isolated forecast defect; neutral integration/reporting needed |
+| Latent higher-order | +3.31% | Runs after VSN collapse and multiplies projections of the same latent token. It is not a named original-covariate interaction; returned “contribution” is pre-projection. | Honest latent polynomial block, not evidence for covariate pairs |
+| Lag attention | +3.50% | Causal and live on regular ETTh1, but lag `L` attends to the complete prefix through `t-L`, not exactly `x[t-L]`. Compressed/irregular key coordinates use the wrong source formula. | Shifted-prefix ablation; exact/calendar-time lag still absent |
+| Temporal compression | +4.53% | Forced at history 96 despite a long-sequence purpose. With one decoder layer every decompressor parameter has zero gradient; final-layer decompression is dead for a future-only loss. | Invalid general compression verdict; codec semantics require redesign |
+| Sparse cross-mixing | +8.11% | Strong non-identity transform; one adjacency is broadcast as multiple heads. `top_k=3` means 27% history density but 75% future density. Trained future selected-edge weights were nearly uniform. | Most concerning integration; graph idea not disproven |
+| Experimental-full stack | +18.96% | Combines multiple non-neutral and semantically mismatched paths, so interaction and capacity effects cannot be separated. | Reject as a starting profile; not a component-level verdict |
+
+All audited paths other than the dead final decompressor are active and receive
+finite gradients. Eighty existing extension/comprehensive tests passed. Those
+tests establish shapes, finiteness, and selected gradients; they do not prove
+baseline-neutral initialization, semantic recovery, fair paired randomness, or
+usefulness against matched controls.
+
+### 14.3 Superseding qualifications to old extension claims
+
+- `TFT-A01` established a per-frequency interpolated spectral mask. It did not
+  establish that `modes=K` in learned mode retains/selects `K` bins or that the
+  branch learns a useful sparse selector.
+- `TFT-A04` preserved sparse support through temporal evolution. It did not
+  establish identity-safe graph insertion, genuine multi-head adjacency, or
+  comparable history/future density.
+- `TFT-A07` established padding masks and regular shifted-history positions. It
+  did not establish exact-lag semantics or correct source coordinates after
+  irregular/compressed token mapping.
+- `TFT-C05` repaired gate cardinality and order-3 execution. It did not make the
+  post-VSN block an original-variable interaction mechanism.
+- Temporal compression shape/reconstruction tests did not audit every
+  decompressor parameter's gradient.
+
+The corrective work is specified as `TFT-SR00`–`TFT-SR09` in
+[`implementation_plan.md`](implementation_plan.md#14-post-matrix-native-tft-semantic-repair-wave).
+`TFT-SR00` passed with `EV-IMP-025`, and `TFT-SR01` passed independent review
+with `EV-IMP-026`; `TFT-SR02` is active.
+The release gate uses exact no-op parity, paired initialization/data order,
+known-answer synthetic tasks, all-parameter liveness, irregular-time tests, and
+a short reproducibility replay rather than another multi-day ETT matrix.
+
+### 14.4 Consequence for the financial-astrology design
+
+The first NIFTY experiment must not combine these generic extensions. It starts
+with a small market/calendar baseline and named planetary values as true
+known-future covariates. Alleged planetary interactions are explicit pre-VSN
+body/pair features; alleged persistence uses elapsed-calendar-time response
+states; long orbital cycles use circular and relative phase. Generic FFT, row
+lag, graph mixing, compression, MoE, and latent higher-order remain off until a
+simple real ephemeris block beats matched smooth nulls.
+
+## 15. Bottom Line
+
+The repository has a promising, feature-rich temporal model. The original native-TFT safety and canonicalization roadmap is implemented, but the completed feature matrix exposed a second class of work: several advanced switches execute without yet implementing the scientific semantics their names imply. The first two post-matrix tasks (`TFT-SR00` and `TFT-SR01`) are closed; `TFT-SR02` through `TFT-SR09` remain the open native gate. This is not merely another hyperparameter comparison.
 
 For domains with real governing equations, the generic physics effort should still begin outside the model with named, unit-aware, differentiable output constraints and synthetic-law validation.
 
-For the NIFTY/planetary hypothesis opened on Wednesday, July 29, 2026, the next meaningful work is different: audit the data/provenance, make calendar plus planetary trajectories true production known-future covariates, freeze a falsifiable incremental-value protocol, and test a small capacity-matched raw representation against smooth null ephemerides before building grouped aspect or multiscale modules.
+For the NIFTY/planetary hypothesis opened on Wednesday, July 29, 2026, the
+initial source audit is complete and found blocking rashi/date/provenance
+defects. The next meaningful work is to rebuild authoritative session-dated
+market targets, reproduce the planetary generator/conventions, make calendar
+plus admitted planetary trajectories true production known-future covariates,
+freeze a falsifiable incremental-value protocol, and test a small
+capacity-matched raw representation against smooth null ephemerides before
+building grouped aspect or multiscale modules.
 
-That sequencing produces two durable assets:
+That sequencing produces three durable assets:
 
-1. a trustworthy canonical native TFT with clearly labeled extensions; and
+1. a trustworthy canonical native TFT with clearly labeled extensions;
 2. a reusable physics-/theory-guided loss framework for future domains with defensible laws; and
 3. a separate, scientifically controlled planetary-covariate research lane whose evidence is based on out-of-sample incremental value rather than architectural complexity or attention weights.

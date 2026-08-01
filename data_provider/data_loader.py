@@ -1,4 +1,5 @@
 import os
+import hashlib
 import numpy as np
 import pandas as pd
 import glob
@@ -10,13 +11,318 @@ from utils.timefeatures import time_features
 from data_provider.m4 import M4Dataset, M4Meta
 from data_provider.uea import subsample, interpolate_missing, Normalizer
 from sktime.datasets import load_from_tsfile_to_dataframe
-import warnings
-from utils.augmentation import run_augmentation_single
+from utils.augmentation import augment, run_augmentation_single
 from datasets import load_dataset
 from huggingface_hub import hf_hub_download
-warnings.filterwarnings('ignore')
+from utils.reproducibility import stable_json_hash
 
 HUGGINGFACE_REPO = "thuml/Time-Series-Library"
+
+_AUGMENTATION_FLAG_NAMES = (
+    "jitter",
+    "scaling",
+    "rotation",
+    "permutation",
+    "randompermutation",
+    "magwarp",
+    "timewarp",
+    "windowslice",
+    "windowwarp",
+    "spawner",
+    "dtwwarp",
+    "shapedtwwarp",
+    "wdba",
+    "discdtw",
+    "discsdtw",
+)
+
+
+def _local_source_identity(path):
+    """Hash current bytes every time; file stat metadata is never authoritative."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    size_bytes = os.path.getsize(path)
+    return {
+        "kind": "local_file",
+        "path": path,
+        "size_bytes": int(size_bytes),
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _resolve_local_source_identity(path):
+    resolved = os.path.realpath(path)
+    return _local_source_identity(resolved)
+
+
+def _resolve_huggingface_source_identity(dataset, config_name, split_name):
+    split = dataset[split_name]
+    identity = {
+        "kind": "huggingface_dataset",
+        "repository": HUGGINGFACE_REPO,
+        "config": str(config_name),
+        "split": str(split_name),
+        "row_count": int(len(split)),
+    }
+    fingerprint = getattr(split, "_fingerprint", None)
+    if fingerprint is not None:
+        identity["fingerprint"] = str(fingerprint)
+    return identity
+
+
+def _iso_timestamp(value):
+    if value is None or pd.isna(value):
+        return None
+    return pd.Timestamp(value).isoformat()
+
+
+def _array_content_sha256(value):
+    array = np.ascontiguousarray(np.asarray(value))
+    digest = hashlib.sha256(b"time-series-library:ndarray-content:v1\n")
+    digest.update(array.dtype.str.encode("ascii"))
+    digest.update(b"\n")
+    digest.update(",".join(str(int(size)) for size in array.shape).encode("ascii"))
+    digest.update(b"\n")
+    digest.update(array.view(np.uint8).reshape(-1).tobytes(order="C"))
+    return digest.hexdigest()
+
+
+def _run_forecast_augmentation(dataset):
+    """Run the unchanged legacy transform while retaining exact provenance."""
+    augmentation_tag = str(getattr(dataset.args, "extra_tag", "") or "")
+    if dataset.set_type == 0 and int(getattr(dataset.args, "augmentation_ratio", 0)) > 0:
+        if getattr(dataset.args, "tft_augmentation_seed_source", None) == "training_seed":
+            # `isolated_rng(training_seed)` already seeded NumPy using its
+            # portable uint32 projection. Calling the legacy wrapper here would
+            # overwrite that state with the original CLI seed (and cannot
+            # accept Torch's full 63-bit derived seed range).
+            x_input = dataset.data_x[np.newaxis, :]
+            transformed = x_input
+            for _ in range(int(dataset.args.augmentation_ratio)):
+                transformed, augmentation_tag = augment(
+                    x_input, dataset.data_y, dataset.args
+                )
+            if getattr(dataset.args, "extra_tag", ""):
+                augmentation_tag += "_" + str(dataset.args.extra_tag)
+            dataset.data_x = transformed.squeeze(0)
+        else:
+            dataset.data_x, dataset.data_y, augmentation_tag = run_augmentation_single(
+                dataset.data_x, dataset.data_y, dataset.args
+            )
+    dataset.augmentation_tag = str(augmentation_tag)
+
+
+def _augmentation_manifest(dataset):
+    ratio = int(getattr(dataset.args, "augmentation_ratio", 0))
+    applied = int(dataset.set_type) == 0 and ratio > 0
+    config = {
+        "augmentation_ratio": ratio,
+        "extra_tag": str(getattr(dataset.args, "extra_tag", "") or ""),
+        "flags": {
+            name: bool(getattr(dataset.args, name, False))
+            for name in _AUGMENTATION_FLAG_NAMES
+        },
+    }
+    effective_seed = getattr(dataset.args, "seed", None) if applied else None
+    if effective_seed is not None:
+        effective_seed = int(effective_seed)
+    seed_source = (
+        str(getattr(dataset.args, "tft_augmentation_seed_source", "args.seed"))
+        if applied
+        else None
+    )
+    content_hashes = {
+        "data_x_sha256": _array_content_sha256(dataset.data_x),
+        "data_y_sha256": _array_content_sha256(dataset.data_y),
+    }
+    content_hashes["combined_sha256"] = stable_json_hash(content_hashes)
+    return {
+        "applied": applied,
+        "config": config,
+        "config_hash": stable_json_hash(config),
+        "effective_seed": effective_seed,
+        "effective_numpy_seed": (
+            effective_seed % (1 << 32) if effective_seed is not None else None
+        ),
+        "seed_source": seed_source,
+        "tag": str(getattr(dataset, "augmentation_tag", "")),
+        "transformed_data_content_hash": content_hashes["combined_sha256"],
+        "content_hashes": content_hashes,
+    }
+
+
+def _attach_forecast_fold_manifest(dataset, df_raw, source_identity, border1, border2):
+    """Attach a truthful, JSON-safe split manifest without changing samples.
+
+    ``border1`` includes the look-back overlap for validation and test folds.
+    The separately recorded forecast interval excludes that overlap.
+    """
+    source_rows = int(len(df_raw))
+    split_rows = int(len(dataset.data_x))
+    sample_count = max(0, split_rows - dataset.seq_len - dataset.pred_len + 1)
+    augmentation = _augmentation_manifest(dataset)
+
+    effective_start = min(max(int(border1), 0), source_rows)
+    effective_end = min(effective_start + split_rows, source_rows)
+    first_forecast_pos = effective_start + int(dataset.seq_len) if sample_count else None
+    last_forecast_pos = effective_end - 1 if sample_count else None
+
+    dates = df_raw["date"] if "date" in df_raw.columns else None
+    first_forecast_timestamp = None
+    last_forecast_timestamp = None
+    if dates is not None and first_forecast_pos is not None:
+        if 0 <= first_forecast_pos < source_rows:
+            first_forecast_timestamp = _iso_timestamp(dates.iloc[first_forecast_pos])
+        if 0 <= last_forecast_pos < source_rows:
+            last_forecast_timestamp = _iso_timestamp(dates.iloc[last_forecast_pos])
+
+    positional_ids_supported = sample_count > 0
+    sample_id_start = effective_start if positional_ids_supported else None
+    sample_id_end = (
+        effective_start + sample_count - 1 if positional_ids_supported else None
+    )
+    feature_names = [str(name) for name in getattr(dataset, "feature_names", ())]
+    split_name = {0: "train", 1: "val", 2: "test"}[int(dataset.set_type)]
+    sample_id_prefix = None
+    if augmentation["applied"]:
+        sample_id_prefix = (
+            "transformed:"
+            + str(augmentation["transformed_data_content_hash"])
+        )
+
+    manifest = {
+        "schema_version": 1,
+        "dataset_class": type(dataset).__name__,
+        "split": split_name,
+        "source_identity": dict(source_identity),
+        "split_boundaries": {
+            "declared_start_pos": int(border1),
+            "declared_end_exclusive_pos": int(border2),
+            "effective_start_pos": effective_start,
+            "effective_end_exclusive_pos": effective_end,
+            "forecast_start_pos": first_forecast_pos,
+            "forecast_end_exclusive_pos": effective_end if sample_count else None,
+        },
+        "lengths": {
+            "source_rows": source_rows,
+            "split_rows_including_history_overlap": split_rows,
+            "sample_count": sample_count,
+            "seq_len": int(dataset.seq_len),
+            "label_len": int(dataset.label_len),
+            "pred_len": int(dataset.pred_len),
+        },
+        "features": {
+            "mode": str(dataset.features),
+            "target": str(dataset.target),
+            "columns": feature_names,
+        },
+        "augmentation": augmentation,
+        "first_forecast_timestamp": first_forecast_timestamp,
+        "last_forecast_timestamp": last_forecast_timestamp,
+        "positional_sample_id_range": {
+            "prefix": sample_id_prefix,
+            "start": sample_id_start,
+            "end_inclusive": sample_id_end,
+        },
+    }
+    coordinate_manifest = getattr(dataset, "temporal_coordinate_manifest", None)
+    if coordinate_manifest is not None:
+        manifest["temporal_coordinates"] = dict(coordinate_manifest)
+    dataset.fold_manifest = manifest
+    dataset.fold_manifest_hash = stable_json_hash(manifest)
+    dataset.positional_sample_id_start = sample_id_start if sample_id_start is not None else 0
+    dataset.positional_sample_id_end = sample_id_end
+    dataset.positional_sample_ids_supported = positional_ids_supported
+    dataset.positional_sample_id_prefix = sample_id_prefix
+
+
+def _configure_tft_temporal_coordinates(dataset, df_raw, border1, border2):
+    """Attach physical coordinates for native semantics-v2 explicit batches.
+
+    The stored array is aligned with ``data_x`` rather than the full source.
+    Calendar-day coordinates retain weekend/holiday gaps; trading-session and
+    step coordinates intentionally count source rows.
+    """
+
+    args = dataset.args
+    if (
+        getattr(args, "model", None) != "TemporalFusionTransformer"
+        or int(getattr(args, "tft_extension_semantics_version", 1)) != 2
+        or str(getattr(args, "tft_position_source", "row_index"))
+        != "explicit_argument"
+    ):
+        return
+    if "date" not in df_raw.columns:
+        raise ValueError(
+            "Native TFT explicit temporal coordinates require a date column."
+        )
+
+    timestamps = pd.DatetimeIndex(
+        pd.to_datetime(df_raw["date"], errors="raise", utc=True)
+    )
+    if timestamps.hasnans:
+        raise ValueError("TFT temporal-coordinate dates must not contain NaT.")
+    timestamp_ns = timestamps.asi8
+    if len(timestamp_ns) > 1 and np.any(np.diff(timestamp_ns) <= 0):
+        raise ValueError(
+            "TFT temporal-coordinate dates must be strictly increasing."
+        )
+
+    unit = str(getattr(args, "tft_position_unit", "steps"))
+    if unit == "calendar_days":
+        full_positions = (
+            timestamp_ns - timestamp_ns[0]
+        ).astype(np.float64) / (24.0 * 60.0 * 60.0 * 1e9)
+    elif unit in {"steps", "trading_sessions"}:
+        full_positions = np.arange(len(df_raw), dtype=np.float64)
+    else:
+        raise ValueError(
+            "tft_position_unit must be steps, trading_sessions, or calendar_days."
+        )
+
+    split_positions = np.asarray(
+        full_positions[int(border1):int(border2)], dtype=np.float64
+    )
+    if split_positions.shape[0] != len(dataset.data_x):
+        raise RuntimeError(
+            "Temporal coordinates no longer align with the transformed forecast split."
+        )
+    dataset.data_temporal_positions = split_positions
+    dataset.data_temporal_valid_mask = np.ones(
+        split_positions.shape, dtype=np.bool_
+    )
+    dataset.temporal_coordinate_manifest = {
+        "schema_version": 1,
+        "source": "explicit_argument",
+        "unit": unit,
+        "valid_mask_semantics": "true_is_valid",
+        "origin_timestamp": timestamps[0].isoformat(),
+        "split_position_start": (
+            float(split_positions[0]) if split_positions.size else None
+        ),
+        "split_position_end": (
+            float(split_positions[-1]) if split_positions.size else None
+        ),
+    }
+
+
+def _with_tft_temporal_coordinates(dataset, s_begin, s_end, sample):
+    positions = getattr(dataset, "data_temporal_positions", None)
+    if positions is None:
+        return sample
+    forecast_end = s_end + dataset.pred_len
+    temporal_positions = positions[s_begin:forecast_end]
+    temporal_valid_mask = dataset.data_temporal_valid_mask[
+        s_begin:forecast_end
+    ]
+    expected = dataset.seq_len + dataset.pred_len
+    if temporal_positions.shape[0] != expected:
+        raise RuntimeError(
+            "TFT sample temporal-coordinate length does not match seq_len+pred_len."
+        )
+    return (*sample, temporal_positions, temporal_valid_mask)
 
 class Dataset_ETT_hour(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
@@ -56,9 +362,11 @@ class Dataset_ETT_hour(Dataset):
 
         if os.path.exists(local_fp):
             df_raw = pd.read_csv(local_fp)
+            source_identity = _resolve_local_source_identity(local_fp)
         else:
             ds = load_dataset(HUGGINGFACE_REPO, name=cfg_name)
             df_raw = ds["train"].to_pandas()
+            source_identity = _resolve_huggingface_source_identity(ds, cfg_name, "train")
             
         border1s = [0, 12 * 30 * 24 - self.seq_len, 12 * 30 * 24 + 4 * 30 * 24 - self.seq_len]
         border2s = [12 * 30 * 24, 12 * 30 * 24 + 4 * 30 * 24, 12 * 30 * 24 + 8 * 30 * 24]
@@ -94,10 +402,15 @@ class Dataset_ETT_hour(Dataset):
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
 
-        if self.set_type == 0 and self.args.augmentation_ratio > 0:
-            self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
+        _run_forecast_augmentation(self)
 
         self.data_stamp = data_stamp
+        _configure_tft_temporal_coordinates(
+            self, df_raw, border1=border1, border2=border2
+        )
+        _attach_forecast_fold_manifest(
+            self, df_raw, source_identity, border1=border1, border2=border2
+        )
 
     def __getitem__(self, index):
         s_begin = index
@@ -110,7 +423,12 @@ class Dataset_ETT_hour(Dataset):
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
 
-        return seq_x, seq_y, seq_x_mark, seq_y_mark
+        return _with_tft_temporal_coordinates(
+            self,
+            s_begin,
+            s_end,
+            (seq_x, seq_y, seq_x_mark, seq_y_mark),
+        )
 
     def __len__(self):
         return len(self.data_x) - self.seq_len - self.pred_len + 1
@@ -157,9 +475,11 @@ class Dataset_ETT_minute(Dataset):
 
         if os.path.exists(local_fp):
             df_raw = pd.read_csv(local_fp)
+            source_identity = _resolve_local_source_identity(local_fp)
         else:
             ds = load_dataset(HUGGINGFACE_REPO, name=cfg_name)
             df_raw = ds["train"].to_pandas()
+            source_identity = _resolve_huggingface_source_identity(ds, cfg_name, "train")
 
         border1s = [0, 12 * 30 * 24 * 4 - self.seq_len, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4 - self.seq_len]
         border2s = [12 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 8 * 30 * 24 * 4]
@@ -197,10 +517,15 @@ class Dataset_ETT_minute(Dataset):
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
 
-        if self.set_type == 0 and self.args.augmentation_ratio > 0:
-            self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
+        _run_forecast_augmentation(self)
 
         self.data_stamp = data_stamp
+        _configure_tft_temporal_coordinates(
+            self, df_raw, border1=border1, border2=border2
+        )
+        _attach_forecast_fold_manifest(
+            self, df_raw, source_identity, border1=border1, border2=border2
+        )
 
     def __getitem__(self, index):
         s_begin = index
@@ -213,7 +538,12 @@ class Dataset_ETT_minute(Dataset):
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
 
-        return seq_x, seq_y, seq_x_mark, seq_y_mark
+        return _with_tft_temporal_coordinates(
+            self,
+            s_begin,
+            s_end,
+            (seq_x, seq_y, seq_x_mark, seq_y_mark),
+        )
 
     def __len__(self):
         return len(self.data_x) - self.seq_len - self.pred_len + 1
@@ -259,10 +589,12 @@ class Dataset_Custom(Dataset):
 
         if os.path.exists(local_fp):
             df_raw = pd.read_csv(local_fp)
+            source_identity = _resolve_local_source_identity(local_fp)
         else:
             ds = load_dataset(HUGGINGFACE_REPO, name=cfg_name)
             split_name = "train" if "train" in ds else list(ds.keys())[0]
             df_raw = ds[split_name].to_pandas()
+            source_identity = _resolve_huggingface_source_identity(ds, cfg_name, split_name)
 
         '''
         df_raw.columns: ['date', ...(other features), target feature]
@@ -308,10 +640,15 @@ class Dataset_Custom(Dataset):
         self.data_x = data[border1:border2]
         self.data_y = data[border1:border2]
 
-        if self.set_type == 0 and self.args.augmentation_ratio > 0:
-            self.data_x, self.data_y, augmentation_tags = run_augmentation_single(self.data_x, self.data_y, self.args)
+        _run_forecast_augmentation(self)
 
         self.data_stamp = data_stamp
+        _configure_tft_temporal_coordinates(
+            self, df_raw, border1=border1, border2=border2
+        )
+        _attach_forecast_fold_manifest(
+            self, df_raw, source_identity, border1=border1, border2=border2
+        )
 
     def __getitem__(self, index):
         s_begin = index
@@ -324,7 +661,12 @@ class Dataset_Custom(Dataset):
         seq_x_mark = self.data_stamp[s_begin:s_end]
         seq_y_mark = self.data_stamp[r_begin:r_end]
 
-        return seq_x, seq_y, seq_x_mark, seq_y_mark
+        return _with_tft_temporal_coordinates(
+            self,
+            s_begin,
+            s_end,
+            (seq_x, seq_y, seq_x_mark, seq_y_mark),
+        )
 
     def __len__(self):
         return len(self.data_x) - self.seq_len - self.pred_len + 1

@@ -2,10 +2,103 @@
 
 > Status: canonical planning document.
 >
-> Implementation is paused pending completion of the native TFT feature matrix,
-> user discussion, and data audit.
+> Detailed planning is authorized. The supplied-data audit found blocking
+> rashi/date defects; data-dependent implementation is waiting for raw OHLC and
+> the PySwissEph generator/convention package. No NIFTY/planet neural training
+> is permitted until corrected-data gates and the native post-matrix semantic
+> gate `TFT-SR09` pass.
 >
 > This plan targets `models/TemporalFusionTransformer.py`, not `TFT_Nixtla.py`.
+
+## 0. Execution Boundary and Native Semantic Gate
+
+The July 2026 ETTh1 matrix proved that advanced branches execute, but its
+trained-checkpoint audit found semantic and experiment-control defects. The
+root native plan now owns `TFT-SR00` through `TFT-SR09` in
+[`implementation_plan.md`](../../implementation_plan.md#14-post-matrix-native-tft-semantic-repair-wave).
+
+This project tracks that dependency through one umbrella task:
+
+```text
+FA-TFT-SEM-001 = complete only when root task TFT-SR09 is DONE
+```
+
+Execution rule:
+
+```text
+TFT-SR00..09 semantic repairs --------------------+
+                                                   +--> first NIFTY training
+FA-DATA-001 data/generator audit --> FA-LEAK-001 --+
+                                  --> FA-LOAD-001 --+
+                                  --> FA-BASE-001 --+
+```
+
+Data remediation can run while native repairs are implemented. Training cannot.
+This avoids another long ETT matrix: the native repair gate uses deterministic
+semantic tests, known-answer synthetic tasks, gradient audits, and a short
+reproducibility micro-run. The next substantial training dataset is NIFTY.
+
+The first NIFTY model keeps these generic switches off even after they are
+repaired:
+
+```text
+FFT
+explicit cross-attention
+generic lag/shifted-history attention
+latent-polynomial higher order
+generic cross-variable graph
+MoE
+temporal compression
+covariate reattention
+```
+
+Repairing a feature makes it honest and testable; it does not establish that a
+small 1995-onward market dataset can support it.
+
+### 0.1 Semantic-defect map for the astrology use case
+
+| Defect | How it could corrupt the NIFTY hypothesis test | Native repair | First-study policy |
+|---|---|---|---|
+| hardcoded/global RNG and changed batch order | a “planet gain” could be a luckier backbone initialization or sample order | `TFT-SR01` separates seed streams and copies shared tensors | five frozen seeds; identical folds, batches, and base checkpoint |
+| optional branch changes the base path immediately | enabling planets can worsen or improve forecasts before learning any planet signal | `TFT-SR02` exact zero-residual contract | disabled/null/real arms begin with identical predictions |
+| row index treated as physical time | Friday-to-Monday, holidays, and coarse slow grids get false durations | `TFT-SR02/SR05/SR07` physical coordinates and masks | all effect clocks use elapsed calendar days |
+| learned FFT mislabeled as selected modes | spectral diagnostics could be interpreted as planetary cycles they did not select | `TFT-SR03` separates hard selection and learned filtering | FFT off; circular phase is the primary cycle representation |
+| generic cross-attention always active | apparent known-future benefit can be an unpaired extra transformation | `TFT-SR04` neutral residual, mask and metadata tests | off until a specific enrichment hypothesis earns an ablation |
+| lag branch attends to a prefix, not an exact lag | a “Saturn 90-day lag” claim would not mean 90-day delayed effect | `TFT-SR05` separates prefix, exact-token, and response semantics | use calendar-time response bank, not generic lag attention |
+| post-VSN polynomial called higher-order covariate interaction | latent products could be misreported as Mercury×Moon or Jupiter×Saturn | `TFT-SR06` named pre-VSN interaction interface | only preregistered body/pair and slow×fast edges |
+| per-feature VSN path crashes | wide named planetary variables cannot be ablated reliably | `TFT-SR06` validation/forward/backward repair | keep off until gate passes; prefer grouped channels |
+| compression contains dead decoder parameters | slow-clock claims could come from an untrained or lossy codec | `TFT-SR07` live anti-aliased K/V pooling and coordinate provenance | off at `seq_len=252`; separate coarse astronomy streams later |
+| graph broadcasts one adjacency and strongly replaces inputs | a learned “planet network” may be dense, untyped, and non-neutral | `TFT-SR08` true head/topology/self-edge and residual semantics | generic graph off; later typed body/pair encoder only |
+| test set evaluated every epoch | model choice can indirectly adapt to the held-out period | `TFT-SR01` validation-only experiment policy | forward test/lockbox remains unopened during fitting |
+
+### 0.2 Astrology-aware semantic fixtures for `TFT-SR09`
+
+The release gate includes generic fixtures, plus these domain-shaped cases. They
+contain synthetic inputs and labels only; they are not claims that astrology is
+true.
+
+1. **Weekend coordinate fixture:** Friday close, Monday open, and Monday close
+   retain their real elapsed-day offsets through masks, lagging, and any pooling.
+2. **Known-future leakage fixture:** changing all target/future OHLC leaves past
+   inputs, planetary decoder inputs, and predictions from a fixed model
+   unchanged.
+3. **Neutral planet fixture:** adding a constructed real/null/disabled planet
+   residual with strength zero produces bitwise-identical base predictions and
+   shared gradients.
+4. **Circular-frequency fixture:** a single synthetic longitude frequency maps
+   to the correct FFT bin when FFT selection is explicitly requested; no claim
+   uses a learned-filter control point as a “selected orbit.”
+5. **Exact-lag fixture:** one impulse is recoverable only at its declared token
+   lag; a separate exponentially decayed calendar-time fixture verifies the
+   response-bank equation.
+6. **Named-pair fixture:** only the declared pair, such as a synthetic
+   `Moon_phase × Saturn_state`, can solve a product target; undeclared pairs
+   have zero route and zero reported contribution.
+7. **Typed-graph fixture:** a planted directed body-pair graph is recovered with
+   the declared self-edge/head policy and cannot mix forbidden market labels.
+8. **Common-randomness fixture:** real and placebo arms have identical shared
+   state hashes, ordered sample IDs, optimizer budget, and base predictions at
+   initialization.
 
 ## 1. Outcome and Non-Outcome
 
@@ -54,6 +147,54 @@ drawdown/crash hazard
 
 The confirmatory target, metric, and horizon are not frozen until the data and
 theory discussions close.
+
+### 2.1 Forecast interval and event availability
+
+A single snapshot on trading date `t` is insufficient. An event may occur after
+the decision close, overnight, during a weekend, or before the next open/close.
+For every forecast origin, construct an explicit interval:
+
+```text
+decision_timestamp(t)
+target_open_timestamp(t+h)
+target_close_timestamp(t+h)
+```
+
+Known-future astronomy may summarize that interval using preregistered fields:
+
+```text
+state at decision/open/close
+minimum conjunction/aspect orb in interval
+time and sign of closest approach
+ingress/station/aspect/eclipse event count
+first/last exact-event timestamp
+pre-event and post-event response-state endpoints
+```
+
+These values are legitimate only because the ephemeris is deterministic and
+known at decision time. The same interval may not summarize future OHLC.
+
+### 2.2 Target horizon is not decoder length or effect duration
+
+Keep three different quantities explicit:
+
+```text
+market_context_length   historical sessions consumed by the market encoder
+target_horizon          future return/volatility interval being predicted
+theory_response_scale   alleged calendar-time latency/persistence of a rule
+```
+
+A 60-day Saturn hypothesis does not require a 60-token decoder. The initial
+implementation uses direct endpoint targets, often with `pred_len=1`, such as:
+
+```text
+return_h20[t] = log(close[t+20] / close[t])
+vol_h60[t]    = realized volatility over sessions t+1..t+60
+```
+
+Every horizon has its own purge length. A later multi-horizon head may share an
+encoder, but it must not silently reinterpret one decoder path as many distinct
+astrological response durations.
 
 ## 3. Why This Is Theory-Informed, Not a Market PINN
 
@@ -172,6 +313,20 @@ Requirements:
 - use the same branch and parameter count for real and placebo ephemerides;
 - do not describe VSN weights as causal effects.
 
+Training protocol:
+
+1. train and select the market-plus-calendar base without any planetary input;
+2. copy that exact checkpoint and common-state hash into disabled, real, and
+   placebo arms;
+3. freeze the base during the first planetary residual screen;
+4. train only the typed planet encoder, residual projection, and `alpha`;
+5. compare paired predictions on identical dates and sampler order;
+6. only after a family beats matched nulls, test low-learning-rate joint
+   fine-tuning as a separately named arm.
+
+This prevents a “planet model” from winning merely because its shared market
+backbone received a luckier initialization or different batch order.
+
 ### 5.3 Stage C — Typed body and pair encoder
 
 Input shape:
@@ -251,8 +406,9 @@ mask, timestamp delta, and pooling.
 
 ## 6. Starting Model Configuration
 
-Final values are frozen after the TFT feature matrix and data audit. Starting
-development values:
+Final values are frozen after the native semantic release and data audit. The
+legacy feature matrix is diagnostic input, not a selector. Starting development
+values:
 
 | Parameter | Value |
 |---|---|
@@ -278,9 +434,51 @@ development values:
 | early-stop patience | 8 |
 | batch size | 32 or 64 |
 | initial loss | Huber on standardized target |
-| RevIN | off for stationary returns |
+| normalization | fold-fitted market/target scaling plus explicit model mode `none` initially |
+| RevIN | off for stationary returns; “off” must not silently mean window normalization |
 | point/quantile | point first |
 | parameter budget | preferably below 50k–100k |
+
+Use two frozen neural profiles, not a fresh hyperparameter search for every
+planet family:
+
+```text
+FA_TFT_BASE_V1
+    inputs: market history + ordinary calendar/secular controls
+    seq_len: 252
+    target/pred_len: one direct stationary endpoint
+    d_model/heads/layers: 8 / 1 / 1
+    backbone: LSTM
+    dropout/attention_dropout: 0.25 / 0.10
+    optimizer: AdamW(lr=5e-5, weight_decay=0.005)
+    loss: Huber; selection: validation MAE
+    clip: 1.0; max_epochs: 50; patience: 8
+    warmup: max(2 epochs, ceil(0.05 * max_epochs))
+    extensions: all off
+
+FA_PLANET_RESIDUAL_V1
+    base: exact selected FA_TFT_BASE_V1 checkpoint, frozen
+    planet width: 8
+    residual gate alpha: exactly 0 at initialization
+    trainable: planet encoder + residual projection + alpha only
+    modes: disabled | matched_null | real
+    optimizer budget, dates, batches, and seeds: identical for null and real
+```
+
+If `d_model=8` is unsupported by a repaired component, fail configuration; do
+not silently expand it. Move to `d_model=16`, two heads, only as one declared
+sensitivity arm with matched parameter controls.
+
+Input-budget rule for the limited sample:
+
+- run one preregistered feature family at a time;
+- exclude Hilbert fields from the primary arm;
+- do not expand every planet pair, aspect, harmonic, rashi, nakshatra, and
+  response half-life into one flat tensor;
+- cap the first raw continuous family at a documented ordered set, then pool a
+  typed encoder to 8–16 named channels before adding richer relations;
+- report model parameters per effective training sample and reject a profile
+  that grows merely because the CSV has more derived columns.
 
 Initial advanced switches:
 
@@ -298,10 +496,54 @@ covariate reattention: off
 per-feature gating: off until its current crash is repaired
 ```
 
-The live ETTh1 matrix may identify a stable attention/backend improvement. Once
-complete, one reference configuration is frozen and held identical across all
-financial-astrology arms. Quantile-only and ALiBi are currently promising, but
-partial matrix results are not the final selection.
+The ETTh1 matrix is legacy diagnostic evidence, not an automatic NIFTY model
+selector. After `TFT-SR09` and the data audit, one small reference configuration
+is frozen and held identical across all financial-astrology arms. Quantile-only,
+ALiBi, and covariate reattention looked promising in the single-seed screen, but
+none enters the first NIFTY run by default.
+
+### 6.1 Exact source-remediation work package
+
+The initial inventory/schema/invariant audit is complete. When the missing
+source package arrives, do not start by editing the model. Execute:
+
+```text
+WP-DATA-REMEDIATION-1
+1. Preserve the audited CSVs and their recorded hashes unchanged.
+2. Inventory authoritative raw OHLC/session keys and the exact retrieval or
+   transformation path.
+3. Rebuild close returns, gap, body, and range from exchange-valid sessions.
+4. Inventory the PySwissEph generator, dependency/ephemeris versions, flags,
+   timestamp/timezone, frame, ayanamsha, node, and observer conventions.
+5. Reproduce selected planetary rows and resolve the observed 8.25-hour
+   same-date artifact difference.
+6. Regenerate rashi from audited longitude with all-boundary known-answer tests;
+   do not use the rejected supplied sign pairs.
+7. Keep Shadbala quarantined; audit a separate Hilbert implementation only if
+   one is actually supplied.
+8. Construct decision/open/close forecast intervals across holidays/weekends.
+9. Produce data, convention, and ordered-schema hashes.
+10. Implement prefix-invariance tests before a permanent loader.
+11. Show one real loader batch with exact dates and named feature groups.
+```
+
+Minimum questions the audit must answer:
+
+1. Is OHLC adjusted, backfilled, revised, or reconstructed, and from which
+   source/timezone?
+2. What instant does each planetary row represent?
+3. Are positions ecliptic longitude/latitude or RA/declination, geocentric or
+   topocentric, sidereal or tropical, and under which ayanamsha/flags?
+4. What are the units of `r`, velocities, accelerations, and any separately
+   supplied Hilbert fields?
+5. Is Rahu mean or true; is Ketu derived exactly 180 degrees away?
+6. Are calendar-day ephemerides available before 1995 and beyond every forecast
+   horizon so astronomy-only response states can be warmed safely?
+7. How are events between Friday close and Monday open/close represented?
+8. Were any rules, columns, lags, anchors, or conventions already selected by
+   looking at NIFTY outcomes?
+
+The output is a data audit plus tests. It is not a trained model.
 
 ## 7. Baseline and Null Ladder
 
@@ -345,6 +587,34 @@ Every planet arm receives:
 5. exact disabled residual gate.
 
 Nulls have deterministic manifests and never use test outcomes to choose a shift.
+
+### 7.4 First training sequence after both gates pass
+
+Do not begin with “all planets + all astrological rules + all TFT extensions.”
+Run the following ladder on development folds only:
+
+| Step | Run | Purpose | Advance condition |
+|---:|---|---|---|
+| 0 | zero return / historical volatility | irreducible naive reference | artifact and dates verified |
+| 1 | Ridge market-only | transparent market baseline | reproducible across folds |
+| 2 | Ridge market + Gregorian/exchange calendar + secular splines/Fourier | deterministic-time control | frozen control set |
+| 3 | small TFT market + same calendar controls | nonlinear market baseline | beats or complements Ridge without leakage |
+| 4 | linear raw classical ephemeris, one family at a time | cheap falsification | real family beats matched null distribution |
+| 5 | flat-known TFT with the same one family | test nonlinear incremental value | stable paired gain across folds/seeds |
+| 6 | fixed calendar-time response bank | test delayed/prolonged effects | beats current-state-only and null banks |
+| 7 | frozen-base zero-gated typed planetary residual | isolate planet branch | real > disabled and real > null |
+| 8 | named pair/slow×fast encoder | test astrological interactions | declared pairs survive knockouts/nulls |
+| 9 | multi-clock daily/weekly/monthly encoder | add complexity only if earned | matched-capacity improvement |
+| 10 | separate `MODERN_OUTER_V1` | exploratory outer-planet test | reported separately with secular controls |
+| 11 | quantile/structured OHLC heads | uncertainty/bar geometry | stable point model already exists |
+
+At Steps 4–8, tune shared model hyperparameters on the market/calendar baseline,
+not separately on every planetary family. Each real/null/disabled triplet uses
+the same base checkpoint, common initial tensors, fold dates, batch order,
+optimizer budget, and seed list.
+
+Initial confirmatory seed count is five. If seed variance is high, increase the
+count using a frozen schedule rather than selecting favorable seeds.
 
 ## 8. Evaluation Protocol
 
@@ -430,9 +700,40 @@ A planetary family advances only when it:
 
 **Acceptance:**
 
-- all 13 cases are complete or a documented failure state exists;
+- all 14 cases are complete or a documented failure state exists;
 - result paths and metrics are in the scorecard;
 - the run was not interrupted by the project.
+
+The matrix closes an artifact inventory only. It does not certify extension
+semantics because it used one hardcoded seed and non-paired initialization.
+
+#### `FA-TFT-SEM-001` — Pass the post-matrix native semantic gate
+
+**Owner of detailed work:** root tasks `TFT-SR00` through `TFT-SR09` in
+[`implementation_plan.md`](../../implementation_plan.md#14-post-matrix-native-tft-semantic-repair-wave).
+
+**Steps:**
+
+1. Freeze the matrix as legacy semantic version 1.
+2. Correct seed, initialization, sampler, and test-lifecycle controls.
+3. add exact baseline-neutral extension adapters;
+4. repair and rename FFT, lag, compression, graph, cross-attention, and
+   interaction semantics;
+5. pass known-answer synthetic and gradient-liveness tests;
+6. publish semantic version 2 and migration metadata;
+7. run the short deterministic semantic release micro-run.
+
+**Acceptance:**
+
+- root task `TFT-SR09` is recorded `DONE` with exact evidence;
+- no full NIFTY/planet training occurred before the gate;
+- the first astrology configuration explicitly disables every generic advanced
+  extension listed in Section 0.
+
+**Parallelism:** theory discussion may proceed while this gate is open.
+`FA-DATA-001` resumes when its remediation package arrives. `FA-LOAD-001` may be
+designed only after the corrected-data audit; no neural baseline or planetary
+training starts until this task is complete.
 
 ### Phase 1 — Freeze theory and data
 
@@ -455,14 +756,26 @@ A planetary family advances only when it:
 
 #### `FA-DATA-001` — Audit source data and ephemeris generator
 
+**Current state (2026-07-31):** `WAITING_EXTERNAL`. The read-only source audit
+is complete and recorded in [DATA_AUDIT_REPORT.md](DATA_AUDIT_REPORT.md). It
+confirmed an exact all-row rashi-encoding defect, mixed one-day market-session
+labels, absent generator/convention provenance, redundant Rahu/Ketu state, and
+unauditable Shadbala. No production loader may be built from the current
+same-date join.
+
 **Steps:**
 
-1. Obtain the sample and generator listed in `DATA_CONTRACT.md`.
+1. Obtain the missing raw source and generator package listed in
+   `DATA_CONTRACT.md`.
 2. Validate timestamps, units, frames, missing values, and OHLC geometry.
 3. Regenerate selected ephemeris rows.
 4. Check sine/cosine, velocity, acceleration, and node opposition.
-5. Audit Hilbert transformations and weekend/holiday joins.
+5. Audit weekend/holiday joins and any separately supplied Hilbert transform.
 6. Produce stable dataset and convention hashes.
+
+**Remediation input before these steps can close:** authoritative raw NIFTY
+OHLC/session keys; the PySwissEph generator and full calculation manifest; and,
+only if retained, the Shadbala/Hilbert generators.
 
 **Acceptance:**
 
@@ -487,6 +800,9 @@ A planetary family advances only when it:
 
 #### `FA-LOAD-001` — Add named known-future loader
 
+**Dependencies:** `FA-DATA-001`, `FA-LEAK-001`, frozen minimum schema, and the
+coordinate/reproducibility contracts exposed through `FA-TFT-SEM-001`.
+
 **Recommended files:**
 
 ```text
@@ -502,8 +818,10 @@ tests/test_planetary_market_loader.py
 2. Create market `x_enc`.
 3. Create calendar/planet `known_enc` and `known_dec`.
 4. preserve exact forecast dates and elapsed time;
-5. persist feature names, transforms, and hashes;
-6. fail on any future market-derived known feature.
+5. construct decision-to-target interval astronomy summaries without future
+   market values;
+6. persist feature names, transforms, and hashes;
+7. fail on any future market-derived known feature.
 
 **Acceptance:**
 
@@ -511,6 +829,8 @@ tests/test_planetary_market_loader.py
 - anti-leakage tests pass across a fold boundary and holiday.
 
 #### `FA-BASE-001` — Implement frozen baselines
+
+**Dependencies:** `FA-LOAD-001`, `FA-TFT-SEM-001`, and frozen development folds.
 
 **Recommended files:**
 
@@ -527,8 +847,10 @@ tests/test_financial_astrology_baselines.py
 2. Add AdamW, warmup, clipping, Huber/MAE, and explicit normalization mode if
    still absent from the production path.
 3. remove epoch-level test evaluation for this experiment;
-4. save per-date predictions and losses;
-5. persist commit/config/data/split/seed hashes.
+4. use explicit sampler/model/extension seed streams and save shared-state and
+   first-batch hashes;
+5. save per-date predictions and losses;
+6. persist commit/config/data/split/seed hashes.
 
 **Acceptance:**
 
@@ -724,14 +1046,14 @@ separately designed causal study.
 ```text
 FA-GOV-001
     |
-    +--> FA-TFT-001 -------------------------------+
-    |                                              |
-    +--> FA-THEORY-001 ----+                       |
-    |                      |                       |
-    +--> FA-DATA-001 --> FA-LEAK-001 --> FA-LOAD-001
-                               |              |
-                               +----------> FA-BASE-001
-                                              |
+    +--> FA-TFT-001 --> TFT-SR00..09 --> FA-TFT-SEM-001 --+
+    |                                                       |
+    +--> FA-THEORY-001 ----+                                |
+    |                      |                                |
+    +--> FA-DATA-001 --> FA-LEAK-001 --> FA-LOAD-001 -------+
+                                                           |
+                                                     FA-BASE-001
+                                                           |
                   FA-FEAT-001 + FA-EVENT-001 + FA-NULL-001
                                |              |
                                +--> FA-SCREEN-001
@@ -757,14 +1079,15 @@ FA-GOV-001
 The project is complete only when:
 
 1. source data and ephemeris generation are reproducible;
-2. conventions and feature rules are versioned;
-3. future-market leakage is ruled out by tests;
-4. market/calendar baselines are strong and frozen;
-5. real and false ephemerides use matched capacity;
-6. classical and modern families remain distinguishable;
-7. long-cycle features use phase/multiscale state without false replication
+2. `FA-TFT-SEM-001` passed before any neural astrology training;
+3. conventions and feature rules are versioned;
+4. decision/target intervals and horizon semantics are explicit;
+5. future-market leakage is ruled out by tests;
+6. market/calendar baselines are strong and frozen;
+7. real and false ephemerides use matched capacity and common initialization;
+8. classical and modern families remain distinguishable;
+9. long-cycle features use phase/multiscale state without false replication
    claims;
-8. walk-forward predictions and per-date losses are saved;
-9. multiplicity and regime instability are reported;
-10. the final claim matches the evidence category.
-
+10. walk-forward predictions and per-date losses are saved;
+11. multiplicity and regime instability are reported;
+12. the final claim matches the evidence category.
