@@ -11,6 +11,7 @@ All features are composable and gated by constructor flags.
 API is a drop-in replacement for DynamicGraphLearner.
 """
 
+import math
 from typing import Optional, Tuple, Union
 
 import torch
@@ -19,15 +20,76 @@ import torch.nn.functional as F
 
 
 class SparseGraphStructureLearner(nn.Module):
-    """Learns a sparse adjacency via bilinear node embeddings + top-k."""
+    """Learns sparse adjacency with explicit self-edge and head semantics."""
 
-    def __init__(self, d_model: int, top_k: int, temperature: float = 1.0):
+    VALID_SELF_EDGE_POLICIES = frozenset({"required", "allowed", "excluded"})
+    VALID_HEAD_MODES = frozenset({"single", "true_multihead"})
+
+    def __init__(
+        self,
+        d_model: int,
+        top_k: int,
+        temperature: float = 1.0,
+        density: Optional[float] = None,
+        self_edge_policy: str = "allowed",
+        n_heads: int = 1,
+        head_mode: str = "single",
+    ):
         super().__init__()
-        self.top_k = top_k
-        self.temperature = temperature
-        self.query_proj = nn.Linear(d_model, d_model, bias=False)
-        self.key_proj = nn.Linear(d_model, d_model, bias=False)
+        if top_k < 0:
+            raise ValueError("top_k must be >= 0.")
+        if temperature <= 0 or not math.isfinite(float(temperature)):
+            raise ValueError("temperature must be a positive finite value.")
+        if density is not None:
+            density = float(density)
+            if density <= 0.0 or density > 1.0 or not math.isfinite(density):
+                raise ValueError("density must be in (0, 1] when provided.")
+        if self_edge_policy not in self.VALID_SELF_EDGE_POLICIES:
+            raise ValueError(
+                "self_edge_policy must be one of "
+                f"{sorted(self.VALID_SELF_EDGE_POLICIES)}, got {self_edge_policy!r}."
+            )
+        if head_mode not in self.VALID_HEAD_MODES:
+            raise ValueError(
+                "head_mode must be one of "
+                f"{sorted(self.VALID_HEAD_MODES)}, got {head_mode!r}."
+            )
+        if not isinstance(n_heads, int) or n_heads < 1:
+            raise ValueError("n_heads must be an integer >= 1.")
+
+        self.top_k = int(top_k)
+        self.density = density
+        self.temperature = float(temperature)
+        self.self_edge_policy = self_edge_policy
+        self.head_mode = head_mode
+        self.n_heads = 1 if head_mode == "single" else int(n_heads)
+
+        out_dim = d_model * self.n_heads
+        self.query_proj = nn.Linear(d_model, out_dim, bias=False)
+        self.key_proj = nn.Linear(d_model, out_dim, bias=False)
         self.scale = d_model ** -0.5
+
+    def _resolve_k(self, num_nodes: int) -> int:
+        if self.self_edge_policy in {"required", "excluded"}:
+            candidate_count = num_nodes - 1
+        else:
+            candidate_count = num_nodes
+        if candidate_count < 1:
+            raise ValueError("Graph mixing requires at least 2 nodes for SR08 policies.")
+
+        if self.density is not None:
+            k = int(math.ceil(self.density * candidate_count))
+        else:
+            k = self.top_k
+
+        if k == 0:
+            return candidate_count
+        if k > candidate_count:
+            raise ValueError(
+                f"Resolved graph sparsity k={k} exceeds available candidates {candidate_count} "
+                f"for self_edge_policy={self.self_edge_policy!r}."
+            )
+        return k
 
     def forward(
         self,
@@ -40,27 +102,55 @@ class SparseGraphStructureLearner(nn.Module):
         Returns:
             adj: [N, C, C] sparse adjacency (soft weights, zero for non-top-k)
         """
-        Q = self.query_proj(x)  # [N, C, d]
-        K = self.key_proj(x)    # [N, C, d]
-        # Bilinear similarity
-        logits = torch.bmm(Q, K.transpose(1, 2)) * self.scale  # [N, C, C]
+        if x.ndim != 3:
+            raise ValueError(f"SparseGraphStructureLearner expects [N,C,d], got {tuple(x.shape)}.")
 
-        C = x.shape[1]
-        if self.top_k < 0:
-            raise ValueError("top_k must be >= 0.")
-        if self.top_k == 0 or self.top_k >= C:
-            mask = None
-            logits_masked = logits
+        N, C, d_model = x.shape
+        Q = self.query_proj(x).reshape(N, C, self.n_heads, d_model).permute(0, 2, 1, 3)
+        K = self.key_proj(x).reshape(N, C, self.n_heads, d_model).permute(0, 2, 1, 3)
+        logits = torch.matmul(Q, K.transpose(-1, -2)) * self.scale  # [N,H,C,C]
+
+        k = self._resolve_k(C)
+        diag = torch.eye(C, device=x.device, dtype=torch.bool).unsqueeze(0).unsqueeze(0)
+        allowed = torch.ones_like(logits, dtype=torch.bool)
+        if self.self_edge_policy == "excluded":
+            allowed = allowed & (~diag)
+
+        support = None
+        if k < C:
+            selection_logits = logits
+            if self.self_edge_policy in {"required", "excluded"}:
+                selection_logits = selection_logits.masked_fill(diag, float("-inf"))
+            _, topk_idx = torch.topk(selection_logits, k, dim=-1)
+            support = torch.zeros_like(logits, dtype=torch.bool).scatter_(-1, topk_idx, True)
+            if self.self_edge_policy == "required":
+                support = support | diag
+            elif self.self_edge_policy == "allowed":
+                pass
+            else:
+                support = support & (~diag)
         else:
-            k = min(self.top_k, C)
-            _, topk_idx = torch.topk(logits, k, dim=-1)  # [N, C, k]
-            mask = torch.zeros_like(logits, dtype=torch.bool).scatter_(-1, topk_idx, True)
-            logits_masked = logits.masked_fill(~mask, float('-inf'))
-        adj = F.softmax(logits_masked / self.temperature, dim=-1)  # [N, C, C]
+            support = allowed
+            if self.self_edge_policy == "required":
+                support = support | diag
+
+        support = support & allowed
+        logits_masked = logits.masked_fill(~support, float("-inf"))
+        adj = F.softmax(logits_masked / self.temperature, dim=-1)  # [N,H,C,C]
         adj = adj.nan_to_num(0.0)
+
+        if self.n_heads == 1:
+            adj_out = adj[:, 0]
+            logits_out = logits[:, 0]
+            support_out = support[:, 0]
+        else:
+            adj_out = adj
+            logits_out = logits
+            support_out = support
+
         if return_structure:
-            return adj, logits, mask
-        return adj
+            return adj_out, logits_out, support_out
+        return adj_out
 
 
 class GraphMessagePassingLayer(nn.Module):
@@ -196,22 +286,51 @@ class AdvancedDynamicGraphLearner(nn.Module):
         dropout: float = 0.1,
         output_attention: bool = False,
         top_k: int = 10,
+        density: Optional[float] = None,
         num_layers: int = 2,
         temporal_evolution: bool = False,
         edge_features: bool = False,
         num_nodes: int = 0,
+        self_edge_policy: str = "allowed",
+        head_mode: str = "single",
+        temperature: float = 1.0,
+        entropy_regularization: float = 0.0,
+        support_stability_regularization: float = 0.0,
+        residual_strength_init: float = 1e-3,
+        graph_scope: str = "observed_and_known",
     ):
         super().__init__()
         self.output_attention = output_attention
         self.n_heads = n_heads
         self.top_k = top_k
+        self.density = density
         self.num_layers = num_layers
         self.temporal_evolution = temporal_evolution
         self.edge_features = edge_features
+        self.self_edge_policy = self_edge_policy
+        self.head_mode = head_mode
+        self.temperature = float(temperature)
+        self.entropy_regularization = float(entropy_regularization)
+        self.support_stability_regularization = float(support_stability_regularization)
+        self.graph_scope = graph_scope
         self.max_edge_feature_elements = 2_000_000
+        if residual_strength_init < 0.0 or not math.isfinite(float(residual_strength_init)):
+            raise ValueError("residual_strength_init must be a finite value >= 0.")
+        self.residual_strength = nn.Parameter(
+            torch.tensor(float(residual_strength_init))
+        )
+        self.last_graph_metadata = None
 
         # 1. Sparse structure learner
-        self.structure_learner = SparseGraphStructureLearner(d_model, top_k)
+        self.structure_learner = SparseGraphStructureLearner(
+            d_model=d_model,
+            top_k=top_k,
+            temperature=temperature,
+            density=density,
+            self_edge_policy=self_edge_policy,
+            n_heads=n_heads,
+            head_mode=head_mode,
+        )
 
         # 2. Multi-hop GNN layers with DenseNet-style skip connections
         self.gnn_layers = nn.ModuleList([
@@ -220,7 +339,7 @@ class AdvancedDynamicGraphLearner(nn.Module):
         ])
         # Skip connection projections (input + each layer output → final)
         self.skip_proj = nn.Linear(d_model * (num_layers + 1), d_model)
-        self.final_norm = nn.LayerNorm(d_model)
+        self.branch_norm = nn.LayerNorm(d_model)
 
         # 3. Temporal evolution (optional)
         self.temporal_evolver = None
@@ -228,6 +347,49 @@ class AdvancedDynamicGraphLearner(nn.Module):
             self.temporal_evolver = TemporalGraphEvolution(d_model, num_nodes)
 
         self.dropout = nn.Dropout(dropout)
+
+    @staticmethod
+    def _ensure_head_dim(adj: torch.Tensor) -> torch.Tensor:
+        if adj.ndim == 3:
+            return adj.unsqueeze(1)
+        if adj.ndim == 4:
+            return adj
+        raise ValueError(f"Expected adjacency rank 3/4, got {adj.ndim}.")
+
+    def _build_metadata(
+        self,
+        adj_heads: torch.Tensor,
+        support_heads: torch.Tensor,
+        batch_size: int,
+        seq_len: Optional[int] = None,
+    ):
+        eps = torch.finfo(adj_heads.dtype).tiny
+        entropy = -(adj_heads.clamp_min(eps) * adj_heads.clamp_min(eps).log()).sum(dim=-1)
+        support_frequency = support_heads.to(dtype=adj_heads.dtype).mean()
+        self_edge_mass = torch.diagonal(adj_heads, dim1=-2, dim2=-1).mean()
+
+        if seq_len is not None and seq_len > 1:
+            support_bt = support_heads.reshape(batch_size, seq_len, *support_heads.shape[1:])
+            support_turnover = (
+                support_bt[:, 1:] ^ support_bt[:, :-1]
+            ).to(dtype=adj_heads.dtype).mean()
+        else:
+            support_turnover = adj_heads.new_tensor(0.0)
+
+        return {
+            "graph_scope": self.graph_scope,
+            "head_mode": self.head_mode,
+            "num_reported_heads": int(adj_heads.shape[1]),
+            "self_edge_policy": self.self_edge_policy,
+            "temperature": float(self.temperature),
+            "entropy_regularization": float(self.entropy_regularization),
+            "support_stability_regularization": float(self.support_stability_regularization),
+            "adjacency_entropy": entropy.mean().detach(),
+            "selected_support_frequency": support_frequency.detach(),
+            "support_turnover": support_turnover.detach(),
+            "self_edge_mass": self_edge_mass.detach(),
+            "residual_strength": self.residual_strength.detach().clone(),
+        }
 
     def forward(
         self, x: torch.Tensor, return_attention: Optional[bool] = None
@@ -264,30 +426,49 @@ class AdvancedDynamicGraphLearner(nn.Module):
                 )
 
         # Learn sparse adjacency
-        adj, base_logits, structure_mask = self.structure_learner(x_flat, return_structure=True)  # [B*T, C, C]
+        adj, base_logits, structure_mask = self.structure_learner(
+            x_flat,
+            return_structure=True,
+        )
+        adj_heads = self._ensure_head_dim(adj)
+        support_heads = self._ensure_head_dim(structure_mask)
 
         # Temporal evolution of adjacency
         if self.temporal_evolver is not None:
-            adj = self.temporal_evolver(x_4d, base_logits, structure_mask)
+            # Temporal evolution is single-adjacency in SR08; keep head_mode single.
+            if adj_heads.shape[1] != 1:
+                raise ValueError(
+                    "temporal_evolution currently supports head_mode='single' only."
+                )
+            evolved = self.temporal_evolver(x_4d, base_logits, structure_mask)
+            adj_heads = evolved.unsqueeze(1)
+            support_heads = structure_mask.unsqueeze(1)
+
+        # Aggregate head-specific adjacency into one message matrix.
+        adj_for_message = adj_heads.mean(dim=1)
 
         # Multi-hop message passing with skip connections
         skip_outputs = [x_flat]  # input as first skip
         h = x_flat
         for layer in self.gnn_layers:
-            h = layer(h, adj)
+            h = layer(h, adj_for_message)
             skip_outputs.append(h)
 
         # DenseNet aggregation: concat all layer outputs → project
         combined = torch.cat(skip_outputs, dim=-1)  # [B*T, C, d*(L+1)]
-        out_flat = self.skip_proj(combined)          # [B*T, C, d]
-        out_flat = self.final_norm(x_flat + self.dropout(out_flat))  # residual
+        branch = self.branch_norm(self.skip_proj(combined))
+        out_flat = x_flat + self.dropout(self.residual_strength * branch)
 
         out = out_flat.reshape(B, T, C, d)
+        self.last_graph_metadata = self._build_metadata(
+            adj_heads,
+            support_heads,
+            batch_size=B,
+            seq_len=T,
+        )
 
         if return_attention:
-            # Return adjacency as "attention weights" in expected shape [B, T, n_heads, C, C]
-            # Broadcast single-head adjacency across n_heads for API compat
-            adj_5d = adj.reshape(B, T, C, C).unsqueeze(2).expand(B, T, self.n_heads, C, C)
+            adj_5d = adj_heads.reshape(B, T, adj_heads.shape[1], C, C)
             return out, adj_5d
         return out
 
@@ -296,19 +477,27 @@ class AdvancedDynamicGraphLearner(nn.Module):
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         B, C, d = x.shape
 
-        adj = self.structure_learner(x)  # [B, C, C]
+        adj = self.structure_learner(x)
+        adj_heads = self._ensure_head_dim(adj)
+        adj_for_message = adj_heads.mean(dim=1)
 
         skip_outputs = [x]
         h = x
         for layer in self.gnn_layers:
-            h = layer(h, adj)
+            h = layer(h, adj_for_message)
             skip_outputs.append(h)
 
         combined = torch.cat(skip_outputs, dim=-1)
-        out = self.skip_proj(combined)
-        out = self.final_norm(x + self.dropout(out))
+        branch = self.branch_norm(self.skip_proj(combined))
+        out = x + self.dropout(self.residual_strength * branch)
+        self.last_graph_metadata = self._build_metadata(
+            adj_heads,
+            adj_heads > 0.0,
+            batch_size=B,
+            seq_len=None,
+        )
 
         if return_attention:
-            adj_4d = adj.unsqueeze(1).expand(B, self.n_heads, C, C)
+            adj_4d = adj_heads
             return out, adj_4d
         return out

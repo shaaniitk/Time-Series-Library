@@ -244,7 +244,7 @@ def test_manifest_records_resolved_modes_and_coordinate_contract():
     assert contract["temporal_coordinates"]["valid_mask_semantics"] == "true_is_valid"
 
 
-def test_sr02_additive_repairs_are_released_while_compression_remains_pending():
+def test_sr02_additive_repairs_are_released_while_covariate_reattention_remains_pending():
     for name in ("regime_moe", "dual_attention_fusion"):
         capability = TFT_EXTENSION_MIGRATION_CAPABILITIES[name]
         assert capability["repair_task"] == "TFT-SR02"
@@ -258,18 +258,16 @@ def test_sr02_additive_repairs_are_released_while_compression_remains_pending():
 
     compression = TFT_EXTENSION_MIGRATION_CAPABILITIES["temporal_compression"]
     assert compression["repair_task"] == "TFT-SR07"
-    assert compression["v2_artifact_status"] == "pending_repair"
+    assert compression["v2_artifact_status"] == "released"
     assert compression["integration_kind"] == "pending_structural_repair"
 
     moe = _args(tft_use_regime_moe=True)
-    compression_args = _args(tft_use_temporal_compression=True)
+    covariate_args = _args(tft_covariate_reattention=True)
     assert pending_v2_artifact_extensions(moe) == []
     assert validate_tft_v2_artifact_readiness(moe) is moe
-    assert pending_v2_artifact_extensions(compression_args) == [
-        "temporal_compression"
-    ]
-    with pytest.raises(RuntimeError, match="TFT-SR07"):
-        validate_tft_v2_artifact_readiness(compression_args)
+    assert pending_v2_artifact_extensions(covariate_args) == ["covariate_reattention"]
+    with pytest.raises(RuntimeError, match="TFT-SR04"):
+        validate_tft_v2_artifact_readiness(covariate_args)
 
 
 def test_resolution_is_idempotent_and_paired_reference_can_disable_branch():

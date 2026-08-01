@@ -289,6 +289,13 @@ def build_parser():
                         help='Enable reusable multi-scale lag attention branch in TFT decoder.')
     parser.add_argument('--tft_lag_scales', type=str, default='1,2,4',
                         help='Comma-separated lag scales for TFT lag attention.')
+    parser.add_argument(
+        '--tft_lag_semantics_mode',
+        type=str,
+        default='shifted_prefix_attention',
+        choices=['shifted_prefix_attention', 'exact_token_lag', 'elapsed_time_response'],
+        help='Lag semantics for TFT lag branch: shifted-prefix attention, exact token lag retrieval, or delegated elapsed-time response interface.',
+    )
     parser.add_argument('--tft_temporal_backbone', type=str, default='hybrid_tcn_lstm', choices=['lstm', 'gated_tcn', 'hybrid_tcn_lstm'],
                         help='Temporal backbone used before TFT enrichment and attention blocks.')
     parser.add_argument('--tft_temporal_backbone_layers', type=int, default=3,
@@ -350,19 +357,26 @@ def build_parser():
     parser.add_argument('--tft_use_fft_branch', action='store_true', default=False,
                         help='Enable parallel FFT spectral processing branch in TFT temporal backbone.')
     parser.add_argument('--tft_fft_modes', type=int, default=32,
-                        help='Number of frequency modes to retain in TFT FFT branch.')
-    parser.add_argument('--tft_fft_mode_select', type=str, default='low', choices=['low', 'top_amplitude', 'learned'],
-                        help='Frequency mode selection strategy for TFT FFT branch.')
+                        help='For hard-selection FFT modes this is the retained-bin count; for learned_filter it is the number of learned spectral control points.')
+    parser.add_argument('--tft_fft_mode_select', type=str, default='low', choices=['low', 'low_k', 'top_amplitude', 'top_amplitude_k', 'learned', 'learned_filter'],
+                        help='FFT mode selection strategy for TFT FFT branch. semantics-v2 canonical names are low_k and top_amplitude_k for hard-selection retained bins, and learned_filter for interpolated all-bin spectral control points.')
     parser.add_argument('--tft_stochastic_depth_rate', type=float, default=0.0,
                         help='Stochastic depth drop rate for TFT decoder layers (0.0 = disabled).')
     parser.add_argument('--tft_gradient_checkpointing', action='store_true', default=False,
                         help='Enable gradient checkpointing for TFT decoder layers to save memory.')
     parser.add_argument('--tft_use_temporal_compression', action='store_true', default=False,
                         help='Enable learned temporal compression of history before attention (long sequences).')
+    parser.add_argument('--tft_temporal_compression_mode', type=str, default='kv_pool',
+                        choices=['kv_pool', 'legacy_codec'],
+                        help='Temporal compression semantics: kv_pool compresses historical attention K/V, legacy_codec keeps compress-reconstruct compatibility behavior.')
     parser.add_argument('--tft_tc_stride', type=int, default=2,
                         help='Compression stride for temporal compression (2 = halve history length).')
     parser.add_argument('--tft_tc_threshold', type=int, default=256,
                         help='Minimum history length to activate temporal compression; no-op below this.')
+    parser.add_argument('--tft_tc_min_long_sequence', type=int, default=512,
+                        help='Conservative minimum history length for non-experimental temporal compression activation.')
+    parser.add_argument('--tft_tc_experimental_short_window', action='store_true', default=False,
+                        help='Allow temporal compression below tft_tc_min_long_sequence for explicit experimental sweeps.')
     parser.add_argument('--tft_vsn_n_selection_heads', type=int, default=1,
                         help='Number of selection heads in TFT Variable Selection Networks (1 = original behavior).')
     parser.add_argument('--tft_mlp_quantile_projection', action='store_true', default=False,
@@ -385,6 +399,28 @@ def build_parser():
                         help='Graph learner type for TFT cross-variable mixing: dense (original), sparse (top-k), temporal_sparse (top-k + GRU evolution).')
     parser.add_argument('--tft_graph_top_k', type=int, default=10,
                         help='Max neighbors per node in sparse TFT graph learner.')
+    parser.add_argument('--tft_graph_history_top_k', type=int, default=None,
+                        help='History graph non-self neighbor budget per node; defaults to tft_graph_top_k when unset.')
+    parser.add_argument('--tft_graph_future_top_k', type=int, default=None,
+                        help='Future graph non-self neighbor budget per node; defaults to tft_graph_top_k when unset.')
+    parser.add_argument('--tft_graph_history_density', type=float, default=None,
+                        help='Optional history graph density in (0,1]; used when top-k is not specified for history scope.')
+    parser.add_argument('--tft_graph_future_density', type=float, default=None,
+                        help='Optional future graph density in (0,1]; used when top-k is not specified for future scope.')
+    parser.add_argument('--tft_graph_self_edge_policy', type=str, default='allowed', choices=['required', 'allowed', 'excluded'],
+                        help='Self-edge policy for graph support: required keeps self-information explicit, excluded disallows diagonal edges.')
+    parser.add_argument('--tft_graph_head_mode', type=str, default='single', choices=['single', 'true_multihead'],
+                        help='Graph attention head semantics: single reports one adjacency head, true_multihead learns independent per-head adjacency.')
+    parser.add_argument('--tft_graph_temperature', type=float, default=1.0,
+                        help='Softmax temperature for graph adjacency logits (>0).')
+    parser.add_argument('--tft_graph_entropy_regularization', type=float, default=0.0,
+                        help='Optional declared entropy regularization weight for graph adjacency diagnostics (default off).')
+    parser.add_argument('--tft_graph_support_stability_regularization', type=float, default=0.0,
+                        help='Optional declared support-stability regularization weight for graph diagnostics (default off).')
+    parser.add_argument('--tft_graph_residual_strength_init', type=float, default=0.0,
+                        help='Initial residual strength for graph branch insertion; 0.0 preserves exact identity at initialization.')
+    parser.add_argument('--tft_graph_scope', type=str, default='observed_and_known', choices=['observed', 'known', 'observed_and_known', 'typed_planetary'],
+                        help='Declared graph scope label for interpretation metadata.')
     parser.add_argument('--tft_graph_num_layers', type=int, default=2,
                         help='Number of GNN message-passing layers in advanced TFT graph learner.')
     parser.add_argument('--tft_graph_temporal_evolution', action='store_true', default=False,

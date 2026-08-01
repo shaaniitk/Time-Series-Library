@@ -226,6 +226,7 @@ class TestTFTComprehensive(unittest.TestCase):
         set_seed(42)
         cfg = build_tsl_config()
         cfg.tft_use_temporal_compression = True
+        cfg.tft_temporal_compression_mode = "legacy_codec"
         cfg.tft_tc_stride = 2
         cfg.tft_tc_threshold = 4
         cfg.tft_use_lag_attention = True
@@ -602,8 +603,10 @@ class TestTFTComprehensive(unittest.TestCase):
         self.assertEqual(tuple(payload["decoder_layer_payloads"]["cross_attention"].shape), (cfg.e_layers, 1, cfg.n_heads, cfg.pred_len, cfg.seq_len))
         self.assertEqual(tuple(payload["decoder_layer_payloads"]["lag_scale_weights"].shape), (cfg.e_layers, len(cfg.tft_lag_scales)))
         self.assertEqual(payload["decoder_layer_payloads"]["expert_routing"].shape[0], cfg.e_layers)
-        self.assertEqual(payload["history_graph_attention"].shape[:3], (1, cfg.seq_len, cfg.n_heads))
-        self.assertEqual(payload["future_graph_attention"].shape[:3], (1, cfg.pred_len, cfg.n_heads))
+        self.assertEqual(payload["history_graph_attention"].shape[:3], (1, cfg.seq_len, 1))
+        self.assertEqual(payload["history_graph_metadata"]["num_reported_heads"], 1)
+        self.assertEqual(payload["future_graph_attention"].shape[:3], (1, cfg.pred_len, 1))
+        self.assertEqual(payload["future_graph_metadata"]["num_reported_heads"], 1)
         self.assertIsNone(payload["static_graph_attention"])
 
     def test_tsl_quantile_head_and_interpretable_cross_attention(self):
@@ -1110,6 +1113,7 @@ class TestTFTComprehensive(unittest.TestCase):
         cfg.label_len = 64
         cfg.pred_len = 16
         cfg.tft_use_temporal_compression = True
+        cfg.tft_temporal_compression_mode = "legacy_codec"
         cfg.tft_tc_stride = 2
         cfg.tft_tc_threshold = 64  # Low threshold so seq_len=128 triggers it
         cfg.tft_use_higher_order = False
@@ -1141,6 +1145,7 @@ class TestTFTComprehensive(unittest.TestCase):
         cfg.label_len = 12
         cfg.pred_len = 4
         cfg.tft_use_temporal_compression = True
+        cfg.tft_temporal_compression_mode = "legacy_codec"
         cfg.tft_tc_stride = 2
         cfg.tft_tc_threshold = 256  # Short seq < threshold -> no-op
         cfg.tft_use_higher_order = False
@@ -1171,6 +1176,7 @@ class TestTFTComprehensive(unittest.TestCase):
         cfg.label_len = 64
         cfg.pred_len = 16
         cfg.tft_use_temporal_compression = True
+        cfg.tft_temporal_compression_mode = "legacy_codec"
         cfg.tft_tc_stride = 2
         cfg.tft_tc_threshold = 64
         cfg.tft_use_higher_order = False
@@ -1207,6 +1213,7 @@ class TestTFTComprehensive(unittest.TestCase):
         cfg.label_len = 64
         cfg.pred_len = 16
         cfg.tft_use_temporal_compression = True
+        cfg.tft_temporal_compression_mode = "legacy_codec"
         cfg.tft_tc_stride = 2
         cfg.tft_tc_threshold = 64
         cfg.tft_use_higher_order = False

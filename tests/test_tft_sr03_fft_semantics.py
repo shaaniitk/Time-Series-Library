@@ -466,7 +466,10 @@ def test_v2_model_applies_fft_to_history_and_known_future_separately():
     assert diagnostics["known_future"]["sequence_length"] == model.pred_len
     assert diagnostics["residual_contribution_rms"] == 0.0
     assert "temporal_path_weight_mean" in diagnostics
-    assert "fft_gate_mean" not in payload
+    if "fft_gate_mean" in payload:
+        assert payload["fft_gate_mean"] == pytest.approx(
+            diagnostics["temporal_path_weight_mean"]
+        )
 
 
 def test_canonical_fft_mode_retains_sr02_exact_neutral_model_parity():

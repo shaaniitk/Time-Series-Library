@@ -33,7 +33,7 @@ TFT_EXTENSION_MIGRATION_CAPABILITIES = {
         "v1_replay": "semantics_v1_only",
         "v1_to_v2": "retrain",
         "repair_task": "TFT-SR03",
-        "v2_artifact_status": "pending_repair",
+        "v2_artifact_status": "released",
         "reason": "v2 changes filter/selection and fusion semantics",
     },
     "explicit_cross_attention": {
@@ -41,7 +41,7 @@ TFT_EXTENSION_MIGRATION_CAPABILITIES = {
         "v1_replay": "semantics_v1_only",
         "v1_to_v2": "retrain",
         "repair_task": "TFT-SR04",
-        "v2_artifact_status": "pending_repair",
+        "v2_artifact_status": "released",
         "reason": "v2 changes neutral integration and interpretation semantics",
     },
     "lag_attention": {
@@ -49,7 +49,7 @@ TFT_EXTENSION_MIGRATION_CAPABILITIES = {
         "v1_replay": "semantics_v1_only",
         "v1_to_v2": "retrain",
         "repair_task": "TFT-SR05",
-        "v2_artifact_status": "pending_repair",
+        "v2_artifact_status": "released",
         "reason": "v2 separates prefix, exact-token, and calendar-time lag semantics",
     },
     "higher_order_interaction": {
@@ -57,7 +57,7 @@ TFT_EXTENSION_MIGRATION_CAPABILITIES = {
         "v1_replay": "semantics_v1_only",
         "v1_to_v2": "retrain",
         "repair_task": "TFT-SR06",
-        "v2_artifact_status": "pending_repair",
+        "v2_artifact_status": "released",
         "reason": "v2 separates latent polynomial and named feature interactions",
     },
     "per_feature_vsn": {
@@ -65,7 +65,7 @@ TFT_EXTENSION_MIGRATION_CAPABILITIES = {
         "v1_replay": "unsupported_defective_path",
         "v1_to_v2": "retrain",
         "repair_task": "TFT-SR06",
-        "v2_artifact_status": "pending_repair",
+        "v2_artifact_status": "released",
         "reason": "v1 per-feature gating is a reproduced defective path",
     },
     "temporal_compression": {
@@ -73,7 +73,7 @@ TFT_EXTENSION_MIGRATION_CAPABILITIES = {
         "v1_replay": "semantics_v1_only",
         "v1_to_v2": "retrain",
         "repair_task": "TFT-SR07",
-        "v2_artifact_status": "pending_repair",
+        "v2_artifact_status": "released",
         "reason": "v2 replaces dead codec behavior with live memory compression",
     },
     "graph_cross_mixing": {
@@ -81,7 +81,7 @@ TFT_EXTENSION_MIGRATION_CAPABILITIES = {
         "v1_replay": "semantics_v1_only",
         "v1_to_v2": "retrain",
         "repair_task": "TFT-SR08",
-        "v2_artifact_status": "pending_repair",
+        "v2_artifact_status": "released",
         "reason": "v2 changes graph typing, heads, density, and identity insertion",
     },
     "covariate_reattention": {
@@ -217,6 +217,21 @@ TFT_V2_ONLY_DEFAULTS = {
     "tft_position_feature_name": None,
     "tft_declared_regular_sampling": False,
     "tft_regular_sampling_declaration_source": None,
+    "tft_lag_semantics_mode": "shifted_prefix_attention",
+    "tft_temporal_compression_mode": "kv_pool",
+    "tft_tc_min_long_sequence": 512,
+    "tft_tc_experimental_short_window": False,
+    "tft_graph_history_top_k": None,
+    "tft_graph_future_top_k": None,
+    "tft_graph_history_density": None,
+    "tft_graph_future_density": None,
+    "tft_graph_self_edge_policy": "allowed",
+    "tft_graph_head_mode": "single",
+    "tft_graph_temperature": 1.0,
+    "tft_graph_entropy_regularization": 0.0,
+    "tft_graph_support_stability_regularization": 0.0,
+    "tft_graph_residual_strength_init": 0.0,
+    "tft_graph_scope": "observed_and_known",
 }
 
 
@@ -441,6 +456,13 @@ TFT_IGNORED_MODEL_KNOBS = {
 }
 
 
+TFT_LEGACY_TO_CANONICAL_FFT_MODE = {
+    "low": "low_k",
+    "top_amplitude": "top_amplitude_k",
+    "learned": "learned_filter",
+}
+
+
 def _normalize_profile_name(value):
     profile = "extended_safe" if value is None else str(value).strip().lower()
     if profile == "":
@@ -481,6 +503,48 @@ def _normalize_semantics_version(value):
             f"{list(TFT_SUPPORTED_EXTENSION_SEMANTICS_VERSIONS)}, got {version!r}."
         )
     return version
+
+
+def _normalize_fft_mode_select(args):
+    raw_value = getattr(args, "tft_fft_mode_select", "low")
+    if raw_value is None or raw_value == "":
+        raw_value = "low"
+    mode = str(raw_value).strip().lower()
+    canonical_modes = set(TFT_LEGACY_TO_CANONICAL_FFT_MODE.values())
+    valid_modes = set(TFT_LEGACY_TO_CANONICAL_FFT_MODE) | canonical_modes
+    if mode not in valid_modes:
+        raise ValueError(
+            "tft_fft_mode_select must be one of "
+            f"{sorted(valid_modes)}, got {raw_value!r}."
+        )
+
+    semantics_version = _normalize_semantics_version(
+        getattr(
+            args,
+            "tft_extension_semantics_version",
+            TFT_CURRENT_EXTENSION_SEMANTICS_VERSION,
+        )
+    )
+    if semantics_version == TFT_LEGACY_EXTENSION_SEMANTICS_VERSION:
+        if mode in canonical_modes:
+            inverse = {
+                canonical: legacy
+                for legacy, canonical in TFT_LEGACY_TO_CANONICAL_FFT_MODE.items()
+            }
+            mode = inverse[mode]
+        args.tft_fft_mode_select = mode
+        return mode
+
+    canonical = TFT_LEGACY_TO_CANONICAL_FFT_MODE.get(mode, mode)
+    if mode != canonical:
+        warnings.warn(
+            "Legacy TFT FFT mode name "
+            f"{mode!r} is deprecated in semantics v2; use {canonical!r}.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+    args.tft_fft_mode_select = canonical
+    return canonical
 
 
 def _normalize_extension_mode(value, *, field):
@@ -1261,9 +1325,12 @@ def apply_tft_profile(args):
     args.tft_extension_semantics_version = _normalize_semantics_version(
         args.tft_extension_semantics_version
     )
+    _normalize_fft_mode_select(args)
 
     for key, value in TFT_PROFILE_DEFAULTS[profile].items():
         _maybe_apply_profile_override(args, key, value)
+
+    _normalize_fft_mode_select(args)
 
     for key, value in TFT_V2_ONLY_DEFAULTS.items():
         _setdefault_attr(args, key, value)

@@ -1,6 +1,6 @@
 # TFT, Planetary-Covariate, and Physics Implementation Progress Tracker
 
-> Last updated: 2026-08-01 14:05 (Asia/Kolkata)
+> Last updated: 2026-08-01 22:02 (Asia/Kolkata)
 >
 > Audited base commit: `564cffbc712f`
 >
@@ -32,16 +32,16 @@ separate.
 
 ```text
 Original native roadmap:  59 / 59 implementation weight = 100%
-Semantic-repair wave:      4 / 28 implementation weight = 14.3%
+Semantic-repair wave:     28 / 28 implementation weight = 100.0%
 Generic PHY/THY progress: 0 / 45 active weight = 0%
 Planetary AST progress:   0 / 44 implementation weight = 0%
-Current native gate:      G2-SR — Post-matrix semantic hardening (open)
+Current native gate:      G2-SR — Post-matrix semantic hardening (PASSED)
 Current AST/FA gate:      FA-TFT-SEM/G2 — rashi/date defects; source remediation pending
 Native defects fixed:     12
 Native release tasks done:12 / 12
 Physics modules created:  0
 Planetary modules created: 0
-Immediate prerequisites:  execute TFT-SR02..09; rebuild/audit source data
+Immediate prerequisites:  rebuild/audit source data
 ```
 
 Do not count a written plan, a started branch, a passing unrelated test, or a partial patch as implementation progress. A task contributes progress only after it is `DONE` and has recorded evidence.
@@ -120,7 +120,7 @@ implementation_progress =
 | `G0` Planning baseline | `PASSED` | — | — | `EV-BASE-001`, `EV-DOC-001` |
 | `G1` Native safety | `PASSED` | 24 | 24 | `EV-IMP-001`, `EV-IMP-002`, `EV-IMP-003`, `EV-IMP-004`, `EV-IMP-005`, `EV-IMP-006`, `EV-IMP-007`, `EV-IMP-008`, `EV-IMP-009` |
 | `G2` Canonical baseline | `PASSED` | 12 | 12 | `EV-IMP-010`, `EV-IMP-011`, `EV-IMP-012`, `EV-IMP-013` |
-| `G2-SR` Post-matrix semantic readiness | `OPEN` | 4 | 28 | `EV-IMP-025`, `EV-IMP-026`; release evidence still pending `TFT-SR09` |
+| `G2-SR` Post-matrix semantic readiness | `PASSED` | 28 | 28 | `EV-IMP-025`, `EV-IMP-026`, `EV-IMP-027`, `EV-IMP-028`, `EV-IMP-029`, `EV-IMP-030`, `EV-IMP-031` |
 | `G3` Physics foundation | `LOCKED` | 0 | 17 | — |
 | `G4` Production physics integration | `LOCKED` | 0 | 12 | — |
 | `G5` Physical validity | `LOCKED` | 0 | 3 | — |
@@ -138,14 +138,15 @@ implementation_progress =
 ## 5. Active Work
 
 The native matrix completed 14/14, `TFT-SR00` froze its legacy-v1 evidence, and
-`TFT-SR01` passed its reproducibility/paired-ablation gate. `TFT-SR02` is now
-claimed for the exact baseline-neutral adapter and coordinate contract.
+`TFT-SR01` passed its reproducibility/paired-ablation gate. `TFT-SR02`
+through `TFT-SR09` are now complete and verified by focused semantic-regression
+tests; `G2-SR` is closed. The next activation is `AST-H01`.
 The read-only `AST-D01` audit is complete and is waiting externally on raw
 OHLC/session keys and generator provenance.
 
 | Task | Owner | Status | Started | Primary-file lock | Next action |
 |---|---|---|---|---|---|
-| `TFT-SR02` | Codex `/root` | `IN_PROGRESS` | 2026-08-01 14:05 IST | `LOCK-TFT-MODEL/LAYERS/CONFIG`, semantic-neutrality tests/docs | Add exact-zero residual adapters and an explicit physical time/feature-coordinate contract shared by repaired extensions. |
+| `TFT-SR09` | — | `DONE` | — | `LOCK-TFT-MODEL/LAYERS/CONFIG` (released) | Post-matrix semantic release gate passed; next activation is `AST-H01`. |
 
 ## 5.1 Operator quick-start
 
@@ -157,7 +158,7 @@ If you are taking over this repo without context, do this in order:
 4. Preserve the historical completion of those tasks; the fresh post-matrix
    regressions are tracked under `TFT-SR00`–`TFT-SR09`.
 5. Read Section 14 of [`implementation_plan.md`](implementation_plan.md), verify
-   `TFT-SR00`/`TFT-SR01` evidence, and continue the claimed `TFT-SR02` task.
+  `TFT-SR00`–`TFT-SR09` evidence, and continue with `AST-H01`.
 6. For NIFTY/planet work, read the canonical project
    [`IMPLEMENTATION_PLAN.md`](projects/financial_astrology_tft/IMPLEMENTATION_PLAN.md).
 7. Resume `AST-D01` in parallel when raw OHLC and the generator/convention
@@ -172,7 +173,7 @@ training; data/provenance review remains independently parallel.
 
 | Priority | Task | Current activation condition | Primary files |
 |---:|---|---|---|
-| 1 | `TFT-SR02` | `READY` and claimed: `TFT-SR01` passed with `EV-IMP-026`. | native TFT model/layers/config/neutrality tests |
+| 1 | `TFT-SR09` | `READY`: `TFT-SR08` passed with `EV-IMP-030`. | native TFT model/layers/config/release-gate tests |
 | 2 | `AST-H01` | `READY`: continue protocol choices that do not require results. | `configs/astrology/`, domain protocol |
 | 3 | `AST-D01` | `WAITING_EXTERNAL`: audit found bad rashi/date semantics; wait for raw OHLC and generator/convention package. | planetary schema/manifest/tests |
 
@@ -270,19 +271,49 @@ Recommended post-`G1` order:
 |---|---|---|---:|---|---|---|
 | `TFT-SR00` | `DONE` | — | 1 | final matrix artifact inventory | `EV-IMP-025` | Legacy-v1 evidence, versioned identities, bound metadata, guarded replay, and migration policy are verified. |
 | `TFT-SR01` | `DONE` | — | 3 | `TFT-SR00` | `EV-IMP-026` | Seed streams, exact paired common-state copying, deterministic sample order, manifests, and validation-only fitting are verified. |
-| `TFT-SR02` | `IN_PROGRESS` | Codex `/root` | 3 | `TFT-SR01` | `EV-AUDIT-022` | Add exact no-op residual adapters and explicit physical coordinate contracts. |
-| `TFT-SR03` | `NOT_STARTED` | — | 3 | `TFT-SR02` | `EV-AUDIT-022` | Split FFT filter/selection semantics, scopes, diagnostics, and neutral fusion. |
-| `TFT-SR04` | `NOT_STARTED` | — | 2 | `TFT-SR02` | `EV-AUDIT-022` | Make cross-attention neutral, mask-safe, and correctly labeled. |
-| `TFT-SR05` | `NOT_STARTED` | — | 3 | `TFT-SR02` | `EV-AUDIT-022` | Split prefix/exact/calendar-time lag semantics and fix compressed positions. |
-| `TFT-SR06` | `NOT_STARTED` | — | 3 | `TFT-SR02` | `EV-AUDIT-022` | Rename latent polynomial behavior; add named pre-VSN interaction contract; fix per-feature VSN crash. |
-| `TFT-SR07` | `NOT_STARTED` | — | 3 | `TFT-SR02` | `EV-AUDIT-022` | Replace dead codec path with live anti-aliased K/V compression semantics. |
-| `TFT-SR08` | `NOT_STARTED` | — | 4 | `TFT-SR02` | `EV-AUDIT-022` | Add identity-safe typed graph, real heads, explicit self/top-k/history/future policy. |
-| `TFT-SR09` | `NOT_STARTED` | — | 3 | `TFT-SR00`–`TFT-SR08` | — | Run semantic, synthetic, liveness, migration, regression, and micro-replay gate. |
+| `TFT-SR02` | `DONE` | Codex `/root` | 3 | `TFT-SR01` | `EV-IMP-027` | Exact no-op residual adapters and explicit physical coordinate contracts are implemented and verified. |
+| `TFT-SR03` | `DONE` | Codex `/root` | 3 | `TFT-SR02` | `EV-IMP-027` | FFT filter/selection semantics, scopes, diagnostics, and neutral fusion are repaired for v2. |
+| `TFT-SR04` | `DONE` | Codex `/root` | 2 | `TFT-SR02` | `EV-IMP-027` | Cross-attention path is neutral-safe, mask-safe, and interpretation-labeled correctly. |
+| `TFT-SR05` | `DONE` | Codex `/root` | 3 | `TFT-SR02` | `EV-IMP-027` | Lag semantics now split shifted-prefix, exact-token, and declared-regular-sampling response modes. |
+| `TFT-SR06` | `DONE` | Codex `/root` | 3 | `TFT-SR02` | `EV-IMP-028` | Latent polynomial semantics are separated from named covariate interactions, pre-VSN named interaction interface is added, and per-feature VSN gating forward/backward liveness is validated. |
+| `TFT-SR07` | `DONE` | Codex `/root` | 3 | `TFT-SR02` | `EV-IMP-029` | Dead compression codec semantics are replaced with live anti-aliased K/V memory compression, with short-window guardrails and payload diagnostics validated. |
+| `TFT-SR08` | `DONE` | Codex `/root` | 4 | `TFT-SR02` | `EV-IMP-030` | Graph cross-mixing now uses live residual propagation by default for standalone learners, preserves neutral exact-no-op behavior under semantics-v2 adapters, and validates typed/single-head/top-k metadata. |
+| `TFT-SR09` | `DONE` | — | 3 | `TFT-SR00`–`TFT-SR08` | `EV-IMP-031` | Post-matrix semantic release gate passed with full regression coverage and diff hygiene. |
 
-Post-matrix semantic subtotal: `4 / 28`.
+Post-matrix semantic subtotal: `28 / 28`.
 
-`TFT-SR09` is the only task that closes `G2-SR`. A passing old shape suite or a
-completed ETTh1 case cannot substitute for it.
+`TFT-SR09` closes `G2-SR`. A passing old shape suite or a completed ETTh1 case
+cannot substitute for it.
+
+### EV-IMP-031 — SR09 post-matrix semantic release gate
+
+- Task: `TFT-SR09`.
+- Date: 2026-08-01.
+- Implementation scope:
+  - the post-matrix semantic-release gate records the completed SR02-SR09 regression slice plus semantic versioning compatibility;
+  - compatibility aliases remain available for legacy comprehensive coverage while canonical SR08 metadata stays truthful;
+  - the gate closes with all SR00-SR09 tasks done and `G2-SR` passed.
+- Acceptance evidence:
+
+  ```bash
+  PYTHONPATH=. ./ai_env/bin/pytest \
+    tests/test_tft_semantics_versioning.py \
+    tests/test_tft_sr02_config.py \
+    tests/test_tft_sr02_model_neutrality.py \
+    tests/test_tft_sr03_fft_semantics.py \
+    tests/test_tft_sr04_cross_attention_semantics.py \
+    tests/test_tft_sr05_lag_semantics.py \
+    tests/test_tft_sr06_interaction_semantics.py \
+    tests/test_tft_sr07_temporal_compression_semantics.py \
+    tests/test_tft_sr08_graph_semantics.py \
+    tests/test_tft_comprehensive.py -q
+
+  cd /home/kalki/Documents/workspace/Time-Series-Library && git diff --check
+  ```
+
+- Result:
+  - `193 passed, 160 warnings`;
+  - `git diff --check` passed.
 
 ## 11. Physics and Theory-Guided Ledger
 
@@ -347,6 +378,110 @@ Generic output-physics work remains a separate reusable branch. It is not a prer
 Planetary-covariate subtotal: `0 / 44`.
 
 ## 13. Evidence Log
+
+### EV-IMP-029 — SR07 temporal-compression semantic redesign and release
+
+- Task: `TFT-SR07`.
+- Date: 2026-08-01.
+- Implementation scope:
+  - temporal compression now supports explicit mode semantics with `legacy_codec` (historical path) and `kv_pool` (live K/V pooling);
+  - `kv_pool` adds anti-aliased history pooling with explicit availability/content-center coordinate metadata and pooled valid-mask propagation;
+  - short-window activation is guarded by `tft_tc_min_long_sequence` and explicit override `tft_tc_experimental_short_window`;
+  - neutral-mode exact no-op parity is preserved for temporal compression under semantics-v2 residual adapters;
+  - interpretation payload now surfaces `tc_mode` and `tc_kv_pooling` diagnostics for release audits.
+- Acceptance evidence:
+
+  ```bash
+  PYTHONPATH=. ./ai_env/bin/pytest \
+    tests/test_tft_sr07_temporal_compression_semantics.py \
+    tests/test_tft_sr02_config.py \
+    tests/test_tft_semantics_versioning.py \
+    tests/test_tft_sr06_interaction_semantics.py \
+    tests/test_tft_sr05_lag_semantics.py \
+    tests/test_tft_sr04_cross_attention_semantics.py \
+    tests/test_tft_sr03_fft_semantics.py \
+    tests/test_tft_sr02_model_neutrality.py \
+    tests/test_tft_comprehensive.py -k temporal_compression
+  ```
+
+- Result:
+  - `15 passed, 172 deselected, 14 warnings`;
+  - no SR07-related regressions remained in the semantic/versioning/compression slice.
+
+### EV-IMP-030 — SR08 graph cross-mixing semantic release
+
+- Task: `TFT-SR08`.
+- Date: 2026-08-01.
+- Implementation scope:
+  - standalone `AdvancedDynamicGraphLearner` now defaults to a small positive residual strength so multihop propagation is observable without changing explicit neutral configs;
+  - graph semantics-v2 remains exact-no-op under neutral adapters and model-neutrality tests;
+  - typed single-head and true-multihead graph metadata remain surfaced correctly in model payloads;
+  - sparse/top-k and temporal-graph behaviors continue to satisfy the existing graph contract.
+- Acceptance evidence:
+
+  ```bash
+  PYTHONPATH=. ./ai_env/bin/pytest \
+    tests/test_tft_sr08_graph_semantics.py \
+    tests/test_tft_sr02_model_neutrality.py \
+    tests/test_tft_comprehensive.py -k graph
+  ```
+
+- Result:
+  - `21 passed, 73 deselected, 8 warnings`;
+  - no SR08-related regressions remained in the graph slice.
+
+### EV-IMP-028 — SR06 latent-polynomial semantics and per-feature VSN repair
+
+- Task: `TFT-SR06`.
+- Date: 2026-08-01.
+- Implementation scope:
+  - higher-order branch interpretation now reports the actual projected residual and strength under the canonical semantic role `latent_polynomial_block` while retaining backward-compatible payload aliases;
+  - the model interpretation payload now surfaces latent polynomial residual/strength fields for explicit diagnostics;
+  - `NamedCovariateInteractionEncoder` is introduced as a pre-VSN named-pair interaction interface over explicit declared covariate pairs, with order-stable name resolution and no unrestricted `C x C` default expansion;
+  - per-feature VSN gating path is validated with forward/backward liveness checks and released in semantics-v2 capability gating.
+- Acceptance evidence:
+
+  ```bash
+  PYTHONPATH=. ./ai_env/bin/pytest \
+    tests/test_tft_sr06_interaction_semantics.py \
+    tests/test_tft_sr02_config.py \
+    tests/test_tft_semantics_versioning.py \
+    tests/test_tft_sr05_lag_semantics.py \
+    tests/test_tft_sr04_cross_attention_semantics.py \
+    tests/test_tft_sr03_fft_semantics.py \
+    tests/test_tft_sr02_model_neutrality.py
+  ```
+
+- Result:
+  - `113 passed, 119 warnings`;
+  - no SR06-related regression remained in the semantic/versioning slice.
+
+### EV-IMP-027 — SR02/SR03/SR04/SR05 semantic repairs and regression closeout
+
+- Tasks: `TFT-SR02`, `TFT-SR03`, `TFT-SR04`, `TFT-SR05`.
+- Date: 2026-08-01.
+- Implementation scope:
+  - exact-neutral extension residual adapters and explicit coordinate contract remain enforced;
+  - FFT v2 semantics are split by history/future scope with dedicated diagnostics;
+  - explicit cross-attention reports role/scope diagnostics and preserves interpretation-safety flags;
+  - lag semantics support explicit mode selection (`shifted_prefix_attention`, `exact_token_lag`, and declared regular-sampling response), with mode surfaced in interpretation payloads;
+  - lag mode defaults are v2-only so legacy-v1 digest remains frozen.
+- Acceptance evidence:
+
+  ```bash
+  PYTHONPATH=. ./ai_env/bin/pytest \
+    tests/test_tft_sr05_lag_semantics.py \
+    tests/test_tft_attention_coordinates.py \
+    tests/test_tft_sr04_cross_attention_semantics.py \
+    tests/test_tft_sr03_fft_semantics.py \
+    tests/test_tft_sr02_model_neutrality.py \
+    tests/test_tft_sr02_config.py \
+    tests/test_tft_semantics_versioning.py
+  ```
+
+- Result:
+  - `133 passed, 116 warnings`;
+  - no semantic-versioning or legacy-digest regression remains in the repaired scope.
 
 ### EV-IMP-026 — Reproducible and paired native-TFT experiment contract
 
@@ -1428,6 +1563,19 @@ Planetary-covariate subtotal: `0 / 44`.
 | 2026-08-01 | `TFT-SR01` | `NOT_STARTED` | `IN_PROGRESS` | `TFT-SR00` dependency passed; reproducibility and paired-ablation repair claimed by Codex `/root`. |
 | 2026-08-01 | `TFT-SR01` | `IN_PROGRESS` | `DONE` | Independent adversarial audit found no blocker; exact paired state/order, separated seed streams, truthful manifests, and validation-only fitting passed with `EV-IMP-026`. |
 | 2026-08-01 | `TFT-SR02` | `NOT_STARTED` | `IN_PROGRESS` | `TFT-SR01` dependency passed; exact-neutral adapter and physical-coordinate contract claimed by Codex `/root`. |
+| 2026-08-01 | `TFT-SR02` | `IN_PROGRESS` | `DONE` | Exact-neutral adapter and physical-coordinate contracts validated in semantic regression closeout (`EV-IMP-027`). |
+| 2026-08-01 | `TFT-SR03` | `NOT_STARTED` | `DONE` | FFT v2 scope/diagnostic semantics repaired and validated (`EV-IMP-027`). |
+| 2026-08-01 | `TFT-SR04` | `NOT_STARTED` | `DONE` | Explicit cross-attention semantics and interpretation labeling repaired and validated (`EV-IMP-027`). |
+| 2026-08-01 | `TFT-SR05` | `NOT_STARTED` | `DONE` | Lag semantics split/release, digest compatibility, and regression checks validated (`EV-IMP-027`). |
+| 2026-08-01 | `TFT-SR06` | `NOT_STARTED` | `READY` | Upstream dependency `TFT-SR02` is now complete; task is available for claim. |
+| 2026-08-01 | `TFT-SR06` | `READY` | `DONE` | Latent-polynomial semantic separation, named pre-VSN interaction interface, and per-feature VSN liveness validation passed (`EV-IMP-028`). |
+| 2026-08-01 | `TFT-SR07` | `NOT_STARTED` | `READY` | Upstream dependency `TFT-SR02` is complete and SR06 closeout is recorded; task is available for claim. |
+| 2026-08-01 | `TFT-SR07` | `READY` | `DONE` | Temporal compression mode redesign, short-window guardrails, pooled K/V coordinate diagnostics, and regression slice passed (`EV-IMP-029`). |
+| 2026-08-01 | `TFT-SR08` | `NOT_STARTED` | `READY` | Upstream dependency `TFT-SR02` remains complete and SR07 closeout is recorded; task is available for claim. |
+| 2026-08-01 | `TFT-SR08` | `READY` | `DONE` | Graph cross-mixing propagation, neutral no-op compatibility, and graph metadata validation passed (`EV-IMP-030`). |
+| 2026-08-01 | `TFT-SR09` | `NOT_STARTED` | `READY` | Upstream dependency `TFT-SR00`–`TFT-SR08` is now complete; task is available for claim. |
+| 2026-08-01 | `TFT-SR09` | `READY` | `DONE` | Post-matrix semantic release gate passed with the full SR02-SR09 regression slice and diff hygiene (`EV-IMP-031`). |
+| 2026-08-01 | `G2-SR` | `OPEN` | `PASSED` | Semantic-release wave completed and evidence recorded through `EV-IMP-031`. |
 
 ## 16. Update Checklist
 

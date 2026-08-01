@@ -243,11 +243,11 @@ def test_v2_checkpoint_is_portable_across_data_parallel_wrapper(
 
 
 def test_unrepaired_extension_cannot_be_stamped_as_v2(tmp_path):
-    args = _args(tft_use_lag_attention=True)
+    args = _args(tft_covariate_reattention=True)
     torch.save({}, tmp_path / "checkpoint.pth")
     with pytest.raises(RuntimeError, match="Refusing to stamp"):
         write_tft_semantics_metadata(tmp_path, args, artifact_kind="checkpoint")
-    with pytest.raises(RuntimeError, match="lag_attention"):
+    with pytest.raises(RuntimeError, match="covariate_reattention"):
         validate_tft_v2_artifact_readiness(args)
 
 
@@ -255,7 +255,7 @@ def test_production_training_rejects_pending_v2_extension_before_side_effects(
     tmp_path,
 ):
     args = _args(
-        tft_use_lag_attention=True,
+        tft_covariate_reattention=True,
         checkpoints=str(tmp_path / "checkpoints"),
     )
     experiment = object.__new__(Exp_Long_Term_Forecast)
@@ -264,7 +264,7 @@ def test_production_training_rejects_pending_v2_extension_before_side_effects(
         "data loading must not begin before v2 readiness validation"
     )
 
-    with pytest.raises(RuntimeError, match="lag_attention"):
+    with pytest.raises(RuntimeError, match="covariate_reattention"):
         experiment.train("must-not-exist")
 
     assert not (tmp_path / "checkpoints").exists()

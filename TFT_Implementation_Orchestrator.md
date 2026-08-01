@@ -3,8 +3,8 @@
 > Version: 3
 >
 > Created: 2026-07-28; planetary lane added 2026-07-29; post-matrix
-> semantic-repair gate added 2026-07-31; `TFT-SR00`/`TFT-SR01` closed and
-> `TFT-SR02` claimed 2026-08-01
+> semantic-repair gate added 2026-07-31; `TFT-SR00`–`TFT-SR09` closed and
+> `G2-SR` passed 2026-08-01
 >
 > Audited base: `564cffbc712f`
 >
@@ -67,7 +67,10 @@ Current audited implementation state through 2026-08-01:
 - The historical native roadmap remains complete, but trained-checkpoint audit
   opened new tasks `TFT-SR00` through `TFT-SR09`.
 - `TFT-SR00` is complete with `EV-IMP-025`, `TFT-SR01` is complete with
-  `EV-IMP-026`, and `TFT-SR02` is the active native task.
+  `EV-IMP-026`, `TFT-SR02`–`TFT-SR05` are complete with `EV-IMP-027`,
+  `TFT-SR06` is complete with `EV-IMP-028`, `TFT-SR07` is complete with
+  `EV-IMP-029`, and `TFT-SR08` is complete with `EV-IMP-030`.
+- `TFT-SR09` is complete and `G2-SR` has passed.
 - The planetary/NIFTY branch is in data-remediation stage. Its first audit found
   blocking rashi/date defects and absent generator provenance; neural training
   waits for corrected data and `TFT-SR09`.
@@ -80,7 +83,7 @@ Use this exact branch logic:
 | Situation | Required action |
 |---|---|
 | You think `TFT-C03` is still open | Re-check the tracker first. `TFT-C03` is already `DONE`; do not reopen it without a reproduced regression. |
-| You need the next legal task | Continue claimed `TFT-SR02`; `TFT-SR01` passed with `EV-IMP-026`. Resume `FA-DATA-001` independently when raw OHLC and the generator package arrive. |
+| You need the next legal task | Claim `AST-H01`; `TFT-SR09` passed with `EV-IMP-031`. Resume `FA-DATA-001` independently when raw OHLC and the generator package arrive. |
 | You are verifying whether `TFT-T01` ever closed | Check evidence `EV-IMP-009`; it records the exact green release command. |
 | You are verifying whether `TFT-P01` ever closed | Check evidence `EV-IMP-010`; it records the shared profile/digest implementation and regression pass. |
 | You are verifying whether `TFT-A03` ever closed | Check evidence `EV-IMP-011`; it records the canonical embedding/static-encoder implementation and regression pass. |
@@ -345,10 +348,10 @@ The dependency graph is authoritative. This section translates it into simple �
 8. `TFT-A05` is already closed.
 9. `TFT-A07`, `TFT-A09`, `TFT-A08`, `TFT-A10`, and `TFT-A06` are also already closed.
 10. Preserve that historical completion; do not overwrite old evidence.
-11. The final matrix completed 14/14; `TFT-SR00` and `TFT-SR01` are closed.
-    Continue the claimed `TFT-SR02` exact-neutrality/coordinate contract.
-12. Execute `TFT-SR03`–`TFT-SR08` in parallel only where file locks permit;
-    close the wave with `TFT-SR09`.
+11. The final matrix completed 14/14; `TFT-SR00` through `TFT-SR09` are closed.
+  Proceed with `AST-H01` next.
+12. `TFT-SR09` closed the native semantic wave with `EV-IMP-031`; no remaining native semantic work should precede the release gate.
+    use `AST-H01` as the next activation.
 13. Resume `WAITING_EXTERNAL` `AST-D01` independently when authoritative raw OHLC and the
     generator/convention package are present; data remediation does not wait
     for model repair.
@@ -419,7 +422,7 @@ Required:
 - no unexplained dead trainable extension parameter remains;
 - one short deterministic replay and existing native regressions pass.
 
-State: `OPEN`. This gate, not historical `G2`, controls the first neural
+State: `PASSED`. This gate, not historical `G2`, controlled the first neural
 financial-astrology run.
 
 ### G3 — Physics foundation
@@ -593,7 +596,8 @@ Current safe order:
 
 - the matrix is closed; serialize `TFT-SR00`, `TFT-SR01`, and `TFT-SR02`;
 - then split `TFT-SR03`–`TFT-SR08` only across non-overlapping locks/tests;
-- keep `TFT-SR09` serialized as the final integrator/reviewer gate;
+- `TFT-SR09` was the final integrator/reviewer gate and is now complete;
+- use `AST-H01` for the next protocol discussion;
 - run `AST-H01` discussion and resume `AST-D01` source remediation in parallel
   with native repairs when its missing inputs are available;
 - do not run neural `AST-B01`/`AST-E00` before `G2-SR`.

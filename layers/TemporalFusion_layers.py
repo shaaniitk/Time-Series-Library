@@ -1233,56 +1233,133 @@ class SpectralBranch(nn.Module):
 
 
 class TemporalCompression(nn.Module):
-    """Learned strided temporal reduction for sequence compression.
+    """Temporal compression utilities for long-sequence attention.
 
-    Compresses a sequence from length T to T // stride using a depthwise-separable
-    strided convolution, and decompresses back via transposed convolution.
-    Acts as a no-op when the input length is at or below *threshold*.
-
-    Designed to reduce the O(T^2) cost of downstream attention branches by
-    compressing the history portion of the sequence before attention.
+    Modes:
+    - ``legacy_codec``: historical compress->reconstruct behavior.
+    - ``kv_pool``: anti-aliased history K/V pooling with no decompressor path.
     """
 
-    def __init__(self, d_model: int, stride: int = 2, threshold: int = 256,
-                 kernel_size: int | None = None, dropout: float = 0.0):
+    VALID_MODES = frozenset({'legacy_codec', 'kv_pool'})
+
+    def __init__(
+        self,
+        d_model: int,
+        stride: int = 2,
+        threshold: int = 256,
+        kernel_size: int | None = None,
+        dropout: float = 0.0,
+        mode: str = 'legacy_codec',
+        min_long_sequence: int = 512,
+        experimental_short_window: bool = False,
+    ):
         super().__init__()
+        if mode not in self.VALID_MODES:
+            raise ValueError(
+                f"mode must be one of {sorted(self.VALID_MODES)}, got {mode!r}."
+            )
         if stride < 1:
             raise ValueError("stride must be >= 1.")
+        if min_long_sequence < 1:
+            raise ValueError("min_long_sequence must be >= 1.")
         self.d_model = d_model
         self.stride = stride
         self.threshold = threshold
+        self.mode = mode
+        self.min_long_sequence = int(min_long_sequence)
+        self.experimental_short_window = bool(experimental_short_window)
         # Default kernel = 2 * stride (covers one full stride window on each side)
         self.kernel_size = kernel_size if kernel_size is not None else 2 * stride
         padding = (self.kernel_size - 1) // 2
 
-        # Compress: depthwise-separable strided conv  (groups=d_model → depthwise)
-        self.compress_dw = nn.Conv1d(
-            d_model, d_model, kernel_size=self.kernel_size, stride=stride,
-            padding=padding, groups=d_model, bias=False,
-        )
-        self.compress_pw = nn.Conv1d(d_model, d_model, kernel_size=1, bias=True)
-        self.compress_norm = nn.LayerNorm(d_model)
-        self.compress_act = nn.GELU()
-        self.compress_drop = nn.Dropout(dropout)
+        if self.mode == 'legacy_codec':
+            # Compress: depthwise-separable strided conv  (groups=d_model -> depthwise)
+            self.compress_dw = nn.Conv1d(
+                d_model,
+                d_model,
+                kernel_size=self.kernel_size,
+                stride=stride,
+                padding=padding,
+                groups=d_model,
+                bias=False,
+            )
+            self.compress_pw = nn.Conv1d(d_model, d_model, kernel_size=1, bias=True)
+            self.compress_norm = nn.LayerNorm(d_model)
+            self.compress_act = nn.GELU()
+            self.compress_drop = nn.Dropout(dropout)
 
-        # Decompress: transposed conv (mirrors compress)
-        self.decompress = nn.ConvTranspose1d(
-            d_model, d_model, kernel_size=self.kernel_size, stride=stride,
-            padding=padding, groups=d_model, bias=False,
-        )
-        self.decompress_pw = nn.Conv1d(d_model, d_model, kernel_size=1, bias=True)
-        self.decompress_norm = nn.LayerNorm(d_model)
-        self.decompress_drop = nn.Dropout(dropout)
+            # Decompress: transposed conv (mirrors compress)
+            self.decompress = nn.ConvTranspose1d(
+                d_model,
+                d_model,
+                kernel_size=self.kernel_size,
+                stride=stride,
+                padding=padding,
+                groups=d_model,
+                bias=False,
+            )
+            self.decompress_pw = nn.Conv1d(d_model, d_model, kernel_size=1, bias=True)
+            self.decompress_norm = nn.LayerNorm(d_model)
+            self.decompress_drop = nn.Dropout(dropout)
+
+            self.kv_pool = None
+            self.kv_pool_residual = None
+            self.kv_pool_norm = None
+            self.kv_pool_drop = None
+        else:
+            # Fixed low-pass baseline with a tiny learnable residual branch.
+            self.compress_dw = None
+            self.compress_pw = None
+            self.compress_norm = None
+            self.compress_act = None
+            self.compress_drop = None
+            self.decompress = None
+            self.decompress_pw = None
+            self.decompress_norm = None
+            self.decompress_drop = None
+
+            self.kv_pool = nn.AvgPool1d(
+                kernel_size=self.stride,
+                stride=self.stride,
+                ceil_mode=True,
+                count_include_pad=False,
+            )
+            self.kv_pool_residual = nn.Conv1d(
+                d_model,
+                d_model,
+                kernel_size=3,
+                padding=1,
+                groups=d_model,
+                bias=False,
+            )
+            nn.init.zeros_(self.kv_pool_residual.weight)
+            self.kv_pool_norm = nn.LayerNorm(d_model)
+            self.kv_pool_drop = nn.Dropout(dropout)
 
     def should_compress(self, seq_len: int) -> bool:
         """Return True when compression is beneficial (long sequences)."""
         return self.stride > 1 and seq_len > self.threshold
+
+    def validate_activation(self, seq_len: int) -> None:
+        if (
+            self.mode == 'kv_pool'
+            and self.should_compress(seq_len)
+            and seq_len < self.min_long_sequence
+            and not self.experimental_short_window
+        ):
+            raise RuntimeError(
+                "Temporal compression short-window activation is disabled by default. "
+                f"history_len={seq_len} < tft_tc_min_long_sequence={self.min_long_sequence}. "
+                "Set tft_tc_experimental_short_window=True only for explicit experiments."
+            )
 
     def compress(self, x: torch.Tensor) -> tuple[torch.Tensor, int]:
         """Compress [B, T, D] -> [B, T', D] where T' ≈ T // stride.
 
         Returns (compressed, original_length) so decompress can restore size.
         """
+        if self.mode != 'legacy_codec':
+            raise RuntimeError("compress() is only valid in legacy_codec mode.")
         original_len = x.shape[1]
         # Conv1d expects [B, D, T]
         h = x.permute(0, 2, 1)
@@ -1293,6 +1370,8 @@ class TemporalCompression(nn.Module):
 
     def decompress_to(self, x: torch.Tensor, target_len: int) -> torch.Tensor:
         """Decompress [B, T', D] -> [B, target_len, D]."""
+        if self.mode != 'legacy_codec':
+            raise RuntimeError("decompress_to() is only valid in legacy_codec mode.")
         h = x.permute(0, 2, 1)  # [B, D, T']
         h = self.decompress_pw(self.decompress(h))  # [B, D, ~T]
         h = h.permute(0, 2, 1)  # [B, ~T, D]
@@ -1305,9 +1384,107 @@ class TemporalCompression(nn.Module):
         h = self.decompress_drop(self.decompress_norm(h))
         return h
 
+    def pool_history_kv(
+        self,
+        x: torch.Tensor,
+        positions: Optional[torch.Tensor] = None,
+        valid_mask: Optional[torch.Tensor] = None,
+    ):
+        """Pool history K/V tokens with coordinate provenance.
+
+        Returns:
+            pooled_features: [B, T_pool, D]
+            metadata: dict with content-center and availability coordinates.
+        """
+        if self.mode != 'kv_pool':
+            raise RuntimeError("pool_history_kv() is only valid in kv_pool mode.")
+        if x.ndim != 3:
+            raise ValueError(f"Expected [B,T,D] input, got {tuple(x.shape)}.")
+        batch_size, seq_len, _ = x.shape
+        if seq_len == 0:
+            raise ValueError("History length must be > 0 for temporal pooling.")
+
+        features = x.transpose(1, 2)
+        pooled = self.kv_pool(features)
+        residual = self.kv_pool_residual(pooled)
+        pooled = pooled + 1e-3 * residual
+        pooled = pooled.transpose(1, 2)
+        pooled = self.kv_pool_drop(self.kv_pool_norm(pooled))
+
+        pool_len = pooled.shape[1]
+        if positions is None:
+            resolved_positions = torch.arange(
+                seq_len, device=x.device, dtype=torch.float32
+            )
+        else:
+            resolved_positions = _resolve_positions(
+                seq_len,
+                positions,
+                x.device,
+                batch_size=batch_size,
+                name='history_positions',
+            )
+        if resolved_positions.ndim == 1:
+            resolved_positions = resolved_positions.unsqueeze(0).expand(batch_size, -1)
+
+        if valid_mask is None:
+            resolved_valid = torch.ones(
+                batch_size, seq_len, device=x.device, dtype=torch.bool
+            )
+        else:
+            resolved_valid = _resolve_true_valid_mask(
+                valid_mask,
+                batch_size,
+                seq_len,
+                x.device,
+                name='history_valid_mask',
+            )
+            if resolved_valid is None:
+                resolved_valid = torch.ones(
+                    batch_size, seq_len, device=x.device, dtype=torch.bool
+                )
+
+        center_positions = []
+        availability_positions = []
+        pooled_valid = []
+        for idx in range(pool_len):
+            start = idx * self.stride
+            end = min((idx + 1) * self.stride, seq_len)
+            chunk_positions = resolved_positions[:, start:end]
+            chunk_valid = resolved_valid[:, start:end]
+            valid_float = chunk_valid.to(dtype=torch.float32)
+            valid_count = valid_float.sum(dim=1).clamp_min(1.0)
+            weighted_mean = (chunk_positions * valid_float).sum(dim=1) / valid_count
+            last_pos = chunk_positions[:, -1]
+            center_positions.append(weighted_mean)
+            availability_positions.append(last_pos)
+            pooled_valid.append(chunk_valid.any(dim=1))
+
+        center_positions = torch.stack(center_positions, dim=1)
+        availability_positions = torch.stack(availability_positions, dim=1)
+        pooled_valid = torch.stack(pooled_valid, dim=1)
+
+        if not bool(pooled_valid.all().item()):
+            pooled = pooled.masked_fill(~pooled_valid.unsqueeze(-1), 0.0)
+
+        metadata = {
+            'history_original_len': seq_len,
+            'history_pooled_len': pool_len,
+            'content_center_positions': center_positions.detach(),
+            'availability_positions': availability_positions.detach(),
+            'pooled_valid_mask': pooled_valid.detach(),
+            'stride': self.stride,
+            'mode': self.mode,
+        }
+        return pooled, metadata
+
 
 class MultiScaleLagAttention(nn.Module):
-    def __init__(self, d_model, n_heads, lag_scales, dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact', max_seq_len=None, debug_checks: bool = False, attn_dropout: float = 0.0, extension_semantics_version: int = 2):
+    VALID_LAG_SEMANTICS_MODES = frozenset(
+        {'shifted_prefix_attention', 'exact_token_lag', 'elapsed_time_response'}
+    )
+
+    def __init__(self, d_model, n_heads, lag_scales, lag_semantics_mode='shifted_prefix_attention', dropout=0.0, position_bias_type='none', rope_base=10000.0, alibi_scale=1.0, attention_backend='exact', max_seq_len=None, debug_checks: bool = False, attn_dropout: float = 0.0, extension_semantics_version: int = 2):
         super(MultiScaleLagAttention, self).__init__()
         if not isinstance(lag_scales, (list, tuple)) or len(lag_scales) == 0:
             raise ValueError("tft_lag_scales must be a non-empty list/tuple of positive integers.")
@@ -1320,8 +1497,21 @@ class MultiScaleLagAttention(nn.Module):
             raise ValueError("tft_lag_scales contains duplicated lag values.")
         if extension_semantics_version not in (1, 2):
             raise ValueError("extension_semantics_version must be 1 or 2.")
+        if lag_semantics_mode not in self.VALID_LAG_SEMANTICS_MODES:
+            raise ValueError(
+                "lag_semantics_mode must be one of: "
+                f"{', '.join(sorted(self.VALID_LAG_SEMANTICS_MODES))}."
+            )
+        if (
+            extension_semantics_version == 1
+            and lag_semantics_mode != 'shifted_prefix_attention'
+        ):
+            raise ValueError(
+                "Semantics-v1 replay only supports lag_semantics_mode='shifted_prefix_attention'."
+            )
 
         self.lag_scales = tuple(normalized_lags)
+        self.lag_semantics_mode = lag_semantics_mode
         self.extension_semantics_version = int(extension_semantics_version)
         self.attention_layers = nn.ModuleList([
             PositionalMultiHeadAttention(
@@ -1352,6 +1542,20 @@ class MultiScaleLagAttention(nn.Module):
         # F.pad avoids allocating a full zero tensor; single fused op
         return F.pad(x[:, :-lag, :], (0, 0, lag, 0))
 
+    @staticmethod
+    def _exact_lag_attention_weights(batch_size, n_heads, seq_len, lag, device, dtype):
+        weights = torch.zeros(
+            batch_size,
+            n_heads,
+            seq_len,
+            seq_len,
+            device=device,
+            dtype=dtype,
+        )
+        token_indices = torch.arange(lag, seq_len, device=device)
+        weights[:, :, token_indices, token_indices - lag] = 1.0
+        return weights
+
     def forward(
         self,
         x,
@@ -1362,6 +1566,10 @@ class MultiScaleLagAttention(nn.Module):
         if x.ndim != 3:
             raise ValueError(f"MultiScaleLagAttention expects rank-3 [B,T,D] input, got shape {tuple(x.shape)}.")
         _debug_check_finite(self.debug_checks, x, "Lag attention input contains NaN/Inf values.")
+        if self.lag_semantics_mode == 'elapsed_time_response':
+            raise NotImplementedError(
+                "lag_semantics_mode='elapsed_time_response' is delegated to a separate calendar-time response-bank interface."
+            )
 
         seq_len = x.shape[1]
         query_positions = _resolve_positions(
@@ -1415,32 +1623,55 @@ class MultiScaleLagAttention(nn.Module):
             else:
                 shifted_valid[:, lag:] = active_valid[:, :-lag]
                 key_valid_for_attention = shifted_valid
-            if return_attention:
-                attn_out, attn_prob = attention_layer(
-                    x,
-                    shifted,
-                    shifted,
-                    return_attention=True,
-                    attn_mask=attn_mask,
-                    query_positions=query_positions,
-                    key_positions=key_positions,
-                    key_padding_mask=key_padding_mask,
-                    query_valid_mask=active_valid,
-                    key_valid_mask=key_valid_for_attention,
-                )
+            if self.lag_semantics_mode == 'exact_token_lag':
+                attn_out = _zero_invalid_queries(shifted, active_valid)
+                if return_attention:
+                    attn_prob = self._exact_lag_attention_weights(
+                        x.shape[0],
+                        attention_layer.n_heads,
+                        seq_len,
+                        lag,
+                        x.device,
+                        x.dtype,
+                    )
+                    attn_prob = attn_prob.masked_fill(
+                        key_padding_mask[:, None, None, :], 0.0
+                    )
+                    if key_valid_for_attention is not None:
+                        attn_prob = attn_prob.masked_fill(
+                            ~key_valid_for_attention[:, None, None, :],
+                            0.0,
+                        )
+                    attn_prob = _zero_invalid_queries(attn_prob, active_valid)
+                else:
+                    attn_prob = None
             else:
-                attn_out = attention_layer(
-                    x,
-                    shifted,
-                    shifted,
-                    attn_mask=attn_mask,
-                    query_positions=query_positions,
-                    key_positions=key_positions,
-                    key_padding_mask=key_padding_mask,
-                    query_valid_mask=active_valid,
-                    key_valid_mask=key_valid_for_attention,
-                )
-                attn_prob = None
+                if return_attention:
+                    attn_out, attn_prob = attention_layer(
+                        x,
+                        shifted,
+                        shifted,
+                        return_attention=True,
+                        attn_mask=attn_mask,
+                        query_positions=query_positions,
+                        key_positions=key_positions,
+                        key_padding_mask=key_padding_mask,
+                        query_valid_mask=active_valid,
+                        key_valid_mask=key_valid_for_attention,
+                    )
+                else:
+                    attn_out = attention_layer(
+                        x,
+                        shifted,
+                        shifted,
+                        attn_mask=attn_mask,
+                        query_positions=query_positions,
+                        key_positions=key_positions,
+                        key_padding_mask=key_padding_mask,
+                        query_valid_mask=active_valid,
+                        key_valid_mask=key_valid_for_attention,
+                    )
+                    attn_prob = None
             _debug_check_finite(self.debug_checks, attn_out, "Lag attention output contains NaN/Inf values.")
             branch_outputs.append(attn_out)
             if return_attention:
@@ -1457,11 +1688,18 @@ class MultiScaleLagAttention(nn.Module):
         fused = _zero_invalid_queries(fused, active_valid)
 
         if return_attention:
+            if self.extension_semantics_version == 1:
+                mode_label = 'shifted_history_attention'
+            elif self.lag_semantics_mode == 'shifted_prefix_attention':
+                mode_label = 'shifted_history_attention'
+            else:
+                mode_label = self.lag_semantics_mode
             return fused, {
                 'lag_attention': torch.stack(branch_weights, dim=-1),
                 'lag_scale_weights': scale_weights.detach(),
                 'lag_scales': self.lag_scales,
-                'lag_attention_mode': 'shifted_history_attention',
+                'lag_attention_mode': mode_label,
+                'lag_semantics_mode': self.lag_semantics_mode,
                 'lag_query_positions': query_positions.detach(),
                 'lag_key_positions': torch.stack(branch_key_positions, dim=0),
                 'lag_query_valid_mask': (
@@ -1647,15 +1885,136 @@ class HigherOrderInteractionBlock(nn.Module):
         gates = torch.sigmoid(self.gate_projection(x))
         interaction_stack = torch.stack(interaction_terms, dim=-2)
         contribution = torch.sum(gates.unsqueeze(-1) * interaction_stack, dim=-2)
-        out = self.layer_norm(x + self.out_projection(self.dropout(contribution)))
+        latent_polynomial_residual = self.out_projection(self.dropout(contribution))
+        out = self.layer_norm(x + latent_polynomial_residual)
         _debug_check_finite(self.debug_checks, out, "Higher-order interaction output contains NaN/Inf values.")
 
         if return_payload:
+            latent_strength = torch.sqrt(
+                torch.mean(torch.square(latent_polynomial_residual.detach()))
+            )
             return out, {
-                'interaction_contribution': contribution.detach(),
+                # Canonical SR06 naming: this block is latent polynomial mixing,
+                # not named original-covariate interaction.
+                'latent_polynomial_residual': latent_polynomial_residual.detach(),
+                'latent_polynomial_strength': latent_strength,
+                # Backward-compatible alias retained for existing interpretation code.
+                'interaction_contribution': latent_polynomial_residual.detach(),
                 'interaction_gates': gates.detach(),
             }
         return out
+
+
+class NamedCovariateInteractionEncoder(nn.Module):
+    """Pre-VSN named interaction interface over explicit declared covariate pairs.
+
+    This module consumes per-covariate embeddings ``[B,T,C,D]`` plus ordered
+    covariate names and only activates declared directed pairs.  It does not
+    materialize unrestricted ``C x C`` interactions by default.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        rank: int = 8,
+        declared_pairs: Optional[Iterable[tuple[str, str]]] = None,
+        allow_all_pairs: bool = False,
+    ):
+        super().__init__()
+        if not isinstance(d_model, int) or d_model <= 0:
+            raise ValueError("d_model must be a positive integer.")
+        if not isinstance(rank, int) or rank <= 0:
+            raise ValueError("rank must be a positive integer.")
+        if not isinstance(allow_all_pairs, bool):
+            raise TypeError("allow_all_pairs must be a boolean.")
+
+        normalized_pairs = []
+        if declared_pairs is not None:
+            for pair in declared_pairs:
+                if (
+                    not isinstance(pair, (tuple, list))
+                    or len(pair) != 2
+                    or any(not isinstance(item, str) or not item.strip() for item in pair)
+                ):
+                    raise ValueError(
+                        "declared_pairs must contain (source_name, target_name) string pairs."
+                    )
+                normalized_pairs.append((pair[0].strip(), pair[1].strip()))
+        if not normalized_pairs and allow_all_pairs:
+            raise ValueError(
+                "allow_all_pairs=True is not supported in SR06; declare explicit pairs instead."
+            )
+
+        self.d_model = d_model
+        self.rank = rank
+        self.declared_pairs = tuple(normalized_pairs)
+        self.allow_all_pairs = allow_all_pairs
+        self.left_projection = nn.Linear(d_model, rank)
+        self.right_projection = nn.Linear(d_model, rank)
+        self.out_projection = nn.Linear(rank, d_model)
+
+    def _resolve_pairs(self, covariate_names: Iterable[str]):
+        normalized_names = []
+        for name in covariate_names:
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("covariate_names must contain non-empty strings.")
+            normalized_names.append(name.strip())
+        if len(set(normalized_names)) != len(normalized_names):
+            raise ValueError("covariate_names must be unique.")
+
+        name_to_idx = {name: idx for idx, name in enumerate(normalized_names)}
+        active_pairs = []
+        for source_name, target_name in self.declared_pairs:
+            if source_name in name_to_idx and target_name in name_to_idx:
+                active_pairs.append(
+                    (source_name, target_name, name_to_idx[source_name], name_to_idx[target_name])
+                )
+        return normalized_names, active_pairs
+
+    def forward(self, x: torch.Tensor, covariate_names: Iterable[str]):
+        if x.ndim != 4:
+            raise ValueError(
+                f"NamedCovariateInteractionEncoder expects [B,T,C,D], got {tuple(x.shape)}."
+            )
+        if x.shape[-1] != self.d_model:
+            raise ValueError(
+                f"Last dimension mismatch: expected {self.d_model}, got {x.shape[-1]}."
+            )
+
+        normalized_names, active_pairs = self._resolve_pairs(covariate_names)
+        if x.shape[-2] != len(normalized_names):
+            raise ValueError(
+                "Covariate axis and covariate_names length must match; "
+                f"got C={x.shape[-2]} and {len(normalized_names)} names."
+            )
+
+        if not active_pairs:
+            empty = x.new_zeros(x.shape[0], x.shape[1], 0, self.d_model)
+            return empty, {
+                'covariate_names': tuple(normalized_names),
+                'declared_pairs': self.declared_pairs,
+                'active_pairs': tuple(),
+                'pair_indices': tuple(),
+            }
+
+        channels = []
+        pair_labels = []
+        pair_indices = []
+        for source_name, target_name, source_idx, target_idx in active_pairs:
+            left = self.left_projection(x[:, :, source_idx, :])
+            right = self.right_projection(x[:, :, target_idx, :])
+            interaction = self.out_projection((left * right) / (self.rank ** 0.5))
+            channels.append(interaction)
+            pair_labels.append((source_name, target_name))
+            pair_indices.append((source_idx, target_idx))
+
+        stacked_channels = torch.stack(channels, dim=2)
+        return stacked_channels, {
+            'covariate_names': tuple(normalized_names),
+            'declared_pairs': self.declared_pairs,
+            'active_pairs': tuple(pair_labels),
+            'pair_indices': tuple(pair_indices),
+        }
 
 
 class RegimeAwareSparseMoE(nn.Module):

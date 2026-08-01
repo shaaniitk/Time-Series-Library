@@ -346,7 +346,7 @@ class GRN(nn.Module):
 
 
 class VariableSelectionNetwork(nn.Module):
-    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64, graph_type='dense', graph_top_k=10, graph_num_layers=2, graph_temporal_evolution=False, graph_edge_features=False, use_context=True, extension_configs=None):
+    def __init__(self, d_model, variable_num, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64, graph_type='dense', graph_top_k=10, graph_density=None, graph_num_layers=2, graph_temporal_evolution=False, graph_edge_features=False, graph_self_edge_policy='allowed', graph_head_mode='single', graph_temperature=1.0, graph_entropy_regularization=0.0, graph_support_stability_regularization=0.0, graph_residual_strength_init=0.0, graph_scope='observed_and_known', use_context=True, extension_configs=None):
         super(VariableSelectionNetwork, self).__init__()
         self.per_feature_gating = per_feature_gating
         self.n_selection_heads = n_selection_heads
@@ -361,15 +361,25 @@ class VariableSelectionNetwork(nn.Module):
                 f"d_model ({d_model}) must be divisible by n_selection_heads ({n_selection_heads})."
             )
         if cross_variable_mixing:
-            if graph_type == 'dense':
+            if graph_type == 'dense' and self.extension_semantics_version == 1:
                 self.cross_mixing = DynamicGraphLearner(d_model, n_heads, dropout, output_attention=True)
             else:
+                resolved_top_k = 0 if graph_type == 'dense' else graph_top_k
                 self.cross_mixing = AdvancedDynamicGraphLearner(
                     d_model, n_heads, dropout, output_attention=True,
-                    top_k=graph_top_k, num_layers=graph_num_layers,
+                    top_k=resolved_top_k,
+                    density=graph_density,
+                    num_layers=graph_num_layers,
                     temporal_evolution=(graph_type == 'temporal_sparse' or graph_temporal_evolution),
                     edge_features=graph_edge_features,
                     num_nodes=variable_num,
+                    self_edge_policy=graph_self_edge_policy,
+                    head_mode=graph_head_mode,
+                    temperature=graph_temperature,
+                    entropy_regularization=graph_entropy_regularization,
+                    support_stability_regularization=graph_support_stability_regularization,
+                    residual_strength_init=graph_residual_strength_init,
+                    graph_scope=graph_scope,
                 )
         else:
             self.cross_mixing = None
@@ -516,6 +526,7 @@ class VariableSelectionNetwork(nn.Module):
 
     def forward(self, x: Tensor, context: Optional[Tensor] = None, return_weights: bool = False):
         graph_attention = None
+        graph_metadata = None
         graph_residual_diagnostics = None
 
         if self.cross_mixing is None:
@@ -529,10 +540,12 @@ class VariableSelectionNetwork(nn.Module):
                 if not isinstance(cross_output, tuple) or len(cross_output) != 2:
                     raise RuntimeError("Dynamic graph mixing must return (features, attention_weights) when return_weights=True.")
                 mixed_x, graph_attention = cross_output
+                graph_metadata = getattr(self.cross_mixing, 'last_graph_metadata', None)
             else:
                 if isinstance(cross_output, tuple):
                     raise RuntimeError("Dynamic graph mixing returned attention weights when return_weights=False.")
                 mixed_x = cross_output
+                graph_metadata = getattr(self.cross_mixing, 'last_graph_metadata', None)
             selection_result, selection_weights, bypass_diagnostics = (
                 self._select_variables(mixed_x, context, return_weights)
             )
@@ -545,16 +558,18 @@ class VariableSelectionNetwork(nn.Module):
             )
 
             def _graph_selection_delta():
-                nonlocal graph_attention
+                nonlocal graph_attention, graph_metadata
                 cross_output = self.cross_mixing(x, return_attention=return_weights)
                 if return_weights:
                     if not isinstance(cross_output, tuple) or len(cross_output) != 2:
                         raise RuntimeError("Dynamic graph mixing must return (features, attention_weights) when return_weights=True.")
                     mixed_x, graph_attention = cross_output
+                    graph_metadata = getattr(self.cross_mixing, 'last_graph_metadata', None)
                 else:
                     if isinstance(cross_output, tuple):
                         raise RuntimeError("Dynamic graph mixing returned attention weights when return_weights=False.")
                     mixed_x = cross_output
+                    graph_metadata = getattr(self.cross_mixing, 'last_graph_metadata', None)
                 graph_selection, _, _ = self._select_variables(
                     mixed_x, context, False
                 )
@@ -570,6 +585,7 @@ class VariableSelectionNetwork(nn.Module):
             return selection_result, {
                 'selection': selection_weights,
                 'graph_attention': graph_attention,
+                'graph_metadata': graph_metadata,
                 'graph_residual': graph_residual_diagnostics,
                 'vsn_bypass_residual': bypass_diagnostics,
             }
@@ -577,7 +593,7 @@ class VariableSelectionNetwork(nn.Module):
 
 
 class StaticCovariateEncoder(nn.Module):
-    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64, graph_type='dense', graph_top_k=10, graph_num_layers=2, graph_temporal_evolution=False, graph_edge_features=False, extension_configs=None):
+    def __init__(self, d_model, static_len, dropout=0.0, use_swiglu=False, cross_variable_mixing=False, n_heads=4, residual_bypass=True, n_selection_heads=1, per_feature_gating=False, low_rank_threshold=64, graph_type='dense', graph_top_k=10, graph_density=None, graph_num_layers=2, graph_temporal_evolution=False, graph_edge_features=False, graph_self_edge_policy='allowed', graph_head_mode='single', graph_temperature=1.0, graph_entropy_regularization=0.0, graph_support_stability_regularization=0.0, graph_residual_strength_init=0.0, graph_scope='observed_and_known', extension_configs=None):
         super(StaticCovariateEncoder, self).__init__()
         self.canonical_mode = False
         if static_len:
@@ -586,8 +602,16 @@ class StaticCovariateEncoder(nn.Module):
                 cross_variable_mixing=cross_variable_mixing, n_heads=n_heads, residual_bypass=residual_bypass,
                 n_selection_heads=n_selection_heads, per_feature_gating=per_feature_gating,
                 low_rank_threshold=low_rank_threshold, graph_type=graph_type, graph_top_k=graph_top_k,
+                graph_density=graph_density,
                 graph_num_layers=graph_num_layers, graph_temporal_evolution=graph_temporal_evolution,
                 graph_edge_features=graph_edge_features, use_context=False,
+                graph_self_edge_policy=graph_self_edge_policy,
+                graph_head_mode=graph_head_mode,
+                graph_temperature=graph_temperature,
+                graph_entropy_regularization=graph_entropy_regularization,
+                graph_support_stability_regularization=graph_support_stability_regularization,
+                graph_residual_strength_init=graph_residual_strength_init,
+                graph_scope=graph_scope,
                 extension_configs=extension_configs,
             )
             self.static_vsn_cs = VariableSelectionNetwork(**vsn_kwargs)
@@ -751,6 +775,11 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.rope_base = float(getattr(configs, 'tft_rope_base', 10000.0))
         self.alibi_scale = float(getattr(configs, 'tft_alibi_scale', 1.0))
         self.use_lag_attention = getattr(configs, 'tft_use_lag_attention', False)
+        self.lag_semantics_mode = getattr(
+            configs,
+            'tft_lag_semantics_mode',
+            'shifted_prefix_attention',
+        )
         _lag_raw = getattr(configs, 'tft_lag_scales', [1, 2, 4, 8])
         if isinstance(_lag_raw, str):
             self.lag_scales = [int(x.strip()) for x in _lag_raw.split(',') if x.strip()]
@@ -776,8 +805,19 @@ class TemporalFusionDecoderLayer(nn.Module):
         self.fft_modes = int(getattr(configs, 'tft_fft_modes', 32))
         self.fft_mode_select = getattr(configs, 'tft_fft_mode_select', 'low')
         self.use_temporal_compression = getattr(configs, 'tft_use_temporal_compression', False)
+        self.temporal_compression_mode = getattr(
+            configs,
+            'tft_temporal_compression_mode',
+            'legacy_codec',
+        )
         self.tc_stride = int(getattr(configs, 'tft_tc_stride', 2))
         self.tc_threshold = int(getattr(configs, 'tft_tc_threshold', 256))
+        self.tc_min_long_sequence = int(
+            getattr(configs, 'tft_tc_min_long_sequence', 512)
+        )
+        self.tc_experimental_short_window = bool(
+            getattr(configs, 'tft_tc_experimental_short_window', False)
+        )
 
         self.fft_residual_adapter = (
             _extension_adapter(configs, 'fft_branch', configs.d_model)
@@ -854,6 +894,13 @@ class TemporalFusionDecoderLayer(nn.Module):
                 stride=self.tc_stride,
                 threshold=self.tc_threshold,
                 dropout=configs.dropout,
+                mode=(
+                    'legacy_codec'
+                    if self.legacy_extension_semantics
+                    else self.temporal_compression_mode
+                ),
+                min_long_sequence=self.tc_min_long_sequence,
+                experimental_short_window=self.tc_experimental_short_window,
             )
         else:
             self.temporal_compression = None
@@ -890,6 +937,7 @@ class TemporalFusionDecoderLayer(nn.Module):
             configs.d_model,
             configs.n_heads,
             self.lag_scales,
+            lag_semantics_mode=self.lag_semantics_mode,
             dropout=configs.dropout,
             position_bias_type=self.position_bias_type,
             rope_base=self.rope_base,
@@ -1144,29 +1192,69 @@ class TemporalFusionDecoderLayer(nn.Module):
                 fft_diagnostics = None
             else:
                 base_temporal_features = temporal_features
-                fft_gate = None
+                fft_diagnostics = None
 
                 def _fft_delta():
-                    nonlocal fft_gate
-                    fft_features = self.fft_branch(temporal_input)
-                    fft_gate = torch.sigmoid(self.fft_fusion_gate(
+                    nonlocal fft_diagnostics
+                    if return_attention:
+                        history_fft, history_fft_diagnostics = self.fft_branch(
+                            history_input,
+                            return_diagnostics=True,
+                            scope='history',
+                        )
+                        future_fft, future_fft_diagnostics = self.fft_branch(
+                            future_input,
+                            return_diagnostics=True,
+                            scope='known_future',
+                        )
+                    else:
+                        history_fft = self.fft_branch(
+                            history_input,
+                            scope='history',
+                        )
+                        future_fft = self.fft_branch(
+                            future_input,
+                            scope='known_future',
+                        )
+                        history_fft_diagnostics = None
+                        future_fft_diagnostics = None
+                    fft_features = torch.cat([history_fft, future_fft], dim=1)
+                    temporal_path_weight = torch.sigmoid(self.fft_fusion_gate(
                         torch.cat([base_temporal_features, fft_features], dim=-1)
                     ))
                     candidate = (
-                        fft_gate * base_temporal_features
-                        + (1.0 - fft_gate) * fft_features
+                        temporal_path_weight * base_temporal_features
+                        + (1.0 - temporal_path_weight) * fft_features
                     )
+                    if return_attention:
+                        fft_diagnostics = {
+                            'scope': 'separate_history_future',
+                            'mode': self.fft_branch.mode_select,
+                            'history': history_fft_diagnostics,
+                            'known_future': future_fft_diagnostics,
+                            'temporal_path_weight_mean': float(
+                                temporal_path_weight.mean().item()
+                            ),
+                        }
                     return candidate - base_temporal_features
 
-                temporal_features, fft_diagnostics = self.fft_residual_adapter(
+                temporal_features, fft_adapter_diagnostics = self.fft_residual_adapter(
                     base_temporal_features,
                     _fft_delta,
                     return_diagnostics=True,
                 )
-                _extension_diagnostics(
-                    output_payload, 'fft_branch', fft_diagnostics
+                if fft_diagnostics is None:
+                    fft_diagnostics = {}
+                fft_diagnostics.update(fft_adapter_diagnostics)
+                fft_diagnostics['residual_contribution_rms'] = (
+                    fft_adapter_diagnostics['combined_minus_base_rms'].clone()
                 )
-            if return_attention:
+                if output_payload is not None:
+                    output_payload['fft_diagnostics'] = fft_diagnostics
+                _extension_diagnostics(
+                    output_payload, 'fft_branch', fft_adapter_diagnostics
+                )
+            if return_attention and self.legacy_extension_semantics:
                 output_payload['fft_gate_mean'] = fft_gate.mean().item()
                 learned_mask_summary = self.fft_branch.summarize_learned_mask(
                     n_freqs=(temporal_input.shape[1] // 2) + 1
@@ -1239,6 +1327,20 @@ class TemporalFusionDecoderLayer(nn.Module):
         history_len = history_input.shape[1]
         _tc_active = (self.temporal_compression is not None
                       and self.temporal_compression.should_compress(history_len))
+        if (
+            _tc_active
+            and not self.legacy_extension_semantics
+            and self.compression_residual_adapter is not None
+            and self.compression_residual_adapter.mode == 'neutral'
+        ):
+            _tc_active = False
+        tc_kv_pool_active = False
+        tc_kv_pool_metadata = None
+        tc_mode = (
+            self.temporal_compression.mode
+            if self.temporal_compression is not None
+            else None
+        )
         if _tc_active and self.legacy_extension_semantics:
             hist_feats = temporal_features[:, :history_len, :]
             fut_feats = temporal_features[:, history_len:, :]
@@ -1258,37 +1360,45 @@ class TemporalFusionDecoderLayer(nn.Module):
                 output_payload['tc_active'] = True
                 output_payload['tc_compressed_history_len'] = compressed_history_len
         elif _tc_active:
-            # SR02 supplies a same-shaped neutral shell. SR07 will replace this
-            # codec candidate with live anti-aliased K/V memory compression.
-            base_temporal_features = temporal_features
+            self.temporal_compression.validate_activation(history_len)
+            temporal_features_for_attn = temporal_features
             compressed_history_len = history_len
-
-            def _compression_delta():
-                hist_feats = base_temporal_features[:, :history_len, :]
-                fut_feats = base_temporal_features[:, history_len:, :]
-                hist_compressed, original_len = self.temporal_compression.compress(
-                    hist_feats
-                )
-                hist_restored = self.temporal_compression.decompress_to(
-                    hist_compressed, original_len
-                )
-                candidate = torch.cat([hist_restored, fut_feats], dim=1)
-                return candidate - base_temporal_features
-
-            temporal_features_for_attn, compression_diagnostics = (
-                self.compression_residual_adapter(
-                    base_temporal_features,
-                    _compression_delta,
-                    return_diagnostics=True,
-                )
-            )
             temporal_positions = resolved_positions
-            _extension_diagnostics(
-                output_payload, 'temporal_compression', compression_diagnostics
-            )
+            if tc_mode == 'kv_pool':
+                tc_kv_pool_active = True
+            elif tc_mode == 'legacy_codec':
+                base_temporal_features = temporal_features
+
+                def _compression_delta():
+                    hist_feats = base_temporal_features[:, :history_len, :]
+                    fut_feats = base_temporal_features[:, history_len:, :]
+                    hist_compressed, original_len = self.temporal_compression.compress(
+                        hist_feats
+                    )
+                    hist_restored = self.temporal_compression.decompress_to(
+                        hist_compressed, original_len
+                    )
+                    candidate = torch.cat([hist_restored, fut_feats], dim=1)
+                    return candidate - base_temporal_features
+
+                temporal_features_for_attn, compression_diagnostics = (
+                    self.compression_residual_adapter(
+                        base_temporal_features,
+                        _compression_delta,
+                        return_diagnostics=True,
+                    )
+                )
+                _extension_diagnostics(
+                    output_payload, 'temporal_compression', compression_diagnostics
+                )
+            else:
+                raise RuntimeError(
+                    f"Unsupported temporal compression mode {tc_mode!r}."
+                )
             if return_attention:
                 output_payload['tc_active'] = True
                 output_payload['tc_compressed_history_len'] = history_len
+                output_payload['tc_mode'] = tc_mode
         else:
             temporal_features_for_attn = temporal_features
             compressed_history_len = history_len
@@ -1302,6 +1412,7 @@ class TemporalFusionDecoderLayer(nn.Module):
             )
             if return_attention and self.temporal_compression is not None:
                 output_payload['tc_active'] = False
+                output_payload['tc_mode'] = tc_mode
 
         temporal_features_for_attn = _mask_tokens(temporal_features_for_attn)
 
@@ -1392,16 +1503,176 @@ class TemporalFusionDecoderLayer(nn.Module):
                     'explicit_cross_attention',
                     cross_diagnostics,
                 )
+            if return_attention and cross_attention_prob is not None:
+                detached_attention = cross_attention_prob.detach()
+                safe_attention = detached_attention.clamp_min(
+                    torch.finfo(detached_attention.dtype).tiny
+                )
+                mean_head_attention = detached_attention.mean(dim=1, keepdim=True)
+                output_payload['cross_attention_diagnostics'] = {
+                    'role': 'future_query_to_history_enrichment',
+                    'query_scope': 'future',
+                    'key_value_scope': 'history',
+                    'attention_type': self.cross_attention_type,
+                    'interpretable': self.cross_attention_type == 'interpretable',
+                    'attention_entropy_per_head': (
+                        -(safe_attention * safe_attention.log()).sum(dim=-1)
+                    ).mean(dim=(0, 2)),
+                    'head_disagreement': (
+                        detached_attention - mean_head_attention
+                    ).abs().mean(),
+                    'residual_strength': (
+                        cross_diagnostics['residual_strength'].clone()
+                        if self.cross_attention_residual_adapter is not None
+                        else torch.ones(1, device=detached_attention.device)
+                    ),
+                    'branch_knockout_delta': (
+                        cross_diagnostics['combined_minus_base_rms'].clone()
+                        if self.cross_attention_residual_adapter is not None
+                        else torch.tensor(0.0, device=detached_attention.device)
+                    ),
+                }
             enriched_features = torch.cat([enriched_history, enriched_future], dim=1)
             enriched_features = _mask_tokens(enriched_features)
             if return_attention:
                 output_payload['cross_attention'] = cross_attention_prob
                 output_payload['cross_attention_type'] = self.cross_attention_type
-        seq_len = enriched_features.shape[1]
-        if seq_len <= self._causal_mask_buf.shape[0]:
-            attn_mask = self._causal_mask_buf[:seq_len, :seq_len].to(device=enriched_features.device, dtype=enriched_features.dtype)
+        attention_query_features = enriched_features
+        attention_key_value_features = enriched_features
+        attention_query_positions = temporal_positions
+        attention_key_positions = temporal_positions
+        attention_key_valid_mask = resolved_valid_mask
+        pooled_key_value_features = None
+        pooled_key_positions = None
+        pooled_key_valid_mask = None
+        pooled_attn_mask = None
+
+        if tc_kv_pool_active:
+            if not self.full_attention:
+                raise RuntimeError(
+                    "tft_temporal_compression_mode='kv_pool' currently requires "
+                    "tft_full_attention=True in semantics v2."
+                )
+            history_features_for_pool = enriched_features[:, :history_len, :]
+            if temporal_positions.ndim == 1:
+                history_positions_for_pool = temporal_positions[:history_len]
+                future_positions_for_pool = temporal_positions[history_len:]
+            else:
+                history_positions_for_pool = temporal_positions[:, :history_len]
+                future_positions_for_pool = temporal_positions[:, history_len:]
+            history_valid_for_pool = (
+                None
+                if resolved_valid_mask is None
+                else resolved_valid_mask[:, :history_len]
+            )
+            future_valid_for_pool = (
+                None
+                if resolved_valid_mask is None
+                else resolved_valid_mask[:, history_len:]
+            )
+
+            pooled_history, tc_kv_pool_metadata = self.temporal_compression.pool_history_kv(
+                history_features_for_pool,
+                positions=history_positions_for_pool,
+                valid_mask=history_valid_for_pool,
+            )
+            future_features_for_pool = enriched_features[:, history_len:, :]
+            pooled_key_value_features = torch.cat(
+                [pooled_history, future_features_for_pool], dim=1
+            )
+            pooled_availability_positions = tc_kv_pool_metadata[
+                'availability_positions'
+            ]
+            if temporal_positions.ndim == 1:
+                future_positions_for_pool = future_positions_for_pool.unsqueeze(0).expand(
+                    pooled_availability_positions.shape[0], -1
+                )
+            pooled_key_positions = torch.cat(
+                [pooled_availability_positions, future_positions_for_pool], dim=1
+            )
+
+            if future_valid_for_pool is None:
+                pooled_valid = tc_kv_pool_metadata['pooled_valid_mask']
+                future_valid = torch.ones(
+                    pooled_valid.shape[0],
+                    future_features_for_pool.shape[1],
+                    device=pooled_valid.device,
+                    dtype=torch.bool,
+                )
+            else:
+                pooled_valid = tc_kv_pool_metadata['pooled_valid_mask']
+                future_valid = future_valid_for_pool
+            pooled_key_valid_mask = torch.cat([pooled_valid, future_valid], dim=1)
+
+            query_pos_for_mask = attention_query_positions
+            key_pos_for_mask = pooled_key_positions
+            if query_pos_for_mask.ndim == 2:
+                query_pos_for_mask = query_pos_for_mask[0]
+            if key_pos_for_mask.ndim == 2:
+                key_pos_for_mask = key_pos_for_mask[0]
+            pooled_causal_bool = key_pos_for_mask.unsqueeze(0) > query_pos_for_mask.unsqueeze(1)
+            pooled_attn_mask = torch.where(
+                pooled_causal_bool,
+                torch.full_like(
+                    pooled_causal_bool,
+                    float('-inf'),
+                    dtype=enriched_features.dtype,
+                    device=enriched_features.device,
+                ),
+                torch.zeros_like(
+                    pooled_causal_bool,
+                    dtype=enriched_features.dtype,
+                    device=enriched_features.device,
+                ),
+            )
+
+            if return_attention:
+                output_payload['tc_compressed_history_len'] = int(pooled_history.shape[1])
+                output_payload['tc_kv_pooling'] = {
+                    'history_original_len': history_len,
+                    'history_pooled_len': int(pooled_history.shape[1]),
+                    'key_value_total_len': int(pooled_key_value_features.shape[1]),
+                    'content_center_positions': tc_kv_pool_metadata['content_center_positions'],
+                    'availability_positions': tc_kv_pool_metadata['availability_positions'],
+                    'pooled_valid_mask': tc_kv_pool_metadata['pooled_valid_mask'],
+                    'causal_mask_uses': 'availability_positions',
+                }
+
+        seq_len = attention_query_features.shape[1]
+        key_len = attention_key_value_features.shape[1]
+        if key_len == seq_len and seq_len <= self._causal_mask_buf.shape[0]:
+            attn_mask = self._causal_mask_buf[:seq_len, :seq_len].to(
+                device=enriched_features.device,
+                dtype=enriched_features.dtype,
+            )
+        elif key_len == seq_len:
+            attn_mask = build_causal_mask(
+                seq_len,
+                enriched_features.device,
+                enriched_features.dtype,
+            )
         else:
-            attn_mask = build_causal_mask(seq_len, enriched_features.device, enriched_features.dtype)
+            query_pos = attention_query_positions
+            key_pos = attention_key_positions
+            if query_pos.ndim == 2:
+                query_pos = query_pos[0]
+            if key_pos.ndim == 2:
+                key_pos = key_pos[0]
+            causal_bool = key_pos.unsqueeze(0) > query_pos.unsqueeze(1)
+            attn_mask = torch.where(
+                causal_bool,
+                torch.full_like(
+                    causal_bool,
+                    float('-inf'),
+                    dtype=enriched_features.dtype,
+                    device=enriched_features.device,
+                ),
+                torch.zeros_like(
+                    causal_bool,
+                    dtype=enriched_features.dtype,
+                    device=enriched_features.device,
+                ),
+            )
         if self.legacy_extension_semantics:
             attention_branches = []
 
@@ -1488,26 +1759,26 @@ class TemporalFusionDecoderLayer(nn.Module):
             if self.full_attention:
                 if return_attention:
                     attention_out, primary_attention_prob = self.attention(
-                        enriched_features,
-                        enriched_features,
-                        enriched_features,
+                        attention_query_features,
+                        attention_key_value_features,
+                        attention_key_value_features,
                         return_attention=True,
                         attn_mask=attn_mask,
-                        query_positions=temporal_positions,
-                        key_positions=temporal_positions,
+                        query_positions=attention_query_positions,
+                        key_positions=attention_key_positions,
                         query_valid_mask=resolved_valid_mask,
-                        key_valid_mask=resolved_valid_mask,
+                        key_valid_mask=attention_key_valid_mask,
                     )
                 else:
                     attention_out = self.attention(
-                        enriched_features,
-                        enriched_features,
-                        enriched_features,
+                        attention_query_features,
+                        attention_key_value_features,
+                        attention_key_value_features,
                         attn_mask=attn_mask,
-                        query_positions=temporal_positions,
-                        key_positions=temporal_positions,
+                        query_positions=attention_query_positions,
+                        key_positions=attention_key_positions,
                         query_valid_mask=resolved_valid_mask,
-                        key_valid_mask=resolved_valid_mask,
+                        key_valid_mask=attention_key_valid_mask,
                     )
                 if return_attention:
                     output_payload['full'] = primary_attention_prob
@@ -1527,6 +1798,46 @@ class TemporalFusionDecoderLayer(nn.Module):
                     )
                 if return_attention:
                     output_payload['interpretable'] = primary_attention_prob
+
+            if tc_kv_pool_active:
+                base_attention_out = attention_out
+
+                def _kv_pool_delta():
+                    if return_attention:
+                        pooled_out, _ = self.attention(
+                            attention_query_features,
+                            pooled_key_value_features,
+                            pooled_key_value_features,
+                            return_attention=True,
+                            attn_mask=pooled_attn_mask,
+                            query_positions=attention_query_positions,
+                            key_positions=pooled_key_positions,
+                            query_valid_mask=resolved_valid_mask,
+                            key_valid_mask=pooled_key_valid_mask,
+                        )
+                    else:
+                        pooled_out = self.attention(
+                            attention_query_features,
+                            pooled_key_value_features,
+                            pooled_key_value_features,
+                            attn_mask=pooled_attn_mask,
+                            query_positions=attention_query_positions,
+                            key_positions=pooled_key_positions,
+                            query_valid_mask=resolved_valid_mask,
+                            key_valid_mask=pooled_key_valid_mask,
+                        )
+                    return pooled_out - base_attention_out
+
+                attention_out, compression_diagnostics = self.compression_residual_adapter(
+                    base_attention_out,
+                    _kv_pool_delta,
+                    return_diagnostics=True,
+                )
+                _extension_diagnostics(
+                    output_payload,
+                    'temporal_compression',
+                    compression_diagnostics,
+                )
 
             if self.dual_attention_fusion:
                 base_attention_out = attention_out
@@ -1694,6 +2005,11 @@ class TemporalFusionDecoderLayer(nn.Module):
                 _extension_diagnostics(
                     output_payload,
                     'higher_order_interaction',
+                    higher_diagnostics,
+                )
+                _extension_diagnostics(
+                    output_payload,
+                    'latent_polynomial_block',
                     higher_diagnostics,
                 )
                 if return_attention and interaction_payload is not None:
@@ -1995,6 +2311,33 @@ class Model(nn.Module):
         self.use_covariate_reattention = getattr(configs, 'tft_covariate_reattention', False)
         self.graph_type = getattr(configs, 'tft_graph_type', 'dense')
         self.graph_top_k = int(getattr(configs, 'tft_graph_top_k', 10))
+        history_top_k_raw = getattr(configs, 'tft_graph_history_top_k', None)
+        future_top_k_raw = getattr(configs, 'tft_graph_future_top_k', None)
+        self.graph_history_top_k = self.graph_top_k if history_top_k_raw is None else int(history_top_k_raw)
+        self.graph_future_top_k = self.graph_top_k if future_top_k_raw is None else int(future_top_k_raw)
+        self.graph_history_density = getattr(configs, 'tft_graph_history_density', None)
+        self.graph_future_density = getattr(configs, 'tft_graph_future_density', None)
+        self.graph_self_edge_policy = getattr(
+            configs,
+            'tft_graph_self_edge_policy',
+            'allowed',
+        )
+        self.graph_head_mode = getattr(configs, 'tft_graph_head_mode', 'single')
+        self.graph_temperature = float(getattr(configs, 'tft_graph_temperature', 1.0))
+        self.graph_entropy_regularization = float(
+            getattr(configs, 'tft_graph_entropy_regularization', 0.0)
+        )
+        self.graph_support_stability_regularization = float(
+            getattr(configs, 'tft_graph_support_stability_regularization', 0.0)
+        )
+        self.graph_residual_strength_init = float(
+            getattr(configs, 'tft_graph_residual_strength_init', 0.0)
+        )
+        self.graph_scope = getattr(
+            configs,
+            'tft_graph_scope',
+            'observed_and_known',
+        )
         self.graph_num_layers = int(getattr(configs, 'tft_graph_num_layers', 2))
         self.graph_temporal_evolution = getattr(configs, 'tft_graph_temporal_evolution', False)
         self.graph_edge_features = getattr(configs, 'tft_graph_edge_features', False)
@@ -2009,9 +2352,17 @@ class Model(nn.Module):
             residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
             per_feature_gating=self.per_feature_gating,
             low_rank_threshold=self.vsn_low_rank_threshold,
-            graph_type=self.graph_type, graph_top_k=self.graph_top_k,
+            graph_type=self.graph_type, graph_top_k=self.graph_history_top_k,
+            graph_density=self.graph_history_density,
             graph_num_layers=self.graph_num_layers, graph_temporal_evolution=self.graph_temporal_evolution,
             graph_edge_features=self.graph_edge_features,
+            graph_self_edge_policy=self.graph_self_edge_policy,
+            graph_head_mode=self.graph_head_mode,
+            graph_temperature=self.graph_temperature,
+            graph_entropy_regularization=self.graph_entropy_regularization,
+            graph_support_stability_regularization=self.graph_support_stability_regularization,
+            graph_residual_strength_init=self.graph_residual_strength_init,
+            graph_scope=self.graph_scope,
             extension_configs=configs,
         )
         if self.is_canonical_profile and self.static_len:
@@ -2022,9 +2373,17 @@ class Model(nn.Module):
                 residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
                 per_feature_gating=self.per_feature_gating,
                 low_rank_threshold=self.vsn_low_rank_threshold,
-                graph_type=self.graph_type, graph_top_k=self.graph_top_k,
+                graph_type=self.graph_type, graph_top_k=self.graph_history_top_k,
+                graph_density=self.graph_history_density,
                 graph_num_layers=self.graph_num_layers, graph_temporal_evolution=self.graph_temporal_evolution,
                 graph_edge_features=self.graph_edge_features, use_context=False,
+                graph_self_edge_policy=self.graph_self_edge_policy,
+                graph_head_mode=self.graph_head_mode,
+                graph_temperature=self.graph_temperature,
+                graph_entropy_regularization=self.graph_entropy_regularization,
+                graph_support_stability_regularization=self.graph_support_stability_regularization,
+                graph_residual_strength_init=self.graph_residual_strength_init,
+                graph_scope='observed',
                 extension_configs=configs,
             )
             self.static_encoder.static_vsn_cs = None
@@ -2037,9 +2396,17 @@ class Model(nn.Module):
             residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
             per_feature_gating=self.per_feature_gating,
             low_rank_threshold=self.vsn_low_rank_threshold,
-            graph_type=self.graph_type, graph_top_k=self.graph_top_k,
+            graph_type=self.graph_type, graph_top_k=self.graph_history_top_k,
+            graph_density=self.graph_history_density,
             graph_num_layers=self.graph_num_layers, graph_temporal_evolution=self.graph_temporal_evolution,
             graph_edge_features=self.graph_edge_features,
+            graph_self_edge_policy=self.graph_self_edge_policy,
+            graph_head_mode=self.graph_head_mode,
+            graph_temperature=self.graph_temperature,
+            graph_entropy_regularization=self.graph_entropy_regularization,
+            graph_support_stability_regularization=self.graph_support_stability_regularization,
+            graph_residual_strength_init=self.graph_residual_strength_init,
+            graph_scope='observed_and_known',
             extension_configs=configs,
         )
         self.future_vsn = VariableSelectionNetwork(
@@ -2048,9 +2415,17 @@ class Model(nn.Module):
             residual_bypass=self.vsn_residual_bypass, n_selection_heads=self.n_selection_heads,
             per_feature_gating=self.per_feature_gating,
             low_rank_threshold=self.vsn_low_rank_threshold,
-            graph_type=self.graph_type, graph_top_k=self.graph_top_k,
+            graph_type=self.graph_type, graph_top_k=self.graph_future_top_k,
+            graph_density=self.graph_future_density,
             graph_num_layers=self.graph_num_layers, graph_temporal_evolution=self.graph_temporal_evolution,
             graph_edge_features=self.graph_edge_features,
+            graph_self_edge_policy=self.graph_self_edge_policy,
+            graph_head_mode=self.graph_head_mode,
+            graph_temperature=self.graph_temperature,
+            graph_entropy_regularization=self.graph_entropy_regularization,
+            graph_support_stability_regularization=self.graph_support_stability_regularization,
+            graph_residual_strength_init=self.graph_residual_strength_init,
+            graph_scope='known',
             extension_configs=configs,
         )
         self.temporal_fusion_decoder = TemporalFusionDecoder(configs)
@@ -2169,8 +2544,12 @@ class Model(nn.Module):
     @staticmethod
     def _split_vsn_weight_payload(weight_payload):
         if isinstance(weight_payload, dict):
-            return weight_payload.get('selection'), weight_payload.get('graph_attention')
-        return weight_payload, None
+            return (
+                weight_payload.get('selection'),
+                weight_payload.get('graph_attention'),
+                weight_payload.get('graph_metadata'),
+            )
+        return weight_payload, None, None
 
     @staticmethod
     def _vsn_extension_payload(weight_payload):
@@ -2195,21 +2574,26 @@ class Model(nn.Module):
     @staticmethod
     def _split_static_vsn_weight_payload(weight_payload):
         if not isinstance(weight_payload, dict):
-            return weight_payload, None
+            return weight_payload, None, None
         static_weights = {}
         static_graph_attention = {}
+        static_graph_metadata = {}
         for context_key, context_payload in weight_payload.items():
             if isinstance(context_payload, dict):
                 static_weights[context_key] = context_payload.get('selection')
                 static_graph_attention[context_key] = context_payload.get('graph_attention')
+                static_graph_metadata[context_key] = context_payload.get('graph_metadata')
             else:
                 static_weights[context_key] = context_payload
                 static_graph_attention[context_key] = None
+                static_graph_metadata[context_key] = None
         if not static_weights:
             static_weights = None
         if not static_graph_attention:
             static_graph_attention = None
-        return static_weights, static_graph_attention
+        if not static_graph_metadata:
+            static_graph_metadata = None
+        return static_weights, static_graph_attention, static_graph_metadata
 
     @staticmethod
     def _ordered_quantile_projection(raw_quantile_out):
@@ -2509,12 +2893,16 @@ class Model(nn.Module):
         if return_interpretation:
             static_contexts, static_weight_payload = self.static_encoder(static_input, return_weights=True)
             c_s, c_c, c_h, c_e = static_contexts
-            static_weights, static_graph_attention = self._split_static_vsn_weight_payload(static_weight_payload)
+            static_weights, static_graph_attention, static_graph_metadata = self._split_static_vsn_weight_payload(static_weight_payload)
             static_vsn_extension_residuals = self._static_vsn_extension_payload(
                 static_weight_payload
             )
         else:
             c_s, c_c, c_h, c_e = self.static_encoder(static_input)
+            static_weights = None
+            static_graph_attention = None
+            static_graph_metadata = None
+            static_vsn_extension_residuals = None
 
         # Temporal input Selection
         history_input = torch.cat([observed_input, known_input[:,:self.seq_len]], dim=-2)
@@ -2571,8 +2959,8 @@ class Model(nn.Module):
         if return_interpretation:
             history_input, history_weight_payload = self.history_vsn(history_input, c_s, return_weights=True)
             future_input, future_weight_payload = self.future_vsn(future_input, c_s, return_weights=True)
-            history_weights, history_graph_attention = self._split_vsn_weight_payload(history_weight_payload)
-            future_weights, future_graph_attention = self._split_vsn_weight_payload(future_weight_payload)
+            history_weights, history_graph_attention, history_graph_metadata = self._split_vsn_weight_payload(history_weight_payload)
+            future_weights, future_graph_attention, future_graph_metadata = self._split_vsn_weight_payload(future_weight_payload)
             history_vsn_extension_residuals = self._vsn_extension_payload(
                 history_weight_payload
             )
@@ -2582,6 +2970,14 @@ class Model(nn.Module):
         else:
             history_input = self.history_vsn(history_input, c_s)
             future_input = self.future_vsn(future_input, c_s)
+            history_weights = None
+            future_weights = None
+            history_graph_attention = None
+            future_graph_attention = None
+            history_graph_metadata = None
+            future_graph_metadata = None
+            history_vsn_extension_residuals = None
+            future_vsn_extension_residuals = None
         if has_invalid_tokens:
             history_input = torch.where(
                 history_valid_mask.unsqueeze(-1),
@@ -2725,10 +3121,13 @@ class Model(nn.Module):
             attention_fusion_alpha = None
             lag_attention_weights = None
             lag_scale_weights = None
+            lag_semantics_mode = None
             attention_branch_weights = None
             cross_attention_weights = None
             interaction_contribution = None
             interaction_gates = None
+            latent_polynomial_residual = None
+            latent_polynomial_strength = None
             expert_routing = None
             regime_probabilities = None
             regime_probabilities_pooled = None
@@ -2741,6 +3140,8 @@ class Model(nn.Module):
             attention_backend_config = self.attention_backend
             attention_backend_used = None
             cross_attention_backend_used = None
+            cross_attention_diagnostics = None
+            fft_diagnostics = None
             fft_gate_mean = None
             fft_learned_mask_mean = None
             fft_learned_mask_std = None
@@ -2751,15 +3152,20 @@ class Model(nn.Module):
             extension_residuals = None
             tc_active = False
             tc_compressed_history_len = None
+            tc_mode = None
+            tc_kv_pooling = None
             if isinstance(attention_weights, dict):
                 attention_weights_full = attention_weights.get('full')
                 attention_fusion_alpha = attention_weights.get('fusion_alpha')
                 lag_attention_weights = attention_weights.get('lag_attention')
                 lag_scale_weights = attention_weights.get('lag_scale_weights')
+                lag_semantics_mode = attention_weights.get('lag_semantics_mode')
                 attention_branch_weights = attention_weights.get('attention_branch_weights')
                 cross_attention_weights = attention_weights.get('cross_attention')
                 interaction_contribution = attention_weights.get('interaction_contribution')
                 interaction_gates = attention_weights.get('interaction_gates')
+                latent_polynomial_residual = attention_weights.get('latent_polynomial_residual')
+                latent_polynomial_strength = attention_weights.get('latent_polynomial_strength')
                 expert_routing = attention_weights.get('expert_routing')
                 regime_probabilities = attention_weights.get('regime_probabilities')
                 regime_probabilities_pooled = attention_weights.get('regime_probabilities_pooled')
@@ -2771,6 +3177,8 @@ class Model(nn.Module):
                 attention_backend_config = attention_weights.get('attention_backend_config', attention_backend_config)
                 attention_backend_used = attention_weights.get('attention_backend_used')
                 cross_attention_backend_used = attention_weights.get('cross_attention_backend_used')
+                cross_attention_diagnostics = attention_weights.get('cross_attention_diagnostics')
+                fft_diagnostics = attention_weights.get('fft_diagnostics')
                 fft_gate_mean = attention_weights.get('fft_gate_mean')
                 fft_learned_mask_mean = attention_weights.get('fft_learned_mask_mean')
                 fft_learned_mask_std = attention_weights.get('fft_learned_mask_std')
@@ -2781,8 +3189,10 @@ class Model(nn.Module):
                 extension_residuals = attention_weights.get('extension_residuals')
                 tc_active = attention_weights.get('tc_active', False)
                 tc_compressed_history_len = attention_weights.get('tc_compressed_history_len')
+                tc_mode = attention_weights.get('tc_mode')
+                tc_kv_pooling = attention_weights.get('tc_kv_pooling')
                 attention_weights = attention_weights.get('interpretable')
-            return {
+            result = {
                 'predictions': dec_out,
                 'attention_weights': attention_weights,
                 'attention_weights_full': attention_weights_full,
@@ -2791,8 +3201,11 @@ class Model(nn.Module):
                 'cross_attention_weights': cross_attention_weights,
                 'lag_attention_weights': lag_attention_weights,
                 'lag_scale_weights': lag_scale_weights,
+                'lag_semantics_mode': lag_semantics_mode,
                 'interaction_contribution': interaction_contribution,
                 'interaction_gates': interaction_gates,
+                'latent_polynomial_residual': latent_polynomial_residual,
+                'latent_polynomial_strength': latent_polynomial_strength,
                 'expert_routing': expert_routing,
                 'regime_probabilities': regime_probabilities,
                 'regime_probabilities_pooled': regime_probabilities_pooled,
@@ -2807,24 +3220,26 @@ class Model(nn.Module):
                 'attention_backend_config': attention_backend_config,
                 'attention_backend_used': attention_backend_used,
                 'cross_attention_backend_used': cross_attention_backend_used,
-                'fft_gate_mean': fft_gate_mean,
-                'fft_learned_mask_mean': fft_learned_mask_mean,
-                'fft_learned_mask_std': fft_learned_mask_std,
-                'fft_learned_mask_peak_bin_mean': fft_learned_mask_peak_bin_mean,
+                'cross_attention_diagnostics': cross_attention_diagnostics,
                 'temporal_positions': temporal_positions,
                 'temporal_valid_mask': temporal_valid_mask,
                 'temporal_coordinate_metadata': temporal_coordinate_metadata,
                 'extension_residuals': extension_residuals,
                 'tc_active': tc_active,
                 'tc_compressed_history_len': tc_compressed_history_len,
+                'tc_mode': tc_mode,
+                'tc_kv_pooling': tc_kv_pooling,
                 'history_vsn_weights': history_weights,
                 'history_graph_attention': history_graph_attention,
+                'history_graph_metadata': history_graph_metadata,
                 'history_vsn_extension_residuals': history_vsn_extension_residuals,
                 'future_vsn_weights': future_weights,
                 'future_graph_attention': future_graph_attention,
+                'future_graph_metadata': future_graph_metadata,
                 'future_vsn_extension_residuals': future_vsn_extension_residuals,
                 'static_vsn_weights': static_weights,
                 'static_graph_attention': static_graph_attention,
+                'static_graph_metadata': static_graph_metadata,
                 'static_vsn_extension_residuals': static_vsn_extension_residuals,
                 'observed_feature_names': tuple(
                     self.resolved_tft_schema.feature_names[idx] for idx in self.resolved_tft_schema.observed_positions
@@ -2869,7 +3284,10 @@ class Model(nn.Module):
                     'uses_noninterpretable_attention_branch': bool(
                         getattr(self.configs, 'tft_full_attention', False)
                         or getattr(self.configs, 'tft_dual_attention_fusion', False)
-                        or getattr(self.configs, 'tft_use_explicit_cross_attention', False)
+                        or (
+                            getattr(self.configs, 'tft_use_explicit_cross_attention', False)
+                            and getattr(self.configs, 'tft_cross_attention_type', 'full') != 'interpretable'
+                        )
                     ),
                     'uses_global_spectral_mixing': bool(getattr(self.configs, 'tft_use_fft_branch', False)),
                     'routing_is_detached': expert_routing is not None,
@@ -2877,6 +3295,40 @@ class Model(nn.Module):
                 'static_context': {'c_s': c_s, 'c_c': c_c, 'c_h': c_h, 'c_e': c_e},
                 'use_revin': self.use_revin,
             }
+            if self.extension_semantics_version == 1:
+                result['fft_gate_mean'] = fft_gate_mean
+                result['fft_learned_mask_mean'] = fft_learned_mask_mean
+                result['fft_learned_mask_std'] = fft_learned_mask_std
+                result['fft_learned_mask_peak_bin_mean'] = fft_learned_mask_peak_bin_mean
+            elif fft_diagnostics is not None:
+                result['fft_diagnostics'] = fft_diagnostics
+                result['fft_gate_mean'] = float(
+                    fft_diagnostics.get('temporal_path_weight_mean', 0.0)
+                )
+                learned_summary = None
+                fft_branch = next(
+                    (
+                        layer.fft_branch
+                        for layer in self.temporal_fusion_decoder.layers
+                        if getattr(layer, 'fft_branch', None) is not None
+                    ),
+                    None,
+                )
+                if fft_branch is not None:
+                    history_fft_diag = None
+                    if isinstance(fft_diagnostics, dict):
+                        history_fft_diag = fft_diagnostics.get('history')
+                    n_freqs = None
+                    if isinstance(history_fft_diag, dict):
+                        n_freqs = history_fft_diag.get('available_bin_count')
+                    if n_freqs is None:
+                        n_freqs = (self.seq_len // 2) + 1
+                    learned_summary = fft_branch.summarize_learned_mask(
+                        n_freqs=int(n_freqs)
+                    )
+                if learned_summary is not None:
+                    result.update(learned_summary)
+            return result
         return dec_out
 
     def _make_structured_output(self, point_forecast: torch.Tensor, history_len: int) -> TFTForecastOutput:
