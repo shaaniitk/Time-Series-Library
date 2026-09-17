@@ -1293,6 +1293,9 @@ def compute_tft_config_digest(args):
             extension_contract = deepcopy(extension_contract)
             extension_contract["small_residual_init"] = None
         material["extension_integration"] = extension_contract
+        # Only material when enabled, so existing digests are unchanged.
+        if getattr(args, "tft_astro_rule_gates", False):
+            material["tft_astro_rule_gates"] = True
     payload = json.dumps(material, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
 

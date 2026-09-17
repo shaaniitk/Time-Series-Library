@@ -603,11 +603,7 @@ class Dataset_Custom(Dataset):
         cols.remove(self.target)
         cols.remove('date')
         df_raw = df_raw[['date'] + cols + [self.target]]
-        num_train = int(len(df_raw) * 0.7)
-        num_test = int(len(df_raw) * 0.2)
-        num_vali = len(df_raw) - num_train - num_test
-        border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
-        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        border1s, border2s = self._split_borders(df_raw)
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
@@ -642,13 +638,24 @@ class Dataset_Custom(Dataset):
 
         _run_forecast_augmentation(self)
 
-        self.data_stamp = data_stamp
+        self.data_stamp = self._known_marks(df_raw, border1, border2, data_stamp)
         _configure_tft_temporal_coordinates(
             self, df_raw, border1=border1, border2=border2
         )
         _attach_forecast_fold_manifest(
             self, df_raw, source_identity, border1=border1, border2=border2
         )
+
+    def _split_borders(self, df_raw):
+        num_train = int(len(df_raw) * 0.7)
+        num_test = int(len(df_raw) * 0.2)
+        num_vali = len(df_raw) - num_train - num_test
+        border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
+        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        return border1s, border2s
+
+    def _known_marks(self, df_raw, border1, border2, calendar_marks):
+        return calendar_marks
 
     def __getitem__(self, index):
         s_begin = index
@@ -673,6 +680,50 @@ class Dataset_Custom(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
+
+
+class Dataset_PlanetaryMarket(Dataset_Custom):
+    """Market table plus compiled astrology rules as known-future marks.
+
+    Rule channels are appended to the calendar marks unscaled, so circular
+    encodings keep their geometry.  Splits follow the frozen walk-forward folds
+    instead of positional fractions.
+    """
+
+    def _split_borders(self, df_raw):
+        from data_provider.folds import fold_borders, resolve_fold
+
+        fold = resolve_fold(
+            str(self.args.astro_fold),
+            unlock_holdout=bool(getattr(self.args, "astro_unlock_holdout", False)),
+        )
+        return fold_borders(df_raw["date"], fold, self.seq_len, self.pred_len)
+
+    def _known_marks(self, df_raw, border1, border2, calendar_marks):
+        from astro.known import build_known_block, prepare_astro_known
+
+        layout = prepare_astro_known(self.args)
+        rule_block = build_known_block(self.args, df_raw["date"])
+        rule_block = rule_block[border1:border2]
+        if rule_block.shape[0] != calendar_marks.shape[0]:
+            raise RuntimeError(
+                "Astro rule block does not align with calendar marks for this split."
+            )
+        marks = np.concatenate(
+            [np.asarray(calendar_marks, dtype=np.float64), rule_block], axis=1
+        )
+        if marks.shape[1] != int(self.args.tft_known_len):
+            raise RuntimeError(
+                f"Known marks width {marks.shape[1]} disagrees with "
+                f"tft_known_len={self.args.tft_known_len}."
+            )
+        self.astro_manifest = layout["manifest"]
+        self.astro_channel_meta = layout["channel_meta"]
+        self.astro_calendar_channel_count = layout["calendar_channel_count"]
+        self.astro_split_dates = pd.DatetimeIndex(
+            pd.to_datetime(df_raw["date"].iloc[border1:border2])
+        )
+        return marks
 
 
 class Dataset_M4(Dataset):

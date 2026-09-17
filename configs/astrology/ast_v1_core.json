@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "ast_v1_core",
+  "requires_ephemeris": {
+    "frame": [
+      "sidereal",
+      "tropical"
+    ],
+    "node_policy": "mean",
+    "center": "geocentric"
+  },
+  "rules": [
+    {
+      "rule_id": "saturn_drishti_jupiter",
+      "school": "vedic",
+      "family": "drishti",
+      "operator": "degree_orb_drishti",
+      "inputs": {
+        "from_body": "Saturn",
+        "to_body": "Jupiter",
+        "frame": "sidereal"
+      },
+      "params": {
+        "aspect_deg": [
+          60,
+          180,
+          270
+        ],
+        "sigma_deg": 6.0
+      },
+      "emits": [
+        "act_a60",
+        "act_a180",
+        "act_a270",
+        "applying_a180"
+      ],
+      "prior": {
+        "importance": 0.8,
+        "l2_anchor": 0.5,
+        "l1_weight": 0.01
+      },
+      "response_bank": {
+        "half_life_days": [
+          21,
+          90
+        ]
+      }
+    },
+    {
+      "rule_id": "mars_drishti_sun",
+      "school": "vedic",
+      "family": "drishti",
+      "operator": "degree_orb_drishti",
+      "inputs": {
+        "from_body": "Mars",
+        "to_body": "Sun",
+        "frame": "sidereal"
+      },
+      "params": {
+        "aspect_deg": [
+          90,
+          180,
+          210
+        ],
+        "sigma_deg": 5.0
+      },
+      "emits": [
+        "act_a90",
+        "act_a180",
+        "act_a210"
+      ],
+      "prior": {
+        "importance": 0.5,
+        "l2_anchor": 0.3,
+        "l1_weight": 0.02
+      },
+      "response_bank": {
+        "half_life_days": [
+          7
+        ]
+      }
+    },
+    {
+      "rule_id": "saturn_wholesign_sun",
+      "school": "vedic",
+      "family": "drishti",
+      "operator": "whole_sign_drishti",
+      "inputs": {
+        "from_body": "Saturn",
+        "to_body": "Sun"
+      },
+      "params": {
+        "house_offsets": [
+          3,
+          7,
+          10
+        ]
+      },
+      "prior": {
+        "importance": 0.4,
+        "l2_anchor": 0.2,
+        "l1_weight": 0.02
+      }
+    },
+    {
+      "rule_id": "moon_nakshatra",
+      "school": "vedic",
+      "family": "nakshatra",
+      "operator": "nakshatra_pada",
+      "inputs": {
+        "body": "Moon"
+      },
+      "params": {},
+      "prior": {
+        "importance": 0.5,
+        "l2_anchor": 0.2,
+        "l1_weight": 0.02
+      }
+    },
+    {
+      "rule_id": "jupiter_rashi",
+      "school": "vedic",
+      "family": "rashi",
+      "operator": "rashi_cyclic",
+      "inputs": {
+        "body": "Jupiter"
+      },
+      "params": {},
+      "prior": {
+        "importance": 0.6,
+        "l2_anchor": 0.3,
+        "l1_weight": 0.01
+      }
+    },
+    {
+      "rule_id": "sun_ingress",
+      "school": "vedic",
+      "family": "ingress",
+      "operator": "ingress_pulse",
+      "inputs": {
+        "body": "Sun"
+      },
+      "params": {
+        "width_days": 3.0
+      },
+      "prior": {
+        "importance": 0.5,
+        "l2_anchor": 0.2,
+        "l1_weight": 0.02
+      },
+      "response_bank": {
+        "half_life_days": [
+          7
+        ]
+      }
+    },
+    {
+      "rule_id": "mercury_retrograde",
+      "school": "both",
+      "family": "retrograde",
+      "operator": "retrograde_state",
+      "inputs": {
+        "body": "Mercury"
+      },
+      "params": {},
+      "prior": {
+        "importance": 0.7,
+        "l2_anchor": 0.4,
+        "l1_weight": 0.01
+      },
+      "response_bank": {
+        "half_life_days": [
+          7,
+          21
+        ]
+      }
+    },
+    {
+      "rule_id": "mercury_station",
+      "school": "both",
+      "family": "retrograde",
+      "operator": "station_proximity",
+      "inputs": {
+        "body": "Mercury"
+      },
+      "params": {
+        "speed_scale": 0.5
+      },
+      "prior": {
+        "importance": 0.5,
+        "l2_anchor": 0.2,
+        "l1_weight": 0.02
+      }
+    },
+    {
+      "rule_id": "mercury_combustion",
+      "school": "vedic",
+      "family": "combustion",
+      "operator": "combustion",
+      "inputs": {
+        "body": "Mercury",
+        "frame": "sidereal"
+      },
+      "params": {
+        "width_deg": 8.0
+      },
+      "prior": {
+        "importance": 0.4,
+        "l2_anchor": 0.2,
+        "l1_weight": 0.02
+      }
+    },
+    {
+      "rule_id": "moon_node_axis",
+      "school": "vedic",
+      "family": "nodes",
+      "operator": "node_axis",
+      "inputs": {
+        "body": "Moon",
+        "frame": "sidereal"
+      },
+      "params": {
+        "width_deg": 5.0
+      },
+      "prior": {
+        "importance": 0.6,
+        "l2_anchor": 0.3,
+        "l1_weight": 0.01
+      },
+      "response_bank": {
+        "half_life_days": [
+          14
+        ]
+      }
+    },
+    {
+      "rule_id": "jupiter_saturn_aspects",
+      "school": "western",
+      "family": "aspect",
+      "operator": "aspect_activation",
+      "inputs": {
+        "from_body": "Jupiter",
+        "to_body": "Saturn",
+        "frame": "tropical"
+      },
+      "params": {
+        "aspect_deg": [
+          0,
+          90,
+          120,
+          180
+        ],
+        "sigma_deg": 6.0
+      },
+      "emits": [
+        "act_a0",
+        "act_a90",
+        "act_a120",
+        "act_a180",
+        "applying_a0",
+        "tte_a0"
+      ],
+      "prior": {
+        "importance": 0.8,
+        "l2_anchor": 0.5,
+        "l1_weight": 0.01
+      },
+      "response_bank": {
+        "half_life_days": [
+          90,
+          365
+        ]
+      }
+    },
+    {
+      "rule_id": "mars_venus_declination",
+      "school": "western",
+      "family": "declination",
+      "operator": "declination_parallel",
+      "inputs": {
+        "body_a": "Mars",
+        "body_b": "Venus"
+      },
+      "params": {
+        "orb_deg": 1.0
+      },
+      "prior": {
+        "importance": 0.3,
+        "l2_anchor": 0.1,
+        "l1_weight": 0.05
+      }
+    },
+    {
+      "rule_id": "sunmoon_midpoint_saturn",
+      "school": "western",
+      "family": "midpoint",
+      "operator": "midpoint_activation",
+      "inputs": {
+        "body_a": "Sun",
+        "body_b": "Moon",
+        "target_body": "Saturn",
+        "frame": "tropical"
+      },
+      "params": {
+        "orb_deg": 2.0
+      },
+      "prior": {
+        "importance": 0.3,
+        "l2_anchor": 0.1,
+        "l1_weight": 0.05
+      }
+    },
+    {
+      "rule_id": "jupiter_saturn_harmonics",
+      "school": "western",
+      "family": "harmonic",
+      "operator": "harmonic_phase",
+      "inputs": {
+        "from_body": "Jupiter",
+        "to_body": "Saturn",
+        "frame": "tropical"
+      },
+      "params": {
+        "harmonics": [
+          1,
+          2,
+          4
+        ]
+      },
+      "prior": {
+        "importance": 0.4,
+        "l2_anchor": 0.2,
+        "l1_weight": 0.02
+      }
+    }
+  ],
+  "interactions": {
+    "pairs": []
+  },
+  "null_arms": [
+    {
+      "type": "date_shift",
+      "days": 137
+    },
+    {
+      "type": "date_shift",
+      "days": 1461
+    },
+    {
+      "type": "phase_randomize",
+      "seed": 17
+    },
+    {
+      "type": "body_permute",
+      "seed": 5
+    }
+  ]
+}

@@ -133,6 +133,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             # pairing identity cannot inherit stale positions/names.
             if hasattr(args, '_tft_resolved_schema'):
                 delattr(args, '_tft_resolved_schema')
+            if getattr(args, 'data', None) == 'planetary_market':
+                from astro.known import prepare_astro_known
+                prepare_astro_known(args)
             args = apply_tft_profile(args)
         super(Exp_Long_Term_Forecast, self).__init__(args)
         self._tft_target_positions = resolve_target_positions(args) if is_tft_model(args) else None
@@ -844,6 +847,84 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return pred, true
 
 
+    def _write_astro_importance(self, path):
+        model = self.model.module if hasattr(self.model, 'module') else self.model
+        gates = getattr(model, 'astro_rule_gates', None)
+        if gates is None and not self._astro_term_history:
+            return
+        report = {
+            'schema_version': 1,
+            'note': 'Learned gates are diagnostics, not causal evidence; use paired arm ablations for importance claims.',
+            'astro_arm': getattr(self.args, 'astro_arm', None),
+            'astro_manifest_hash': getattr(self.args, 'astro_manifest_hash', None),
+            'term_history': self._astro_term_history,
+        }
+        if gates is not None:
+            report['rule_gates'] = gates.importance()
+            report['family_mean_abs_gate'] = gates.family_importance()
+        with open(os.path.join(path, 'astro_importance.json'), 'w', encoding='utf-8') as handle:
+            json.dump(report, handle, indent=2)
+
+    def _astro_coefficients(self):
+        return (
+            float(getattr(self.args, 'astro_prior_coeff', 0.0) or 0.0),
+            float(getattr(self.args, 'astro_regularity_coeff', 0.0) or 0.0),
+        )
+
+    def _astro_auxiliary_loss(self, batch_x, batch_x_mark, dec_inp, batch_y_mark,
+                              temporal_positions, temporal_valid_mask):
+        """Soft astrology terms; returns None when every coefficient is zero."""
+        prior_coeff, regularity_coeff = self._astro_coefficients()
+        if prior_coeff == 0.0 and regularity_coeff == 0.0:
+            return None
+        from astro.known import compile_arm
+        from astro.torch.importance import parse_rule_layout
+        from astro.torch.losses import prior_penalty, response_regularity, rule_prior_tensors
+
+        model = self.model.module if hasattr(self.model, 'module') else self.model
+        total = None
+        if prior_coeff != 0.0:
+            gates_module = getattr(model, 'astro_rule_gates', None)
+            if gates_module is None:
+                raise ValueError('astro_prior_coeff > 0 requires --tft_astro_rule_gates.')
+            if not hasattr(self, '_astro_prior_cache'):
+                _, features = compile_arm(self.args)
+                self._astro_prior_cache = rule_prior_tensors(
+                    features.channel_meta, gates_module.rule_ids,
+                    gates_module.gates.device, gates_module.gates.dtype,
+                )
+            penalty = prior_penalty(gates_module.gates, *self._astro_prior_cache)
+            self._astro_term_log.setdefault('prior', []).append(float(penalty.detach()))
+            total = prior_coeff * penalty
+        if regularity_coeff != 0.0:
+            if not hasattr(self, '_astro_regularity_state'):
+                columns, _, _, _ = parse_rule_layout(self.args.tft_known_feature_names)
+                if not columns:
+                    raise ValueError('astro_regularity_coeff > 0 requires astro.* known channels.')
+                generator = torch.Generator(device=self.device)
+                generator.manual_seed(int(getattr(self.args, 'seed', 0)) + 7919)
+                self._astro_regularity_state = (
+                    torch.tensor(columns, dtype=torch.long, device=self.device), generator,
+                )
+            columns, generator = self._astro_regularity_state
+
+            def predict(mark_enc, mark_dec):
+                output = self._forward_model(
+                    batch_x, mark_enc, dec_inp, mark_dec,
+                    temporal_positions, temporal_valid_mask,
+                )
+                outputs, _, _ = self._extract_outputs_and_aux(output)
+                return outputs[:, -self.args.pred_len:, :]
+
+            penalty = response_regularity(
+                predict, batch_x_mark, batch_y_mark, columns,
+                float(getattr(self.args, 'astro_regularity_epsilon', 0.05)), generator,
+            )
+            self._astro_term_log.setdefault('regularity', []).append(float(penalty.detach()))
+            weighted = regularity_coeff * penalty
+            total = weighted if total is None else total + weighted
+        return total
+
     def vali(self, vali_data, vali_loader, criterion):
         total_loss = []
         self.model.eval()
@@ -910,6 +991,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return total_loss
 
     def train(self, setting):
+        self._astro_term_history = []
         # Reject an unreleased semantics-v2 operator before constructing data
         # loaders, creating an output directory, or taking an optimizer step.
         # Artifact-time validation remains as a second line of defence, but a
@@ -977,6 +1059,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 train_loader.sampler.set_epoch(epoch)
             iter_count = 0
             train_loss = []
+            self._astro_term_log = {}
 
             self.model.train()
             epoch_time = time.time()
@@ -1024,6 +1107,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                             valid_mask=forecast_valid_mask,
                         )
                         loss = combine_primary_and_aux_loss(loss, aux_loss, self._get_aux_loss_coeff())
+                        astro_loss = self._astro_auxiliary_loss(
+                            batch_x, batch_x_mark, dec_inp, batch_y_mark,
+                            temporal_positions, temporal_valid_mask,
+                        )
+                        loss = combine_primary_and_aux_loss(loss, astro_loss, 1.0)
                         if not torch.isfinite(loss):
                             raise RuntimeError(f"Non-finite training loss at epoch {epoch + 1}, batch {i + 1}")
                         train_loss.append(loss.item())
@@ -1043,6 +1131,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         valid_mask=forecast_valid_mask,
                     )
                     loss = combine_primary_and_aux_loss(loss, aux_loss, self._get_aux_loss_coeff())
+                    astro_loss = self._astro_auxiliary_loss(
+                        batch_x, batch_x_mark, dec_inp, batch_y_mark,
+                        temporal_positions, temporal_valid_mask,
+                    )
+                    loss = combine_primary_and_aux_loss(loss, astro_loss, 1.0)
                     if not torch.isfinite(loss):
                         raise RuntimeError(f"Non-finite training loss at epoch {epoch + 1}, batch {i + 1}")
                     train_loss.append(loss.item())
@@ -1066,6 +1159,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             epochs_completed = epoch + 1
             train_loss = np.average(train_loss)
+            if self._astro_term_log:
+                epoch_terms = {name: float(np.mean(values)) for name, values in self._astro_term_log.items()}
+                self._astro_term_history.append({'epoch': epoch + 1, **epoch_terms})
+                print("\tastro terms: " + ", ".join(f"{k}={v:.6f}" for k, v in epoch_terms.items()))
             vali_loss = self.vali(vali_data, vali_loader, criterion)
             if test_loader is not None:
                 test_loss = self.vali(test_data, test_loader, criterion)
@@ -1100,6 +1197,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             )
         else:
             self.model.load_state_dict(torch.load(best_model_path))
+
+        self._write_astro_importance(path)
 
         if reproducibility_manifest is not None:
             model_for_state = self.model.module if hasattr(self.model, 'module') else self.model

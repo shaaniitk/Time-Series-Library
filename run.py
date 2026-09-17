@@ -281,6 +281,24 @@ def build_parser():
                         help='Maximum supported known-future channels for TFT custom-known embedding.')
     parser.add_argument('--tft_known_feature_names', type=str, default='',
                         help='Comma-separated known-future feature names; required when tft_allow_custom_known=True.')
+    parser.add_argument('--tft_astro_rule_gates', action='store_true', default=False,
+                        help='Learn one zero-initialized input gate per astrology rule over astro.* known channels.')
+    parser.add_argument('--astro_prior_coeff', type=float, default=0.0,
+                        help='Weight of the soft prior-anchor and sparsity penalty on rule gates (0 bypasses).')
+    parser.add_argument('--astro_regularity_coeff', type=float, default=0.0,
+                        help='Weight of the response-regularity penalty over rule channels (0 bypasses).')
+    parser.add_argument('--astro_ruleset', type=str, default=None,
+                        help='Rule DSL JSON compiled into known-future channels (data=planetary_market).')
+    parser.add_argument('--astro_ephemeris_path', type=str, default=None,
+                        help='Validated ephemeris table (.csv or .parquet) for planetary_market.')
+    parser.add_argument('--astro_ephemeris_manifest', type=str, default=None,
+                        help='Ephemeris convention manifest JSON matching astro/ephemeris/contract.py.')
+    parser.add_argument('--astro_arm', type=str, default='real',
+                        help="Feature arm: 'real', 'zero', or a null arm name declared in the ruleset.")
+    parser.add_argument('--astro_fold', type=str, default='F1',
+                        help='Walk-forward fold from data_provider/folds.py (F1-F4, or HOLDOUT).')
+    parser.add_argument('--astro_unlock_holdout', action='store_true', default=False,
+                        help='Permit the locked holdout fold. Inspect once per protocol version.')
     parser.add_argument('--tft_vsn_residual_bypass', action='store_true', default=False,
                         help='Enable residual bypass in TFT variable selection networks.')
     parser.add_argument('--tft_dual_attention_fusion', action='store_true', default=False,
@@ -523,6 +541,10 @@ def normalize_args(args):
         args.tft_moe_hidden_size = None
     if args.tft_known_len is not None and args.tft_known_len <= 0:
         args.tft_known_len = None
+
+    if args.data == 'planetary_market':
+        from astro.known import prepare_astro_known
+        prepare_astro_known(args)
 
     if args.model == 'TemporalFusionTransformer':
         args = apply_tft_profile(args)

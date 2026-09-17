@@ -2297,6 +2297,12 @@ class Model(nn.Module):
             self.known_len = len(self.resolved_tft_schema.known_feature_names)
 
         self.embedding = TFTEmbedding(configs)
+        self.astro_rule_gates = None
+        if bool(getattr(configs, 'tft_astro_rule_gates', False)):
+            if not self.allow_custom_known:
+                raise ValueError("tft_astro_rule_gates requires tft_allow_custom_known=True.")
+            from astro.torch.importance import AstroRuleGates
+            self.astro_rule_gates = AstroRuleGates(self.resolved_tft_schema.known_feature_names)
         self.revin = Normalize(configs.enc_in, affine=self.revin_affine) if self.use_revin else None
         
         self.use_swiglu = getattr(configs, 'tft_use_swiglu', False)
@@ -2866,6 +2872,9 @@ class Model(nn.Module):
                 x_enc = x_enc - means
             stdev = torch.sqrt(torch.clamp(var, min=1e-10) + 1e-5)
             x_enc = x_enc / stdev
+
+        if self.astro_rule_gates is not None:
+            x_mark_enc, x_mark_dec = self.astro_rule_gates(x_mark_enc, x_mark_dec)
 
         # Data embedding
         # static_input: [B,C,d], observed_input:[B,T,C,d], known_input: [B,T,C,d]
